@@ -1,4 +1,4 @@
-import { TerminalView } from "./Terminal";
+import { TerminalTabs } from "./TerminalTabs";
 import "./App.css";
 
 function App() {
@@ -8,7 +8,7 @@ function App() {
         <img src="/logo.png" className="titlebar-logo" alt="huskv2" />
         <span className="titlebar-title">huskv2</span>
       </header>
-      <TerminalView />
+      <TerminalTabs />
     </div>
   );
 }
