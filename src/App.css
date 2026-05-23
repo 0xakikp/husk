@@ -133,10 +133,56 @@ body {
   height: 100%;
 }
 
+.terminal-host-wrap {
+  position: relative;
+  height: 100%;
+}
+
 .terminal-host {
   height: 100%;
   min-height: 0;
   padding: 6px 8px 8px;
+}
+
+.term-search {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #161a22;
+  border: 1px solid #2b3140;
+  border-radius: 8px;
+  padding: 4px 4px 4px 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.term-search input {
+  background: none;
+  border: none;
+  outline: none;
+  color: #d4d7dd;
+  font-size: 12px;
+  width: 180px;
+  font-family: inherit;
+}
+
+.term-search-close {
+  border: none;
+  background: none;
+  color: #8b8f98;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.term-search-close:hover {
+  background: #2a2e38;
+  color: #e6e8ec;
 }
 
 .terminal-host .xterm,

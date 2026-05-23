@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { setActiveTerminalReader } from "./ai/terminalContext";
@@ -10,6 +11,9 @@ import "@xterm/xterm/css/xterm.css";
 export function TerminalView({ active = true }: { active?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const searchRef = useRef<SearchAddon | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const container = containerRef.current;
@@ -28,10 +32,26 @@ export function TerminalView({ active = true }: { active?: boolean }) {
       },
     });
     const fit = new FitAddon();
+    const search = new SearchAddon();
     term.loadAddon(fit);
+    term.loadAddon(search);
     term.open(container);
     fit.fit();
     termRef.current = term;
+    searchRef.current = search;
+
+    // Cmd/Ctrl+F opens find-in-terminal.
+    term.attachCustomKeyEventHandler((e) => {
+      if (
+        e.type === "keydown" &&
+        (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === "f"
+      ) {
+        setSearchOpen(true);
+        return false;
+      }
+      return true;
+    });
 
     let ptyId: number | null = null;
     let disposed = false;
@@ -81,6 +101,7 @@ export function TerminalView({ active = true }: { active?: boolean }) {
       for (const un of unlisteners) un();
       if (ptyId !== null) void invoke("pty_kill", { id: ptyId });
       termRef.current = null;
+      searchRef.current = null;
       term.dispose();
     };
   }, []);
@@ -102,5 +123,48 @@ export function TerminalView({ active = true }: { active?: boolean }) {
     return () => setActiveTerminalReader(null);
   }, [active]);
 
-  return <div ref={containerRef} className="terminal-host" />;
+  const closeSearch = () => {
+    setSearchOpen(false);
+    searchRef.current?.clearDecorations();
+    termRef.current?.focus();
+  };
+
+  return (
+    <div className="terminal-host-wrap">
+      <div ref={containerRef} className="terminal-host" />
+      {searchOpen ? (
+        <div className="term-search">
+          <input
+            autoFocus
+            value={query}
+            placeholder="Find in terminal…"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              searchRef.current?.findNext(e.target.value, { incremental: true });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (query) {
+                  if (e.shiftKey) searchRef.current?.findPrevious(query);
+                  else searchRef.current?.findNext(query);
+                }
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                closeSearch();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="term-search-close"
+            aria-label="Close search"
+            onClick={closeSearch}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
