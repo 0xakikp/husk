@@ -5,6 +5,21 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://api.anthropic.com/*" },
+        { "url": "https://api.openai.com/*" },
+        { "url": "https://generativelanguage.googleapis.com/*" },
+        { "url": "https://api.groq.com/*" },
+        { "url": "https://api.deepseek.com/*" },
+        { "url": "https://openrouter.ai/*" },
+        { "url": "https://api.x.ai/*" },
+        { "url": "https://api.mistral.ai/*" },
+        { "url": "http://localhost:*/*" },
+        { "url": "http://127.0.0.1:*/*" }
+      ]
+    }
   ]
 }

@@ -3,11 +3,13 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { setActiveTerminalReader } from "./ai/terminalContext";
 import "@xterm/xterm/css/xterm.css";
 
 /** A single xterm.js terminal backed by a Rust PTY session. */
-export function TerminalView() {
+export function TerminalView({ active = true }: { active?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -29,6 +31,7 @@ export function TerminalView() {
     term.loadAddon(fit);
     term.open(container);
     fit.fit();
+    termRef.current = term;
 
     let ptyId: number | null = null;
     let disposed = false;
@@ -77,9 +80,27 @@ export function TerminalView() {
       resizeObserver.disconnect();
       for (const un of unlisteners) un();
       if (ptyId !== null) void invoke("pty_kill", { id: ptyId });
+      termRef.current = null;
       term.dispose();
     };
   }, []);
+
+  // While this is the active tab, expose its recent output to the AI panel.
+  useEffect(() => {
+    if (!active) return;
+    setActiveTerminalReader(() => {
+      const term = termRef.current;
+      if (!term) return "";
+      const buf = term.buffer.active;
+      const lines: string[] = [];
+      const start = Math.max(0, buf.length - 60);
+      for (let i = start; i < buf.length; i += 1) {
+        lines.push(buf.getLine(i)?.translateToString(true) ?? "");
+      }
+      return lines.join("\n").replace(/\n+$/, "");
+    });
+    return () => setActiveTerminalReader(null);
+  }, [active]);
 
   return <div ref={containerRef} className="terminal-host" />;
 }

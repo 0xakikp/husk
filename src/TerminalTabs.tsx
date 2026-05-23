@@ -74,7 +74,7 @@ export function TerminalTabs() {
             className="terminal-pane"
             style={{ display: t.id === activeId ? "block" : "none" }}
           >
-            <TerminalView />
+            <TerminalView active={t.id === activeId} />
           </div>
         ))}
       </div>
