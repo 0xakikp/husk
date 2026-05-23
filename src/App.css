@@ -150,7 +150,7 @@ body {
   flex: 1 1 auto;
 }
 
-.titlebar-ai {
+.titlebar-btn {
   border: 1px solid #232733;
   background: #11141b;
   color: #9ca3af;
@@ -177,8 +177,140 @@ body {
 
 .workspace-main {
   display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.workspace-explorer {
+  width: 220px;
+  flex: 0 0 auto;
+  background: #0c0e14;
+  border-right: 1px solid #1b1e26;
+  overflow: auto;
+}
+
+.explorer {
+  padding: 6px 0;
+}
+
+.explorer-loading {
+  padding: 10px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.enode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: #c4c8cf;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 2px 8px 2px 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.enode:hover {
+  background: #161a22;
+}
+
+.edir {
+  color: #cdd2da;
+  font-weight: 500;
+}
+
+.efile {
+  color: #9ca3af;
+}
+
+.enode-caret {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  font-size: 9px;
+  color: #6b7280;
+}
+
+.editor-region {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.terminal-region {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.terminal-region.split {
+  flex: 0 0 240px;
+  border-top: 1px solid #1b1e26;
+}
+
+.editor-area {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-tabs {
+  display: flex;
+  height: 30px;
+  background: #0e1117;
+  border-bottom: 1px solid #1b1e26;
+  overflow-x: auto;
+}
+
+.etab {
+  display: flex;
+  align-items: center;
+  border-right: 1px solid #1b1e26;
+  color: #8b8f98;
+}
+
+.etab.active {
+  background: #1e1e1e;
+  color: #e6e8ec;
+}
+
+.etab-label {
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 4px 0 10px;
+  height: 30px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.etab-close {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border-radius: 4px;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+.etab-close:hover {
+  background: #2a2e38;
+  opacity: 1;
+}
+
+.editor-host {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .resize-handle {
