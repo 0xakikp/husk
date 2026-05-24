@@ -497,7 +497,7 @@ body {
 }
 
 .enode:hover {
-  background: var(--hover);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .edir {
@@ -506,7 +506,7 @@ body {
 }
 
 .efile {
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .enode-caret {
