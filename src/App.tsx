@@ -9,7 +9,8 @@ import { SettingsPage } from "./settings/SettingsPage";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
 import { initKeys } from "./ai/store";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ToastContainer } from "./toast";
+import { ToastContainer, toast } from "./toast";
+import { setBridgeHandler } from "./bridge";
 import { WelcomeDialog } from "./welcome/WelcomeDialog";
 import { CommandPalette, type Command } from "./command-palette/CommandPalette";
 import { SnippetsDialog } from "./snippets/SnippetsDialog";
@@ -55,10 +56,12 @@ function App() {
   const [cicdOpen, setCicdOpen] = useState(false);
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
+  const [diffPaths, setDiffPaths] = useState<{ left: string; right: string } | null>(null);
   const [scOpen, setScOpen] = useState(false);
   const [gitHistoryOpen, setGitHistoryOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewPath, setPreviewPath] = useState<string | undefined>(undefined);
   const prefs = usePrefs();
   useClipboardListener();
 
@@ -69,6 +72,30 @@ function App() {
   // Load AI keys from the OS keychain (migrating any legacy localStorage keys).
   useEffect(() => {
     void initKeys();
+  }, []);
+
+  // Terminal → GUI bridge: the `husk` shell command (OSC 777) drives the
+  // editor, preview, notifications and diff.
+  useEffect(() => {
+    setBridgeHandler((cmd) => {
+      switch (cmd.kind) {
+        case "open":
+          openFile(cmd.path, cmd.path.split("/").pop() || cmd.path);
+          break;
+        case "preview":
+          setPreviewPath(cmd.path);
+          setPreviewOpen(true);
+          break;
+        case "notify":
+          toast({ title: cmd.message, variant: "info" });
+          break;
+        case "diff":
+          setDiffPaths({ left: cmd.left, right: cmd.right });
+          setDiffOpen(true);
+          break;
+      }
+    });
+    return () => setBridgeHandler(null);
   }, []);
 
   useEffect(() => {
@@ -128,11 +155,11 @@ function App() {
     { id: "github", label: "Open GitHub", run: () => setGithubOpen(true) },
     { id: "cicd", label: "Open CI / CD", run: () => setCicdOpen(true) },
     { id: "clipboard", label: "Open clipboard history", run: () => setClipboardOpen(true) },
-    { id: "diff", label: "Open diff viewer", run: () => setDiffOpen(true) },
+    { id: "diff", label: "Open diff viewer", run: () => { setDiffPaths(null); setDiffOpen(true); } },
     { id: "source-control", label: "Open source control", run: () => setScOpen(true) },
     { id: "git-history", label: "Open git history", run: () => setGitHistoryOpen(true) },
     { id: "shortcuts", label: "Keyboard shortcuts", run: () => setShortcutsOpen(true) },
-    { id: "preview", label: "Open preview", run: () => setPreviewOpen(true) },
+    { id: "preview", label: "Open preview", run: () => { setPreviewPath(undefined); setPreviewOpen(true); } },
     {
       id: "theme",
       label: "Toggle light / dark theme",
@@ -297,8 +324,16 @@ function App() {
       {githubOpen ? <GithubIssuesDialog onClose={() => setGithubOpen(false)} /> : null}
       {cicdOpen ? <CiCdDialog onClose={() => setCicdOpen(false)} /> : null}
       {clipboardOpen ? <ClipboardManager onClose={() => setClipboardOpen(false)} /> : null}
-      {diffOpen ? <DiffDialog onClose={() => setDiffOpen(false)} /> : null}
-      {previewOpen ? <PreviewDialog onClose={() => setPreviewOpen(false)} /> : null}
+      {diffOpen ? (
+        <DiffDialog
+          initialLeft={diffPaths?.left}
+          initialRight={diffPaths?.right}
+          onClose={() => setDiffOpen(false)}
+        />
+      ) : null}
+      {previewOpen ? (
+        <PreviewDialog initialPath={previewPath} onClose={() => setPreviewOpen(false)} />
+      ) : null}
       {!prefs.hasSeenWelcome ? <WelcomeDialog /> : null}
       {paletteOpen ? (
         <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />

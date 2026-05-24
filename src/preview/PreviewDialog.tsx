@@ -1,17 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const IMG_RE = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i;
 
-export function PreviewDialog({ onClose }: { onClose: () => void }) {
-  const [url, setUrl] = useState("");
+function toSrc(raw: string): string {
+  let u = raw.trim();
+  if (u.startsWith("/")) u = `file://${u}`;
+  else if (!/^https?:\/\//.test(u) && !u.startsWith("file://")) u = `https://${u}`;
+  return u;
+}
+
+export function PreviewDialog({
+  onClose,
+  initialPath,
+}: {
+  onClose: () => void;
+  initialPath?: string;
+}) {
+  const [url, setUrl] = useState(initialPath ?? "");
   const [src, setSrc] = useState("");
 
+  useEffect(() => {
+    if (initialPath && initialPath.trim()) setSrc(toSrc(initialPath));
+  }, [initialPath]);
+
   const go = () => {
-    let u = url.trim();
-    if (!u) return;
-    if (u.startsWith("/")) u = `file://${u}`;
-    else if (!/^https?:\/\//.test(u) && !u.startsWith("file://")) u = `https://${u}`;
-    setSrc(u);
+    if (!url.trim()) return;
+    setSrc(toSrc(url));
   };
 
   return (

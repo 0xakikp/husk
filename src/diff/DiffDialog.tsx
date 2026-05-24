@@ -1,14 +1,25 @@
 import { useEffect, useRef } from "react";
 import { monaco } from "../editor/monacoEnv";
 import { getPrefs } from "../settings/preferences";
+import { readFile } from "../fs";
 
-export function DiffDialog({ onClose }: { onClose: () => void }) {
+export function DiffDialog({
+  onClose,
+  initialLeft,
+  initialRight,
+}: {
+  onClose: () => void;
+  initialLeft?: string;
+  initialRight?: string;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hostRef.current) return;
     const original = monaco.editor.createModel("", "plaintext");
     const modified = monaco.editor.createModel("", "plaintext");
+    if (initialLeft) void readFile(initialLeft).then((t) => original.setValue(t)).catch(() => {});
+    if (initialRight) void readFile(initialRight).then((t) => modified.setValue(t)).catch(() => {});
     const editor = monaco.editor.createDiffEditor(hostRef.current, {
       theme: getPrefs().theme === "dark" ? "vs-dark" : "vs",
       automaticLayout: true,

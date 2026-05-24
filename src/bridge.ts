@@ -1,0 +1,44 @@
+// Terminal → GUI bridge. The injected shell scripts expose a `husk` command
+// that emits OSC 777 (`husk;<verb>;<args>`); the active terminal parses it and
+// dispatches here, and App registers a handler that drives the editor / preview
+// / notifications / diff.
+
+export type BridgeCommand =
+  | { kind: "open"; path: string }
+  | { kind: "preview"; path: string }
+  | { kind: "notify"; message: string }
+  | { kind: "diff"; left: string; right: string };
+
+let handler: ((cmd: BridgeCommand) => void) | null = null;
+
+export function setBridgeHandler(fn: ((cmd: BridgeCommand) => void) | null): void {
+  handler = fn;
+}
+
+export function dispatchBridge(cmd: BridgeCommand): void {
+  handler?.(cmd);
+}
+
+/** Parse an OSC 777 payload (`husk;<verb>;<args>`) into a command. */
+export function parseBridgeOsc(data: string): BridgeCommand | null {
+  if (!data.startsWith("husk;")) return null;
+  const payload = data.slice("husk;".length);
+  const semi = payload.indexOf(";");
+  const verb = semi < 0 ? payload : payload.slice(0, semi);
+  const rest = semi < 0 ? "" : payload.slice(semi + 1);
+  switch (verb) {
+    case "open":
+      return rest ? { kind: "open", path: rest } : null;
+    case "preview":
+      return rest ? { kind: "preview", path: rest } : null;
+    case "notify":
+      return rest ? { kind: "notify", message: rest } : null;
+    case "diff": {
+      const i = rest.indexOf(";");
+      if (i < 0) return null;
+      return { kind: "diff", left: rest.slice(0, i), right: rest.slice(i + 1) };
+    }
+    default:
+      return null;
+  }
+}

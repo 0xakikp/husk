@@ -15,6 +15,7 @@ import { getPrefs, subscribePrefs } from "./settings/preferences";
 import { buildTerminalTheme } from "./styles/terminalTheme";
 import { getShellHistory } from "./shellHistory";
 import { TerminalHistoryPanel } from "./TerminalHistory";
+import { parseBridgeOsc, dispatchBridge } from "./bridge";
 import "@xterm/xterm/css/xterm.css";
 
 /**
@@ -104,6 +105,13 @@ export function TerminalView({
         const code = Number.parseInt(data.split(";")[1] ?? "", 10);
         setActiveTerminalExit(Number.isNaN(code) ? null : code);
       }
+      return true;
+    });
+    // OSC 777 — the `husk` shell command bridges terminal → GUI
+    // (open / preview / notify / diff).
+    term.parser.registerOscHandler(777, (data) => {
+      const cmd = parseBridgeOsc(data);
+      if (cmd) dispatchBridge(cmd);
       return true;
     });
 
