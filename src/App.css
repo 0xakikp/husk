@@ -544,6 +544,62 @@ body {
   color: var(--text);
 }
 
+.model-detect {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.ai-detect {
+  align-self: flex-end;
+  background: var(--bg-input);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ai-detect:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.ai-detect:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ai-models-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+.ai-model-chip {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+
+.ai-model-chip:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.ai-model-chip.active {
+  border-color: var(--accent, #1f6feb);
+  color: var(--text-strong);
+}
+
 .etab-close {
   border: none;
   background: none;

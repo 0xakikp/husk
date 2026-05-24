@@ -4,6 +4,7 @@ import { loadConfig, saveConfig, useKey, setKey, type StoredConfig } from "./sto
 import { streamChat, type ChatMessage } from "./client";
 import { readActiveTerminal } from "./terminalContext";
 import { buildMcpTools } from "../mcp/tools";
+import { ModelDetect } from "./ModelDetect";
 
 const SYSTEM = `You are the huskv2 assistant, embedded in a developer terminal.
 Be concise and practical. When the user refers to "this error" or "the last
@@ -142,6 +143,14 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setConfig((c) => ({ ...c, baseURL: e.target.value }))}
               />
             </label>
+          ) : null}
+          {provider.kind === "openai-compatible" ? (
+            <ModelDetect
+              baseURL={config.baseURL || provider.baseURL || ""}
+              apiKey={apiKey}
+              current={config.model}
+              onPick={(m) => setConfig((c) => ({ ...c, model: m }))}
+            />
           ) : null}
         </div>
       ) : null}

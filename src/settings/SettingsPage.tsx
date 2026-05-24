@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { PROVIDERS, getProvider } from "../ai/providers";
+import { ModelDetect } from "../ai/ModelDetect";
 import { loadConfig, saveConfig, useKey, setKey, type StoredConfig } from "../ai/store";
 import {
   loadMcpServers,
@@ -283,6 +284,16 @@ function ModelsSection() {
             value={config.baseURL}
             placeholder="http://localhost:1234/v1"
             onChange={(e) => update({ baseURL: e.target.value })}
+          />
+        </SettingRow>
+      ) : null}
+      {provider.kind === "openai-compatible" ? (
+        <SettingRow title="Available models" description="Detect models served by this endpoint.">
+          <ModelDetect
+            baseURL={config.baseURL || provider.baseURL || ""}
+            apiKey={apiKey}
+            current={config.model}
+            onPick={(m) => update({ model: m })}
           />
         </SettingRow>
       ) : null}
