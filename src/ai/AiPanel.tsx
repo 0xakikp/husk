@@ -5,10 +5,7 @@ import { streamChat, type ChatMessage } from "./client";
 import { readActiveTerminal } from "./terminalContext";
 import { buildMcpTools } from "../mcp/tools";
 import { ModelDetect } from "./ModelDetect";
-
-const SYSTEM = `You are the huskv2 assistant, embedded in a developer terminal.
-Be concise and practical. When the user refers to "this error" or "the last
-command", treat the active terminal output provided below as ground truth.`;
+import { useAgents, useActiveAgentId, setActiveAgent } from "./agents";
 
 export function AiPanel({ onClose }: { onClose: () => void }) {
   const [config, setConfig] = useState<StoredConfig>(() => loadConfig());
@@ -21,6 +18,9 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
   const provider = useMemo(() => getProvider(config.providerId), [config.providerId]);
   const apiKey = useKey(provider.id);
   const needsKey = !provider.keyless && !apiKey;
+  const agents = useAgents();
+  const activeAgentId = useActiveAgentId();
+  const agent = agents.find((a) => a.id === activeAgentId) ?? agents[0];
 
   useEffect(() => saveConfig(config), [config]);
   useEffect(() => {
@@ -51,12 +51,13 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
     setBusy(true);
 
     const ctx = readActiveTerminal();
-    const system = ctx ? `${SYSTEM}\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\`` : SYSTEM;
+    const base = agent.systemPrompt;
+    const system = ctx ? `${base}\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\`` : base;
 
     try {
       const tools = await buildMcpTools().catch(() => ({}));
       await streamChat(
-        { provider, model: config.model, apiKey, baseURL: config.baseURL },
+        { provider, model: agent.model || config.model, apiKey, baseURL: config.baseURL },
         system,
         history,
         (delta) => {
@@ -89,6 +90,18 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="ai-panel">
       <div className="ai-header">
+        <select
+          className="ai-agent"
+          value={activeAgentId}
+          onChange={(e) => setActiveAgent(e.target.value)}
+          title="Agent"
+        >
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
         <select
           className="ai-provider"
           value={config.providerId}

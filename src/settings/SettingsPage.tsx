@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { PROVIDERS, getProvider } from "../ai/providers";
 import { ModelDetect } from "../ai/ModelDetect";
+import { useAgents, upsertAgent, removeAgent, newAgentId, type Agent } from "../ai/agents";
 import { loadConfig, saveConfig, useKey, setKey, type StoredConfig } from "../ai/store";
 import {
   loadMcpServers,
@@ -15,7 +16,7 @@ import { TERMINAL_THEME_PRESETS, type TerminalThemePreset } from "../styles/term
 
 const VERSION = "0.1.0";
 
-type SectionId = "about" | "general" | "models" | "mcp";
+type SectionId = "about" | "general" | "models" | "agents" | "mcp";
 
 const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   { id: "about", label: "Manifest", keywords: ["about", "version", "build", "license"] },
@@ -28,6 +29,11 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
     id: "models",
     label: "Models",
     keywords: ["model", "provider", "api", "key", "ai", "anthropic", "openai", "local"],
+  },
+  {
+    id: "agents",
+    label: "Agents",
+    keywords: ["agent", "persona", "prompt", "system", "assistant"],
   },
   {
     id: "mcp",
@@ -103,6 +109,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
               <SectionDivider />
               <div id="settings-section-models">
                 <ModelsSection />
+              </div>
+            </>
+          ) : null}
+          {show("agents") ? (
+            <>
+              <SectionDivider />
+              <div id="settings-section-agents">
+                <AgentsSection />
               </div>
             </>
           ) : null}
@@ -297,6 +311,85 @@ function ModelsSection() {
           />
         </SettingRow>
       ) : null}
+    </div>
+  );
+}
+
+function AgentsSection() {
+  const agents = useAgents();
+  const [editing, setEditing] = useState<Agent | null>(null);
+
+  const save = () => {
+    if (!editing) return;
+    const name = editing.name.trim();
+    if (!name || !editing.systemPrompt.trim()) return;
+    upsertAgent({
+      id: editing.id,
+      name,
+      systemPrompt: editing.systemPrompt.trim(),
+      model: editing.model?.trim() || undefined,
+    });
+    setEditing(null);
+  };
+
+  return (
+    <div>
+      <SectionHeader title="Agents" subtitle="Named assistant personas for the AI panel" />
+      {agents.map((a) => (
+        <SettingRow key={a.id} title={a.name} description={a.builtIn ? "Built-in preset" : "Custom"}>
+          {a.builtIn ? (
+            <span className="agent-tag">preset</span>
+          ) : (
+            <div className="agent-row-actions">
+              <button type="button" onClick={() => setEditing(a)}>
+                Edit
+              </button>
+              <button type="button" onClick={() => removeAgent(a.id)}>
+                Delete
+              </button>
+            </div>
+          )}
+        </SettingRow>
+      ))}
+      {editing ? (
+        <div className="agent-editor">
+          <input
+            className="setting-input"
+            placeholder="Agent name"
+            value={editing.name}
+            onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+          />
+          <input
+            className="setting-input"
+            placeholder="Model id override (optional)"
+            value={editing.model ?? ""}
+            onChange={(e) => setEditing({ ...editing, model: e.target.value })}
+          />
+          <textarea
+            className="agent-prompt"
+            placeholder="System prompt"
+            rows={5}
+            value={editing.systemPrompt}
+            onChange={(e) => setEditing({ ...editing, systemPrompt: e.target.value })}
+          />
+          <div className="agent-row-actions">
+            <button type="button" onClick={save}>
+              Save
+            </button>
+            <button type="button" onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="settings-add"
+          onClick={() => setEditing({ id: newAgentId(), name: "", systemPrompt: "", model: "" })}
+        >
+          + New agent
+        </button>
+      )}
     </div>
   );
 }
