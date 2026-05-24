@@ -1,11 +1,13 @@
 mod fs;
 mod mcp;
 mod pty;
+mod secrets;
 mod shell;
 mod shell_init;
 
 use mcp::McpState;
 use pty::PtyState;
+use secrets::SecretsState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -17,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(PtyState::default())
         .manage(McpState::default())
+        .manage(SecretsState::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -34,7 +37,11 @@ pub fn run() {
             mcp::mcp_send,
             mcp::mcp_recv,
             mcp::mcp_kill,
-            shell::shell_run_command
+            shell::shell_run_command,
+            secrets::secrets_get,
+            secrets::secrets_set,
+            secrets::secrets_delete,
+            secrets::secrets_get_all
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

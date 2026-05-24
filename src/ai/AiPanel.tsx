@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PROVIDERS, getProvider } from "./providers";
-import { loadConfig, saveConfig, type StoredConfig } from "./store";
+import { loadConfig, saveConfig, useKey, setKey, type StoredConfig } from "./store";
 import { streamChat, type ChatMessage } from "./client";
 import { readActiveTerminal } from "./terminalContext";
 import { buildMcpTools } from "../mcp/tools";
@@ -18,7 +18,7 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const provider = useMemo(() => getProvider(config.providerId), [config.providerId]);
-  const apiKey = config.keys[provider.id] ?? "";
+  const apiKey = useKey(provider.id);
   const needsKey = !provider.keyless && !apiKey;
 
   useEffect(() => saveConfig(config), [config]);
@@ -128,13 +128,8 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
               <input
                 type="password"
                 value={apiKey}
-                placeholder="key is stored locally on this machine"
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    keys: { ...c.keys, [provider.id]: e.target.value },
-                  }))
-                }
+                placeholder="stored in your OS keychain"
+                onChange={(e) => setKey(provider.id, e.target.value)}
               />
             </label>
           ) : null}

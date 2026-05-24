@@ -7,6 +7,7 @@ import { RunbooksDialog } from "./workflows/RunbooksDialog";
 import { TotpDialog } from "./totp/TotpDialog";
 import { SettingsPage } from "./settings/SettingsPage";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
+import { initKeys } from "./ai/store";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ToastContainer } from "./toast";
 import { WelcomeDialog } from "./welcome/WelcomeDialog";
@@ -62,6 +63,11 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = prefs.theme;
   }, [prefs.theme]);
+
+  // Load AI keys from the OS keychain (migrating any legacy localStorage keys).
+  useEffect(() => {
+    void initKeys();
+  }, []);
 
   useEffect(() => {
     getCurrentWebview()

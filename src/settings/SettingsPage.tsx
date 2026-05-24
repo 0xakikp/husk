@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { PROVIDERS, getProvider } from "../ai/providers";
-import { loadConfig, saveConfig, type StoredConfig } from "../ai/store";
+import { loadConfig, saveConfig, useKey, setKey, type StoredConfig } from "../ai/store";
 import {
   loadMcpServers,
   addMcpServer,
@@ -230,7 +230,7 @@ function GeneralSection() {
 function ModelsSection() {
   const [config, setConfig] = useState<StoredConfig>(() => loadConfig());
   const provider = getProvider(config.providerId);
-  const apiKey = config.keys[provider.id] ?? "";
+  const apiKey = useKey(provider.id);
 
   const update = (patch: Partial<StoredConfig>) =>
     setConfig((c) => {
@@ -266,13 +266,13 @@ function ModelsSection() {
         />
       </SettingRow>
       {!provider.keyless ? (
-        <SettingRow title={`${provider.label} API key`} description="Stored locally on this machine.">
+        <SettingRow title={`${provider.label} API key`} description="Stored in your OS keychain.">
           <input
             type="password"
             className="setting-input"
             value={apiKey}
             placeholder="sk-…"
-            onChange={(e) => update({ keys: { ...config.keys, [provider.id]: e.target.value } })}
+            onChange={(e) => setKey(provider.id, e.target.value)}
           />
         </SettingRow>
       ) : null}
