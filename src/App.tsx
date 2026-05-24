@@ -14,6 +14,7 @@ import { WelcomeDialog } from "./welcome/WelcomeDialog";
 import { CommandPalette, type Command } from "./command-palette/CommandPalette";
 import { SnippetsDialog } from "./snippets/SnippetsDialog";
 import { ToolsHubDialog } from "./tools-hub/ToolsHubDialog";
+import { JobsDialog } from "./jobs/JobsDialog";
 import { DockerView } from "./docker/DockerView";
 import { KubernetesView } from "./kubernetes/KubernetesView";
 import { TerraformView } from "./terraform/TerraformView";
@@ -44,6 +45,7 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [snippetsOpen, setSnippetsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [jobsOpen, setJobsOpen] = useState(false);
   const [dockerOpen, setDockerOpen] = useState(false);
   const [k8sOpen, setK8sOpen] = useState(false);
   const [terraformOpen, setTerraformOpen] = useState(false);
@@ -117,6 +119,7 @@ function App() {
     { id: "totp", label: "Open authenticator (2FA)", run: () => setTotpOpen(true) },
     { id: "snippets", label: "Open snippets", run: () => setSnippetsOpen(true) },
     { id: "tools", label: "Open tools", run: () => setToolsOpen(true) },
+    { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
     { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
     { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
     { id: "terraform", label: "Open Terraform", run: () => setTerraformOpen(true) },
@@ -285,6 +288,7 @@ function App() {
       {totpOpen ? <TotpDialog onClose={() => setTotpOpen(false)} /> : null}
       {snippetsOpen ? <SnippetsDialog onClose={() => setSnippetsOpen(false)} /> : null}
       {toolsOpen ? <ToolsHubDialog onClose={() => setToolsOpen(false)} /> : null}
+      {jobsOpen ? <JobsDialog onClose={() => setJobsOpen(false)} /> : null}
       {dockerOpen ? <DockerView onClose={() => setDockerOpen(false)} /> : null}
       {k8sOpen ? <KubernetesView onClose={() => setK8sOpen(false)} /> : null}
       {terraformOpen ? <TerraformView onClose={() => setTerraformOpen(false)} /> : null}

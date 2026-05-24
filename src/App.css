@@ -462,6 +462,88 @@ body {
   color: #3fb950;
 }
 
+.jobs-modal {
+  width: min(640px, 92vw);
+}
+
+.jobs-new {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.jobs-new input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.jobs-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.jobs-cmd {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.jobs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.jobs-dot.on {
+  background: #3fb950;
+}
+
+.jobs-dot.off {
+  background: var(--text-faint);
+}
+
+.rb-item.active {
+  background: var(--hover);
+  border-radius: 6px;
+}
+
+.jobs-log {
+  margin: 10px 0 0;
+  max-height: 280px;
+  overflow: auto;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
 .etab-close {
   border: none;
   background: none;

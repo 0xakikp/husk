@@ -1,10 +1,12 @@
 mod fs;
+mod jobs;
 mod mcp;
 mod pty;
 mod secrets;
 mod shell;
 mod shell_init;
 
+use jobs::JobsState;
 use mcp::McpState;
 use pty::PtyState;
 use secrets::SecretsState;
@@ -20,6 +22,7 @@ pub fn run() {
         .manage(PtyState::default())
         .manage(McpState::default())
         .manage(SecretsState::default())
+        .manage(JobsState::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -41,7 +44,12 @@ pub fn run() {
             secrets::secrets_get,
             secrets::secrets_set,
             secrets::secrets_delete,
-            secrets::secrets_get_all
+            secrets::secrets_get_all,
+            jobs::shell_bg_spawn,
+            jobs::shell_bg_logs,
+            jobs::shell_bg_kill,
+            jobs::shell_bg_remove,
+            jobs::shell_bg_list
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
