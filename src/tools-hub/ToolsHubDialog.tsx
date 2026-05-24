@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { runInActiveTerminal } from "../ai/terminalContext";
 import { detectInstalled } from "../tools";
 import { toast } from "../toast";
+import { Modal } from "../components/Modal";
 
 type Tool = {
   id: string;
@@ -51,15 +52,7 @@ export function ToolsHubDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-label="Tools" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <span>Tools</span>
-          <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <div className="modal-body">
+    <Modal title="Tools" onClose={onClose}>
           <p className="rb-empty" style={{ margin: 0 }}>
             Popular CLI tools — “Install” runs the Homebrew command in the active terminal.
           </p>
@@ -95,8 +88,6 @@ export function ToolsHubDialog({ onClose }: { onClose: () => void }) {
               );
             })}
           </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

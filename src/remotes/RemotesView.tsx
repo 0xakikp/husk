@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { runInActiveTerminal } from "../ai/terminalContext";
 import { toast } from "../toast";
 import { shq } from "../lib/shellQuote";
+import { Modal } from "../components/Modal";
 
 async function readSshHosts(): Promise<string[]> {
   try {
@@ -42,15 +43,7 @@ export function RemotesView({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-label="Remotes" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <span>Remotes (SSH)</span>
-          <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <div className="modal-body">
+    <Modal title="Remotes (SSH)" onClose={onClose}>
           {hosts === "loading" ? (
             <p className="rb-empty">Loading…</p>
           ) : hosts.length === 0 ? (
@@ -69,8 +62,6 @@ export function RemotesView({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { bgSpawn, bgLogs, bgKill, bgRemove, bgList, type BgJob } from "./client";
 import { getWorkspaceRoot } from "../workspace/store";
 import { toast } from "../toast";
+import { Modal } from "../components/Modal";
 
 export function JobsDialog({ onClose }: { onClose: () => void }) {
   const [jobs, setJobs] = useState<BgJob[]>([]);
@@ -60,15 +61,7 @@ export function JobsDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal jobs-modal" role="dialog" aria-label="Background jobs" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <span>Background jobs</span>
-          <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <div className="modal-body">
+    <Modal title="Background jobs" onClose={onClose} className="jobs-modal">
           <div className="jobs-new">
             <input
               value={cmd}
@@ -122,8 +115,6 @@ export function JobsDialog({ onClose }: { onClose: () => void }) {
           )}
 
           {selected !== null ? <pre className="jobs-log">{log || "…"}</pre> : null}
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
