@@ -1,10 +1,32 @@
 import { useEffect, useRef } from "react";
 import { monaco } from "./monacoEnv";
+import { initVimMode } from "monaco-vim";
 import { readFile, writeFile } from "../fs";
-import { getPrefs, subscribePrefs } from "../settings/preferences";
+import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
+import { fontStack } from "../styles/fonts";
 import { fileIconUrl } from "../explorer/iconResolver";
 
-const monacoTheme = () => (getPrefs().theme === "dark" ? "vs-dark" : "vs");
+const monacoTheme = (p: Prefs) => (p.theme === "dark" ? "vs-dark" : "vs");
+
+/** Editor options driven by preferences (theme handled separately). */
+function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.IGlobalEditorOptions {
+  return {
+    fontSize: p.editorFontSize,
+    fontFamily: fontStack(p.fontFamily),
+    fontLigatures: p.editorLigatures,
+    minimap: { enabled: p.editorMinimap },
+    wordWrap: p.editorWordWrap,
+    lineNumbers: p.editorLineNumbers,
+    cursorStyle: p.editorCursorStyle,
+    cursorBlinking: p.editorCursorBlink ? "blink" : "solid",
+    renderWhitespace: p.editorWhitespace,
+    bracketPairColorization: { enabled: p.editorBracketColors },
+    smoothScrolling: p.editorSmoothScroll,
+    stickyScroll: { enabled: p.editorStickyScroll },
+    formatOnPaste: p.editorFormatOnPaste,
+    scrollBeyondLastLine: false,
+  };
+}
 
 export type OpenFile = { path: string; name: string };
 
@@ -53,37 +75,58 @@ export function EditorArea({
   onSelect: (path: string) => void;
   onClose: (path: string) => void;
 }) {
+  const prefs = usePrefs();
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const activePathRef = useRef<string | null>(activePath);
+  const vimRef = useRef<{ dispose(): void } | null>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hostRef.current) return;
+    const p = getPrefs();
     const editor = monaco.editor.create(hostRef.current, {
-      theme: monacoTheme(),
+      theme: monacoTheme(p),
       automaticLayout: true,
-      fontSize: 13,
-      fontFamily: '"JetBrains Mono", Menlo, Monaco, monospace',
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
+      ...editorOptions(p),
     });
     editorRef.current = editor;
 
     // Cmd/Ctrl+S saves the active file.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      const p = activePathRef.current;
+      const path = activePathRef.current;
       const model = editor.getModel();
-      if (p && model) void writeFile(p, model.getValue());
+      if (path && model) void writeFile(path, model.getValue());
     });
 
     return () => {
+      vimRef.current?.dispose();
+      vimRef.current = null;
       editor.dispose();
       editorRef.current = null;
     };
   }, []);
 
-  // Follow the app light/dark preference.
-  useEffect(() => subscribePrefs(() => monaco.editor.setTheme(monacoTheme())), []);
+  // Apply preference changes (theme + all editor options + tab size).
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    monaco.editor.setTheme(monacoTheme(prefs));
+    editor.updateOptions(editorOptions(prefs));
+    editor.getModel()?.updateOptions({ tabSize: prefs.editorTabSize, insertSpaces: true });
+  }, [prefs]);
+
+  // Toggle Vim keybindings.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (prefs.vimMode && !vimRef.current) {
+      vimRef.current = initVimMode(editor, statusRef.current);
+    } else if (!prefs.vimMode && vimRef.current) {
+      vimRef.current.dispose();
+      vimRef.current = null;
+    }
+  }, [prefs.vimMode]);
 
   // Load + show the active file (one model per path, reused if already open).
   useEffect(() => {
@@ -100,6 +143,7 @@ export function EditorArea({
         );
         if (cancelled) return;
         model = monaco.editor.createModel(content, languageFor(activePath), uri);
+        model.updateOptions({ tabSize: getPrefs().editorTabSize, insertSpaces: true });
       }
       editor.setModel(model);
     })();
@@ -139,6 +183,7 @@ export function EditorArea({
         ))}
       </div>
       <div className="editor-host" ref={hostRef} />
+      <div className="editor-vim-status" ref={statusRef} style={{ display: prefs.vimMode ? "block" : "none" }} />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
 } from "../fs";
 import { fileIconUrl, folderIconUrl } from "./iconResolver";
 import { useWorkspaceRoot } from "../workspace/store";
+import { usePrefs } from "../settings/preferences";
 import { toast } from "../toast";
 
 const joinPath = (dir: string, name: string) => `${dir.replace(/\/+$/, "")}/${name}`;
@@ -57,6 +58,7 @@ function Node({
   onMutated?: () => void;
   initiallyOpen?: boolean;
 }) {
+  const showHidden = usePrefs().showHidden;
   const [open, setOpen] = useState(initiallyOpen);
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -185,9 +187,11 @@ function Node({
             <EditRow depth={depth + 1} placeholder={creating === "dir" ? "New folder name" : "New file name"} onSubmit={doCreate} onCancel={() => setCreating(null)} />
           ) : null}
           {children
-            ? children.map((c) => (
-                <Node key={c.path} path={c.path} name={c.name} depth={depth + 1} isDir={c.is_dir} onOpenFile={onOpenFile} onMutated={reload} />
-              ))
+            ? children
+                .filter((c) => showHidden || !c.name.startsWith("."))
+                .map((c) => (
+                  <Node key={c.path} path={c.path} name={c.name} depth={depth + 1} isDir={c.is_dir} onOpenFile={onOpenFile} onMutated={reload} />
+                ))
             : null}
         </>
       ) : null}

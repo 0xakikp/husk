@@ -1,22 +1,76 @@
 import { useSyncExternalStore } from "react";
 import type { TerminalThemePreset } from "../styles/terminalTheme";
+import type { FontFamilyId } from "../styles/fonts";
+
+export type WordWrap = "off" | "on" | "bounded";
+export type EditorCursorStyle = "line" | "block" | "underline";
+export type TerminalCursorStyle = "block" | "bar" | "underline";
+export type LineNumbers = "on" | "off" | "relative";
+export type RenderWhitespace = "none" | "boundary" | "all";
 
 export type Prefs = {
+  // App
+  theme: "dark" | "light";
+  zoomLevel: number;
+  hasSeenWelcome: boolean;
+  /** Monospace family shared by the terminal and editor. */
+  fontFamily: FontFamilyId;
+
+  // Terminal
   terminalFontSize: number;
   cursorBlink: boolean;
-  theme: "dark" | "light";
+  terminalCursorStyle: TerminalCursorStyle;
   terminalTheme: TerminalThemePreset;
-  hasSeenWelcome: boolean;
-  zoomLevel: number;
+  terminalScrollback: number;
+
+  // Editor
+  editorFontSize: number;
+  editorTabSize: number;
+  editorWordWrap: WordWrap;
+  editorMinimap: boolean;
+  editorCursorStyle: EditorCursorStyle;
+  editorCursorBlink: boolean;
+  editorLineNumbers: LineNumbers;
+  editorLigatures: boolean;
+  editorWhitespace: RenderWhitespace;
+  editorBracketColors: boolean;
+  editorSmoothScroll: boolean;
+  editorFormatOnPaste: boolean;
+  editorStickyScroll: boolean;
+  vimMode: boolean;
+
+  // Explorer
+  showHidden: boolean;
 };
 
 const DEFAULT: Prefs = {
+  theme: "dark",
+  zoomLevel: 1,
+  hasSeenWelcome: false,
+  fontFamily: "jetbrains",
+
   terminalFontSize: 13,
   cursorBlink: true,
-  theme: "dark",
+  terminalCursorStyle: "block",
   terminalTheme: "husk",
-  hasSeenWelcome: false,
-  zoomLevel: 1,
+  terminalScrollback: 1000,
+
+  editorFontSize: 13,
+  editorTabSize: 2,
+  editorWordWrap: "off",
+  editorMinimap: false,
+  editorCursorStyle: "line",
+  editorCursorBlink: true,
+  editorLineNumbers: "on",
+  editorLigatures: false,
+  editorWhitespace: "none",
+  editorBracketColors: true,
+  editorSmoothScroll: true,
+  editorFormatOnPaste: false,
+  editorStickyScroll: true,
+  vimMode: false,
+
+  showHidden: false,
 };
 const LS_KEY = "huskv2.prefs";
 

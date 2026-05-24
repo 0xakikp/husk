@@ -29,6 +29,7 @@
     "material-icon-resolver": "^0.1.4",
     "material-icon-theme": "^5.35.0",
     "monaco-editor": "^0.55.1",
+    "monaco-vim": "^0.4.4",
     "otpauth": "^9.5.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

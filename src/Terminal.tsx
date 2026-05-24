@@ -14,6 +14,7 @@ import {
 } from "./ai/terminalContext";
 import { getPrefs, subscribePrefs } from "./settings/preferences";
 import { buildTerminalTheme } from "./styles/terminalTheme";
+import { fontStack } from "./styles/fonts";
 import { getShellHistory } from "./shellHistory";
 import { TerminalHistoryPanel } from "./TerminalHistory";
 import { parseBridgeOsc, dispatchBridge } from "./bridge";
@@ -73,10 +74,11 @@ export function TerminalView({
     if (!container) return;
 
     const term = new Terminal({
-      fontFamily:
-        '"JetBrains Mono", "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
+      fontFamily: fontStack(getPrefs().fontFamily),
       fontSize: getPrefs().terminalFontSize,
       cursorBlink: getPrefs().cursorBlink,
+      cursorStyle: getPrefs().terminalCursorStyle,
+      scrollback: getPrefs().terminalScrollback,
       allowProposedApi: true,
       theme: buildTerminalTheme(getPrefs().terminalTheme, getPrefs().theme === "dark"),
     });
@@ -270,7 +272,10 @@ export function TerminalView({
       if (!term) return;
       const p = getPrefs();
       term.options.fontSize = p.terminalFontSize;
+      term.options.fontFamily = fontStack(p.fontFamily);
       term.options.cursorBlink = p.cursorBlink;
+      term.options.cursorStyle = p.terminalCursorStyle;
+      term.options.scrollback = p.terminalScrollback;
       term.options.theme = buildTerminalTheme(p.terminalTheme, p.theme === "dark");
       clearTimeout(t);
       t = window.setTimeout(() => {
