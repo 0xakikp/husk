@@ -1,6 +1,7 @@
 import { useState, useEffect, type MouseEvent } from "react";
 import { TerminalTabs } from "./TerminalTabs";
 import { AiPanel } from "./ai/AiPanel";
+import { AiMiniWindow } from "./ai/AiMiniWindow";
 import { FileExplorer } from "./explorer/FileExplorer";
 import { EditorArea, type OpenFile } from "./editor/EditorArea";
 import { RunbooksDialog } from "./workflows/RunbooksDialog";
@@ -50,6 +51,7 @@ function App() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [miniOpen, setMiniOpen] = useState(false);
   const [explainCtx, setExplainCtx] = useState<
     { command: string; output: string; exitCode: number | null } | null
   >(null);
@@ -139,6 +141,9 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen(true);
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setMiniOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -157,6 +162,7 @@ function App() {
     { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
     { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
     { id: "explain", label: "Explain last error (AI)", run: explainLastError },
+    { id: "mini", label: "Toggle quick AI window", run: () => setMiniOpen((v) => !v) },
     { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
     { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
     { id: "terraform", label: "Open Terraform", run: () => setTerraformOpen(true) },
@@ -326,6 +332,7 @@ function App() {
       {snippetsOpen ? <SnippetsDialog onClose={() => setSnippetsOpen(false)} /> : null}
       {toolsOpen ? <ToolsHubDialog onClose={() => setToolsOpen(false)} /> : null}
       {jobsOpen ? <JobsDialog onClose={() => setJobsOpen(false)} /> : null}
+      {miniOpen ? <AiMiniWindow onClose={() => setMiniOpen(false)} /> : null}
       {suggestOpen ? <SuggestDialog onClose={() => setSuggestOpen(false)} /> : null}
       {explainCtx ? (
         <ExplainDialog
