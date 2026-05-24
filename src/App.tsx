@@ -86,11 +86,6 @@ function App() {
     document.documentElement.dataset.theme = prefs.theme;
   }, [prefs.theme]);
 
-  // The terminal-theme preset also tints the whole app (see App.css).
-  useEffect(() => {
-    document.documentElement.dataset.termTheme = prefs.terminalTheme;
-  }, [prefs.terminalTheme]);
-
   // Expose the selected monospace font as --font-mono so CSS surfaces (file
   // tree, logs, history) match the terminal/editor and follow the picker.
   useEffect(() => {
