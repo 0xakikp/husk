@@ -12,8 +12,7 @@ import {
 } from "../mcp/store";
 import { McpMarketplaceDialog } from "../mcp/McpMarketplaceDialog";
 import { GeneralSection } from "./GeneralSection";
-
-const VERSION = "0.1.0";
+import { AboutSection } from "./AboutSection";
 
 type SectionId = "about" | "general" | "models" | "agents" | "mcp";
 
@@ -168,22 +167,6 @@ function SectionDivider() {
       <div className="settings-divider-line" />
       <div className="settings-divider-dot" />
       <div className="settings-divider-line" />
-    </div>
-  );
-}
-
-function AboutSection() {
-  return (
-    <div>
-      <SectionHeader title="Manifest" />
-      <div className="settings-about">
-        <img src="/logo.png" alt="huskv2" className="settings-logo" />
-        <div>
-          <div className="settings-about-name">huskv2</div>
-          <div className="settings-about-ver">Version {VERSION}</div>
-          <div className="settings-about-tag">A terminal with AI and a built-in editor.</div>
-        </div>
-      </div>
     </div>
   );
 }
