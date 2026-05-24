@@ -3,7 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { streamText, type ModelMessage } from "ai";
+import { streamText, stepCountIs, type ModelMessage, type Tool } from "ai";
 import type { Provider } from "./providers";
 
 // Route model HTTP through Tauri (Rust) so provider APIs aren't blocked by the
@@ -38,17 +38,21 @@ function buildModel(cfg: ChatConfig) {
   }
 }
 
-/** Stream a chat completion, calling `onDelta` for each text chunk. */
+/** Stream a chat completion, calling `onDelta` for each text chunk. When
+ *  `tools` are supplied the model can call them across up to 8 steps. */
 export async function streamChat(
   cfg: ChatConfig,
   system: string,
   messages: ChatMessage[],
   onDelta: (text: string) => void,
+  tools?: Record<string, Tool>,
 ): Promise<void> {
   const result = streamText({
     model: buildModel(cfg),
     system,
     messages: messages as ModelMessage[],
+    tools: tools && Object.keys(tools).length > 0 ? tools : undefined,
+    stopWhen: stepCountIs(8),
   });
   for await (const delta of result.textStream) {
     onDelta(delta);

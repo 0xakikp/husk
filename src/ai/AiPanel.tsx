@@ -3,6 +3,7 @@ import { PROVIDERS, getProvider } from "./providers";
 import { loadConfig, saveConfig, type StoredConfig } from "./store";
 import { streamChat, type ChatMessage } from "./client";
 import { readActiveTerminal } from "./terminalContext";
+import { buildMcpTools } from "../mcp/tools";
 
 const SYSTEM = `You are the huskv2 assistant, embedded in a developer terminal.
 Be concise and practical. When the user refers to "this error" or "the last
@@ -52,6 +53,7 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
     const system = ctx ? `${SYSTEM}\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\`` : SYSTEM;
 
     try {
+      const tools = await buildMcpTools().catch(() => ({}));
       await streamChat(
         { provider, model: config.model, apiKey, baseURL: config.baseURL },
         system,
@@ -66,6 +68,7 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
             return next;
           });
         },
+        tools,
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

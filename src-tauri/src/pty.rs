@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::thread;
 
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtyPair, PtySize};
+use portable_pty::{native_pty_system, MasterPty, PtyPair, PtySize};
 use tauri::{AppHandle, Emitter, State};
 
 struct PtySession {
@@ -26,34 +26,13 @@ pub struct PtyState {
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 
-fn default_shell() -> String {
-    #[cfg(windows)]
-    {
-        std::env::var("COMSPEC").unwrap_or_else(|_| "powershell.exe".to_string())
-    }
-    #[cfg(not(windows))]
-    {
-        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
-    }
-}
-
-fn home_dir() -> Option<std::path::PathBuf> {
-    #[cfg(windows)]
-    {
-        std::env::var_os("USERPROFILE").map(Into::into)
-    }
-    #[cfg(not(windows))]
-    {
-        std::env::var_os("HOME").map(Into::into)
-    }
-}
-
 #[tauri::command]
 pub fn pty_spawn(
     app: AppHandle,
     state: State<'_, PtyState>,
     cols: u16,
     rows: u16,
+    cwd: Option<String>,
 ) -> Result<u32, String> {
     let pty_system = native_pty_system();
     let PtyPair { master, slave } = pty_system
@@ -65,11 +44,10 @@ pub fn pty_spawn(
         })
         .map_err(|e| e.to_string())?;
 
-    let mut cmd = CommandBuilder::new(default_shell());
-    cmd.env("TERM", "xterm-256color");
-    if let Some(home) = home_dir() {
-        cmd.cwd(home);
-    }
+    // Spawn the login shell wired with Husk integration (OSC cwd/command marks,
+    // autosuggestions, syntax highlighting, fzf). Falls back to a plain shell
+    // when the user's shell isn't supported, and to $HOME when `cwd` is unset.
+    let cmd = crate::shell_init::build_command(cwd)?;
 
     let mut child = slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(slave); // not needed once the child holds it

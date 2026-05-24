@@ -1,23 +1,27 @@
 import { useEffect, useState } from "react";
 import { readDir, homeDir, type DirEntry } from "../fs";
+import { fileIconUrl, folderIconUrl } from "./iconResolver";
+import { useWorkspaceRoot } from "../workspace/store";
 
 export function FileExplorer({
   onOpenFile,
 }: {
   onOpenFile: (path: string, name: string) => void;
 }) {
-  const [root, setRoot] = useState<string | null>(null);
+  const wsRoot = useWorkspaceRoot();
+  const [home, setHome] = useState<string | null>(null);
 
   useEffect(() => {
-    void homeDir().then(setRoot);
-  }, []);
+    if (!wsRoot && !home) void homeDir().then(setHome);
+  }, [wsRoot, home]);
 
+  const root = wsRoot || home;
   if (!root) return <div className="explorer-loading">Loading…</div>;
 
   const name = root.split("/").filter(Boolean).pop() ?? root;
   return (
     <div className="explorer">
-      <Node path={root} name={name} depth={0} isDir onOpenFile={onOpenFile} initiallyOpen />
+      <Node key={root} path={root} name={name} depth={0} isDir onOpenFile={onOpenFile} initiallyOpen />
     </div>
   );
 }
@@ -59,6 +63,7 @@ function Node({
         onClick={() => onOpenFile(path, name)}
       >
         <span className="enode-caret" />
+        <img src={fileIconUrl(name)} className="enode-img" alt="" />
         {name}
       </button>
     );
@@ -73,6 +78,7 @@ function Node({
         onClick={() => setOpen((o) => !o)}
       >
         <span className="enode-caret">{open ? "▾" : "▸"}</span>
+        <img src={folderIconUrl(name, open)} className="enode-img" alt="" />
         {name}
       </button>
       {open && children

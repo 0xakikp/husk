@@ -4,14 +4,50 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { setActiveTerminalReader } from "./ai/terminalContext";
+import {
+  setActiveTerminalReader,
+  setActiveTerminalRunner,
+  setActiveTerminalCwd,
+  setActiveTerminalExit,
+} from "./ai/terminalContext";
+import { getPrefs, subscribePrefs } from "./settings/preferences";
+import { buildTerminalTheme } from "./styles/terminalTheme";
 import "@xterm/xterm/css/xterm.css";
 
+/**
+ * Parse the path out of an OSC 7 payload: `file://<host>/<url-encoded-path>`.
+ * Returns the decoded absolute path, or null if it isn't a usable file URI.
+ */
+function parseOsc7Cwd(data: string): string | null {
+  if (!data.startsWith("file://")) return null;
+  const afterScheme = data.slice("file://".length);
+  const slash = afterScheme.indexOf("/");
+  if (slash < 0) return null;
+  const encodedPath = afterScheme.slice(slash);
+  try {
+    return decodeURIComponent(encodedPath);
+  } catch {
+    return encodedPath;
+  }
+}
+
 /** A single xterm.js terminal backed by a Rust PTY session. */
-export function TerminalView({ active = true }: { active?: boolean }) {
+export function TerminalView({
+  active = true,
+  initialCwd,
+}: {
+  active?: boolean;
+  initialCwd?: string;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
+  const ptyIdRef = useRef<number | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+  // Tracks the latest `active` so the OSC handlers (set up once at mount) know
+  // whether this terminal is the foreground one; `cwdRef` holds its last cwd.
+  const activeRef = useRef(active);
+  const cwdRef = useRef("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -22,14 +58,10 @@ export function TerminalView({ active = true }: { active?: boolean }) {
     const term = new Terminal({
       fontFamily:
         '"JetBrains Mono", "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
-      fontSize: 13,
-      cursorBlink: true,
+      fontSize: getPrefs().terminalFontSize,
+      cursorBlink: getPrefs().cursorBlink,
       allowProposedApi: true,
-      theme: {
-        background: "#0b0d12",
-        foreground: "#d4d7dd",
-        cursor: "#d4d7dd",
-      },
+      theme: buildTerminalTheme(getPrefs().terminalTheme, getPrefs().theme === "dark"),
     });
     const fit = new FitAddon();
     const search = new SearchAddon();
@@ -39,6 +71,26 @@ export function TerminalView({ active = true }: { active?: boolean }) {
     fit.fit();
     termRef.current = term;
     searchRef.current = search;
+    fitRef.current = fit;
+
+    // Shell-integration escape sequences emitted by our injected rc scripts:
+    // OSC 7 reports the working directory; OSC 133;D carries the last command's
+    // exit code. We consume them (return true) so they never render as text.
+    term.parser.registerOscHandler(7, (data) => {
+      const cwd = parseOsc7Cwd(data);
+      if (cwd) {
+        cwdRef.current = cwd;
+        if (activeRef.current) setActiveTerminalCwd(cwd);
+      }
+      return true;
+    });
+    term.parser.registerOscHandler(133, (data) => {
+      if (data.startsWith("D") && activeRef.current) {
+        const code = Number.parseInt(data.split(";")[1] ?? "", 10);
+        setActiveTerminalExit(Number.isNaN(code) ? null : code);
+      }
+      return true;
+    });
 
     // Cmd/Ctrl+F opens find-in-terminal.
     term.attachCustomKeyEventHandler((e) => {
@@ -55,12 +107,16 @@ export function TerminalView({ active = true }: { active?: boolean }) {
 
     let ptyId: number | null = null;
     let disposed = false;
+    let resizeTimer = 0;
+    let lastCols = -1;
+    let lastRows = -1;
     const unlisteners: UnlistenFn[] = [];
 
     void (async () => {
       const id = await invoke<number>("pty_spawn", {
         cols: term.cols,
         rows: term.rows,
+        cwd: initialCwd ?? null,
       });
       // Effect was torn down before spawn resolved (e.g. StrictMode remount).
       if (disposed) {
@@ -68,6 +124,7 @@ export function TerminalView({ active = true }: { active?: boolean }) {
         return;
       }
       ptyId = id;
+      ptyIdRef.current = id;
 
       unlisteners.push(
         await listen<number[]>(`pty://data/${id}`, (e) => {
@@ -81,34 +138,59 @@ export function TerminalView({ active = true }: { active?: boolean }) {
       );
 
       term.onData((data) => void invoke("pty_write", { id, data }));
-      term.onResize(({ cols, rows }) =>
-        void invoke("pty_resize", { id, cols, rows }),
-      );
+      // Fit is debounced (below), so this fires once when a resize settles —
+      // send that single final size to the PTY (one SIGWINCH, one prompt
+      // redraw), and only when it actually changed (dedupe).
+      term.onResize(({ cols, rows }) => {
+        if (cols === lastCols && rows === lastRows) return;
+        lastCols = cols;
+        lastRows = rows;
+        void invoke("pty_resize", { id, cols, rows });
+      });
     })();
 
-    const resizeObserver = new ResizeObserver(() => {
+    const doFit = () => {
+      const t = termRef.current;
+      // Skip while hidden/zero-sized (e.g. an inactive tab): fitting then would
+      // shrink the terminal out of sync with the shell. The observer re-fires
+      // when the pane is shown again.
+      if (!t || !container.clientWidth || !container.clientHeight) return;
       try {
         fit.fit();
+        t.scrollToBottom();
       } catch {
-        // container not measurable (hidden) — ignore
+        // not measurable
       }
+    };
+    // Snap-on-settle: don't resize mid-drag. Fit once ~150ms after the last
+    // size change so there's a single resize, not one per drag frame.
+    const resizeObserver = new ResizeObserver(() => {
+      clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(doFit, 150);
     });
     resizeObserver.observe(container);
 
     return () => {
       disposed = true;
+      clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       for (const un of unlisteners) un();
       if (ptyId !== null) void invoke("pty_kill", { id: ptyId });
+      ptyIdRef.current = null;
       termRef.current = null;
       searchRef.current = null;
+      fitRef.current = null;
       term.dispose();
     };
   }, []);
 
   // While this is the active tab, expose its recent output to the AI panel.
   useEffect(() => {
+    activeRef.current = active;
     if (!active) return;
+    // The moment this terminal becomes active, surface its last-known cwd so a
+    // newly-opened tab inherits the right directory.
+    if (cwdRef.current) setActiveTerminalCwd(cwdRef.current);
     setActiveTerminalReader(() => {
       const term = termRef.current;
       if (!term) return "";
@@ -120,8 +202,44 @@ export function TerminalView({ active = true }: { active?: boolean }) {
       }
       return lines.join("\n").replace(/\n+$/, "");
     });
-    return () => setActiveTerminalReader(null);
+    setActiveTerminalRunner((cmd) => {
+      const id = ptyIdRef.current;
+      if (id != null) void invoke("pty_write", { id, data: `${cmd}\r` });
+      termRef.current?.focus();
+    });
+    return () => {
+      setActiveTerminalReader(null);
+      setActiveTerminalRunner(null);
+    };
   }, [active]);
+
+  // Apply preference changes (font size, cursor blink, theme, zoom) to the live
+  // terminal. The refit is debounced so webview zoom finishes applying before we
+  // measure — measuring mid-zoom yields wrong columns and desyncs the shell
+  // (which is what stacks the prompt).
+  useEffect(() => {
+    let t = 0;
+    const unsub = subscribePrefs(() => {
+      const term = termRef.current;
+      if (!term) return;
+      const p = getPrefs();
+      term.options.fontSize = p.terminalFontSize;
+      term.options.cursorBlink = p.cursorBlink;
+      term.options.theme = buildTerminalTheme(p.terminalTheme, p.theme === "dark");
+      clearTimeout(t);
+      t = window.setTimeout(() => {
+        try {
+          fitRef.current?.fit();
+        } catch {
+          // ignore
+        }
+      }, 90);
+    });
+    return () => {
+      unsub();
+      clearTimeout(t);
+    };
+  }, []);
 
   const closeSearch = () => {
     setSearchOpen(false);

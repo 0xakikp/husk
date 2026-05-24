@@ -5,7 +5,11 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:webview:allow-set-webview-zoom",
     "opener:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "dialog:allow-open",
     {
       "identifier": "http:default",
       "allow": [
@@ -17,6 +21,8 @@
         { "url": "https://openrouter.ai/*" },
         { "url": "https://api.x.ai/*" },
         { "url": "https://api.mistral.ai/*" },
+        { "url": "https://api.kimi.com/*" },
+        { "url": "https://api.moonshot.ai/*" },
         { "url": "http://localhost:*/*" },
         { "url": "http://127.0.0.1:*/*" }
       ]

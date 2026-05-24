@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { TerminalView } from "./Terminal";
+import { getActiveTerminalCwd } from "./ai/terminalContext";
 
-type Tab = { id: number; title: string };
+type Tab = { id: number; title: string; initialCwd?: string };
 
 /**
  * Tabbed terminals. Every tab stays mounted (just hidden when inactive) so its
@@ -15,7 +16,10 @@ export function TerminalTabs() {
 
   const addTab = () => {
     const id = nextId.current++;
-    setTabs((prev) => [...prev, { id, title: `Terminal ${id}` }]);
+    // A fresh terminal opens in the active terminal's directory (tracked from
+    // the shell's OSC 7), matching the editor's "new tab here" behaviour.
+    const initialCwd = getActiveTerminalCwd() || undefined;
+    setTabs((prev) => [...prev, { id, title: `Terminal ${id}`, initialCwd }]);
     setActiveId(id);
   };
 
@@ -74,7 +78,7 @@ export function TerminalTabs() {
             className="terminal-pane"
             style={{ display: t.id === activeId ? "block" : "none" }}
           >
-            <TerminalView active={t.id === activeId} />
+            <TerminalView active={t.id === activeId} initialCwd={t.initialCwd} />
           </div>
         ))}
       </div>

@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import { monaco } from "./monacoEnv";
 import { readFile, writeFile } from "../fs";
+import { getPrefs, subscribePrefs } from "../settings/preferences";
+import { fileIconUrl } from "../explorer/iconResolver";
+
+const monacoTheme = () => (getPrefs().theme === "dark" ? "vs-dark" : "vs");
 
 export type OpenFile = { path: string; name: string };
 
@@ -56,7 +60,7 @@ export function EditorArea({
   useEffect(() => {
     if (!hostRef.current) return;
     const editor = monaco.editor.create(hostRef.current, {
-      theme: "vs-dark",
+      theme: monacoTheme(),
       automaticLayout: true,
       fontSize: 13,
       fontFamily: '"JetBrains Mono", Menlo, Monaco, monospace',
@@ -77,6 +81,9 @@ export function EditorArea({
       editorRef.current = null;
     };
   }, []);
+
+  // Follow the app light/dark preference.
+  useEffect(() => subscribePrefs(() => monaco.editor.setTheme(monacoTheme())), []);
 
   // Load + show the active file (one model per path, reused if already open).
   useEffect(() => {
@@ -117,6 +124,7 @@ export function EditorArea({
         {files.map((f) => (
           <div key={f.path} className={`etab${f.path === activePath ? " active" : ""}`}>
             <button type="button" className="etab-label" onClick={() => onSelect(f.path)}>
+              <img src={fileIconUrl(f.name)} className="etab-img" alt="" />
               {f.name}
             </button>
             <button

@@ -59,6 +59,20 @@ export const PROVIDERS: Provider[] = [
     defaultModel: "mistral-large-latest",
   },
   {
+    id: "moonshot",
+    label: "Moonshot",
+    kind: "openai-compatible",
+    baseURL: "https://api.moonshot.ai/v1",
+    defaultModel: "moonshotai/kimi-k2.6",
+  },
+  {
+    id: "kimi",
+    label: "Kimi",
+    kind: "openai-compatible",
+    baseURL: "https://api.kimi.com/coding/v1",
+    defaultModel: "kimi-for-coding",
+  },
+  {
     id: "local",
     label: "Local / OpenAI-compatible",
     kind: "openai-compatible",
