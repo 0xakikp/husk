@@ -80,6 +80,11 @@ function App() {
     document.documentElement.dataset.theme = prefs.theme;
   }, [prefs.theme]);
 
+  // The terminal-theme preset also tints the whole app (see App.css).
+  useEffect(() => {
+    document.documentElement.dataset.termTheme = prefs.terminalTheme;
+  }, [prefs.terminalTheme]);
+
   // Load AI keys from the OS keychain (migrating any legacy localStorage keys).
   useEffect(() => {
     void initKeys();

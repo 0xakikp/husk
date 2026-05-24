@@ -12,6 +12,64 @@
   --text-strong: #ffffff;
   --text-muted: #868686;
   --text-faint: #5a5a5a;
+  --accent: #1f6feb;
+}
+
+/* Terminal-theme presets tint the whole app (accent everywhere; surfaces in
+   dark mode), so the sidebar, panels and chrome match the terminal. */
+[data-term-theme="husk"] {
+  --accent: #11c700;
+}
+[data-term-theme="hacker"] {
+  --accent: #00ff00;
+}
+[data-term-theme="ocean"] {
+  --accent: #00d4ff;
+}
+[data-term-theme="rose"] {
+  --accent: #ff79c6;
+}
+
+[data-theme="dark"][data-term-theme="hacker"] {
+  --bg: #000000;
+  --bg-2: #050d05;
+  --bg-elev: #081a08;
+  --bg-input: #0a1f0a;
+  --hover: #0e2a0e;
+  --border: #103510;
+  --border-2: #1a5c1a;
+  --text: #00ff00;
+  --text-strong: #99ff99;
+  --text-muted: #00b300;
+  --text-faint: #007000;
+}
+
+[data-theme="dark"][data-term-theme="ocean"] {
+  --bg: #0a0e1a;
+  --bg-2: #0c1322;
+  --bg-elev: #111c33;
+  --bg-input: #0f1830;
+  --hover: #182742;
+  --border: #1b2a48;
+  --border-2: #2a3d66;
+  --text: #c7d5f0;
+  --text-strong: #ffffff;
+  --text-muted: #7f8fb3;
+  --text-faint: #4c5d80;
+}
+
+[data-theme="dark"][data-term-theme="rose"] {
+  --bg: #0d0208;
+  --bg-2: #15040c;
+  --bg-elev: #1e0712;
+  --bg-input: #1c0814;
+  --hover: #2c0e20;
+  --border: #321125;
+  --border-2: #501838;
+  --text: #ff9ebb;
+  --text-strong: #ffd6e6;
+  --text-muted: #c2708f;
+  --text-faint: #803a58;
 }
 
 :root[data-theme="light"] {
@@ -363,8 +421,8 @@ body {
 
 .titlebar-ai.active {
   color: #dbe7ff;
-  border-color: #1f6feb66;
-  background: #1f6feb22;
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
 }
 
 /* workspace split */
@@ -438,7 +496,7 @@ body {
 }
 
 .edir {
-  color: #cdd2da;
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -495,7 +553,7 @@ body {
 }
 
 .etab.active {
-  background: #1e1e1e;
+  background: var(--hover);
   color: var(--text-strong);
 }
 
@@ -1067,8 +1125,8 @@ body {
 
 .ai-user {
   align-self: flex-end;
-  background: #1f6feb33;
-  border: 1px solid #1f6feb55;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 33%, transparent);
   color: #dbe7ff;
 }
 
@@ -1099,7 +1157,7 @@ body {
 }
 
 .ai-input button {
-  background: #1f6feb;
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -1176,9 +1234,9 @@ body {
 }
 
 .modal-actions button.primary {
-  background: #1f6feb;
+  background: var(--accent);
   color: #fff;
-  border-color: #1f6feb;
+  border-color: var(--accent);
 }
 
 .modal-actions button:disabled {
@@ -1210,8 +1268,8 @@ body {
 
 .rb-run {
   border: none;
-  background: #1f6feb22;
-  color: #6ea8ff;
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent);
   cursor: pointer;
   width: 26px;
   height: 26px;
@@ -1276,7 +1334,7 @@ body {
 .rb-steps-head button {
   background: none;
   border: none;
-  color: #6ea8ff;
+  color: var(--accent);
   cursor: pointer;
   font-size: 11px;
 }
@@ -1305,7 +1363,7 @@ body {
 
 .rb-param {
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
-  color: #6ea8ff;
+  color: var(--accent);
 }
 
 .rb-check {
@@ -1345,7 +1403,7 @@ body {
 .totp-code {
   border: none;
   background: none;
-  color: #6ea8ff;
+  color: var(--accent);
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
   font-size: 17px;
   letter-spacing: 1px;
@@ -1637,7 +1695,7 @@ body {
 }
 
 .toast-info {
-  border-left-color: #1f6feb;
+  border-left-color: var(--accent);
 }
 .toast-success {
   border-left-color: #2ea043;
@@ -1666,7 +1724,7 @@ body {
 .toast-action {
   border: none;
   background: none;
-  color: #6ea8ff;
+  color: var(--accent);
   cursor: pointer;
   font-size: 11.5px;
   font-weight: 600;
@@ -1713,7 +1771,7 @@ body {
 }
 .welcome-cta {
   margin-top: 6px;
-  background: #1f6feb;
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -1875,7 +1933,7 @@ body {
   font-family: inherit;
 }
 .sc-commit button {
-  background: #1f6feb;
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 7px;
@@ -2049,7 +2107,7 @@ body {
   text-align: left;
   border: none;
   background: none;
-  color: #6ea8ff;
+  color: var(--accent);
   font: inherit;
   font-size: 11.5px;
   padding: 6px 8px;
@@ -2110,7 +2168,7 @@ body {
   font-family: inherit;
 }
 .preview-bar button {
-  background: #1f6feb;
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 7px;
