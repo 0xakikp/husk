@@ -11,7 +11,11 @@ export type FontFamilyId =
  *  for ligatures/glyphs. Stacks fall back to JetBrains Mono / monospace. */
 export const FONT_FAMILIES: Record<FontFamilyId, { name: string; stack: string }> = {
   jetbrains: { name: "JetBrains Mono", stack: '"JetBrains Mono", "MesloLGL Nerd Font Mono", monospace' },
-  meslo: { name: "MesloLGL Nerd Font", stack: '"MesloLGL Nerd Font Mono", "JetBrains Mono", monospace' },
+  meslo: {
+    name: "MesloLGL Nerd Font",
+    stack:
+      '"MesloLGL Nerd Font Mono", "MesloLGL Nerd Font", "MesloLGM Nerd Font", "MesloLGS Nerd Font", "MesloLGS NF", "MesloLGLDZ Nerd Font", "JetBrains Mono", monospace',
+  },
   fira: { name: "Fira Code", stack: '"Fira Code Variable", "JetBrains Mono", monospace' },
   source: { name: "Source Code Pro", stack: '"Source Code Pro Variable", "JetBrains Mono", monospace' },
   cascadia: { name: "Cascadia Code", stack: '"Cascadia Code", "JetBrains Mono", monospace' },
