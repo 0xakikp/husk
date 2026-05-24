@@ -4,6 +4,7 @@ import App from "./App";
 import { SettingsPage } from "./settings/SettingsPage";
 import { getPrefs } from "./settings/preferences";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import "./styles/fonts.css";
 import "./App.css";
 
 // Paint with the saved theme immediately, so either entry point (the main app

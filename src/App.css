@@ -1,18 +1,22 @@
 :root {
   color-scheme: dark;
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter Variable", system-ui, -apple-system, sans-serif;
+  --font-heading: "Geist Variable", var(--font-sans);
+  --font-ai: "Space Grotesk Variable", var(--font-sans);
+  --font-mono: "JetBrains Mono", "MesloLGL Nerd Font Mono", "Fira Code Variable", monospace;
+  font-family: var(--font-sans);
   --bg: #000000;
   --bg-2: #0a0a0a;
   --bg-elev: #111111;
-  --bg-input: #1a1a1a;
+  --bg-input: #1f1f1f;
   --hover: #1f1f1f;
   --border: #1f1f1f;
   --border-2: #2a2a2a;
-  --text: #e5e5e5;
+  --text: #11c700;
   --text-strong: #ffffff;
   --text-muted: #868686;
   --text-faint: #5a5a5a;
-  --accent: #1f6feb;
+  --accent: #11c700;
 }
 
 /* Terminal-theme presets tint the whole app (accent everywhere; surfaces in
@@ -74,17 +78,18 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #ffffff;
-  --bg-2: #f3f4f6;
-  --bg-elev: #f6f7f9;
+  --bg: #faf8f5;
+  --bg-2: #f5f0e8;
+  --bg-elev: #ffffff;
   --bg-input: #ffffff;
-  --hover: #eaecef;
-  --border: #e2e4e9;
-  --border-2: #d4d7dd;
-  --text: #1f2328;
-  --text-strong: #0b0d12;
-  --text-muted: #57606a;
-  --text-faint: #8b949e;
+  --hover: #f5f0e8;
+  --border: #e7e5e4;
+  --border-2: #d6d3d0;
+  --text: #1c1917;
+  --text-strong: #0c0a09;
+  --text-muted: #78716c;
+  --text-faint: #a8a29e;
+  --accent: #22c55e;
 }
 
 html,
@@ -991,12 +996,27 @@ body {
   flex: 0 0 auto;
   height: 20px;
   padding: 0 8px;
-  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 20px;
   color: var(--text-muted);
   background: var(--bg-elev);
   border-top: 1px solid var(--border);
+}
+
+/* Match husk v1's font roles: Geist for headings, Space Grotesk for AI text. */
+.settings-section-head h2,
+.titlebar-title,
+.modal-header > span,
+.ai-mini-head > span {
+  font-family: var(--font-heading);
+}
+
+.ai-messages,
+.ai-msg,
+.ai-empty,
+.ai-mini-body {
+  font-family: var(--font-ai);
 }
 
 .etab-close {
