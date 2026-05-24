@@ -12,6 +12,7 @@ import { initKeys } from "./ai/store";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ToastContainer, toast } from "./toast";
 import { setBridgeHandler } from "./bridge";
+import { openSettingsWindow } from "./settingsWindow";
 import { WelcomeDialog } from "./welcome/WelcomeDialog";
 import { CommandPalette, type Command } from "./command-palette/CommandPalette";
 import { SnippetsDialog } from "./snippets/SnippetsDialog";
@@ -155,6 +156,7 @@ function App() {
     { id: "explorer", label: "Toggle file explorer", run: () => setExplorerOpen((v) => !v) },
     { id: "open-folder", label: "Open folder…", run: () => void pickWorkspaceFolder() },
     { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
+    { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
     { id: "runbooks", label: "Open runbooks", run: () => setRunbooksOpen(true) },
     { id: "totp", label: "Open authenticator (2FA)", run: () => setTotpOpen(true) },
     { id: "snippets", label: "Open snippets", run: () => setSnippetsOpen(true) },
