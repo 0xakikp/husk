@@ -7,3 +7,9 @@ export const readFile = (path: string) => invoke<string>("read_file", { path });
 export const writeFile = (path: string, contents: string) =>
   invoke<void>("write_file", { path, contents });
 export const homeDir = () => invoke<string>("home_dir");
+
+export const createFile = (path: string) => invoke<void>("create_file", { path });
+export const createDir = (path: string) => invoke<void>("create_dir", { path });
+export const renamePath = (from: string, to: string) =>
+  invoke<void>("rename_path", { from, to });
+export const deletePath = (path: string) => invoke<void>("delete_path", { path });

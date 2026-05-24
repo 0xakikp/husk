@@ -403,6 +403,58 @@ body {
   flex-shrink: 0;
 }
 
+.enode-edit {
+  padding: 1px 8px 1px 0;
+}
+
+.enode-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--accent, #1f6feb);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0 4px;
+  outline: none;
+}
+
+.ectx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+.ectx-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.ectx-item {
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.ectx-item:hover {
+  background: var(--hover);
+}
+
 .etab-close {
   border: none;
   background: none;

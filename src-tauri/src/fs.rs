@@ -49,3 +49,49 @@ pub fn home_dir() -> String {
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| "/".to_string())
 }
+
+/// Create a new empty file. Fails if it already exists.
+#[tauri::command]
+pub fn create_file(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if p.exists() {
+        return Err(format!("already exists: {path}"));
+    }
+    fs::write(p, "").map_err(|e| e.to_string())
+}
+
+/// Create a directory (with parents). Fails if it already exists.
+#[tauri::command]
+pub fn create_dir(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if p.exists() {
+        return Err(format!("already exists: {path}"));
+    }
+    fs::create_dir_all(p).map_err(|e| e.to_string())
+}
+
+/// Rename or move a path. Refuses to overwrite an existing target.
+#[tauri::command]
+pub fn rename_path(from: String, to: String) -> Result<(), String> {
+    let from_p = std::path::Path::new(&from);
+    let to_p = std::path::Path::new(&to);
+    if !from_p.exists() {
+        return Err(format!("not found: {from}"));
+    }
+    if to_p.exists() {
+        return Err(format!("already exists: {to}"));
+    }
+    fs::rename(from_p, to_p).map_err(|e| e.to_string())
+}
+
+/// Delete a file, or a directory and all of its contents.
+#[tauri::command]
+pub fn delete_path(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    let meta = fs::symlink_metadata(p).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        fs::remove_dir_all(p).map_err(|e| e.to_string())
+    } else {
+        fs::remove_file(p).map_err(|e| e.to_string())
+    }
+}
