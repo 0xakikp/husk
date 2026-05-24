@@ -170,6 +170,69 @@ body {
   padding: 6px 8px 8px;
 }
 
+.pane-leaf {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-leaf > .terminal-host-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.pane-leaf.focused::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid var(--accent, #1f6feb);
+  border-radius: 2px;
+}
+
+.pane-split {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-split.row {
+  flex-direction: row;
+}
+
+.pane-split.col {
+  flex-direction: column;
+}
+
+.pane-slot {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane-divider {
+  flex: 0 0 5px;
+  background: var(--border);
+}
+
+.pane-divider:hover {
+  background: var(--accent, #1f6feb);
+}
+
+.pane-divider.row {
+  cursor: col-resize;
+}
+
+.pane-divider.col {
+  cursor: row-resize;
+}
+
 .term-search {
   position: absolute;
   top: 8px;

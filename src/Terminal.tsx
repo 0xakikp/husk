@@ -38,9 +38,17 @@ function parseOsc7Cwd(data: string): string | null {
 export function TerminalView({
   active = true,
   initialCwd,
+  onSplit,
+  onClose,
+  canClose = false,
+  onFocus,
 }: {
   active?: boolean;
   initialCwd?: string;
+  onSplit?: (dir: "row" | "col") => void;
+  onClose?: () => void;
+  canClose?: boolean;
+  onFocus?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -117,6 +125,12 @@ export function TerminalView({
           .then((rows) => setHistoryEntries(rows.map((r) => r.command)))
           .catch(() => setHistoryEntries([]))
           .finally(() => setHistoryLoading(false));
+        return false;
+      }
+      // Cmd+D splits right, Cmd+Shift+D splits down. Meta-only (macOS) so we
+      // never clash with Ctrl+D (EOF) on Linux/Windows.
+      if (e.type === "keydown" && e.metaKey && e.key.toLowerCase() === "d") {
+        onSplit?.(e.shiftKey ? "col" : "row");
         return false;
       }
       return true;
@@ -301,6 +315,7 @@ export function TerminalView({
   return (
     <div
       className="terminal-host-wrap"
+      onMouseDown={() => onFocus?.()}
       onContextMenu={(e) => {
         e.preventDefault();
         setMenu({ x: e.clientX, y: e.clientY });
@@ -380,6 +395,21 @@ export function TerminalView({
             <button type="button" className="ectx-item" onClick={() => { setMenu(null); openHistory(); }}>
               History…
             </button>
+            {onSplit ? (
+              <>
+                <button type="button" className="ectx-item" onClick={() => { setMenu(null); onSplit("row"); }}>
+                  Split right
+                </button>
+                <button type="button" className="ectx-item" onClick={() => { setMenu(null); onSplit("col"); }}>
+                  Split down
+                </button>
+              </>
+            ) : null}
+            {onClose && canClose ? (
+              <button type="button" className="ectx-item" onClick={() => { setMenu(null); onClose(); }}>
+                Close pane
+              </button>
+            ) : null}
           </div>
         </>
       ) : null}

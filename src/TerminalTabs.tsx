@@ -1,45 +1,83 @@
 import { useRef, useState } from "react";
-import { TerminalView } from "./Terminal";
 import { getActiveTerminalCwd } from "./ai/terminalContext";
+import {
+  PaneView,
+  newLeaf,
+  splitPane,
+  removePane,
+  setRatio,
+  firstLeaf,
+  leafCount,
+  type Pane,
+} from "./terminalPanes";
 
-type Tab = { id: number; title: string; initialCwd?: string };
+type Tab = { id: number; title: string; root: Pane; focused: number };
+
+function makeTab(id: number, initialCwd?: string): Tab {
+  const leaf = newLeaf(initialCwd);
+  return { id, title: `Terminal ${id}`, root: leaf, focused: leaf.id };
+}
 
 /**
- * Tabbed terminals. Every tab stays mounted (just hidden when inactive) so its
- * PTY session and scrollback survive switching; closing a tab unmounts it,
- * which tears the PTY down via TerminalView's cleanup.
+ * Tabbed terminals, each holding a tree of split panes. Tabs stay mounted (just
+ * hidden) so their PTYs and scrollback survive switching. Cmd+D / Cmd+Shift+D
+ * (or the right-click menu) split the focused pane.
  */
 export function TerminalTabs() {
-  const [tabs, setTabs] = useState<Tab[]>([{ id: 1, title: "Terminal 1" }]);
+  const [tabs, setTabs] = useState<Tab[]>([makeTab(1)]);
   const [activeId, setActiveId] = useState(1);
   const nextId = useRef(2);
 
   const addTab = () => {
     const id = nextId.current++;
-    // A fresh terminal opens in the active terminal's directory (tracked from
-    // the shell's OSC 7), matching the editor's "new tab here" behaviour.
-    const initialCwd = getActiveTerminalCwd() || undefined;
-    setTabs((prev) => [...prev, { id, title: `Terminal ${id}`, initialCwd }]);
+    setTabs((prev) => [...prev, makeTab(id, getActiveTerminalCwd() || undefined)]);
     setActiveId(id);
   };
 
   const closeTab = (id: number) => {
-    const idx = tabs.findIndex((t) => t.id === id);
-    let next = tabs.filter((t) => t.id !== id);
-    let nextActive = activeId;
-
-    if (next.length === 0) {
-      // Never leave zero terminals — replace with a fresh one.
-      const fresh = nextId.current++;
-      next = [{ id: fresh, title: `Terminal ${fresh}` }];
-      nextActive = fresh;
-    } else if (activeId === id) {
-      nextActive = next[Math.max(0, idx - 1)].id;
-    }
-
-    setTabs(next);
-    setActiveId(nextActive);
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === id);
+      let next = prev.filter((t) => t.id !== id);
+      if (next.length === 0) {
+        const fresh = nextId.current++;
+        next = [makeTab(fresh)];
+        setActiveId(fresh);
+      } else if (activeId === id) {
+        setActiveId(next[Math.max(0, idx - 1)].id);
+      }
+      return next;
+    });
   };
+
+  const updateTab = (tabId: number, fn: (t: Tab) => Tab) =>
+    setTabs((prev) => prev.map((t) => (t.id === tabId ? fn(t) : t)));
+
+  const splitLeaf = (tabId: number, leafId: number, dir: "row" | "col") =>
+    updateTab(tabId, (t) => {
+      const leaf = newLeaf(getActiveTerminalCwd() || undefined);
+      return { ...t, root: splitPane(t.root, leafId, dir, () => leaf), focused: leaf.id };
+    });
+
+  const closeLeaf = (tabId: number, leafId: number) => {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const root = removePane(tab.root, leafId);
+    if (root === null) {
+      closeTab(tabId); // last pane in the tab — close the tab
+      return;
+    }
+    updateTab(tabId, (t) => ({
+      ...t,
+      root,
+      focused: t.focused === leafId ? firstLeaf(root) : t.focused,
+    }));
+  };
+
+  const focusLeaf = (tabId: number, leafId: number) =>
+    updateTab(tabId, (t) => (t.focused === leafId ? t : { ...t, focused: leafId }));
+
+  const ratioLeaf = (tabId: number, splitId: number, ratio: number) =>
+    updateTab(tabId, (t) => ({ ...t, root: setRatio(t.root, splitId, ratio) }));
 
   return (
     <div className="terminals">
@@ -78,7 +116,16 @@ export function TerminalTabs() {
             className="terminal-pane"
             style={{ display: t.id === activeId ? "block" : "none" }}
           >
-            <TerminalView active={t.id === activeId} initialCwd={t.initialCwd} />
+            <PaneView
+              node={t.root}
+              tabActive={t.id === activeId}
+              focusedId={t.focused}
+              multi={leafCount(t.root) > 1}
+              onSplit={(leafId, dir) => splitLeaf(t.id, leafId, dir)}
+              onClose={(leafId) => closeLeaf(t.id, leafId)}
+              onFocus={(leafId) => focusLeaf(t.id, leafId)}
+              onRatio={(splitId, ratio) => ratioLeaf(t.id, splitId, ratio)}
+            />
           </div>
         ))}
       </div>
