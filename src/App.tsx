@@ -13,6 +13,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ToastContainer, toast } from "./toast";
 import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
+import { cn } from "@/lib/utils";
 import { WelcomeDialog } from "./welcome/WelcomeDialog";
 import { CommandPalette, type Command } from "./command-palette/CommandPalette";
 import { SnippetsDialog } from "./snippets/SnippetsDialog";
@@ -39,6 +40,10 @@ import { PreviewDialog } from "./preview/PreviewDialog";
 import { SidebarRail } from "./sidebar/SidebarRail";
 import { WorkspacePath } from "./header/WorkspacePath";
 import "./App.css";
+
+const tbBtn =
+  "inline-flex items-center justify-center min-w-[30px] h-6 px-1.5 rounded-md border border-border bg-secondary text-[13px] leading-none text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer";
+const tbActive = "bg-accent text-accent-foreground";
 
 function App() {
   const [aiOpen, setAiOpen] = useState(false);
@@ -225,38 +230,28 @@ function App() {
 
   return (
     <div className="app">
-      <header className="titlebar">
-        <img src="/logo.png" className="titlebar-logo" alt="huskv2" />
-        <span className="titlebar-title">huskv2</span>
+      <header className="flex items-center gap-2 h-[34px] px-3 border-b border-border bg-card select-none">
+        <img src="/logo.png" className="h-4 w-4 object-contain" alt="huskv2" />
+        <span className="text-xs font-semibold tracking-[0.02em] text-muted-foreground">huskv2</span>
         <WorkspacePath />
-        <div className="titlebar-spacer" />
+        <div className="flex-1" />
         <button
           type="button"
-          className={`titlebar-btn${explorerOpen ? " active" : ""}`}
+          className={cn(tbBtn, explorerOpen && tbActive)}
           onClick={() => setExplorerOpen((v) => !v)}
           title="Toggle explorer"
         >
           ☰
         </button>
-        <button
-          type="button"
-          className="titlebar-btn"
-          onClick={() => setTotpOpen(true)}
-          title="Authenticator (2FA)"
-        >
+        <button type="button" className={tbBtn} onClick={() => setTotpOpen(true)} title="Authenticator (2FA)">
           🔑
         </button>
-        <button
-          type="button"
-          className="titlebar-btn"
-          onClick={() => setRunbooksOpen(true)}
-          title="Runbooks"
-        >
+        <button type="button" className={tbBtn} onClick={() => setRunbooksOpen(true)} title="Runbooks">
           ⧉
         </button>
         <button
           type="button"
-          className={`titlebar-btn${aiOpen ? " active" : ""}`}
+          className={cn(tbBtn, aiOpen && tbActive)}
           onClick={() => setAiOpen((v) => !v)}
           title="Toggle AI panel"
         >
@@ -264,7 +259,7 @@ function App() {
         </button>
         <button
           type="button"
-          className="titlebar-btn"
+          className={tbBtn}
           onClick={() => setPrefs({ theme: prefs.theme === "dark" ? "light" : "dark" })}
           title="Toggle light / dark"
         >
@@ -272,7 +267,7 @@ function App() {
         </button>
         <button
           type="button"
-          className={`titlebar-btn${settingsOpen ? " active" : ""}`}
+          className={cn(tbBtn, settingsOpen && tbActive)}
           onClick={() => setSettingsOpen((v) => !v)}
           title="Settings"
         >
