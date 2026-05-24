@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { monaco } from "../editor/monacoEnv";
 import { getPrefs } from "../settings/preferences";
+import { fontStack } from "../styles/fonts";
 import { readFile } from "../fs";
 
 export function DiffDialog({
@@ -26,7 +27,7 @@ export function DiffDialog({
       originalEditable: true,
       renderSideBySide: true,
       fontSize: 13,
-      fontFamily: '"JetBrains Mono", Menlo, Monaco, monospace',
+      fontFamily: fontStack(getPrefs().fontFamily),
       minimap: { enabled: false },
     });
     editor.setModel({ original, modified });
