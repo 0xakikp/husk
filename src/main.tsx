@@ -4,6 +4,7 @@ import App from "./App";
 import { SettingsPage } from "./settings/SettingsPage";
 import { getPrefs } from "./settings/preferences";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import "./styles/tailwind.css";
 import "./styles/fonts.css";
 import "./App.css";
 

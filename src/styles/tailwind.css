@@ -1,0 +1,108 @@
+/* Tailwind v4 — utilities + theme only (no preflight) so this coexists with the
+   existing App.css during the migration. Tokens are husk v1's globals.css,
+   keyed off huskv2's existing [data-theme] attribute instead of a .dark class. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --font-heading: "Geist Variable", sans-serif;
+  --font-sans: "Inter Variable", sans-serif;
+  --font-ai: "Space Grotesk Variable", "Geist Variable", sans-serif;
+  --font-mono: "JetBrains Mono", "MesloLGL Nerd Font Mono", "Fira Code Variable", monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+/* husk v1 dark tokens — huskv2's default. */
+:root {
+  --background: #000000;
+  --foreground: #11c700;
+  --card: #111111;
+  --card-foreground: #11c700;
+  --popover: #1f1f1f;
+  --popover-foreground: #11c700;
+  --primary: #11c700;
+  --primary-foreground: #000000;
+  --secondary: #1f1f1f;
+  --secondary-foreground: #11c700;
+  --muted: #1f1f1f;
+  --muted-foreground: #868686;
+  --accent: #0da100;
+  --accent-foreground: #ffffff;
+  --destructive: #ff002b;
+  --border: #1f1f1f;
+  --input: #1f1f1f;
+  --ring: #11c700;
+  --radius: 0.5rem;
+  --sidebar: #000000;
+  --sidebar-foreground: #11c700;
+  --sidebar-primary: #11c700;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #1f1f1f;
+  --sidebar-accent-foreground: #11c700;
+  --sidebar-border: #1f1f1f;
+  --sidebar-ring: #11c700;
+}
+
+/* husk v1 light tokens. */
+:root[data-theme="light"] {
+  --background: #faf8f5;
+  --foreground: #1c1917;
+  --card: #ffffff;
+  --card-foreground: #1c1917;
+  --popover: #ffffff;
+  --popover-foreground: #1c1917;
+  --primary: #22c55e;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f0e8;
+  --secondary-foreground: #44403c;
+  --muted: #f5f0e8;
+  --muted-foreground: #78716c;
+  --accent: #f5f0e8;
+  --accent-foreground: #44403c;
+  --destructive: #dc2626;
+  --border: #e7e5e4;
+  --input: #e7e5e4;
+  --ring: #22c55e;
+  --sidebar: #f5f0e8;
+  --sidebar-foreground: #1c1917;
+  --sidebar-primary: #22c55e;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ebe5d9;
+  --sidebar-accent-foreground: #44403c;
+  --sidebar-border: #e7e5e4;
+  --sidebar-ring: #22c55e;
+}
