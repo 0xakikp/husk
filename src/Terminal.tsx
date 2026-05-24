@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   setActiveTerminalReader,
   setActiveTerminalRunner,
@@ -55,6 +56,7 @@ export function TerminalView({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -270,8 +272,40 @@ export function TerminalView({
     termRef.current?.focus();
   };
 
+  const openHistory = () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    void getShellHistory()
+      .then((rows) => setHistoryEntries(rows.map((r) => r.command)))
+      .catch(() => setHistoryEntries([]))
+      .finally(() => setHistoryLoading(false));
+  };
+
+  const menuCopy = () => {
+    setMenu(null);
+    const sel = termRef.current?.getSelection();
+    if (sel) void writeText(sel);
+    termRef.current?.clearSelection();
+  };
+  const menuPaste = () => {
+    setMenu(null);
+    void readText()
+      .then((t) => {
+        const id = ptyIdRef.current;
+        if (t && id != null) void invoke("pty_write", { id, data: t });
+        termRef.current?.focus();
+      })
+      .catch(() => {});
+  };
+
   return (
-    <div className="terminal-host-wrap">
+    <div
+      className="terminal-host-wrap"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+    >
       <div ref={containerRef} className="terminal-host" />
       {searchOpen ? (
         <div className="term-search">
@@ -316,6 +350,38 @@ export function TerminalView({
             termRef.current?.focus();
           }}
         />
+      ) : null}
+      {menu ? (
+        <>
+          <div
+            className="ectx-backdrop"
+            onClick={() => setMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu(null);
+            }}
+          />
+          <div className="ectx-menu" style={{ top: menu.y, left: menu.x }} role="menu">
+            <button type="button" className="ectx-item" onClick={menuCopy}>
+              Copy
+            </button>
+            <button type="button" className="ectx-item" onClick={menuPaste}>
+              Paste
+            </button>
+            <button type="button" className="ectx-item" onClick={() => { setMenu(null); termRef.current?.selectAll(); }}>
+              Select all
+            </button>
+            <button type="button" className="ectx-item" onClick={() => { setMenu(null); termRef.current?.clear(); termRef.current?.focus(); }}>
+              Clear
+            </button>
+            <button type="button" className="ectx-item" onClick={() => { setMenu(null); setSearchOpen(true); }}>
+              Find…
+            </button>
+            <button type="button" className="ectx-item" onClick={() => { setMenu(null); openHistory(); }}>
+              History…
+            </button>
+          </div>
+        </>
       ) : null}
     </div>
   );
