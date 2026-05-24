@@ -488,7 +488,7 @@ body {
   border: none;
   background: none;
   color: var(--text);
-  font: inherit;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   text-align: left;
   padding: 2px 8px 2px 0;

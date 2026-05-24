@@ -8,6 +8,7 @@ import { RunbooksDialog } from "./workflows/RunbooksDialog";
 import { TotpDialog } from "./totp/TotpDialog";
 import { SettingsPage } from "./settings/SettingsPage";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
+import { fontStack } from "./styles/fonts";
 import { initKeys } from "./ai/store";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ToastContainer, toast } from "./toast";
@@ -89,6 +90,12 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.termTheme = prefs.terminalTheme;
   }, [prefs.terminalTheme]);
+
+  // Expose the selected monospace font as --font-mono so CSS surfaces (file
+  // tree, logs, history) match the terminal/editor and follow the picker.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--font-mono", fontStack(prefs.fontFamily));
+  }, [prefs.fontFamily]);
 
   // Load AI keys from the OS keychain (migrating any legacy localStorage keys).
   useEffect(() => {
