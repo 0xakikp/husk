@@ -27,6 +27,20 @@ export function runInActiveTerminal(cmd: string): boolean {
   return true;
 }
 
+// Like the runner, but drops text at the prompt WITHOUT executing it, so the
+// user can review/edit (used by AI command suggestions).
+let typer: ((text: string) => void) | null = null;
+
+export function setActiveTerminalTyper(fn: ((text: string) => void) | null): void {
+  typer = fn;
+}
+
+export function typeInActiveTerminal(text: string): boolean {
+  if (!typer) return false;
+  typer(text);
+  return true;
+}
+
 // --- Active terminal working directory + last exit code --------------------
 // The active TerminalView parses the shell's OSC 7 (cwd) and OSC 133;D (exit
 // code) — emitted by the injected shell-integration scripts — and reports them

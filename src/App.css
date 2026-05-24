@@ -723,6 +723,67 @@ body {
   color: var(--text-strong);
 }
 
+.assist-cmd {
+  margin: 12px 0 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-strong);
+}
+
+.assist-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.assist-actions button {
+  background: var(--bg-input);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.assist-actions button:hover {
+  background: var(--hover);
+}
+
+.assist-err {
+  color: #f85149;
+  font-size: 12px;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.assist-explain {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sb-fail {
+  border: none;
+  background: none;
+  color: #f85149;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sb-fail:hover {
+  text-decoration: underline;
+}
+
 .etab-close {
   border: none;
   background: none;

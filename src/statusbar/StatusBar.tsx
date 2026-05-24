@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useWorkspaceRoot } from "../workspace/store";
 import { currentBranch, isRepo } from "../git/client";
-import { useActiveTerminalCwd } from "../ai/terminalContext";
+import { useActiveTerminalCwd, useActiveTerminalExit } from "../ai/terminalContext";
 
-export function StatusBar() {
+export function StatusBar({ onExplainError }: { onExplainError?: () => void }) {
   const root = useWorkspaceRoot();
   const cwd = useActiveTerminalCwd();
+  const exit = useActiveTerminalExit();
   const [branch, setBranch] = useState("");
 
   useEffect(() => {
@@ -40,6 +41,16 @@ export function StatusBar() {
         <span className="sb-item" title={cwd}>
           ❯ {prettyCwd}
         </span>
+      ) : null}
+      {exit != null && exit !== 0 ? (
+        <button
+          type="button"
+          className="sb-item sb-fail"
+          title="Explain this error (AI)"
+          onClick={() => onExplainError?.()}
+        >
+          ✗ {exit} · explain
+        </button>
       ) : null}
     </div>
   );

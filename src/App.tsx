@@ -31,6 +31,8 @@ import { SourceControlPanel } from "./git/SourceControlPanel";
 import { GitHistoryDialog } from "./git/GitHistoryDialog";
 import { ShortcutsDialog } from "./shortcuts/ShortcutsDialog";
 import { StatusBar } from "./statusbar/StatusBar";
+import { SuggestDialog, ExplainDialog } from "./ai/AssistDialogs";
+import { readActiveTerminal, getActiveTerminalExit } from "./ai/terminalContext";
 import { PreviewDialog } from "./preview/PreviewDialog";
 import { SidebarRail } from "./sidebar/SidebarRail";
 import { WorkspacePath } from "./header/WorkspacePath";
@@ -47,6 +49,12 @@ function App() {
   const [snippetsOpen, setSnippetsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [explainCtx, setExplainCtx] = useState<
+    { command: string; output: string; exitCode: number | null } | null
+  >(null);
+  const explainLastError = () =>
+    setExplainCtx({ command: "", output: readActiveTerminal(), exitCode: getActiveTerminalExit() });
   const [dockerOpen, setDockerOpen] = useState(false);
   const [k8sOpen, setK8sOpen] = useState(false);
   const [terraformOpen, setTerraformOpen] = useState(false);
@@ -147,6 +155,8 @@ function App() {
     { id: "snippets", label: "Open snippets", run: () => setSnippetsOpen(true) },
     { id: "tools", label: "Open tools", run: () => setToolsOpen(true) },
     { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
+    { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
+    { id: "explain", label: "Explain last error (AI)", run: explainLastError },
     { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
     { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
     { id: "terraform", label: "Open Terraform", run: () => setTerraformOpen(true) },
@@ -306,7 +316,7 @@ function App() {
       </div>
       )}
 
-      <StatusBar />
+      <StatusBar onExplainError={explainLastError} />
 
       {scOpen ? <SourceControlPanel onClose={() => setScOpen(false)} /> : null}
       {gitHistoryOpen ? <GitHistoryDialog onClose={() => setGitHistoryOpen(false)} /> : null}
@@ -316,6 +326,15 @@ function App() {
       {snippetsOpen ? <SnippetsDialog onClose={() => setSnippetsOpen(false)} /> : null}
       {toolsOpen ? <ToolsHubDialog onClose={() => setToolsOpen(false)} /> : null}
       {jobsOpen ? <JobsDialog onClose={() => setJobsOpen(false)} /> : null}
+      {suggestOpen ? <SuggestDialog onClose={() => setSuggestOpen(false)} /> : null}
+      {explainCtx ? (
+        <ExplainDialog
+          command={explainCtx.command}
+          output={explainCtx.output}
+          exitCode={explainCtx.exitCode}
+          onClose={() => setExplainCtx(null)}
+        />
+      ) : null}
       {dockerOpen ? <DockerView onClose={() => setDockerOpen(false)} /> : null}
       {k8sOpen ? <KubernetesView onClose={() => setK8sOpen(false)} /> : null}
       {terraformOpen ? <TerraformView onClose={() => setTerraformOpen(false)} /> : null}

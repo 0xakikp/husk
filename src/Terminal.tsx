@@ -8,6 +8,7 @@ import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   setActiveTerminalReader,
   setActiveTerminalRunner,
+  setActiveTerminalTyper,
   setActiveTerminalCwd,
   setActiveTerminalExit,
 } from "./ai/terminalContext";
@@ -246,9 +247,15 @@ export function TerminalView({
       if (id != null) void invoke("pty_write", { id, data: `${cmd}\r` });
       termRef.current?.focus();
     });
+    setActiveTerminalTyper((text) => {
+      const id = ptyIdRef.current;
+      if (id != null) void invoke("pty_write", { id, data: text });
+      termRef.current?.focus();
+    });
     return () => {
       setActiveTerminalReader(null);
       setActiveTerminalRunner(null);
+      setActiveTerminalTyper(null);
     };
   }, [active]);
 

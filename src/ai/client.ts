@@ -58,3 +58,14 @@ export async function streamChat(
     onDelta(delta);
   }
 }
+
+/** One-shot, non-streaming completion — used for command suggestions and
+ *  error explanations. */
+export async function generateOnce(
+  cfg: ChatConfig,
+  system: string,
+  prompt: string,
+): Promise<string> {
+  const result = streamText({ model: buildModel(cfg), system, prompt });
+  return (await result.text).trim();
+}
