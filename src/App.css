@@ -211,6 +211,66 @@ body {
   color: var(--text-strong);
 }
 
+.term-hist {
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  right: 14px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  max-height: 60%;
+}
+
+.term-hist-input {
+  background: var(--bg-input);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 8px 10px;
+}
+
+.term-hist-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.term-hist-item {
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.term-hist-item.active {
+  background: var(--accent, #1f6feb);
+  color: #fff;
+}
+
+.term-hist-empty {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .terminal-host .xterm,
 .terminal-host .xterm-viewport,
 .terminal-host .xterm-screen {

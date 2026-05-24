@@ -12,6 +12,8 @@ import {
 } from "./ai/terminalContext";
 import { getPrefs, subscribePrefs } from "./settings/preferences";
 import { buildTerminalTheme } from "./styles/terminalTheme";
+import { getShellHistory } from "./shellHistory";
+import { TerminalHistoryPanel } from "./TerminalHistory";
 import "@xterm/xterm/css/xterm.css";
 
 /**
@@ -50,6 +52,9 @@ export function TerminalView({
   const cwdRef = useRef("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<string[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -92,7 +97,8 @@ export function TerminalView({
       return true;
     });
 
-    // Cmd/Ctrl+F opens find-in-terminal.
+    // Cmd/Ctrl+F opens find-in-terminal; Ctrl+R opens the history picker
+    // (intercepted before the shell's own reverse-i-search).
     term.attachCustomKeyEventHandler((e) => {
       if (
         e.type === "keydown" &&
@@ -100,6 +106,15 @@ export function TerminalView({
         e.key.toLowerCase() === "f"
       ) {
         setSearchOpen(true);
+        return false;
+      }
+      if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
+        setHistoryOpen(true);
+        setHistoryLoading(true);
+        void getShellHistory()
+          .then((rows) => setHistoryEntries(rows.map((r) => r.command)))
+          .catch(() => setHistoryEntries([]))
+          .finally(() => setHistoryLoading(false));
         return false;
       }
       return true;
@@ -247,6 +262,14 @@ export function TerminalView({
     termRef.current?.focus();
   };
 
+  const selectHistory = (command: string) => {
+    const id = ptyIdRef.current;
+    // Drop the command at the prompt (no newline) so the user can edit/run it.
+    if (id != null) void invoke("pty_write", { id, data: command });
+    setHistoryOpen(false);
+    termRef.current?.focus();
+  };
+
   return (
     <div className="terminal-host-wrap">
       <div ref={containerRef} className="terminal-host" />
@@ -282,6 +305,17 @@ export function TerminalView({
             ×
           </button>
         </div>
+      ) : null}
+      {historyOpen ? (
+        <TerminalHistoryPanel
+          entries={historyEntries}
+          loading={historyLoading}
+          onSelect={selectHistory}
+          onClose={() => {
+            setHistoryOpen(false);
+            termRef.current?.focus();
+          }}
+        />
       ) : null}
     </div>
   );
