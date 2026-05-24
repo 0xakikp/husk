@@ -8,3 +8,35 @@
 @import "@fontsource-variable/fira-code/index.css";
 @import "@fontsource-variable/source-code-pro/index.css";
 @import "@fontsource/cascadia-code/index.css";
+
+/* MesloLGL Nerd Font Mono — bundled from the Nerd Fonts project (not on
+   @fontsource), so the "MesloLGL Nerd Font" picker option works without a
+   system install. Full glyph set (powerline/devicons), hence the larger files. */
+@font-face {
+  font-family: "MesloLGL Nerd Font Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/MesloLGLNerdFontMono-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "MesloLGL Nerd Font Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/MesloLGLNerdFontMono-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "MesloLGL Nerd Font Mono";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/MesloLGLNerdFontMono-Italic.ttf") format("truetype");
+}
+@font-face {
+  font-family: "MesloLGL Nerd Font Mono";
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/MesloLGLNerdFontMono-BoldItalic.ttf") format("truetype");
+}
