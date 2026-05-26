@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "huskv2",
+  "productName": "husk",
   "version": "0.1.0",
-  "identifier": "com.akikp.huskv2",
+  "identifier": "com.akikp.husk",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1430",
@@ -12,9 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "huskv2",
-        "width": 800,
-        "height": 600
+        "title": "husk",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 420,
+        "minHeight": 280,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

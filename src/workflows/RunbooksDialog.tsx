@@ -2,13 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { loadWorkflows, saveWorkflows, newWorkflowId, type Workflow } from "./store";
 import { composeCommand, extractParams } from "./params";
 import { runInActiveTerminal } from "../ai/terminalContext";
+import { Modal } from "../components/Modal";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  PlayIcon,
+  Edit02Icon,
+  Delete02Icon,
+  Add01Icon,
+} from "@hugeicons/core-free-icons";
 
 type Mode =
   | { kind: "list" }
   | { kind: "edit"; wf: Workflow | null }
   | { kind: "run"; wf: Workflow };
 
-export function RunbooksDialog({ onClose }: { onClose: () => void }) {
+export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inline?: boolean }) {
   const [workflows, setWorkflows] = useState<Workflow[]>(() => loadWorkflows());
   const [mode, setMode] = useState<Mode>({ kind: "list" });
 
@@ -16,7 +24,7 @@ export function RunbooksDialog({ onClose }: { onClose: () => void }) {
 
   const run = (wf: Workflow, values: Record<string, string>) => {
     const cmd = composeCommand(wf.steps, values, { stopOnError: wf.stopOnError !== false });
-    if (cmd && runInActiveTerminal(cmd)) onClose();
+    if (cmd && runInActiveTerminal(cmd)) onClose?.();
   };
 
   const startRun = (wf: Workflow) => {
@@ -24,21 +32,20 @@ export function RunbooksDialog({ onClose }: { onClose: () => void }) {
     else run(wf, {});
   };
 
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-label="Runbooks"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <span>Runbooks</span>
-          <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
+  const listHeaderActions = (
+    <button
+      type="button"
+      aria-label="New workflow"
+      title="New workflow"
+      onClick={() => setMode({ kind: "edit", wf: null })}
+      className="inline-flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.5} />
+    </button>
+  );
 
+  return (
+    <Modal title="Workflows" onClose={onClose} inline={inline} headerActions={mode.kind === "list" ? listHeaderActions : undefined}>
         {mode.kind === "list" ? (
           <RunbookList
             workflows={workflows}
@@ -65,8 +72,7 @@ export function RunbooksDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <RunbookRunner wf={mode.wf} onCancel={() => setMode({ kind: "list" })} onRun={run} />
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -86,37 +92,50 @@ function RunbookList({
   return (
     <div className="modal-body">
       {workflows.length === 0 ? (
-        <p className="rb-empty">
-          No runbooks yet. Create multi-step command sequences with
-          {" {{parameters}} "}
-          you fill in at run time.
-        </p>
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+            <HugeiconsIcon icon={PlayIcon} size={20} className="text-primary" />
+          </div>
+          <p className="text-[12px] font-medium text-foreground">No workflows yet</p>
+          <p className="max-w-[180px] text-[11px] text-muted-foreground">
+            Create multi-step command sequences with {"{{parameters}}"} you fill in at run time.
+          </p>
+          <button
+            type="button"
+            onClick={onNew}
+            className="h-7 rounded-md bg-primary px-3 text-[11px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            New workflow
+          </button>
+        </div>
       ) : (
-        <div className="rb-list">
-          {workflows.map((wf) => (
-            <div key={wf.id} className="rb-item">
-              <button type="button" className="rb-run" title="Run" onClick={() => onRun(wf)}>
-                ▶
-              </button>
-              <div className="rb-meta">
-                <span className="rb-name">{wf.name}</span>
-                <span className="rb-steps">
-                  {wf.steps.length} step{wf.steps.length === 1 ? "" : "s"}
-                </span>
+        <div className="flex flex-col gap-3">
+          <div className="rb-list">
+            {workflows.map((wf) => (
+              <div key={wf.id} className="rb-item">
+                <button type="button" className="rb-run" title="Run" onClick={() => onRun(wf)}>
+                  <HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} />
+                </button>
+                <div className="rb-meta">
+                  <span className="rb-name">{wf.name}</span>
+                  <span className="rb-steps">
+                    {wf.steps.length} step{wf.steps.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <button type="button" className="ai-icon" onClick={() => onEdit(wf)} title="Edit">
+                  <HugeiconsIcon icon={Edit02Icon} size={11} strokeWidth={2} />
+                </button>
+                <button type="button" className="ai-icon" onClick={() => onDelete(wf.id)} title="Delete">
+                  <HugeiconsIcon icon={Delete02Icon} size={11} strokeWidth={2} />
+                </button>
               </div>
-              <button type="button" className="ai-icon" onClick={() => onEdit(wf)}>
-                ✎
-              </button>
-              <button type="button" className="ai-icon" onClick={() => onDelete(wf.id)}>
-                🗑
-              </button>
-            </div>
-          ))}
+            ))}
+          </div>
+          <button type="button" className="rb-new" onClick={onNew}>
+            + New workflow
+          </button>
         </div>
       )}
-      <button type="button" className="rb-new" onClick={onNew}>
-        + New runbook
-      </button>
     </div>
   );
 }
@@ -156,8 +175,13 @@ function RunbookEditor({
       <div className="rb-field">
         <div className="rb-steps-head">
           <span>Steps</span>
-          <button type="button" onClick={() => setRows((r) => [...r, makeRow()])}>
-            + step
+          <button
+            type="button"
+            onClick={() => setRows((r) => [...r, makeRow()])}
+            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={10} strokeWidth={2} />
+            step
           </button>
         </div>
         {rows.map((row, i) => (
@@ -176,8 +200,9 @@ function RunbookEditor({
               className="ai-icon"
               disabled={rows.length === 1}
               onClick={() => setRows((r) => (r.length === 1 ? r : r.filter((x) => x.id !== row.id)))}
+              title="Remove step"
             >
-              ×
+              <HugeiconsIcon icon={Delete02Icon} size={11} strokeWidth={2} />
             </button>
           </div>
         ))}

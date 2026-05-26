@@ -4,10 +4,16 @@
   --font-heading: "Geist Variable", var(--font-sans);
   --font-ai: "Space Grotesk Variable", var(--font-sans);
   --font-mono: "JetBrains Mono", "MesloLGL Nerd Font Mono", "Fira Code Variable", monospace;
-  font-family: var(--font-sans);
+  /* husk v1 renders its entire UI chrome in the mono font (body {
+     font-family: var(--font-mono) }) — that's why its settings look monospace.
+     Match it: the picker font (default JetBrains Mono) drives the chrome;
+     AI/headings opt back out via --font-ai / --font-heading where set. */
+  font-family: var(--font-mono);
   --bg: #000000;
-  --bg-2: #0a0a0a;
-  --bg-elev: #111111;
+  /* Pitch black everywhere: the main surfaces are all #000; only interactive
+     bits (inputs, hover, borders) keep a faint elevation so they stay legible. */
+  --bg-2: #000000;
+  --bg-elev: #000000;
   --bg-input: #1f1f1f;
   --hover: #1f1f1f;
   --border: #1f1f1f;
@@ -46,6 +52,31 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Form controls don't inherit font-family from their parent by default, and
+   huskv2's Tailwind build omits preflight (so it can coexist with this file).
+   Without this, buttons/inputs/selects (incl. shadcn <Button>) fall back to the
+   UA sans font instead of the mono chrome font. Mirrors Tailwind preflight. */
+button,
+input,
+select,
+optgroup,
+textarea {
+  font-family: inherit;
+  letter-spacing: inherit;
+}
+
+/* Without preflight, bare <button>s render with the native UA chrome (a boxy
+   bordered/bevelled look). Neutralise it so icon buttons are flat; any explicit
+   class or Tailwind utility still wins over these element-level defaults. */
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
 }
 
 .app {
@@ -107,7 +138,7 @@ body {
 
 .tab.active {
   background: var(--bg);
-  color: var(--text-strong);
+  color: var(--accent);
 }
 
 .tab-label {
@@ -157,23 +188,38 @@ body {
 }
 
 .terminal-stack {
-  flex: 1 1 auto;
+  height: 100%;
+  width: 100%;
   min-height: 0;
 }
 
 .terminal-pane {
   height: 100%;
+  width: 100%;
 }
 
 .terminal-host-wrap {
   position: relative;
   height: 100%;
+  width: 100%;
 }
 
 .terminal-host {
   height: 100%;
   min-height: 0;
-  padding: 6px 8px 8px;
+}
+
+/* xterm: transparent viewport so the terminal theme bg fills every pixel */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}
+/* xterm: edge-to-edge sizing — no padding so the terminal bg fills every pixel */
+.terminal-host .xterm {
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  position: relative;
 }
 
 .pane-leaf {
@@ -190,14 +236,6 @@ body {
   min-width: 0;
 }
 
-.pane-leaf.focused::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border: 1px solid var(--accent, #1f6feb);
-  border-radius: 2px;
-}
 
 .pane-split {
   display: flex;
@@ -205,6 +243,20 @@ body {
   height: 100%;
   min-width: 0;
   min-height: 0;
+}
+
+.pane-leaf.focused::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 6px 6px 0 0;
+  border-color: var(--accent, #1f6feb) transparent transparent transparent;
+  pointer-events: none;
+  z-index: 10;
 }
 
 .pane-split.row {
@@ -223,12 +275,12 @@ body {
 }
 
 .pane-divider {
-  flex: 0 0 5px;
-  background: var(--border);
+  flex: 0 0 1px;
+  background: color-mix(in srgb, var(--border) 60%, transparent);
 }
 
 .pane-divider:hover {
-  background: var(--accent, #1f6feb);
+  background: color-mix(in srgb, var(--accent, #1f6feb) 50%, transparent);
 }
 
 .pane-divider.row {
@@ -340,11 +392,6 @@ body {
   font-size: 12px;
 }
 
-.terminal-host .xterm,
-.terminal-host .xterm-viewport,
-.terminal-host .xterm-screen {
-  height: 100% !important;
-}
 
 /* titlebar AI toggle */
 .titlebar-spacer {
@@ -443,6 +490,11 @@ body {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
+.enode.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
 .edir {
   color: var(--text);
   font-weight: 500;
@@ -502,7 +554,7 @@ body {
 
 .etab.active {
   background: var(--hover);
-  color: var(--text-strong);
+  color: var(--accent);
 }
 
 .etab-label {
@@ -986,14 +1038,23 @@ body {
 }
 
 .resize-handle {
-  width: 5px;
+  position: relative;
+  width: 1px;
   flex: 0 0 auto;
   cursor: col-resize;
   background: var(--border);
+  transition: background 0.12s ease;
+}
+
+/* Widen the drag target without thickening the 1px line. */
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
 }
 
 .resize-handle:hover {
-  background: var(--border-2);
+  background: var(--accent);
 }
 
 .workspace-ai {
@@ -1005,6 +1066,14 @@ body {
 }
 
 /* AI panel */
+.ai-pane-static,
+.ai-pane-static * {
+  animation: none !important;
+  transition: none !important;
+  transition-property: none !important;
+  animation-name: none !important;
+}
+
 .ai-panel {
   display: flex;
   flex-direction: column;
@@ -1162,10 +1231,16 @@ body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: modal-fade 0.12s ease-out;
+}
+@keyframes modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal {
@@ -1177,8 +1252,13 @@ body {
   background: var(--bg-elev);
   border: 1px solid var(--border-2);
   border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
   overflow: hidden;
+  animation: modal-pop 0.13s ease-out;
+}
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .modal-header {
@@ -1211,18 +1291,30 @@ body {
 .rb-new {
   background: var(--bg-input);
   color: var(--text);
-  border: 1px solid var(--border-2);
-  border-radius: 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
   font-family: inherit;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.modal-actions button:hover,
+.rb-new:hover {
+  background: var(--hover);
+  color: var(--text-strong);
 }
 
 .modal-actions button.primary {
   background: var(--accent);
-  color: #fff;
+  color: #000;
   border-color: var(--accent);
+}
+
+.modal-actions button.primary:hover {
+  background: var(--accent);
+  filter: brightness(1.1);
 }
 
 .modal-actions button:disabled {
@@ -2180,4 +2272,38 @@ body {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+/* ── AI Bubble header streaming shimmer ── */
+.header-streaming {
+  position: relative;
+  overflow: hidden;
+}
+.header-streaming::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--primary) / 0.06) 40%,
+    hsl(var(--primary) / 0.12) 50%,
+    hsl(var(--primary) / 0.06) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: header-shimmer 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes header-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── AI Bubble model dropdown ── */
+[data-bubble-model] .model-dropdown {
+  display: none;
+}
+[data-bubble-model].open .model-dropdown {
+  display: block;
 }

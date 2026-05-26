@@ -92,7 +92,7 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
           ×
         </button>
       </div>
-      <div className="ai-mini-body" ref={scrollRef}>
+      <div className="ai-mini-body font-ai" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="ai-empty">Ask a quick question. Drag the header to move me.</div>
         ) : (

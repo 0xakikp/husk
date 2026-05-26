@@ -41,6 +41,20 @@ export function typeInActiveTerminal(text: string): boolean {
   return true;
 }
 
+// The active terminal registers an opener for its in-terminal find (scrollback
+// search via xterm's SearchAddon); the titlebar search / ⌘F calls it.
+let searchOpener: (() => void) | null = null;
+
+export function setActiveTerminalSearchOpener(fn: (() => void) | null): void {
+  searchOpener = fn;
+}
+
+export function openActiveTerminalSearch(): boolean {
+  if (!searchOpener) return false;
+  searchOpener();
+  return true;
+}
+
 // --- Active terminal working directory + last exit code --------------------
 // The active TerminalView parses the shell's OSC 7 (cwd) and OSC 133;D (exit
 // code) — emitted by the injected shell-integration scripts — and reports them
@@ -88,4 +102,89 @@ export function useActiveTerminalCwd(): string {
 
 export function useActiveTerminalExit(): number | null {
   return useSyncExternalStore(subscribeTerminalState, getActiveTerminalExit);
+}
+
+// --- Terminal typing activity ---------------------------------------------
+
+let typing = false;
+const typingSubscribers = new Set<() => void>();
+
+function emitTyping(): void {
+  for (const fn of typingSubscribers) fn();
+}
+
+export function setTerminalTyping(active: boolean): void {
+  if (typing === active) return;
+  typing = active;
+  emitTyping();
+}
+
+export function getTerminalTyping(): boolean {
+  return typing;
+}
+
+export function subscribeTerminalTyping(fn: () => void): () => void {
+  typingSubscribers.add(fn);
+  return () => typingSubscribers.delete(fn);
+}
+
+// --- Current foreground command (from shell preexec / OSC 133) -------------
+
+let currentCommand = "";
+let commandStartTime = 0;
+let commandRunning = false;
+const commandSubscribers = new Set<() => void>();
+
+function emitCommandState(): void {
+  for (const fn of commandSubscribers) fn();
+}
+
+export function setCurrentCommand(cmd: string): void {
+  currentCommand = cmd;
+  commandStartTime = Date.now();
+  commandRunning = true;
+  emitCommandState();
+}
+
+export function markCommandStart(): void {
+  if (!commandRunning) {
+    commandRunning = true;
+    commandStartTime = Date.now();
+    emitCommandState();
+  }
+}
+
+export function clearCurrentCommand(): void {
+  currentCommand = "";
+  commandRunning = false;
+  emitCommandState();
+}
+
+export function getCurrentCommand(): string {
+  return currentCommand;
+}
+
+export function getCommandStartTime(): number {
+  return commandStartTime;
+}
+
+export function isCommandRunning(): boolean {
+  return commandRunning;
+}
+
+export function subscribeCommandState(fn: () => void): () => void {
+  commandSubscribers.add(fn);
+  return () => commandSubscribers.delete(fn);
+}
+
+export function useCurrentCommand(): string {
+  return useSyncExternalStore(subscribeCommandState, getCurrentCommand);
+}
+
+export function useCommandStartTime(): number {
+  return useSyncExternalStore(subscribeCommandState, getCommandStartTime);
+}
+
+export function useCommandRunning(): boolean {
+  return useSyncExternalStore(subscribeCommandState, isCommandRunning);
 }

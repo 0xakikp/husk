@@ -46,5 +46,9 @@ function fish_prompt
 end
 
 function __husk_preexec --on-event fish_preexec
+    set -l cmd "$argv[1]"
+    if test -n "$cmd"
+        printf '\e]778;husk;cmd;%s\e\\' "$cmd"
+    end
     printf '\e]133;C\e\\'
 end

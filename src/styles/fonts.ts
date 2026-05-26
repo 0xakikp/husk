@@ -22,6 +22,56 @@ export const FONT_FAMILIES: Record<FontFamilyId, { name: string; stack: string }
   system: { name: "System monospace", stack: "ui-monospace, Menlo, Monaco, monospace" },
 };
 
+/** Detect any installed Nerd Font and prepend it to the fallback chain. */
+const NERD_FONT_CANDIDATES = [
+  "MesloLGL Nerd Font Mono",
+  "MesloLGM Nerd Font",
+  "MesloLGS NF",
+  "JetBrainsMono Nerd Font",
+  "JetBrainsMono Nerd Font Mono",
+  "JetBrainsMonoNL Nerd Font",
+  "FiraCode Nerd Font",
+  "FiraCode Nerd Font Mono",
+  "Hack Nerd Font",
+  "Hack Nerd Font Mono",
+  "CaskaydiaCove Nerd Font",
+  "CaskaydiaMono Nerd Font",
+  "Iosevka Nerd Font",
+  "Iosevka Term Nerd Font",
+  "SauceCodePro Nerd Font",
+  "Hasklug Nerd Font",
+];
+
+const FALLBACK_CHAIN = '"MesloLGL Nerd Font Mono", "JetBrains Mono", SFMono-Regular, Menlo, monospace';
+
+let detected: string | null = null;
+
+export function detectMonoFontFamily(): string {
+  if (detected) return detected;
+  if (typeof document === "undefined" || !document.fonts) {
+    detected = FALLBACK_CHAIN;
+    return detected;
+  }
+  for (const f of NERD_FONT_CANDIDATES) {
+    try {
+      if (document.fonts.check(`12px "${f}"`)) {
+        detected = `"${f}", ${FALLBACK_CHAIN}`;
+        return detected;
+      }
+    } catch {
+      // Some browsers throw on invalid font shorthand; ignore.
+    }
+  }
+  detected = FALLBACK_CHAIN;
+  return detected;
+}
+
 export function fontStack(id: FontFamilyId): string {
-  return (FONT_FAMILIES[id] ?? FONT_FAMILIES.jetbrains).stack;
+  const chosen = FONT_FAMILIES[id] ?? FONT_FAMILIES.jetbrains;
+  // If the chosen stack already includes MesloLGL Nerd Font, return as-is.
+  // Otherwise prepend detected Nerd Font for maximum glyph coverage.
+  if (chosen.stack.includes("Nerd Font") || id === "system") {
+    return chosen.stack;
+  }
+  return `${detectMonoFontFamily()}, ${chosen.stack}`;
 }

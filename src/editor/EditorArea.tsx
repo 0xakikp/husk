@@ -4,9 +4,9 @@ import { initVimMode } from "monaco-vim";
 import { readFile, writeFile } from "../fs";
 import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
-import { fileIconUrl } from "../explorer/iconResolver";
+import { registerEditorApplyEdit } from "@/ai/editor/editorStore";
 
-const monacoTheme = (p: Prefs) => (p.theme === "dark" ? "vs-dark" : "vs");
+const monacoTheme = (p: Prefs) => (p.theme === "dark" ? "husk-black" : "vs");
 
 /** Editor options driven by preferences (theme handled separately). */
 function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.IGlobalEditorOptions {
@@ -25,6 +25,7 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
     stickyScroll: { enabled: p.editorStickyScroll },
     formatOnPaste: p.editorFormatOnPaste,
     scrollBeyondLastLine: false,
+    renderLineHighlight: p.editorLineHighlight,
   };
 }
 
@@ -67,13 +68,9 @@ function languageFor(path: string): string {
 export function EditorArea({
   files,
   activePath,
-  onSelect,
-  onClose,
 }: {
   files: OpenFile[];
   activePath: string | null;
-  onSelect: (path: string) => void;
-  onClose: (path: string) => void;
 }) {
   const prefs = usePrefs();
   const hostRef = useRef<HTMLDivElement>(null);
@@ -99,7 +96,29 @@ export function EditorArea({
       if (path && model) void writeFile(path, model.getValue());
     });
 
+    const unsub = registerEditorApplyEdit((search, replace) => {
+      const model = editor.getModel();
+      if (!model) return false;
+      const text = model.getValue();
+      const idx = text.indexOf(search);
+      if (idx < 0) return false;
+      const startPos = model.getPositionAt(idx);
+      const endPos = model.getPositionAt(idx + search.length);
+      model.pushEditOperations(
+        [],
+        [
+          {
+            range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
+            text: replace,
+          },
+        ],
+        () => null
+      );
+      return true;
+    });
+
     return () => {
+      unsub();
       vimRef.current?.dispose();
       vimRef.current = null;
       editor.dispose();
@@ -164,24 +183,6 @@ export function EditorArea({
 
   return (
     <div className="editor-area">
-      <div className="editor-tabs">
-        {files.map((f) => (
-          <div key={f.path} className={`etab${f.path === activePath ? " active" : ""}`}>
-            <button type="button" className="etab-label" onClick={() => onSelect(f.path)}>
-              <img src={fileIconUrl(f.name)} className="etab-img" alt="" />
-              {f.name}
-            </button>
-            <button
-              type="button"
-              className="etab-close"
-              aria-label={`Close ${f.name}`}
-              onClick={() => onClose(f.path)}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
       <div className="editor-host" ref={hostRef} />
       <div className="editor-vim-status" ref={statusRef} style={{ display: prefs.vimMode ? "block" : "none" }} />
     </div>

@@ -22,7 +22,7 @@ export function DiffDialog({
     if (initialLeft) void readFile(initialLeft).then((t) => original.setValue(t)).catch(() => {});
     if (initialRight) void readFile(initialRight).then((t) => modified.setValue(t)).catch(() => {});
     const editor = monaco.editor.createDiffEditor(hostRef.current, {
-      theme: getPrefs().theme === "dark" ? "vs-dark" : "vs",
+      theme: getPrefs().theme === "dark" ? "husk-black" : "vs",
       automaticLayout: true,
       originalEditable: true,
       renderSideBySide: true,

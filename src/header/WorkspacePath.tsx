@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useWorkspaceRoot, setWorkspaceRoot, pickWorkspaceFolder } from "../workspace/store";
+import { useWorkspaceRoot, gotoWorkspace, pickWorkspaceFolder } from "../workspace/store";
 
 const BM_KEY = "huskv2.bookmarks";
 
@@ -60,7 +60,7 @@ export function WorkspacePath() {
                   className="ws-bm-item"
                   title={p}
                   onClick={() => {
-                    setWorkspaceRoot(p);
+                    gotoWorkspace(p);
                     setOpen(false);
                   }}
                 >

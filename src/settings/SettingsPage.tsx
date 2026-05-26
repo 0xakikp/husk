@@ -1,20 +1,18 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { PROVIDERS, getProvider } from "../ai/providers";
-import { ModelDetect } from "../ai/ModelDetect";
+import { useMemo, useState } from "react";
+import { Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { useAgents, upsertAgent, removeAgent, newAgentId, type Agent } from "../ai/agents";
-import { loadConfig, saveConfig, useKey, setKey, type StoredConfig } from "../ai/store";
-import {
-  loadMcpServers,
-  addMcpServer,
-  updateMcpServer,
-  removeMcpServer,
-  type McpServerConfig,
-} from "../mcp/store";
-import { McpMarketplaceDialog } from "../mcp/McpMarketplaceDialog";
 import { GeneralSection } from "./GeneralSection";
 import { AboutSection } from "./AboutSection";
+import { ModelsSection } from "./ModelsSection";
+import { McpSection } from "./McpSection";
+import { ToolsSection } from "./ToolsSection";
+import { SectionHeader } from "./components/SectionHeader";
 
-type SectionId = "about" | "general" | "models" | "agents" | "mcp";
+type SectionId = "about" | "general" | "models" | "agents" | "mcp" | "tools";
 
 const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   { id: "about", label: "Manifest", keywords: ["about", "version", "build", "license"] },
@@ -38,6 +36,11 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
     label: "MCP",
     keywords: ["mcp", "server", "tool", "context", "protocol", "external"],
   },
+  {
+    id: "tools",
+    label: "Tools",
+    keywords: ["tool", "cli", "install", "recommended"],
+  },
 ];
 
 function scrollToSection(id: SectionId) {
@@ -59,45 +62,62 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   const show = (id: SectionId) => visible.some((s) => s.id === id);
 
   return (
-    <div className="settings-page">
-      <div className="settings-nav">
-        <div className="settings-tabs">
+    <div className="flex h-full flex-col overflow-hidden bg-background text-foreground select-none">
+      <div className="flex h-8 shrink-0 items-center justify-between bg-background px-3">
+        <div className="flex items-center gap-1">
           {SECTIONS.map((s) => (
             <button
               key={s.id}
               type="button"
-              className="settings-tab"
               onClick={() => scrollToSection(s.id)}
+              className="h-6 rounded-md px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               {s.label}
             </button>
           ))}
         </div>
-        <input
-          className="settings-search"
-          placeholder="Find setting…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button type="button" className="ai-icon" onClick={onClose} aria-label="Close settings">
-          ×
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="relative w-44">
+            <HugeiconsIcon
+              icon={Search01Icon}
+              size={14}
+              strokeWidth={1.5}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              placeholder="Find setting…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-7 rounded-full border-border/40 bg-muted/40 py-0 pl-8 pr-3 text-[11.5px]"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close settings"
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
+          </button>
+        </div>
       </div>
 
-      <main className="settings-main">
-        <div className="settings-content">
+      <main className="min-h-0 flex-1 overflow-y-auto px-8 pt-6 pb-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mx-auto w-full max-w-160">
           {visible.length === 0 ? (
-            <div className="settings-empty">No settings match “{search}”</div>
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              No settings match “{search}”
+            </div>
           ) : null}
           {show("about") ? (
-            <div id="settings-section-about">
+            <div id="settings-section-about" className="scroll-mt-6">
               <AboutSection />
             </div>
           ) : null}
           {show("general") ? (
             <>
               <SectionDivider />
-              <div id="settings-section-general">
+              <div id="settings-section-general" className="scroll-mt-6">
                 <GeneralSection />
               </div>
             </>
@@ -105,7 +125,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
           {show("models") ? (
             <>
               <SectionDivider />
-              <div id="settings-section-models">
+              <div id="settings-section-models" className="scroll-mt-6">
                 <ModelsSection />
               </div>
             </>
@@ -113,7 +133,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
           {show("agents") ? (
             <>
               <SectionDivider />
-              <div id="settings-section-agents">
+              <div id="settings-section-agents" className="scroll-mt-6">
                 <AgentsSection />
               </div>
             </>
@@ -121,8 +141,16 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
           {show("mcp") ? (
             <>
               <SectionDivider />
-              <div id="settings-section-mcp">
+              <div id="settings-section-mcp" className="scroll-mt-6">
                 <McpSection />
+              </div>
+            </>
+          ) : null}
+          {show("tools") ? (
+            <>
+              <SectionDivider />
+              <div id="settings-section-tools" className="scroll-mt-6">
+                <ToolsSection />
               </div>
             </>
           ) : null}
@@ -132,117 +160,17 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div className="settings-section-head">
-      <h2>{title}</h2>
-      {subtitle ? <p>{subtitle}</p> : null}
-    </div>
-  );
-}
-
-function SettingRow({
-  title,
-  description,
-  children,
-}: {
-  title: ReactNode;
-  description?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="setting-row">
-      <div className="setting-row-meta">
-        <span className="setting-row-title">{title}</span>
-        {description ? <span className="setting-row-desc">{description}</span> : null}
-      </div>
-      <div className="setting-row-control">{children}</div>
-    </div>
-  );
-}
-
 function SectionDivider() {
   return (
-    <div className="settings-divider">
-      <div className="settings-divider-line" />
-      <div className="settings-divider-dot" />
-      <div className="settings-divider-line" />
+    <div className="my-10 flex items-center gap-4">
+      <div className="h-[2px] flex-1 rounded-full bg-primary/20" />
+      <div className="size-1 rotate-45 bg-primary/30" />
+      <div className="h-[2px] flex-1 rounded-full bg-primary/20" />
     </div>
   );
 }
 
-function ModelsSection() {
-  const [config, setConfig] = useState<StoredConfig>(() => loadConfig());
-  const provider = getProvider(config.providerId);
-  const apiKey = useKey(provider.id);
 
-  const update = (patch: Partial<StoredConfig>) =>
-    setConfig((c) => {
-      const next = { ...c, ...patch };
-      saveConfig(next);
-      return next;
-    });
-
-  return (
-    <div>
-      <SectionHeader title="Models" subtitle="AI provider and credentials" />
-      <SettingRow title="Provider" description="Which service powers the AI panel.">
-        <select
-          className="setting-select"
-          value={config.providerId}
-          onChange={(e) => {
-            const p = getProvider(e.target.value);
-            update({ providerId: e.target.value, model: p.defaultModel, baseURL: p.baseURL ?? "" });
-          }}
-        >
-          {PROVIDERS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </SettingRow>
-      <SettingRow title="Model" description="Model id (editable).">
-        <input
-          className="setting-input"
-          value={config.model}
-          onChange={(e) => update({ model: e.target.value })}
-        />
-      </SettingRow>
-      {!provider.keyless ? (
-        <SettingRow title={`${provider.label} API key`} description="Stored in your OS keychain.">
-          <input
-            type="password"
-            className="setting-input"
-            value={apiKey}
-            placeholder="sk-…"
-            onChange={(e) => setKey(provider.id, e.target.value)}
-          />
-        </SettingRow>
-      ) : null}
-      {provider.configurableBaseURL ? (
-        <SettingRow title="Base URL" description="Endpoint for local / compatible providers.">
-          <input
-            className="setting-input"
-            value={config.baseURL}
-            placeholder="http://localhost:1234/v1"
-            onChange={(e) => update({ baseURL: e.target.value })}
-          />
-        </SettingRow>
-      ) : null}
-      {provider.kind === "openai-compatible" ? (
-        <SettingRow title="Available models" description="Detect models served by this endpoint.">
-          <ModelDetect
-            baseURL={config.baseURL || provider.baseURL || ""}
-            apiKey={apiKey}
-            current={config.model}
-            onPick={(m) => update({ model: m })}
-          />
-        </SettingRow>
-      ) : null}
-    </div>
-  );
-}
 
 function AgentsSection() {
   const agents = useAgents();
@@ -262,178 +190,77 @@ function AgentsSection() {
   };
 
   return (
-    <div>
-      <SectionHeader title="Agents" subtitle="Named assistant personas for the AI panel" />
-      {agents.map((a) => (
-        <SettingRow key={a.id} title={a.name} description={a.builtIn ? "Built-in preset" : "Custom"}>
-          {a.builtIn ? (
-            <span className="agent-tag">preset</span>
-          ) : (
-            <div className="agent-row-actions">
-              <button type="button" onClick={() => setEditing(a)}>
-                Edit
-              </button>
-              <button type="button" onClick={() => removeAgent(a.id)}>
-                Delete
-              </button>
+    <div className="flex flex-col gap-7">
+      <SectionHeader title="Agents" description="Named assistant personas for the AI panel." />
+      <div className="flex flex-col gap-2">
+        {agents.map((a) => (
+          <div
+            key={a.id}
+            className="flex items-center justify-between gap-4 rounded border border-border/40 bg-muted/20 px-3 py-2.5"
+          >
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[12.5px] font-medium text-foreground">{a.name}</span>
+              <span className="text-[10.5px] text-muted-foreground">
+                {a.builtIn ? "Built-in preset" : "Custom"}
+              </span>
             </div>
-          )}
-        </SettingRow>
-      ))}
+            {a.builtIn ? (
+              <span className="rounded-full border border-border/40 bg-card px-2 py-0.5 text-[10px] text-muted-foreground">
+                preset
+              </span>
+            ) : (
+              <div className="flex shrink-0 items-center gap-1">
+                <Button variant="ghost" size="xs" onClick={() => setEditing(a)}>
+                  Edit
+                </Button>
+                <Button variant="ghost" size="xs" onClick={() => removeAgent(a.id)}>
+                  Delete
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
       {editing ? (
-        <div className="agent-editor">
-          <input
-            className="setting-input"
+        <div className="flex flex-col gap-2 rounded border border-border/40 bg-muted/20 p-3">
+          <Input
             placeholder="Agent name"
             value={editing.name}
             onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+            className="h-8 bg-background text-[12px]"
           />
-          <input
-            className="setting-input"
+          <Input
             placeholder="Model id override (optional)"
             value={editing.model ?? ""}
             onChange={(e) => setEditing({ ...editing, model: e.target.value })}
+            className="h-8 bg-background text-[12px]"
           />
-          <textarea
-            className="agent-prompt"
+          <Textarea
             placeholder="System prompt"
             rows={5}
             value={editing.systemPrompt}
             onChange={(e) => setEditing({ ...editing, systemPrompt: e.target.value })}
+            className="bg-background text-[12px]"
           />
-          <div className="agent-row-actions">
-            <button type="button" onClick={save}>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={save}>
               Save
-            </button>
-            <button type="button" onClick={() => setEditing(null)}>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          className="settings-add"
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
           onClick={() => setEditing({ id: newAgentId(), name: "", systemPrompt: "", model: "" })}
         >
           + New agent
-        </button>
+        </Button>
       )}
-    </div>
-  );
-}
-
-function McpSection() {
-  const [servers, setServers] = useState<McpServerConfig[]>(() => loadMcpServers());
-  const [adding, setAdding] = useState(false);
-  const [browsing, setBrowsing] = useState(false);
-  const [name, setName] = useState("");
-  const [command, setCommand] = useState("npx");
-  const [argsText, setArgsText] = useState("");
-
-  const refresh = () => setServers(loadMcpServers());
-
-  const add = () => {
-    if (!name.trim() || !command.trim()) return;
-    addMcpServer({
-      name: name.trim(),
-      command: command.trim(),
-      args: argsText.trim() ? argsText.trim().split(/\s+/) : [],
-      env: {},
-      enabled: true,
-    });
-    setName("");
-    setCommand("npx");
-    setArgsText("");
-    setAdding(false);
-    refresh();
-  };
-
-  return (
-    <div>
-      <SectionHeader title="MCP" subtitle="Model Context Protocol servers — extra tools for the AI" />
-      <div className="mcp-body">
-        {servers.length === 0 && !adding ? (
-          <p className="setting-row-desc">
-            No servers yet. Add one (e.g. command <code>npx</code>, args{" "}
-            <code>-y @modelcontextprotocol/server-filesystem ~/</code>) to give the AI extra
-            tools.
-          </p>
-        ) : null}
-
-        {servers.map((s) => (
-          <div key={s.id} className="rb-item">
-            <input
-              type="checkbox"
-              className="setting-check"
-              checked={s.enabled}
-              title="Enabled"
-              onChange={(e) => {
-                updateMcpServer(s.id, { enabled: e.target.checked });
-                refresh();
-              }}
-            />
-            <div className="rb-meta">
-              <span className="rb-name">{s.name}</span>
-              <span className="rb-steps">
-                {s.command} {s.args.join(" ")}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="ai-icon"
-              aria-label={`Remove ${s.name}`}
-              onClick={() => {
-                removeMcpServer(s.id);
-                refresh();
-              }}
-            >
-              🗑
-            </button>
-          </div>
-        ))}
-
-        {adding ? (
-          <div className="mcp-add">
-            <label className="rb-field">
-              <span>Name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Filesystem" />
-            </label>
-            <label className="rb-field">
-              <span>Command</span>
-              <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="npx" />
-            </label>
-            <label className="rb-field">
-              <span>Arguments</span>
-              <input
-                value={argsText}
-                onChange={(e) => setArgsText(e.target.value)}
-                placeholder="-y @modelcontextprotocol/server-filesystem ~/"
-              />
-            </label>
-            <div className="modal-actions">
-              <button type="button" onClick={() => setAdding(false)}>
-                Cancel
-              </button>
-              <button type="button" className="primary" onClick={add}>
-                Add server
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="mcp-actions">
-            <button type="button" className="rb-new" onClick={() => setAdding(true)}>
-              + Add server
-            </button>
-            <button type="button" className="rb-new" onClick={() => setBrowsing(true)}>
-              Browse catalog
-            </button>
-          </div>
-        )}
-      </div>
-      {browsing ? (
-        <McpMarketplaceDialog onClose={() => setBrowsing(false)} onAdded={refresh} />
-      ) : null}
     </div>
   );
 }

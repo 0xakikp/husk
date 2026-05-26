@@ -104,17 +104,39 @@ if [ -z "$__HUSK_HOOKS_LOADED" ]; then
     printf '\e]133;A\e\\'
   }
 
+  # Capture command text for terminal vitals (bash 4.4+ via PS0)
+  __husk_last_cmd=""
+  __husk_skip_debug=0
+  __husk_debug_trap() {
+    if [ "$__husk_skip_debug" -eq 1 ]; then
+      __husk_skip_debug=0
+      return
+    fi
+    # Skip if this is a shell builtin / function / prompt command
+    case "$BASH_COMMAND" in
+      _husk_precmd*|__husk_*|"["*|"printf "*|*"\e]"*) return ;;
+    esac
+    __husk_last_cmd="$BASH_COMMAND"
+  }
+  __husk_ps0() {
+    if [ -n "$__husk_last_cmd" ]; then
+      printf '\e]778;husk;cmd;%s\e\\' "$__husk_last_cmd"
+      __husk_last_cmd=""
+    fi
+    printf '\e]133;C\e\\'
+    __husk_skip_debug=1
+  }
+
   case ":${PROMPT_COMMAND:-}:" in
     *":_husk_precmd:"*) ;;
     *) PROMPT_COMMAND="_husk_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
   esac
 
-  # Pre-exec marker via PS0 (bash 4.4+). PS0 is expanded just before a command
-  # runs — cleaner than a DEBUG trap, which would clobber user traps and fire
-  # on every command including inside PROMPT_COMMAND.
+  # Pre-exec marker + command capture via PS0 (bash 4.4+).
   if [ "${BASH_VERSINFO[0]:-0}" -gt 4 ] \
      || { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -ge 4 ]; }; then
-    PS0='\[\e]133;C\e\\\]'"${PS0:-}"
+    PS0='$(__husk_ps0)'"${PS0:-}"
+    trap '__husk_debug_trap' DEBUG
   fi
 
   _husk_precmd

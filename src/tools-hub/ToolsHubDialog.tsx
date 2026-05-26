@@ -29,7 +29,7 @@ const TOOLS: Tool[] = [
   { id: "zellij", bin: "zellij", name: "zellij", description: "A terminal workspace and multiplexer", install: "brew install zellij" },
 ];
 
-export function ToolsHubDialog({ onClose }: { onClose: () => void }) {
+export function ToolsHubDialog({ onClose, inline }: { onClose?: () => void; inline?: boolean }) {
   const [installed, setInstalled] = useState<Set<string> | null>(null);
 
   useEffect(() => {
@@ -45,14 +45,14 @@ export function ToolsHubDialog({ onClose }: { onClose: () => void }) {
   const install = (t: Tool) => {
     if (runInActiveTerminal(t.install)) {
       toast({ title: `Installing ${t.name}…`, variant: "info" });
-      onClose();
+      onClose?.();
     } else {
       toast({ title: "No active terminal", variant: "error" });
     }
   };
 
   return (
-    <Modal title="Tools" onClose={onClose}>
+    <Modal title="Integrations" onClose={onClose} inline={inline}>
           <p className="rb-empty" style={{ margin: 0 }}>
             Popular CLI tools — “Install” runs the Homebrew command in the active terminal.
           </p>

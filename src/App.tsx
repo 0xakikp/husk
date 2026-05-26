@@ -1,7 +1,30 @@
-import { useState, useEffect, type MouseEvent } from "react";
-import { TerminalTabs } from "./TerminalTabs";
-import { AiPanel } from "./ai/AiPanel";
-import { AiMiniWindow } from "./ai/AiMiniWindow";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
+import { TerminalStack } from "./TerminalStack";
+import { TerminalBottomBar } from "./terminal/TerminalBottomBar";
+import { runInActiveTerminal } from "./ai/terminalContext";
+import { useTerminalTabs } from "./useTerminalTabs";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Search01Icon,
+  SidebarLeftIcon,
+  SquareLockPasswordIcon,
+  Moon02Icon,
+  Sun03Icon,
+  Settings01Icon,
+  PlusSignIcon,
+  Cancel01Icon,
+  ComputerTerminal02Icon,
+  PencilEdit02Icon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
+import { AiFloatingBubble } from "./ai/AiFloatingBubble";
+import { AiEditorPane } from "./ai/editor/AiEditorPane";
+import { toggleBubble } from "./ai/bubbleStore";
+import { setAiQueryListener } from "./ai/terminalInput";
 import { FileExplorer } from "./explorer/FileExplorer";
 import { EditorArea, type OpenFile } from "./editor/EditorArea";
 import { RunbooksDialog } from "./workflows/RunbooksDialog";
@@ -14,71 +37,532 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ToastContainer, toast } from "./toast";
 import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
-import { cn } from "@/lib/utils";
 import { WelcomeDialog } from "./welcome/WelcomeDialog";
 import { CommandPalette, type Command } from "./command-palette/CommandPalette";
-import { SnippetsDialog } from "./snippets/SnippetsDialog";
+import { SnippetsDropdown } from "./snippets/SnippetsDropdown";
 import { ToolsHubDialog } from "./tools-hub/ToolsHubDialog";
+import { ToolsHubView } from "./tools-hub/ToolsHubView";
 import { JobsDialog } from "./jobs/JobsDialog";
 import { DockerView } from "./docker/DockerView";
 import { KubernetesView } from "./kubernetes/KubernetesView";
 import { TerraformView } from "./terraform/TerraformView";
-import { AwsProfilesDialog } from "./aws-profiles/AwsProfilesDialog";
 import { RemotesView } from "./remotes/RemotesView";
 import { GithubIssuesDialog } from "./github-issues/GithubIssuesDialog";
 import { CiCdDialog } from "./ci-cd/CiCdDialog";
-import { ClipboardManager } from "./clipboard/ClipboardManager";
+import { ClipboardDropdown } from "./clipboard/ClipboardDropdown";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
 import { DiffDialog } from "./diff/DiffDialog";
 import { pickWorkspaceFolder } from "./workspace/store";
 import { SourceControlPanel } from "./git/SourceControlPanel";
 import { GitHistoryDialog } from "./git/GitHistoryDialog";
+import { GitGraphPanel } from "./git/GitGraphPanel";
+import { IssuesPanel } from "./git/IssuesPanel";
 import { ShortcutsDialog } from "./shortcuts/ShortcutsDialog";
 import { StatusBar } from "./statusbar/StatusBar";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import type { OpenPanelKind } from "./git/types";
 import { SuggestDialog, ExplainDialog } from "./ai/AssistDialogs";
 import { readActiveTerminal, getActiveTerminalExit } from "./ai/terminalContext";
 import { PreviewDialog } from "./preview/PreviewDialog";
-import { SidebarRail } from "./sidebar/SidebarRail";
-import { WorkspacePath } from "./header/WorkspacePath";
+import { SidebarRail, type SidebarViewId } from "./sidebar/SidebarRail";
+import { fileIconUrl } from "./explorer/iconResolver";
+import { PathBar } from "./header/PathBar";
+import type { TermTab } from "./useTerminalTabs";
 import "./App.css";
 
-const tbBtn =
-  "inline-flex items-center justify-center min-w-[30px] h-6 px-1.5 rounded-md border border-border bg-secondary text-[13px] leading-none text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer";
-const tbActive = "bg-accent text-accent-foreground";
+/* ── Header helpers ─────────────────────────────────────────────────────── */
+
+function ThemeToggle() {
+  const theme = usePrefs().theme;
+  const isDark = theme === "dark";
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+      onClick={() => setPrefs({ theme: isDark ? "light" : "dark" })}
+      title={isDark ? "Switch to light theme" : "Switch to dark theme"}
+    >
+      <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} size={16} strokeWidth={1.75} />
+    </Button>
+  );
+}
+
+
+/* ── TabBar (husk v1 visual style, huskv2 data model) ─────────────────── */
+
+type TabChipProps = {
+  active: boolean;
+  onClick: () => void;
+  onClose?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  onDoubleClick?: () => void;
+  children: React.ReactNode;
+};
+
+function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, children }: TabChipProps) {
+  return (
+    <div
+      onContextMenu={onContextMenu}
+      onDoubleClick={onDoubleClick}
+      className={cn(
+        "group relative flex h-6 shrink-0 items-center gap-1.5 rounded-md text-xs transition-colors",
+        onClose ? "pr-1" : "pr-2",
+        active ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <button type="button" onClick={onClick} className="flex min-w-0 items-center gap-1.5 pl-2">
+        {children}
+      </button>
+      {onClose ? (
+        <button
+          type="button"
+          aria-label="Close tab"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+        >
+          <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function TabBar({
+  termTabs,
+  openFiles,
+  active,
+  onSelectTerm,
+  onSelectFile,
+  onCloseTerm,
+  onCloseFile,
+  onNewTerm,
+  onRenameTerm,
+  settingsOpen,
+  onSelectSettings,
+  onCloseSettings,
+}: {
+  termTabs: TermTab[];
+  openFiles: OpenFile[];
+  active: ActiveTab;
+  onSelectTerm: (id: number) => void;
+  onSelectFile: (path: string) => void;
+  onCloseTerm: (id: number) => void;
+  onCloseFile: (path: string) => void;
+  onNewTerm: () => void;
+  onRenameTerm: (id: number, title: string) => void;
+  settingsOpen: boolean;
+  onSelectSettings: () => void;
+  onCloseSettings: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; kind: "term"; id: number } | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const canClose = termTabs.length + openFiles.length > 1;
+
+  // Horizontal wheel scroll
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if (el.scrollWidth <= el.clientWidth) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const beginRename = (id: number, current: string) => {
+    setMenu(null);
+    setEditValue(current);
+    setEditingId(id);
+  };
+  const commitRename = () => {
+    if (editingId != null && editValue.trim()) onRenameTerm(editingId, editValue.trim());
+    setEditingId(null);
+  };
+
+  return (
+    <div
+      ref={scrollRef}
+      data-tauri-drag-region
+      className="min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <div className="flex w-max items-center gap-0.5">
+        {termTabs.map((t) =>
+          editingId === t.id ? (
+            <div
+              key={`t${t.id}`}
+              className="flex h-6 shrink-0 items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground"
+            >
+              <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} strokeWidth={2} className="shrink-0" />
+              <input
+                autoFocus
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onFocus={(e) => e.currentTarget.select()}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitRename();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setEditingId(null);
+                  }
+                }}
+                className="w-24 min-w-0 bg-transparent text-foreground outline-none"
+              />
+            </div>
+          ) : (
+            <TabChip
+              key={`t${t.id}`}
+              active={active.kind === "term" && active.id === t.id}
+              onClick={() => onSelectTerm(t.id)}
+              onClose={canClose ? () => onCloseTerm(t.id) : undefined}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, kind: "term", id: t.id });
+              }}
+              onDoubleClick={() => beginRename(t.id, t.title)}
+            >
+              <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={2} className="shrink-0" />
+              <span className="truncate">{t.title}</span>
+            </TabChip>
+          ),
+        )}
+        {openFiles.map((f) => (
+          <TabChip
+            key={`f${f.path}`}
+            active={active.kind === "file" && active.path === f.path}
+            onClick={() => onSelectFile(f.path)}
+            onClose={() => onCloseFile(f.path)}
+          >
+            <img src={fileIconUrl(f.name)} className="size-3.5 shrink-0" alt="" />
+            <span className="truncate">{f.name}</span>
+          </TabChip>
+        ))}
+        {settingsOpen ? (
+          <TabChip
+            active={active.kind === "settings"}
+            onClick={onSelectSettings}
+            onClose={onCloseSettings}
+          >
+            <HugeiconsIcon icon={Settings01Icon} size={13} strokeWidth={2} className="shrink-0" />
+            <span className="truncate">Settings</span>
+          </TabChip>
+        ) : null}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0 rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="New tab"
+          onClick={onNewTerm}
+        >
+          <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
+        </Button>
+
+        {/* Simple context menu for rename/close */}
+        {menu ? (
+          <>
+            <div
+              className="fixed inset-0 z-50"
+              onClick={() => setMenu(null)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu(null);
+              }}
+            />
+            <div
+              className="fixed z-50 min-w-[140px] rounded-md border border-border bg-popover p-1 shadow-md"
+              style={{ top: menu.y, left: menu.x }}
+              role="menu"
+            >
+              {menu.kind === "term" ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                  onClick={() => beginRename(menu.id, termTabs.find((t) => t.id === menu.id)?.title ?? "")}
+                >
+                  <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.75} />
+                  <span className="flex-1 text-left">Rename</span>
+                </button>
+              ) : null}
+              {canClose ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                  onClick={() => {
+                    if (menu.kind === "term") onCloseTerm(menu.id);
+                    setMenu(null);
+                  }}
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
+                  <span className="flex-1 text-left">Close</span>
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ── Search inline (husk v1 compact style) ────────────────────────────── */
+
+function SearchInline() {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const expanded = open;
+
+  useEffect(() => {
+    if (expanded && inputRef.current) inputRef.current.focus();
+  }, [expanded]);
+
+  return (
+    <div className={cn("relative h-6 shrink-0", expanded ? "w-48" : "w-6")}>
+      {expanded ? (
+        <div className="absolute inset-0 flex items-center">
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={12}
+            strokeWidth={1.75}
+            className="pointer-events-none absolute left-2 text-muted-foreground"
+          />
+          <input
+            ref={inputRef}
+            value={q}
+            placeholder="Search"
+            className="h-6 w-full rounded-md border-0 bg-muted/80 py-0 pr-7 pl-7 text-[13px] text-foreground placeholder:text-muted-foreground/70 outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onChange={(e) => setQ(e.target.value)}
+            onBlur={() => {
+              if (!q) setOpen(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setQ("");
+                setOpen(false);
+              }
+            }}
+          />
+          {q && (
+            <button
+              type="button"
+              onClick={() => {
+                setQ("");
+                inputRef.current?.focus();
+              }}
+              className="absolute right-1.5 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          title="Search"
+          onClick={() => setOpen(true)}
+        >
+          <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.75} />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/* ── Window controls (non-macOS) ──────────────────────────────────────── */
+
+function WindowControls() {
+  const minimize = () => {
+    import("@tauri-apps/api/window").then((m) => m.getCurrentWindow().minimize());
+  };
+  const maximize = () => {
+    import("@tauri-apps/api/window").then(async (m) => {
+      const w = m.getCurrentWindow();
+      const maximized = await w.isMaximized();
+      if (maximized) w.unmaximize(); else w.maximize();
+    });
+  };
+  const close = () => {
+    import("@tauri-apps/api/window").then((m) => m.getCurrentWindow().close());
+  };
+
+  return (
+    <div className="flex items-center">
+      <button
+        type="button"
+        onClick={minimize}
+        className="inline-flex h-6 w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        aria-label="Minimize"
+      >
+        <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor"><rect width="10" height="1" /></svg>
+      </button>
+      <button
+        type="button"
+        onClick={maximize}
+        className="inline-flex h-6 w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        aria-label="Maximize"
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1"><rect x="0.5" y="0.5" width="9" height="9" rx="1" /></svg>
+      </button>
+      <button
+        type="button"
+        onClick={close}
+        className="inline-flex h-6 w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+        aria-label="Close"
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M1 1l8 8M9 1L1 9" /></svg>
+      </button>
+    </div>
+  );
+}
+
+/* ── Main App ─────────────────────────────────────────────────────────── */
+
+export type ActiveTab =
+  | { kind: "term"; id: number }
+  | { kind: "file"; path: string }
+  | { kind: "settings" }
+  | { kind: "git-graph" }
+  | { kind: "issues" };
+
+export type { OpenPanelKind } from "./git/types";
+
+const SIDEBAR_DEFAULT_WIDTH = 220;
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 480;
+const SIDEBAR_WIDTH_STORAGE_KEY = "husk.sidebar.width";
+const SIDEBAR_VIEW_STORAGE_KEY = "husk.sidebar.view";
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
+}
+
+function readSidebarWidth(): number {
+  try {
+    const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
+    return Number.isFinite(parsed) ? clampSidebarWidth(parsed) : SIDEBAR_DEFAULT_WIDTH;
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH;
+  }
+}
+
+function readSidebarView(): SidebarViewId {
+  try {
+    const stored = window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY);
+    const valid: SidebarViewId[] = [
+      "explorer", "source-control", "remotes", "workflows", "tools-hub",
+      "kubernetes", "ci-cd", "terraform", "docker",
+    ];
+    if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
+  } catch {}
+  return "explorer";
+}
 
 function App() {
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiWidth, setAiWidth] = useState(380);
   const [explorerOpen, setExplorerOpen] = useState(true);
-  const [runbooksOpen, setRunbooksOpen] = useState(false);
+  const [explorerWidth, setExplorerWidth] = useState(readSidebarWidth);
+  const sidebarWidthWriteTimerRef = useRef(0);
+  const [sidebarView, setSidebarView] = useState<SidebarViewId>(readSidebarView);
+
+  const persistSidebarView = useCallback((view: SidebarViewId) => {
+    setSidebarView(view);
+    try {
+      window.localStorage.setItem(SIDEBAR_VIEW_STORAGE_KEY, view);
+    } catch {}
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setExplorerOpen((v) => !v);
+  }, []);
+
+  const cycleSidebarView = useCallback(
+    (view: SidebarViewId) => {
+      const collapsed = !explorerOpen;
+      if (collapsed) {
+        setExplorerOpen(true);
+        if (view !== sidebarView) persistSidebarView(view);
+        return;
+      }
+      if (view === sidebarView) {
+        setExplorerOpen(false);
+        return;
+      }
+      persistSidebarView(view);
+    },
+    [persistSidebarView, sidebarView, explorerOpen],
+  );
+
+  const persistSidebarWidth = useCallback((next: number) => {
+    if (sidebarWidthWriteTimerRef.current) window.clearTimeout(sidebarWidthWriteTimerRef.current);
+    sidebarWidthWriteTimerRef.current = window.setTimeout(() => {
+      sidebarWidthWriteTimerRef.current = 0;
+      try {
+        window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(next));
+      } catch {}
+    }, 200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (sidebarWidthWriteTimerRef.current) window.clearTimeout(sidebarWidthWriteTimerRef.current);
+    };
+  }, []);
+
+  /* ── AI Editor Pane state ── */
+  const [aiPaneOpen, setAiPaneOpen] = useState(() => {
+    try { return window.localStorage.getItem("husk:ai-pane-open") === "true"; } catch { return false; }
+  });
+  const [aiPaneWidth, setAiPaneWidth] = useState(() => {
+    try { return Number(window.localStorage.getItem("husk:ai-pane-width") || "320"); } catch { return 320; }
+  });
+  const aiPaneWidthTimerRef = useRef(0);
+  const persistAiPaneWidth = useCallback((w: number) => {
+    if (aiPaneWidthTimerRef.current) window.clearTimeout(aiPaneWidthTimerRef.current);
+    aiPaneWidthTimerRef.current = window.setTimeout(() => {
+      aiPaneWidthTimerRef.current = 0;
+      try { window.localStorage.setItem("husk:ai-pane-width", String(w)); } catch {}
+    }, 200);
+  }, []);
+
+  /* ── Dialog state (unchanged from huskv2) ── */
   const [totpOpen, setTotpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [snippetsOpen, setSnippetsOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
-  const [miniOpen, setMiniOpen] = useState(false);
-  const [explainCtx, setExplainCtx] = useState<
-    { command: string; output: string; exitCode: number | null } | null
-  >(null);
-  const explainLastError = () =>
-    setExplainCtx({ command: "", output: readActiveTerminal(), exitCode: getActiveTerminalExit() });
+  const [explainCtx, setExplainCtx] = useState<{ command: string; output: string; exitCode: number | null } | null>(null);
+  const [pendingAiQuery, setPendingAiQuery] = useState<string | undefined>(undefined);
+  const explainLastError = () => setExplainCtx({ command: "", output: readActiveTerminal(), exitCode: getActiveTerminalExit() });
   const [dockerOpen, setDockerOpen] = useState(false);
   const [k8sOpen, setK8sOpen] = useState(false);
   const [terraformOpen, setTerraformOpen] = useState(false);
-  const [awsOpen, setAwsOpen] = useState(false);
-  const [remotesOpen, setRemotesOpen] = useState(false);
   const [githubOpen, setGithubOpen] = useState(false);
   const [cicdOpen, setCicdOpen] = useState(false);
-  const [clipboardOpen, setClipboardOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffPaths, setDiffPaths] = useState<{ left: string; right: string } | null>(null);
-  const [scOpen, setScOpen] = useState(false);
   const [gitHistoryOpen, setGitHistoryOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | undefined>(undefined);
+  const [openPanel, setOpenPanel] = useState<OpenPanelKind>(null);
+
   const prefs = usePrefs();
   useClipboardListener();
 
@@ -86,19 +570,14 @@ function App() {
     document.documentElement.dataset.theme = prefs.theme;
   }, [prefs.theme]);
 
-  // Expose the selected monospace font as --font-mono so CSS surfaces (file
-  // tree, logs, history) match the terminal/editor and follow the picker.
   useEffect(() => {
     document.documentElement.style.setProperty("--font-mono", fontStack(prefs.fontFamily));
   }, [prefs.fontFamily]);
 
-  // Load AI keys from the OS keychain (migrating any legacy localStorage keys).
   useEffect(() => {
     void initKeys();
   }, []);
 
-  // Terminal → GUI bridge: the `husk` shell command (OSC 777) drives the
-  // editor, preview, notifications and diff.
   useEffect(() => {
     setBridgeHandler((cmd) => {
       switch (cmd.kind) {
@@ -122,9 +601,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-    getCurrentWebview()
-      .setZoom(prefs.zoomLevel)
-      .catch(() => {});
+    setAiQueryListener((query) => {
+      setPendingAiQuery(query);
+    });
+    return () => setAiQueryListener(null);
+  }, []);
+
+  useEffect(() => {
+    getCurrentWebview().setZoom(prefs.zoomLevel).catch(() => {});
   }, [prefs.zoomLevel]);
 
   useEffect(() => {
@@ -133,15 +617,12 @@ function App() {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "=" || e.key === "+") {
         e.preventDefault();
-        e.stopPropagation();
         setPrefs({ zoomLevel: clamp(getPrefs().zoomLevel + 0.1) });
       } else if (e.key === "-" || e.key === "_") {
         e.preventDefault();
-        e.stopPropagation();
         setPrefs({ zoomLevel: clamp(getPrefs().zoomLevel - 0.1) });
       } else if (e.key === "0") {
         e.preventDefault();
-        e.stopPropagation();
         setPrefs({ zoomLevel: 1 });
       }
     };
@@ -154,9 +635,9 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen(true);
-      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
-        setMiniOpen((v) => !v);
+        setAiPaneOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -164,29 +645,26 @@ function App() {
   }, []);
 
   const commands: Command[] = [
-    { id: "ai", label: "Toggle AI panel", run: () => setAiOpen((v) => !v) },
-    { id: "explorer", label: "Toggle file explorer", run: () => setExplorerOpen((v) => !v) },
+    { id: "explorer", label: "Toggle file explorer", run: () => toggleSidebar() },
     { id: "open-folder", label: "Open folder…", run: () => void pickWorkspaceFolder() },
     { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
     { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
-    { id: "runbooks", label: "Open runbooks", run: () => setRunbooksOpen(true) },
+    { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
     { id: "totp", label: "Open authenticator (2FA)", run: () => setTotpOpen(true) },
-    { id: "snippets", label: "Open snippets", run: () => setSnippetsOpen(true) },
-    { id: "tools", label: "Open tools", run: () => setToolsOpen(true) },
+    { id: "tools", label: "Open integrations", run: () => { cycleSidebarView("tools-hub"); } },
+    { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
     { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
     { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
     { id: "explain", label: "Explain last error (AI)", run: explainLastError },
-    { id: "mini", label: "Toggle quick AI window", run: () => setMiniOpen((v) => !v) },
+    { id: "ai-pane", label: "Toggle AI panel", hint: "Ctrl+Shift+L", run: () => setAiPaneOpen((v) => !v) },
     { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
     { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
     { id: "terraform", label: "Open Terraform", run: () => setTerraformOpen(true) },
-    { id: "aws", label: "Open AWS profiles", run: () => setAwsOpen(true) },
-    { id: "remotes", label: "Open Remotes / SSH", run: () => setRemotesOpen(true) },
+    { id: "remotes", label: "Open Remotes / SSH", run: () => { cycleSidebarView("remotes"); } },
     { id: "github", label: "Open GitHub", run: () => setGithubOpen(true) },
     { id: "cicd", label: "Open CI / CD", run: () => setCicdOpen(true) },
-    { id: "clipboard", label: "Open clipboard history", run: () => setClipboardOpen(true) },
     { id: "diff", label: "Open diff viewer", run: () => { setDiffPaths(null); setDiffOpen(true); } },
-    { id: "source-control", label: "Open source control", run: () => setScOpen(true) },
+    { id: "source-control", label: "Open source control", run: () => { cycleSidebarView("source-control"); } },
     { id: "git-history", label: "Open git history", run: () => setGitHistoryOpen(true) },
     { id: "shortcuts", label: "Keyboard shortcuts", run: () => setShortcutsOpen(true) },
     { id: "preview", label: "Open preview", run: () => { setPreviewPath(undefined); setPreviewOpen(true); } },
@@ -196,12 +674,50 @@ function App() {
       run: () => setPrefs({ theme: prefs.theme === "dark" ? "light" : "dark" }),
     },
   ];
+
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
+  const term = useTerminalTabs();
+  const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues">("term");
+
+  const openSettings = () => {
+    setSettingsOpen(true);
+    setActiveKind("settings");
+  };
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    setActiveKind((k) => (k === "settings" ? "term" : k));
+  };
+  const openGitGraph = () => {
+    setActiveKind("git-graph");
+    setOpenPanel("git-graph");
+  };
+  const closeGitGraph = () => {
+    setOpenPanel(null);
+    setActiveKind((k) => (k === "git-graph" ? "term" : k));
+  };
+  const openIssues = () => {
+    setActiveKind("issues");
+    setOpenPanel("issues");
+  };
+  const closeIssues = () => {
+    setOpenPanel(null);
+    setActiveKind((k) => (k === "issues" ? "term" : k));
+  };
 
   const openFile = (path: string, name: string) => {
     setOpenFiles((prev) => (prev.some((f) => f.path === path) ? prev : [...prev, { path, name }]));
     setActiveFile(path);
+    setActiveKind("file");
+  };
+
+  const selectTerm = (id: number) => {
+    term.setActiveId(id);
+    setActiveKind("term");
+  };
+  const selectFile = (path: string) => {
+    setActiveFile(path);
+    setActiveKind("file");
   };
 
   const closeFile = (path: string) => {
@@ -209,167 +725,355 @@ function App() {
     const next = openFiles.filter((f) => f.path !== path);
     setOpenFiles(next);
     if (activeFile === path) {
-      setActiveFile(next.length ? next[Math.max(0, idx - 1)].path : null);
+      if (next.length) {
+        setActiveFile(next[Math.max(0, idx - 1)].path);
+      } else {
+        setActiveFile(null);
+        setActiveKind("term");
+      }
     }
   };
 
-  const startResize = (e: MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = aiWidth;
-    const onMove = (ev: globalThis.MouseEvent) => {
-      setAiWidth(Math.min(720, Math.max(280, startW + (startX - ev.clientX))));
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-
-  const hasEditor = openFiles.length > 0;
+  const active: ActiveTab =
+    activeKind === "settings"
+      ? { kind: "settings" }
+      : activeKind === "file" && activeFile
+        ? { kind: "file", path: activeFile }
+        : { kind: "term", id: term.activeId };
 
   return (
-    <div className="app">
-      <header className="flex items-center gap-2 h-[34px] px-3 border-b border-border bg-card select-none">
-        <img src="/logo.png" className="h-4 w-4 object-contain" alt="huskv2" />
-        <span className="text-xs font-semibold tracking-[0.02em] text-muted-foreground">huskv2</span>
-        <WorkspacePath />
-        <div className="flex-1" />
-        <button
-          type="button"
-          className={cn(tbBtn, explorerOpen && tbActive)}
-          onClick={() => setExplorerOpen((v) => !v)}
-          title="Toggle explorer"
+    <TooltipProvider>
+      <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <header
+          data-tauri-drag-region
+          className={cn(
+            "relative flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 bg-background select-none",
+            IS_MAC ? "pr-2 pl-[72px]" : "pr-0 pl-2",
+          )}
         >
-          ☰
-        </button>
-        <button type="button" className={tbBtn} onClick={() => setTotpOpen(true)} title="Authenticator (2FA)">
-          🔑
-        </button>
-        <button type="button" className={tbBtn} onClick={() => setRunbooksOpen(true)} title="Runbooks">
-          ⧉
-        </button>
-        <button
-          type="button"
-          className={cn(tbBtn, aiOpen && tbActive)}
-          onClick={() => setAiOpen((v) => !v)}
-          title="Toggle AI panel"
-        >
-          ✦
-        </button>
-        <button
-          type="button"
-          className={tbBtn}
-          onClick={() => setPrefs({ theme: prefs.theme === "dark" ? "light" : "dark" })}
-          title="Toggle light / dark"
-        >
-          {prefs.theme === "dark" ? "☾" : "☀"}
-        </button>
-        <button
-          type="button"
-          className={cn(tbBtn, settingsOpen && tbActive)}
-          onClick={() => setSettingsOpen((v) => !v)}
-          title="Settings"
-        >
-          ⚙
-        </button>
-      </header>
-
-      {settingsOpen ? (
-        <SettingsPage onClose={() => setSettingsOpen(false)} />
-      ) : (
-      <div className="workspace">
-        <SidebarRail
-          explorerOpen={explorerOpen}
-          onFiles={() => setExplorerOpen((v) => !v)}
-          onSourceControl={() => setScOpen(true)}
-          onGitHistory={() => setGitHistoryOpen(true)}
-          onSearch={() => setPaletteOpen(true)}
-        />
-        {explorerOpen ? (
-          <div className="workspace-explorer">
-            <FileExplorer onOpenFile={openFile} />
+          {/* Left: sidebar toggle */}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              onClick={toggleSidebar}
+              title="Toggle sidebar"
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <HugeiconsIcon icon={SidebarLeftIcon} size={16} strokeWidth={1.75} />
+            </Button>
           </div>
-        ) : null}
 
-        <div className="workspace-main">
-          {hasEditor ? (
-            <div className="editor-region">
-              <EditorArea
-                files={openFiles}
-                activePath={activeFile}
-                onSelect={setActiveFile}
-                onClose={closeFile}
-              />
-            </div>
-          ) : null}
-          <div className={`terminal-region${hasEditor ? " split" : ""}`}>
-            <TerminalTabs />
-          </div>
-        </div>
+          {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}
+          {IS_MAC && <span className="mr-1 h-full w-px shrink-0 bg-border" />}
 
-        {aiOpen ? (
-          <>
-            <div
-              className="resize-handle"
-              role="separator"
-              aria-orientation="vertical"
-              onMouseDown={startResize}
+          {/* Center: tabs */}
+          <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch" data-tauri-drag-region>
+            <TabBar
+              termTabs={term.tabs}
+              openFiles={openFiles}
+              active={active}
+              onSelectTerm={selectTerm}
+              onSelectFile={selectFile}
+              onCloseTerm={term.closeTab}
+              onCloseFile={closeFile}
+              onNewTerm={term.addTab}
+              onRenameTerm={term.renameTab}
+              settingsOpen={settingsOpen}
+              onSelectSettings={() => setActiveKind("settings")}
+              onCloseSettings={closeSettings}
             />
-            <div className="workspace-ai" style={{ width: aiWidth }}>
-              <AiPanel onClose={() => setAiOpen(false)} />
+            <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
+          </div>
+
+          {/* Right: search + actions */}
+          <SearchInline />
+
+          <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Authenticator (2FA)"
+            onClick={() => setTotpOpen(true)}
+          >
+            <HugeiconsIcon icon={SquareLockPasswordIcon} size={14} strokeWidth={1.75} />
+          </Button>
+          <ClipboardDropdown />
+          <SnippetsDropdown />
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "size-6 shrink-0 rounded-md",
+              activeKind === "file" && aiPaneOpen
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+            title={activeKind === "file" ? "Toggle AI panel (Ctrl+Shift+L)" : "Toggle AI chat"}
+            onClick={() => {
+              if (activeKind === "file") {
+                setAiPaneOpen((v) => !v);
+              } else {
+                toggleBubble();
+              }
+            }}
+          >
+            <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "size-6 shrink-0 rounded-md",
+              activeKind === "settings"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+            title="Settings"
+            onClick={openSettings}
+          >
+            <HugeiconsIcon icon={Settings01Icon} size={15} strokeWidth={1.75} />
+          </Button>
+
+          {USE_CUSTOM_WINDOW_CONTROLS && (
+            <>
+              <span className="ml-1 h-5 w-px shrink-0 bg-border" />
+              <WindowControls />
+            </>
+          )}
+        </header>
+
+        {/* ── Path bar (cwd / breadcrumb) ────────────────────────── */}
+        <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
+
+        {/* ── Main workspace (manual layout, husk v1 visual) ─────── */}
+        <main className="zoom-content flex min-h-0 flex-1 overflow-hidden">
+          {/* Sidebar */}
+          {explorerOpen && (
+            <>
+              <div
+                className="flex flex-col border-r border-[var(--border)] bg-[var(--bg)]"
+                style={{ width: explorerWidth, minWidth: SIDEBAR_MIN_WIDTH, maxWidth: SIDEBAR_MAX_WIDTH }}
+              >
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  {sidebarView === "explorer" ? (
+                    <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      <FileExplorer onOpenFile={openFile} activeFile={activeFile} />
+                    </div>
+                  ) : sidebarView === "source-control" ? (
+                    <SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />
+                  ) : sidebarView === "remotes" ? (
+                    <RemotesView inline />
+                  ) : sidebarView === "workflows" ? (
+                    <RunbooksDialog inline />
+                  ) : sidebarView === "tools-hub" ? (
+                    <ToolsHubView onSelectView={(v) => persistSidebarView(v)} />
+                  ) : sidebarView === "kubernetes" ? (
+                    <KubernetesView inline />
+                  ) : sidebarView === "ci-cd" ? (
+                    <CiCdDialog inline />
+                  ) : sidebarView === "terraform" ? (
+                    <TerraformView inline />
+                  ) : sidebarView === "docker" ? (
+                    <DockerView inline />
+                  ) : null}
+                </div>
+                <SidebarRail
+                  view={sidebarView}
+                  onSelectView={(v) => cycleSidebarView(v)}
+                  onCommandPalette={() => setPaletteOpen(true)}
+                />
+              </div>
+              {/* Sidebar resize handle */}
+              <div
+                className="relative flex w-px shrink-0 cursor-col-resize items-center justify-center bg-border/60 hover:bg-border"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startX = e.clientX;
+                  const startW = explorerWidth;
+                  let final = startW;
+                  const onMove = (ev: globalThis.MouseEvent) => {
+                    final = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startW + (ev.clientX - startX)));
+                    setExplorerWidth(final);
+                  };
+                  const onUp = () => {
+                    window.removeEventListener("mousemove", onMove);
+                    window.removeEventListener("mouseup", onUp);
+                    persistSidebarWidth(final);
+                  };
+                  window.addEventListener("mousemove", onMove);
+                  window.addEventListener("mouseup", onUp);
+                }}
+              />
+            </>
+          )}
+
+          {/* Workspace */}
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="relative flex min-h-0 min-w-0 flex-1">
+              {/* Terminal layer */}
+              <div
+                className={cn(
+                  "absolute inset-0 flex flex-col",
+                  activeKind !== "term" && "invisible pointer-events-none",
+                )}
+                aria-hidden={activeKind !== "term"}
+              >
+                <div className="min-h-0 flex-1">
+                  <TerminalStack term={term} viewActive={activeKind === "term"} />
+                </div>
+                <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
+              </div>
+
+              {/* Editor + AI pane row — AI panel overlays editor so nothing
+                  resizes when the panel toggles.  No flex/grid reflow, no
+                  Monaco automaticLayout slide. */}
+              <div
+                className={cn(
+                  "relative min-h-0 min-w-0 flex-1",
+                  activeKind !== "file" && "invisible pointer-events-none",
+                )}
+                aria-hidden={activeKind !== "file"}
+              >
+                {/* Editor layer — ALWAYS fills the whole container. */}
+                {openFiles.length > 0 ? (
+                  <div className="absolute inset-0 overflow-hidden">
+                    <EditorArea files={openFiles} activePath={activeFile} />
+                  </div>
+                ) : null}
+
+                {/* AI panel — always at fixed width; only opacity toggles.
+                    No width/minWidth changes = zero layout reflow = no slide. */}
+                <div
+                  className="ai-pane-static no-drag-region absolute top-0 right-0 bottom-0 z-10 flex flex-col overflow-hidden border-l border-border bg-background"
+                  style={{
+                    width: aiPaneWidth,
+                    minWidth: 260,
+                    maxWidth: 500,
+                    opacity: aiPaneOpen && openFiles.length > 0 ? 1 : 0,
+                    pointerEvents: aiPaneOpen && openFiles.length > 0 ? "auto" : "none",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {/* Resize strip on left edge */}
+                  <div
+                    className="absolute top-0 bottom-0 left-0 z-20 w-1 cursor-col-resize select-none hover:bg-border/40"
+                    style={{ userSelect: "none" }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const startX = e.clientX;
+                      const startW = aiPaneWidth;
+                      let final = startW;
+                      const onMove = (ev: globalThis.MouseEvent) => {
+                        final = Math.min(500, Math.max(260, startW - (ev.clientX - startX)));
+                        setAiPaneWidth(final);
+                      };
+                      const onUp = () => {
+                        window.removeEventListener("mousemove", onMove);
+                        window.removeEventListener("mouseup", onUp);
+                        persistAiPaneWidth(final);
+                      };
+                      window.addEventListener("mousemove", onMove);
+                      window.addEventListener("mouseup", onUp);
+                    }}
+                  />
+                  <AiEditorPane
+                    activePath={activeFile}
+                    openFiles={openFiles}
+                    onClose={() => setAiPaneOpen(false)}
+                  />
+                </div>
+              </div>
+
+              {/* Settings layer */}
+              {settingsOpen ? (
+                <div
+                  className={cn(
+                    "absolute inset-0",
+                    activeKind !== "settings" && "invisible pointer-events-none",
+                  )}
+                  aria-hidden={activeKind !== "settings"}
+                >
+                  <SettingsPage onClose={closeSettings} />
+                </div>
+              ) : null}
+              {/* Git Graph layer */}
+              {openPanel === "git-graph" && (
+                <div
+                  className={cn(
+                    "absolute inset-0",
+                    activeKind !== "git-graph" && "invisible pointer-events-none",
+                  )}
+                  aria-hidden={activeKind !== "git-graph"}
+                >
+                  <ErrorBoundary>
+                    <GitGraphPanel onClose={closeGitGraph} />
+                  </ErrorBoundary>
+                </div>
+              )}
+              {/* Issues layer */}
+              {openPanel === "issues" && (
+                <div
+                  className={cn(
+                    "absolute inset-0",
+                    activeKind !== "issues" && "invisible pointer-events-none",
+                  )}
+                  aria-hidden={activeKind !== "issues"}
+                >
+                  <ErrorBoundary>
+                    <IssuesPanel onClose={closeIssues} />
+                  </ErrorBoundary>
+                </div>
+              )}
             </div>
-          </>
+          </div>
+
+        </main>
+
+        {/* ── Status bar ─────────────────────────────────────────── */}
+        <StatusBar onExplainError={explainLastError} />
+
+        {/* ── Floating overlays ──────────────────────────────────── */}
+        {gitHistoryOpen ? <GitHistoryDialog onClose={() => setGitHistoryOpen(false)} /> : null}
+        {shortcutsOpen ? <ShortcutsDialog onClose={() => setShortcutsOpen(false)} /> : null}
+        {totpOpen ? <TotpDialog onClose={() => setTotpOpen(false)} /> : null}
+        {jobsOpen ? <JobsDialog onClose={() => setJobsOpen(false)} /> : null}
+        {activeKind !== "file" && <AiFloatingBubble pendingQuery={pendingAiQuery} />}
+        {suggestOpen ? <SuggestDialog onClose={() => setSuggestOpen(false)} /> : null}
+        {explainCtx ? (
+          <ExplainDialog
+            command={explainCtx.command}
+            output={explainCtx.output}
+            exitCode={explainCtx.exitCode}
+            onClose={() => setExplainCtx(null)}
+          />
         ) : null}
+        {dockerOpen ? <DockerView onClose={() => setDockerOpen(false)} /> : null}
+        {k8sOpen ? <KubernetesView onClose={() => setK8sOpen(false)} /> : null}
+        {terraformOpen ? <TerraformView onClose={() => setTerraformOpen(false)} /> : null}
+        {githubOpen ? <GithubIssuesDialog onClose={() => setGithubOpen(false)} /> : null}
+        {cicdOpen ? <CiCdDialog onClose={() => setCicdOpen(false)} /> : null}
+        {toolsOpen ? <ToolsHubDialog onClose={() => setToolsOpen(false)} /> : null}
+        {diffOpen ? (
+          <DiffDialog
+            initialLeft={diffPaths?.left}
+            initialRight={diffPaths?.right}
+            onClose={() => setDiffOpen(false)}
+          />
+        ) : null}
+        {previewOpen ? (
+          <PreviewDialog initialPath={previewPath} onClose={() => setPreviewOpen(false)} />
+        ) : null}
+        {!prefs.hasSeenWelcome ? <WelcomeDialog /> : null}
+        {paletteOpen ? (
+          <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
+        ) : null}
+        <ToastContainer />
       </div>
-      )}
-
-      <StatusBar onExplainError={explainLastError} />
-
-      {scOpen ? <SourceControlPanel onClose={() => setScOpen(false)} /> : null}
-      {gitHistoryOpen ? <GitHistoryDialog onClose={() => setGitHistoryOpen(false)} /> : null}
-      {shortcutsOpen ? <ShortcutsDialog onClose={() => setShortcutsOpen(false)} /> : null}
-      {runbooksOpen ? <RunbooksDialog onClose={() => setRunbooksOpen(false)} /> : null}
-      {totpOpen ? <TotpDialog onClose={() => setTotpOpen(false)} /> : null}
-      {snippetsOpen ? <SnippetsDialog onClose={() => setSnippetsOpen(false)} /> : null}
-      {toolsOpen ? <ToolsHubDialog onClose={() => setToolsOpen(false)} /> : null}
-      {jobsOpen ? <JobsDialog onClose={() => setJobsOpen(false)} /> : null}
-      {miniOpen ? <AiMiniWindow onClose={() => setMiniOpen(false)} /> : null}
-      {suggestOpen ? <SuggestDialog onClose={() => setSuggestOpen(false)} /> : null}
-      {explainCtx ? (
-        <ExplainDialog
-          command={explainCtx.command}
-          output={explainCtx.output}
-          exitCode={explainCtx.exitCode}
-          onClose={() => setExplainCtx(null)}
-        />
-      ) : null}
-      {dockerOpen ? <DockerView onClose={() => setDockerOpen(false)} /> : null}
-      {k8sOpen ? <KubernetesView onClose={() => setK8sOpen(false)} /> : null}
-      {terraformOpen ? <TerraformView onClose={() => setTerraformOpen(false)} /> : null}
-      {awsOpen ? <AwsProfilesDialog onClose={() => setAwsOpen(false)} /> : null}
-      {remotesOpen ? <RemotesView onClose={() => setRemotesOpen(false)} /> : null}
-      {githubOpen ? <GithubIssuesDialog onClose={() => setGithubOpen(false)} /> : null}
-      {cicdOpen ? <CiCdDialog onClose={() => setCicdOpen(false)} /> : null}
-      {clipboardOpen ? <ClipboardManager onClose={() => setClipboardOpen(false)} /> : null}
-      {diffOpen ? (
-        <DiffDialog
-          initialLeft={diffPaths?.left}
-          initialRight={diffPaths?.right}
-          onClose={() => setDiffOpen(false)}
-        />
-      ) : null}
-      {previewOpen ? (
-        <PreviewDialog initialPath={previewPath} onClose={() => setPreviewOpen(false)} />
-      ) : null}
-      {!prefs.hasSeenWelcome ? <WelcomeDialog /> : null}
-      {paletteOpen ? (
-        <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
-      ) : null}
-      <ToastContainer />
-    </div>
+    </TooltipProvider>
   );
 }
 

@@ -28,4 +28,27 @@ self.MonacoEnvironment = {
   },
 };
 
+// Pitch-black editor theme. vs-dark's background is #1e1e1e (grey); override
+// every surface Monaco paints so the editor matches the app's all-black chrome.
+monaco.editor.defineTheme("husk-black", {
+  base: "vs-dark",
+  inherit: true,
+  rules: [],
+  colors: {
+    "editor.background": "#000000",
+    "editorGutter.background": "#000000",
+    "editorLineNumber.background": "#000000",
+    "minimap.background": "#000000",
+    "editorStickyScroll.background": "#000000",
+    "editorStickyScrollHover.background": "#0a0a0a",
+    "breadcrumb.background": "#000000",
+    "editorWidget.background": "#0a0a0a",
+    "editorWidget.border": "#1f1f1f",
+    "editorSuggestWidget.background": "#0a0a0a",
+    "editorHoverWidget.background": "#0a0a0a",
+    "editorOverviewRuler.background": "#000000",
+    "scrollbarSlider.background": "#1f1f1f80",
+  },
+});
+
 export { monaco };

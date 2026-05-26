@@ -168,7 +168,7 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
         </div>
       ) : null}
 
-      <div className="ai-messages" ref={scrollRef}>
+      <div className="ai-messages font-ai" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="ai-empty">
             Ask about your terminal — errors, commands, anything. The active
@@ -193,7 +193,7 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
               void send();
             }
           }}
-          placeholder={needsKey ? `Set a ${provider.label} key to start…` : "Ask huskv2…"}
+          placeholder={needsKey ? `Set a ${provider.label} key to start…` : "Ask husk…"}
           rows={2}
         />
         <button type="button" onClick={() => void send()} disabled={busy}>

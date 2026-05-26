@@ -7,6 +7,7 @@ export type EditorCursorStyle = "line" | "block" | "underline";
 export type TerminalCursorStyle = "block" | "bar" | "underline";
 export type LineNumbers = "on" | "off" | "relative";
 export type RenderWhitespace = "none" | "boundary" | "all";
+export type LineHighlight = "none" | "line" | "gutter" | "all";
 
 export type Prefs = {
   // App
@@ -37,6 +38,7 @@ export type Prefs = {
   editorSmoothScroll: boolean;
   editorFormatOnPaste: boolean;
   editorStickyScroll: boolean;
+  editorLineHighlight: LineHighlight;
   vimMode: boolean;
 
   // Explorer
@@ -51,7 +53,7 @@ const DEFAULT: Prefs = {
 
   terminalFontSize: 13,
   cursorBlink: true,
-  terminalCursorStyle: "block",
+  terminalCursorStyle: "bar",
   terminalTheme: "husk",
   terminalScrollback: 1000,
 
@@ -68,11 +70,12 @@ const DEFAULT: Prefs = {
   editorSmoothScroll: true,
   editorFormatOnPaste: false,
   editorStickyScroll: true,
+  editorLineHighlight: "line",
   vimMode: false,
 
   showHidden: false,
 };
-const LS_KEY = "huskv2.prefs";
+const LS_KEY = "huskv2.prefs.v2";
 
 function load(): Prefs {
   try {

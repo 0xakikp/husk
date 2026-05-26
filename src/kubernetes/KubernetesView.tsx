@@ -8,10 +8,16 @@ import {
   type K8sPod,
 } from "./client";
 import { toast } from "../toast";
+import { Modal } from "../components/Modal";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Database01Icon,
+  Refresh01Icon,
+} from "@hugeicons/core-free-icons";
 
 const okStatus = (s: string) => s === "Running" || s === "Completed" || s === "Succeeded";
 
-export function KubernetesView({ onClose }: { onClose: () => void }) {
+export function KubernetesView({ onClose, inline }: { onClose?: () => void; inline?: boolean }) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [ctx, setCtx] = useState("");
   const [contexts, setContexts] = useState<string[]>([]);
@@ -51,63 +57,96 @@ export function KubernetesView({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const headerActions = (
+    <button
+      type="button"
+      aria-label="Refresh"
+      title="Refresh"
+      onClick={() => void refresh()}
+      className="inline-flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <HugeiconsIcon icon={Refresh01Icon} size={16} strokeWidth={1.5} />
+    </button>
+  );
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal docker-modal" role="dialog" aria-label="Kubernetes" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <span>Kubernetes</span>
-          <span className="modal-head-actions">
-            <button type="button" className="ai-icon" title="Refresh" onClick={() => void refresh()}>
-              ⟳
-            </button>
-            <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
-              ×
-            </button>
-          </span>
+    <Modal title="Kubernetes" onClose={onClose} inline={inline} headerActions={headerActions}>
+      {available === false ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+            <HugeiconsIcon icon={Database01Icon} size={20} className="text-primary" />
+          </div>
+          <p className="text-[12px] font-medium text-foreground">kubectl not found</p>
+          <p className="max-w-[180px] text-[11px] text-muted-foreground">
+            Install kubectl to use the Kubernetes integration.
+          </p>
         </div>
-        <div className="modal-body">
-          {available === false ? (
-            <p className="rb-empty">kubectl isn't on your PATH.</p>
-          ) : (
-            <>
-              {contexts.length > 0 ? (
-                <label className="rb-field">
-                  <span>Context</span>
-                  <select
-                    className="setting-select"
-                    value={ctx}
-                    onChange={(e) => switchCtx(e.target.value)}
+      ) : (
+        <div className="flex flex-col gap-3">
+          {/* Context selector */}
+          {contexts.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Context
+              </span>
+              <div className="flex flex-col gap-0.5">
+                {contexts.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => switchCtx(c)}
+                    className={`flex items-center gap-2 rounded-md px-2 py-1 text-left text-[11.5px] transition-colors ${
+                      c === ctx
+                        ? "bg-primary/10 text-primary"
+                        : "text-foreground hover:bg-accent/10"
+                    }`}
                   >
-                    {contexts.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <div className="dv-section">Pods (all namespaces)</div>
-              {loading && pods.length === 0 ? (
-                <p className="rb-empty">Loading…</p>
-              ) : pods.length === 0 ? (
-                <p className="rb-empty">No pods.</p>
-              ) : (
-                pods.map((p) => (
-                  <div key={`${p.namespace}/${p.name}`} className="rb-item">
-                    <span className={`dv-dot ${okStatus(p.status) ? "dv-on" : "dv-off"}`} />
-                    <div className="rb-meta">
-                      <span className="rb-name">{p.name}</span>
-                      <span className="rb-steps">
+                    <span
+                      className={`size-1.5 rounded-full ${
+                        c === ctx ? "bg-primary" : "bg-muted-foreground/40"
+                      }`}
+                    />
+                    <span className="truncate">{c}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pods */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Pods
+            </span>
+            {loading && pods.length === 0 ? (
+              <p className="py-4 text-center text-[11px] text-muted-foreground">Loading…</p>
+            ) : pods.length === 0 ? (
+              <p className="py-4 text-center text-[11px] text-muted-foreground">No pods found.</p>
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                {pods.map((p) => (
+                  <div
+                    key={`${p.namespace}/${p.name}`}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/10"
+                  >
+                    <span
+                      className={`size-1.5 shrink-0 rounded-full ${
+                        okStatus(p.status) ? "bg-emerald-500" : "bg-muted-foreground/40"
+                      }`}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-[11.5px] text-foreground">{p.name}</span>
+                      <span className="truncate text-[10px] text-muted-foreground">
                         {p.namespace} · {p.status} · {p.ready} · {p.age}
                       </span>
                     </div>
                   </div>
-                ))
-              )}
-            </>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 }

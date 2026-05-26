@@ -9,9 +9,19 @@ import {
   setActiveTerminalReader,
   setActiveTerminalRunner,
   setActiveTerminalTyper,
+  setActiveTerminalSearchOpener,
   setActiveTerminalCwd,
   setActiveTerminalExit,
+  setTerminalTyping,
+  setCurrentCommand,
+  clearCurrentCommand,
+  markCommandStart,
 } from "./ai/terminalContext";
+import {
+  interceptTerminalInput,
+  setTerminalLineReader,
+  setAiPtyWriter,
+} from "./ai/terminalInput";
 import { getPrefs, subscribePrefs } from "./settings/preferences";
 import { buildTerminalTheme } from "./styles/terminalTheme";
 import { fontStack } from "./styles/fonts";
@@ -107,6 +117,18 @@ export function TerminalView({
       if (data.startsWith("D") && activeRef.current) {
         const code = Number.parseInt(data.split(";")[1] ?? "", 10);
         setActiveTerminalExit(Number.isNaN(code) ? null : code);
+        clearCurrentCommand(); // command finished
+      }
+      if (data.startsWith("C") && activeRef.current) {
+        markCommandStart(); // command started (preexec)
+      }
+      return true;
+    });
+    // OSC 778 — shell preexec reports the command text (zsh preexec hook)
+    term.parser.registerOscHandler(778, (data) => {
+      if (data.startsWith("husk;cmd;") && activeRef.current) {
+        const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";");
+        setCurrentCommand(cmd.trim());
       }
       return true;
     });
@@ -179,7 +201,15 @@ export function TerminalView({
         }),
       );
 
-      term.onData((data) => void invoke("pty_write", { id, data }));
+      let typingTimer = 0;
+      term.onData((data) => {
+        const out = interceptTerminalInput(data);
+        if (out === null) return; // swallowed by /ai interceptor
+        void invoke("pty_write", { id, data: out });
+        setTerminalTyping(true);
+        window.clearTimeout(typingTimer);
+        typingTimer = window.setTimeout(() => setTerminalTyping(false), 400);
+      });
       // Fit is debounced (below), so this fires once when a resize settles —
       // send that single final size to the PTY (one SIGWINCH, one prompt
       // redraw), and only when it actually changed (dedupe).
@@ -254,10 +284,28 @@ export function TerminalView({
       if (id != null) void invoke("pty_write", { id, data: text });
       termRef.current?.focus();
     });
+    setActiveTerminalSearchOpener(() => setSearchOpen(true));
+
+    // AI /ai command interception — line reader + PTY writer
+    setTerminalLineReader(() => {
+      const term = termRef.current;
+      if (!term) return "";
+      const buf = term.buffer.active;
+      const line = buf.getLine(buf.cursorY)?.translateToString(true) ?? "";
+      return line;
+    });
+    setAiPtyWriter((data) => {
+      const id = ptyIdRef.current;
+      if (id != null) void invoke("pty_write", { id, data });
+    });
+
     return () => {
       setActiveTerminalReader(null);
       setActiveTerminalRunner(null);
       setActiveTerminalTyper(null);
+      setActiveTerminalSearchOpener(null);
+      setTerminalLineReader(null);
+      setAiPtyWriter(null);
     };
   }, [active]);
 

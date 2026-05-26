@@ -4,6 +4,9 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+/* Enter/exit animations + data-open/data-closed variants the ported shadcn
+   primitives (dialogs, dropdowns, tooltips) rely on. */
+@import "tw-animate-css";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -46,18 +49,20 @@
   --radius-xl: calc(var(--radius) * 1.4);
 }
 
-/* husk v1 dark tokens — huskv2's default. */
+/* husk v1 dark tokens — huskv2's default.
+   Foreground is neutral so the sidebar chrome doesn't inherit terminal tint.
+   Accent / primary / ring stay green so selections and highlights match the theme. */
 :root {
   --background: #000000;
-  --foreground: #11c700;
-  --card: #111111;
-  --card-foreground: #11c700;
+  --foreground: #e5e5e5;
+  --card: #000000;
+  --card-foreground: #e5e5e5;
   --popover: #1f1f1f;
-  --popover-foreground: #11c700;
+  --popover-foreground: #e5e5e5;
   --primary: #11c700;
   --primary-foreground: #000000;
   --secondary: #1f1f1f;
-  --secondary-foreground: #11c700;
+  --secondary-foreground: #e5e5e5;
   --muted: #1f1f1f;
   --muted-foreground: #868686;
   --accent: #0da100;
@@ -68,11 +73,11 @@
   --ring: #11c700;
   --radius: 0.5rem;
   --sidebar: #000000;
-  --sidebar-foreground: #11c700;
+  --sidebar-foreground: #e5e5e5;
   --sidebar-primary: #11c700;
   --sidebar-primary-foreground: #000000;
   --sidebar-accent: #1f1f1f;
-  --sidebar-accent-foreground: #11c700;
+  --sidebar-accent-foreground: #e5e5e5;
   --sidebar-border: #1f1f1f;
   --sidebar-ring: #11c700;
 }
@@ -97,6 +102,7 @@
   --border: #e7e5e4;
   --input: #e7e5e4;
   --ring: #22c55e;
+  --radius: 0.5rem;
   --sidebar: #f5f0e8;
   --sidebar-foreground: #1c1917;
   --sidebar-primary: #22c55e;
@@ -106,3 +112,233 @@
   --sidebar-border: #e7e5e4;
   --sidebar-ring: #22c55e;
 }
+
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    overflow: hidden;
+    font-family: var(--font-mono);
+  }
+  .dark body,
+  [data-theme="dark"] body {
+    background-color: #000000;
+  }
+  html, body, #root {
+    height: 100%;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+[data-theme="dark"] #root {
+  background-color: #000000;
+}
+
+:root {
+  --app-zoom: 1;
+  --terminal-opacity: 1;
+  --terminal-blur: 0px;
+}
+.zoom-content {
+  /* Intentionally empty — zoom is handled by Tauri webview setZoom().
+     The non-standard CSS zoom property causes flex-layout reflow artefacts
+     (visible "slide" when panels are added/removed). */
+}
+.zoom-exempt {
+  /* Counter-scale is no longer needed since zoom-content does not scale. */
+}
+
+/* Custom window chrome (Linux/Windows) */
+html[data-chrome="borderless"],
+html[data-chrome="borderless"] body {
+  background: transparent !important;
+}
+html[data-chrome="borderless"] #root,
+html[data-chrome="borderless"] #settings-root {
+  height: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+/*
+ * xterm.js overrides
+ */
+.xterm .scrollbar,
+.xterm .scrollbar.vertical,
+.xterm .scrollbar.horizontal {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+.xterm .xterm-viewport,
+.xterm-viewport {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.xterm .xterm-viewport::-webkit-scrollbar,
+.xterm-viewport::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.xterm,
+.xterm-screen,
+.xterm:focus,
+.xterm.focus {
+  outline: none !important;
+}
+
+/* xterm: hide default viewport background so terminal theme shows through */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}
+
+/* xterm: edge-to-edge sizing with subtle breathing room */
+.xterm {
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 4px 0 0 8px !important;
+  box-sizing: border-box !important;
+  position: relative;
+}
+.xterm .xterm-scrollable-element,
+.xterm .xterm-screen {
+  height: 100% !important;
+}
+
+/* ── Terminal CRT effects (dark mode only) ── */
+[data-theme="dark"] .xterm::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background:
+    radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.4) 100%);
+}
+
+/* Cursor glow */
+[data-theme="dark"] .xterm .xterm-cursor {
+  box-shadow: 0 0 8px 1px rgba(17, 199, 0, 0.6) !important;
+}
+
+.no-scrollbar {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+.no-scrollbar-deep,
+.no-scrollbar-deep * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.no-scrollbar-deep::-webkit-scrollbar,
+.no-scrollbar-deep *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+/* Kill native scrollbars everywhere by default */
+html,
+html *,
+html *::before,
+html *::after {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Accent-colored focus ring */
+*:focus-visible {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent) !important;
+}
+
+/* Remove focus ring from AI input bar */
+[data-ai-input-bar] *:focus-visible,
+[data-ai-input-bar] textarea:focus,
+[data-ai-input-bar] textarea:focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* ── Bottom bar ambient shimmer ─────────────────────────── */
+
+@keyframes bar-shimmer {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+[data-command-bar] {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-command-bar][data-shimmer="true"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent, hsl(142 76% 36%)) 60%, transparent) 50%,
+    transparent 100%
+  );
+  animation: bar-shimmer 2.5s linear infinite;
+  pointer-events: none;
+}
+
+/* Prevent Tauri window drag on interactive elements */
+.no-drag-region {
+  -webkit-app-region: no-drag;
+}
+
+/* Slight left breathing room for terminal content */
+.xterm-screen {
+  padding-left: 4px !important;
+}
+
+/* Remove ALL focus / border styling from command input bar */
+[data-command-bar] input,
+[data-command-bar] input:focus,
+[data-command-bar] input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-color: transparent !important;
+}
+
+/* Force cmdk items transparent (remove subtle card backgrounds) */
+[data-slot="command-item"] {
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+/* Accent-colored selection */
+::selection {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: #ffffff;
+}
+
