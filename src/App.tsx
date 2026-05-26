@@ -34,6 +34,7 @@ import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { initKeys } from "./ai/store";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { readFileBase64 } from "./fs";
 import { ToastContainer, toast } from "./toast";
 import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
@@ -106,7 +107,7 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, child
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
       className={cn(
-        "group relative flex h-6 shrink-0 items-center gap-1.5 rounded-md text-xs transition-colors",
+        "group relative flex h-6 shrink items-center gap-1.5 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden",
         onClose ? "pr-1" : "pr-2",
         active ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
       )}
@@ -194,7 +195,7 @@ function TabBar({
       data-tauri-drag-region
       className="min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <div className="flex w-max items-center gap-0.5">
+      <div className="flex w-full min-w-0 items-center gap-0.5">
         {termTabs.map((t) =>
           editingId === t.id ? (
             <div
@@ -566,6 +567,24 @@ function App() {
   const prefs = usePrefs();
   useClipboardListener();
 
+  // ── Background image (base64 via Rust) ──────────────────────
+  const [bgDataUrl, setBgDataUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!prefs.background.enabled || !prefs.background.path) {
+      setBgDataUrl(null);
+      return;
+    }
+    let cancelled = false;
+    readFileBase64(prefs.background.path)
+      .then((url) => {
+        if (!cancelled) setBgDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setBgDataUrl(null);
+      });
+    return () => { cancelled = true; };
+  }, [prefs.background.enabled, prefs.background.path]);
+
   useEffect(() => {
     document.documentElement.dataset.theme = prefs.theme;
   }, [prefs.theme]);
@@ -743,12 +762,35 @@ function App() {
 
   return (
     <TooltipProvider>
-      <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      <div className="relative flex h-screen flex-col overflow-hidden text-foreground">
+        {/* ── Background image (dark mode only) ─────────────────── */}
+        {prefs.theme === "dark" && bgDataUrl && (
+          <>
+            <img
+              src={bgDataUrl}
+              alt=""
+              className="pointer-events-none fixed inset-0 size-full object-cover"
+              style={{
+                zIndex: -2,
+                opacity: prefs.background.opacity / 100,
+                filter: `blur(${prefs.background.blur}px)`,
+              }}
+            />
+            <div
+              className="pointer-events-none fixed inset-0"
+              style={{
+                zIndex: -1,
+                backgroundColor: `rgba(0,0,0,${prefs.background.dim / 100})`,
+              }}
+            />
+          </>
+        )}
+
         {/* ── Header ─────────────────────────────────────────────── */}
         <header
           data-tauri-drag-region
           className={cn(
-            "relative flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 bg-background select-none",
+            "relative flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 bg-background/92 select-none",
             IS_MAC ? "pr-2 pl-[72px]" : "pr-0 pl-2",
           )}
         >
@@ -846,7 +888,9 @@ function App() {
         </header>
 
         {/* ── Path bar (cwd / breadcrumb) ────────────────────────── */}
-        <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
+        <div className="bg-background/85">
+          <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
+        </div>
 
         {/* ── Main workspace (manual layout, husk v1 visual) ─────── */}
         <main className="zoom-content flex min-h-0 flex-1 overflow-hidden">
@@ -854,7 +898,7 @@ function App() {
           {explorerOpen && (
             <>
               <div
-                className="flex flex-col border-r border-[var(--border)] bg-[var(--bg)]"
+                className="flex flex-col border-r border-[var(--border)] bg-background/88"
                 style={{ width: explorerWidth, minWidth: SIDEBAR_MIN_WIDTH, maxWidth: SIDEBAR_MAX_WIDTH }}
               >
                 <div className="min-h-0 flex-1 overflow-hidden">
@@ -947,7 +991,7 @@ function App() {
                 {/* AI panel — always at fixed width; only opacity toggles.
                     No width/minWidth changes = zero layout reflow = no slide. */}
                 <div
-                  className="ai-pane-static no-drag-region absolute top-0 right-0 bottom-0 z-10 flex flex-col overflow-hidden border-l border-border bg-background"
+                  className="ai-pane-static no-drag-region absolute top-0 right-0 bottom-0 z-10 flex flex-col overflow-hidden border-l border-border bg-background/80"
                   style={{
                     width: aiPaneWidth,
                     minWidth: 260,
@@ -992,7 +1036,7 @@ function App() {
               {settingsOpen ? (
                 <div
                   className={cn(
-                    "absolute inset-0",
+                    "absolute inset-0 bg-background/95",
                     activeKind !== "settings" && "invisible pointer-events-none",
                   )}
                   aria-hidden={activeKind !== "settings"}

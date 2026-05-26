@@ -90,7 +90,12 @@ export function TerminalView({
       cursorStyle: getPrefs().terminalCursorStyle,
       scrollback: getPrefs().terminalScrollback,
       allowProposedApi: true,
-      theme: buildTerminalTheme(getPrefs().terminalTheme, getPrefs().theme === "dark"),
+      allowTransparency: true,
+      theme: buildTerminalTheme(
+        getPrefs().terminalTheme,
+        getPrefs().theme === "dark",
+        getPrefs().background.enabled,
+      ),
     });
     const fit = new FitAddon();
     const search = new SearchAddon();
@@ -324,7 +329,11 @@ export function TerminalView({
       term.options.cursorBlink = p.cursorBlink;
       term.options.cursorStyle = p.terminalCursorStyle;
       term.options.scrollback = p.terminalScrollback;
-      term.options.theme = buildTerminalTheme(p.terminalTheme, p.theme === "dark");
+      term.options.theme = buildTerminalTheme(
+        p.terminalTheme,
+        p.theme === "dark",
+        p.background.enabled,
+      );
       clearTimeout(t);
       t = window.setTimeout(() => {
         try {

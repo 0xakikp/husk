@@ -132,13 +132,17 @@ const ANSI_PALETTES: Record<TerminalThemePreset, Ansi> = {
 
 /** Build an xterm theme for a preset. In light mode the surface goes white
  *  while the preset's ANSI palette is kept. */
-export function buildTerminalTheme(preset: TerminalThemePreset, dark: boolean): ITheme {
+export function buildTerminalTheme(
+  preset: TerminalThemePreset,
+  dark: boolean,
+  transparentBg?: boolean,
+): ITheme {
   const p = TERMINAL_THEME_PRESETS[preset] ?? TERMINAL_THEME_PRESETS.husk;
   const ansi = ANSI_PALETTES[preset] ?? ANSI_PALETTES.husk;
 
   if (!dark) {
     return {
-      background: "#ffffff",
+      background: transparentBg ? "rgba(0,0,0,0)" : "#ffffff",
       foreground: "#1a1a1a",
       cursor: "#000000",
       cursorAccent: "#ffffff",
@@ -149,7 +153,7 @@ export function buildTerminalTheme(preset: TerminalThemePreset, dark: boolean): 
   }
 
   return {
-    background: p.bg,
+    background: transparentBg ? "rgba(0,0,0,0)" : p.bg,
     foreground: p.fg,
     cursor: p.cursor,
     cursorAccent: p.bg,

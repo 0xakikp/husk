@@ -6,20 +6,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useAgents, upsertAgent, removeAgent, newAgentId, type Agent } from "../ai/agents";
 import { GeneralSection } from "./GeneralSection";
+import { AppearanceSection } from "./AppearanceSection";
 import { AboutSection } from "./AboutSection";
 import { ModelsSection } from "./ModelsSection";
 import { McpSection } from "./McpSection";
 import { ToolsSection } from "./ToolsSection";
 import { SectionHeader } from "./components/SectionHeader";
 
-type SectionId = "about" | "general" | "models" | "agents" | "mcp" | "tools";
+type SectionId = "about" | "general" | "appearance" | "models" | "agents" | "mcp" | "tools";
 
 const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   { id: "about", label: "Manifest", keywords: ["about", "version", "build", "license"] },
   {
     id: "general",
     label: "General",
-    keywords: ["terminal", "font", "size", "cursor", "blink", "appearance", "theme"],
+    keywords: ["terminal", "font", "size", "cursor", "blink", "theme"],
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    keywords: ["background", "image", "wallpaper", "opacity", "blur", "transparency", "dim"],
   },
   {
     id: "models",
@@ -119,6 +125,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
               <SectionDivider />
               <div id="settings-section-general" className="scroll-mt-6">
                 <GeneralSection />
+              </div>
+            </>
+          ) : null}
+          {show("appearance") ? (
+            <>
+              <SectionDivider />
+              <div id="settings-section-appearance" className="scroll-mt-6">
+                <AppearanceSection />
               </div>
             </>
           ) : null}

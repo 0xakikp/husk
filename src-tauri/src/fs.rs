@@ -1,5 +1,6 @@
 //! Minimal filesystem commands for the file explorer and editor.
 
+use base64::Engine;
 use serde::Serialize;
 use std::fs;
 
@@ -58,6 +59,28 @@ pub fn create_file(path: String) -> Result<(), String> {
         return Err(format!("already exists: {path}"));
     }
     fs::write(p, "").map_err(|e| e.to_string())
+}
+
+/// Read a file and return its contents as a base64 data URL.
+#[tauri::command]
+pub fn read_file_base64(path: String) -> Result<String, String> {
+    use std::path::Path;
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let ext = Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png");
+    let mime = match ext.to_lowercase().as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "svg" => "image/svg+xml",
+        _ => "image/png",
+    };
+    Ok(format!("data:{mime};base64,{encoded}"))
 }
 
 /// Create a directory (with parents). Fails if it already exists.

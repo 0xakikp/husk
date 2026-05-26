@@ -36,6 +36,7 @@ pub fn run() {
             pty::pty_kill,
             fs::read_dir,
             fs::read_file,
+            fs::read_file_base64,
             fs::write_file,
             fs::home_dir,
             fs::create_file,

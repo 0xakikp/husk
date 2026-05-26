@@ -199,7 +199,11 @@ html[data-chrome="borderless"] #settings-root {
 }
 
 /* xterm: hide default viewport background so terminal theme shows through */
-.xterm .xterm-viewport {
+.xterm,
+.xterm .xterm-viewport,
+.xterm .xterm-screen,
+.xterm canvas,
+.xterm .xterm-rows {
   background-color: transparent !important;
 }
 
@@ -225,6 +229,12 @@ html[data-chrome="borderless"] #settings-root {
   z-index: 10;
   background:
     radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.4) 100%);
+}
+
+/* Allow background image to show through terminal canvas */
+.xterm .xterm-screen,
+.xterm canvas {
+  background-color: transparent !important;
 }
 
 /* Cursor glow */

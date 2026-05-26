@@ -207,7 +207,7 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
     return (
       <div
         data-command-bar
-        className="flex h-9 items-center gap-2 border-t border-border/15 px-3"
+        className="flex h-9 items-center gap-2 border-t border-border/15 bg-background/50 px-3"
         onDrop={(e) => {
           e.preventDefault();
           const files = Array.from(e.dataTransfer.files);
@@ -227,7 +227,7 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
     <div
       data-command-bar
       data-shimmer={shimmer}
-      className="flex h-9 items-center gap-2 border-t border-border/15 px-2"
+      className="flex h-9 items-center gap-2 border-t border-border/15 bg-background/50 px-2"
       onDrop={(e) => {
         e.preventDefault();
         const files = Array.from(e.dataTransfer.files);

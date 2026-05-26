@@ -9,6 +9,14 @@ export type LineNumbers = "on" | "off" | "relative";
 export type RenderWhitespace = "none" | "boundary" | "all";
 export type LineHighlight = "none" | "line" | "gutter" | "all";
 
+export type BackgroundSettings = {
+  enabled: boolean;
+  path: string;
+  opacity: number;
+  blur: number;
+  dim: number;
+};
+
 export type Prefs = {
   // App
   theme: "dark" | "light";
@@ -43,6 +51,9 @@ export type Prefs = {
 
   // Explorer
   showHidden: boolean;
+
+  // Background
+  background: BackgroundSettings;
 };
 
 const DEFAULT: Prefs = {
@@ -74,6 +85,14 @@ const DEFAULT: Prefs = {
   vimMode: false,
 
   showHidden: false,
+
+  background: {
+    enabled: false,
+    path: "",
+    opacity: 100,
+    blur: 0,
+    dim: 50,
+  },
 };
 const LS_KEY = "huskv2.prefs.v2";
 

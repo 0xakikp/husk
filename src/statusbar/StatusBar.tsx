@@ -42,7 +42,7 @@ export function StatusBar({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-6 shrink-0 items-center gap-3 border-t border-border bg-background px-3 text-[11px] text-muted-foreground select-none">
+      <div className="flex h-6 shrink-0 items-center gap-3 border-t border-border bg-background/85 px-3 text-[11px] text-muted-foreground select-none">
         <span className="flex items-center gap-1.5">
           <HugeiconsIcon icon={Folder01Icon} size={12} strokeWidth={1.75} className="opacity-80" />
           {name}
