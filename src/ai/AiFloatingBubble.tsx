@@ -18,7 +18,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { registerBubbleToggle } from "./bubbleStore";
 import { toast } from "@/toast";
-import { PROVIDERS, getProvider } from "./providers";
+import { getProvider } from "./providers";
 import { useKey } from "./store";
 import { readActiveTerminal, runInActiveTerminal } from "./terminalContext";
 import { useAiBubbleChat } from "./bubble/useAiBubbleChat";
@@ -246,8 +246,6 @@ export function AiFloatingBubble({
     setIncludeContext,
     ensureSession,
     selectedProviderId,
-    setSelectedProviderId,
-    setSelectedModel,
     store: sessionStore,
     newSession,
     switchSession,
@@ -469,47 +467,10 @@ export function AiFloatingBubble({
         <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.5} className="shrink-0 text-primary" />
         <span className="mr-auto text-[11px] font-semibold text-foreground">AI</span>
 
-        {/* Model pill */}
-        <div className="relative shrink-0" data-bubble-model>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowSessions(false);
-              setShowModelDropdown((v) => !v);
-            }}
-            className="flex h-5 items-center gap-0.5 rounded-md border border-border/40 bg-muted/40 px-1.5 text-[10px] text-foreground hover:bg-muted/70"
-            title={provider.label}
-          >
-            <span className="truncate max-w-[60px]">{provider.label.split(" ")[0]}</span>
-            <span className="text-muted-foreground/50">▼</span>
-          </button>
-          {/* Model dropdown */}
-          {showModelDropdown && (
-            <div className="absolute top-full right-0 z-30 mt-1 w-60 rounded-md border border-border/60 bg-popover py-1 shadow-lg">
-              {PROVIDERS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedProviderId(p.id);
-                    setSelectedModel(p.defaultModel);
-                    setShowModelDropdown(false);
-                  }}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-2 px-2.5 py-1 text-left text-[11px] hover:bg-muted/50",
-                    selectedProviderId === p.id && "bg-accent/10 text-accent-foreground"
-                  )}
-                >
-                  <span className="truncate">{p.label}</span>
-                  {selectedProviderId === p.id && (
-                    <span className="shrink-0 text-[9px] text-muted-foreground">{p.defaultModel}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Provider label (read-only, synced from Settings) */}
+        <span className="shrink-0 rounded-md border border-border/40 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          {provider.label.split(" ")[0]}
+        </span>
 
         {/* Context chip */}
         <button
