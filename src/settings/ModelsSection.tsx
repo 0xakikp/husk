@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   CheckmarkCircle02Icon,
@@ -26,7 +25,6 @@ import {
   type StoredConfig,
 } from "@/ai/store";
 import { SectionHeader } from "./components/SectionHeader";
-import { SettingRow } from "./components/SettingRow";
 import { Label } from "./parts";
 
 // ── Main Section ───────────────────────────────────────────────────────────
@@ -85,25 +83,6 @@ export function ModelsSection() {
         config={config}
         onUpdate={updateConfig}
       />
-
-      {/* ── Terminal AI features ─────────────────────────────────────── */}
-      <div className="flex flex-col gap-2">
-        <Label>Terminal AI</Label>
-        <SettingRow
-          className="rounded-lg border border-border/40 bg-muted/20 py-2"
-          title="Error assistance"
-          description="When a command fails, offer an AI explanation of the error."
-        >
-          <Switch checked={false} onCheckedChange={() => {}} />
-        </SettingRow>
-        <SettingRow
-          className="rounded-lg border border-border/40 bg-muted/20 py-2"
-          title="Command suggestions"
-          description="Suggest next commands based on terminal history."
-        >
-          <Switch checked={false} onCheckedChange={() => {}} />
-        </SettingRow>
-      </div>
     </div>
   );
 }

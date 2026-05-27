@@ -10,6 +10,7 @@ import {
   setActiveTerminalRunner,
   setActiveTerminalTyper,
   setActiveTerminalSearchOpener,
+  setActiveTerminalSearcher,
   setActiveTerminalCwd,
   setActiveTerminalExit,
   setTerminalTyping,
@@ -290,6 +291,10 @@ export function TerminalView({
       termRef.current?.focus();
     });
     setActiveTerminalSearchOpener(() => setSearchOpen(true));
+    setActiveTerminalSearcher((q: string) => {
+      setSearchOpen(true);
+      setQuery(q);
+    });
 
     // AI /ai command interception — line reader + PTY writer
     setTerminalLineReader(() => {
@@ -309,6 +314,7 @@ export function TerminalView({
       setActiveTerminalRunner(null);
       setActiveTerminalTyper(null);
       setActiveTerminalSearchOpener(null);
+      setActiveTerminalSearcher(null);
       setTerminalLineReader(null);
       setAiPtyWriter(null);
     };
@@ -351,9 +357,16 @@ export function TerminalView({
 
   const closeSearch = () => {
     setSearchOpen(false);
+    setQuery("");
     searchRef.current?.clearDecorations();
     termRef.current?.focus();
   };
+
+  // Execute search whenever query changes (driven by header search bar or inline input).
+  useEffect(() => {
+    if (!searchOpen || !query) return;
+    searchRef.current?.findNext(query, { incremental: true });
+  }, [query, searchOpen]);
 
   const selectHistory = (command: string) => {
     const id = ptyIdRef.current;
@@ -405,10 +418,7 @@ export function TerminalView({
             autoFocus
             value={query}
             placeholder="Find in terminal…"
-            onChange={(e) => {
-              setQuery(e.target.value);
-              searchRef.current?.findNext(e.target.value, { incremental: true });
-            }}
+            onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();

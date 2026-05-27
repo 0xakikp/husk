@@ -52,8 +52,24 @@ export type Prefs = {
   // Explorer
   showHidden: boolean;
 
+  // AI
+  aiEnabled: boolean;
+  terminalAiErrorAssist: boolean;
+
+  // Session
+  sessionRestoreEnabled: boolean;
+
   // Background
   background: BackgroundSettings;
+
+  // Appearance
+  accentColor: string;
+  animationsEnabled: boolean;
+  frostedGlass: boolean;
+  panelGaps: number;
+  neonBorderGlow: boolean;
+  editorWallpaperOpacity: number;
+  aiPaneOpacity: number;
 };
 
 const DEFAULT: Prefs = {
@@ -86,6 +102,11 @@ const DEFAULT: Prefs = {
 
   showHidden: false,
 
+  aiEnabled: true,
+  terminalAiErrorAssist: false,
+
+  sessionRestoreEnabled: true,
+
   background: {
     enabled: false,
     path: "",
@@ -93,6 +114,14 @@ const DEFAULT: Prefs = {
     blur: 0,
     dim: 50,
   },
+
+  accentColor: "#11c700",
+  animationsEnabled: true,
+  frostedGlass: false,
+  panelGaps: 0,
+  neonBorderGlow: false,
+  editorWallpaperOpacity: 0,
+  aiPaneOpacity: 80,
 };
 const LS_KEY = "huskv2.prefs.v2";
 

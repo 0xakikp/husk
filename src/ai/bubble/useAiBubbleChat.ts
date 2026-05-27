@@ -30,6 +30,7 @@ export function useAiBubbleChat() {
   const [includeContext, setIncludeContext] = useState(true);
   const [selectedProviderId, setSelectedProviderId] = useState(cfg.providerId);
   const [selectedModel, setSelectedModel] = useState(cfg.model);
+  const [hasUserOverriddenModel, setHasUserOverriddenModel] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const abortRef = useRef(false);
   const messagesRef = useRef(messages);
@@ -67,6 +68,26 @@ export function useAiBubbleChat() {
     saveBubbleSessions(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
+
+  // Sync with global Settings default model whenever the user changes it there.
+  // If the user has manually overridden the model via the bubble dropdown, keep it.
+  useEffect(() => {
+    if (hasUserOverriddenModel) return;
+    const next = loadConfig();
+    setSelectedProviderId(next.providerId);
+    setSelectedModel(next.model);
+  }, [hasUserOverriddenModel]);
+  // We poll settings changes by checking on window focus — no re-render trigger available.
+  useEffect(() => {
+    const onFocus = () => {
+      if (hasUserOverriddenModel) return;
+      const next = loadConfig();
+      setSelectedProviderId((prev) => (prev !== next.providerId ? next.providerId : prev));
+      setSelectedModel((prev) => (prev !== next.model ? next.model : prev));
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [hasUserOverriddenModel]);
 
   const ensureSession = useCallback(() => {
     if (activeSession) return;
@@ -119,27 +140,38 @@ export function useAiBubbleChat() {
         system += `\n\nAttached files:\n${fileBlock}`;
       }
 
+      const modelId = selectedModel || agent.model || cfg.model;
+      // eslint-disable-next-line no-console
+      console.log("[AI] sending →", { provider: provider.id, model: modelId, hasKey: !!apiKey, baseURL: cfg.baseURL || provider.baseURL });
+
       try {
         const tools = await buildMcpTools().catch(() => ({}));
-        await streamChat(
-          { provider, model: selectedModel || agent.model || cfg.model, apiKey, baseURL: cfg.baseURL },
-          system,
-          history,
-          (delta) => {
-            if (abortRef.current) return;
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last?.role === "assistant") {
-                next[next.length - 1] = { ...last, content: last.content + delta };
-              }
-              return next;
-            });
-          },
-          tools
-        );
+        await Promise.race([
+          streamChat(
+            { provider, model: modelId, apiKey, baseURL: cfg.baseURL },
+            system,
+            history,
+            (delta) => {
+              if (abortRef.current) return;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === "assistant") {
+                  next[next.length - 1] = { ...last, content: last.content + delta };
+                }
+                return next;
+              });
+            },
+            tools
+          ),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error("Request timed out after 30s")), 30000)
+          ),
+        ]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        // eslint-disable-next-line no-console
+        console.error("[AI] stream error:", e);
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
@@ -218,7 +250,10 @@ export function useAiBubbleChat() {
     selectedProviderId,
     setSelectedProviderId,
     selectedModel,
-    setSelectedModel,
+    setSelectedModel: (m: string) => {
+      setHasUserOverriddenModel(true);
+      setSelectedModel(m);
+    },
     attachedFiles,
     setAttachedFiles,
     // Session management

@@ -20,6 +20,7 @@ import {
 } from "../ai/terminalContext";
 import { bgList, type BgJob } from "../jobs/client";
 import { toast } from "../toast";
+import { usePrefs } from "../settings/preferences";
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -63,6 +64,7 @@ function useOnline() {
 /* ── Component ─────────────────────────────────────────── */
 
 export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (text: string) => void }) {
+  const prefs = usePrefs();
   const [ctx, setCtx] = useState<ContextKind>(null);
   const [jobs, setJobs] = useState<BgJob[]>([]);
   const tickRef = useRef(0);
@@ -190,10 +192,11 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
       ];
     }
     if (ctx === "error") {
-      return [
-        { label: "Retry", icon: RefreshIcon, action: () => send("!!") },
-        { label: "Explain", icon: CommandIcon, action: () => send("/ai explain this error") },
-      ];
+      const errorActions = [{ label: "Retry", icon: RefreshIcon, action: () => send("!!") }];
+      if (prefs.aiEnabled) {
+        errorActions.push({ label: "Explain", icon: CommandIcon, action: () => send("/ai explain this error") });
+      }
+      return errorActions;
     }
     return [];
   })();

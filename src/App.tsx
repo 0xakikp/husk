@@ -61,14 +61,16 @@ import { IssuesPanel } from "./git/IssuesPanel";
 import { ShortcutsDialog } from "./shortcuts/ShortcutsDialog";
 import { StatusBar } from "./statusbar/StatusBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { DialogLayer } from "./components/DialogLayer";
 import type { OpenPanelKind } from "./git/types";
 import { SuggestDialog, ExplainDialog } from "./ai/AssistDialogs";
-import { readActiveTerminal, getActiveTerminalExit } from "./ai/terminalContext";
+import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState } from "./ai/terminalContext";
 import { PreviewDialog } from "./preview/PreviewDialog";
 import { SidebarRail, type SidebarViewId } from "./sidebar/SidebarRail";
 import { fileIconUrl } from "./explorer/iconResolver";
 import { PathBar } from "./header/PathBar";
 import type { TermTab } from "./useTerminalTabs";
+import { QuickSwitcher } from "./switcher/QuickSwitcher";
 import "./App.css";
 
 /* ── Header helpers ─────────────────────────────────────────────────────── */
@@ -98,10 +100,11 @@ type TabChipProps = {
   onClose?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   onDoubleClick?: () => void;
+  animate?: boolean;
   children: React.ReactNode;
 };
 
-function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, children }: TabChipProps) {
+function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, children }: TabChipProps) {
   return (
     <div
       onContextMenu={onContextMenu}
@@ -110,6 +113,7 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, child
         "group relative flex h-6 shrink items-center gap-1.5 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden",
         onClose ? "pr-1" : "pr-2",
         active ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
+        animate && "animate-tab-slide-in",
       )}
     >
       <button type="button" onClick={onClick} className="flex min-w-0 items-center gap-1.5 pl-2">
@@ -145,6 +149,7 @@ function TabBar({
   settingsOpen,
   onSelectSettings,
   onCloseSettings,
+  animationsEnabled,
 }: {
   termTabs: TermTab[];
   openFiles: OpenFile[];
@@ -158,6 +163,7 @@ function TabBar({
   settingsOpen: boolean;
   onSelectSettings: () => void;
   onCloseSettings: () => void;
+  animationsEnabled?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; kind: "term"; id: number } | null>(null);
@@ -232,6 +238,7 @@ function TabBar({
                 setMenu({ x: e.clientX, y: e.clientY, kind: "term", id: t.id });
               }}
               onDoubleClick={() => beginRename(t.id, t.title)}
+              animate={animationsEnabled}
             >
               <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={2} className="shrink-0" />
               <span className="truncate">{t.title}</span>
@@ -244,6 +251,7 @@ function TabBar({
             active={active.kind === "file" && active.path === f.path}
             onClick={() => onSelectFile(f.path)}
             onClose={() => onCloseFile(f.path)}
+            animate={animationsEnabled}
           >
             <img src={fileIconUrl(f.name)} className="size-3.5 shrink-0" alt="" />
             <span className="truncate">{f.name}</span>
@@ -254,6 +262,7 @@ function TabBar({
             active={active.kind === "settings"}
             onClick={onSelectSettings}
             onClose={onCloseSettings}
+            animate={animationsEnabled}
           >
             <HugeiconsIcon icon={Settings01Icon} size={13} strokeWidth={2} className="shrink-0" />
             <span className="truncate">Settings</span>
@@ -330,6 +339,14 @@ function SearchInline() {
     if (expanded && inputRef.current) inputRef.current.focus();
   }, [expanded]);
 
+  // Wire typed query directly into the active terminal's scrollback search.
+  useEffect(() => {
+    if (!expanded || !q) return;
+    import("./ai/terminalContext").then((m) => {
+      m.searchActiveTerminal(q);
+    });
+  }, [q, expanded]);
+
   return (
     <div className={cn("relative h-6 shrink-0", expanded ? "w-48" : "w-6")}>
       {expanded ? (
@@ -343,7 +360,7 @@ function SearchInline() {
           <input
             ref={inputRef}
             value={q}
-            placeholder="Search"
+            placeholder="Search terminal…"
             className="h-6 w-full rounded-md border-0 bg-muted/80 py-0 pr-7 pl-7 text-[13px] text-foreground placeholder:text-muted-foreground/70 outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onChange={(e) => setQ(e.target.value)}
             onBlur={() => {
@@ -353,6 +370,10 @@ function SearchInline() {
               if (e.key === "Escape") {
                 setQ("");
                 setOpen(false);
+              } else if (e.key === "Enter") {
+                import("./ai/terminalContext").then((m) => {
+                  m.searchActiveTerminal(q);
+                });
               }
             }}
           />
@@ -375,7 +396,7 @@ function SearchInline() {
           variant="ghost"
           size="icon"
           className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          title="Search"
+          title="Search terminal scrollback"
           onClick={() => setOpen(true)}
         >
           <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.75} />
@@ -545,6 +566,7 @@ function App() {
   const [totpOpen, setTotpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [explainCtx, setExplainCtx] = useState<{ command: string; output: string; exitCode: number | null } | null>(null);
@@ -594,6 +616,18 @@ function App() {
   }, [prefs.fontFamily]);
 
   useEffect(() => {
+    document.documentElement.style.setProperty("--accent", prefs.accentColor);
+    const r = parseInt(prefs.accentColor.slice(1, 3), 16);
+    const g = parseInt(prefs.accentColor.slice(3, 5), 16);
+    const b = parseInt(prefs.accentColor.slice(5, 7), 16);
+    document.documentElement.style.setProperty("--accent-rgb", `${r} ${g} ${b}`);
+  }, [prefs.accentColor]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--panel-gaps", `${prefs.panelGaps}px`);
+  }, [prefs.panelGaps]);
+
+  useEffect(() => {
     void initKeys();
   }, []);
 
@@ -630,6 +664,37 @@ function App() {
     getCurrentWebview().setZoom(prefs.zoomLevel).catch(() => {});
   }, [prefs.zoomLevel]);
 
+  // Auto-trigger AI error assistance toast when a command fails.
+  // Only toasts when the exit code transitions to a new non-zero value
+  // (avoids re-toasting when cwd changes while exit stays non-zero).
+  useEffect(() => {
+    if (!prefs.aiEnabled || !prefs.terminalAiErrorAssist) return;
+    let lastSeenExit: number | null = null;
+    const unsub = subscribeTerminalState(() => {
+      const exit = getActiveTerminalExit();
+      if (exit === null || exit === 0) {
+        lastSeenExit = exit;
+        return;
+      }
+      if (exit === lastSeenExit) return; // same error, don't re-toast
+      lastSeenExit = exit;
+      const output = readActiveTerminal();
+      toast({
+        title: `Command failed (exit ${exit})`,
+        message: "Get an AI explanation of what went wrong.",
+        variant: "error",
+        duration: 8000,
+        action: {
+          label: "Explain",
+          onClick: () => {
+            setExplainCtx({ command: "", output, exitCode: exit });
+          },
+        },
+      });
+    });
+    return unsub;
+  }, [prefs.aiEnabled, prefs.terminalAiErrorAssist]);
+
   useEffect(() => {
     const clamp = (z: number) => Math.min(3, Math.max(0.5, Math.round(z * 10) / 10));
     const onKey = (e: KeyboardEvent) => {
@@ -655,13 +720,22 @@ function App() {
         e.preventDefault();
         setPaletteOpen(true);
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
+        if (!prefs.aiEnabled) return;
         e.preventDefault();
         setAiPaneOpen((v) => !v);
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setSwitcherOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [prefs.aiEnabled]);
+
+  const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
+  const [activeFile, setActiveFile] = useState<string | null>(null);
+  const term = useTerminalTabs();
+  const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues">("term");
 
   const commands: Command[] = [
     { id: "explorer", label: "Toggle file explorer", run: () => toggleSidebar() },
@@ -673,9 +747,13 @@ function App() {
     { id: "tools", label: "Open integrations", run: () => { cycleSidebarView("tools-hub"); } },
     { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
     { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
-    { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
-    { id: "explain", label: "Explain last error (AI)", run: explainLastError },
-    { id: "ai-pane", label: "Toggle AI panel", hint: "Ctrl+Shift+L", run: () => setAiPaneOpen((v) => !v) },
+    ...(prefs.aiEnabled
+      ? [
+          { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
+          { id: "explain", label: "Explain last error (AI)", run: explainLastError },
+          { id: "ai-pane", label: "Toggle AI panel", hint: "Ctrl+Shift+L", run: () => setAiPaneOpen((v) => !v) },
+        ]
+      : []),
     { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
     { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
     { id: "terraform", label: "Open Terraform", run: () => setTerraformOpen(true) },
@@ -692,12 +770,53 @@ function App() {
       label: "Toggle light / dark theme",
       run: () => setPrefs({ theme: prefs.theme === "dark" ? "light" : "dark" }),
     },
+    // Terminal tab commands
+    { id: "new-tab", label: "New terminal tab", hint: "Ctrl/Cmd+T", run: () => { term.addTab(); setActiveKind("term"); } },
+    { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+W", run: () => term.closeTab(term.activeId) },
+    { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind("term"); } } },
+    { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind("term"); } } },
   ];
 
-  const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
-  const [activeFile, setActiveFile] = useState<string | null>(null);
-  const term = useTerminalTabs();
-  const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues">("term");
+  // ── Terminal tab universal shortcuts ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const target = e.target as HTMLElement;
+      const tag = target.tagName.toLowerCase();
+      const isEditing = tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+      if (isEditing) return;
+
+      const key = e.key.toLowerCase();
+      if (key === "t") {
+        e.preventDefault();
+        term.addTab();
+        setActiveKind("term");
+      } else if (key === "w") {
+        if (activeKind === "term" || activeKind === "git-graph" || activeKind === "issues") {
+          e.preventDefault();
+          term.closeTab(term.activeId);
+        }
+      } else if (key === "tab" && !e.shiftKey) {
+        e.preventDefault();
+        const current = term.tabs.findIndex((t) => t.id === term.activeId);
+        const next = term.tabs[(current + 1) % term.tabs.length];
+        if (next) {
+          term.setActiveId(next.id);
+          setActiveKind("term");
+        }
+      } else if (key === "tab" && e.shiftKey) {
+        e.preventDefault();
+        const current = term.tabs.findIndex((t) => t.id === term.activeId);
+        const prev = term.tabs[(current - 1 + term.tabs.length) % term.tabs.length];
+        if (prev) {
+          term.setActiveId(prev.id);
+          setActiveKind("term");
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [term, activeKind]);
 
   const openSettings = () => {
     setSettingsOpen(true);
@@ -790,9 +909,19 @@ function App() {
         <header
           data-tauri-drag-region
           className={cn(
-            "relative flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 bg-background/92 select-none",
+            "relative flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 select-none",
+            prefs.frostedGlass && bgDataUrl
+              ? "bg-background/60 backdrop-blur-md"
+              : "bg-background/92",
             IS_MAC ? "pr-2 pl-[72px]" : "pr-0 pl-2",
           )}
+          style={{
+            marginLeft: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+            marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+            marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+            borderTopLeftRadius: prefs.panelGaps > 0 ? "0.375rem" : undefined,
+            borderTopRightRadius: prefs.panelGaps > 0 ? "0.375rem" : undefined,
+          }}
         >
           {/* Left: sidebar toggle */}
           <div className="flex shrink-0 items-center gap-0.5">
@@ -825,6 +954,7 @@ function App() {
               settingsOpen={settingsOpen}
               onSelectSettings={() => setActiveKind("settings")}
               onCloseSettings={closeSettings}
+              animationsEnabled={prefs.animationsEnabled}
             />
             <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
           </div>
@@ -844,26 +974,28 @@ function App() {
           </Button>
           <ClipboardDropdown />
           <SnippetsDropdown />
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "size-6 shrink-0 rounded-md",
-              activeKind === "file" && aiPaneOpen
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
-            )}
-            title={activeKind === "file" ? "Toggle AI panel (Ctrl+Shift+L)" : "Toggle AI chat"}
-            onClick={() => {
-              if (activeKind === "file") {
-                setAiPaneOpen((v) => !v);
-              } else {
-                toggleBubble();
-              }
-            }}
-          >
-            <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
-          </Button>
+          {prefs.aiEnabled && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "size-6 shrink-0 rounded-md",
+                activeKind === "file" && aiPaneOpen
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
+              title={activeKind === "file" ? "Toggle AI panel (Ctrl+Shift+L)" : "Toggle AI chat"}
+              onClick={() => {
+                if (activeKind === "file") {
+                  setAiPaneOpen((v) => !v);
+                } else {
+                  toggleBubble();
+                }
+              }}
+            >
+              <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -888,18 +1020,39 @@ function App() {
         </header>
 
         {/* ── Path bar (cwd / breadcrumb) ────────────────────────── */}
-        <div className="bg-background/85">
+        <div
+          className="bg-background/85"
+          style={{
+            marginLeft: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+            marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+          }}
+        >
           <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
         </div>
 
         {/* ── Main workspace (manual layout, husk v1 visual) ─────── */}
-        <main className="zoom-content flex min-h-0 flex-1 overflow-hidden">
+        <main
+          className="zoom-content flex min-h-0 flex-1 overflow-hidden"
+          style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
+        >
           {/* Sidebar */}
           {explorerOpen && (
             <>
               <div
-                className="flex flex-col border-r border-[var(--border)] bg-background/88"
-                style={{ width: explorerWidth, minWidth: SIDEBAR_MIN_WIDTH, maxWidth: SIDEBAR_MAX_WIDTH }}
+                className={cn(
+                  "flex flex-col border-r border-[var(--border)] overflow-hidden rounded-lg",
+                  prefs.frostedGlass && bgDataUrl
+                    ? "bg-background/50 backdrop-blur-md"
+                    : "bg-background/88",
+                  prefs.animationsEnabled && "animate-sidebar-enter",
+                  prefs.neonBorderGlow && "neon-glow",
+                )}
+                style={{
+                  width: explorerWidth,
+                  minWidth: SIDEBAR_MIN_WIDTH,
+                  maxWidth: SIDEBAR_MAX_WIDTH,
+                  margin: prefs.panelGaps > 0 ? `var(--panel-gaps) 0 var(--panel-gaps) var(--panel-gaps)` : undefined,
+                }}
               >
                 <div className="min-h-0 flex-1 overflow-hidden">
                   {sidebarView === "explorer" ? (
@@ -932,7 +1085,10 @@ function App() {
               </div>
               {/* Sidebar resize handle */}
               <div
-                className="relative flex w-px shrink-0 cursor-col-resize items-center justify-center bg-border/60 hover:bg-border"
+                className={cn(
+                  "relative flex shrink-0 cursor-col-resize items-center justify-center bg-border/60 hover:bg-border",
+                  prefs.panelGaps > 0 ? "w-2" : "w-px",
+                )}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   const startX = e.clientX;
@@ -955,13 +1111,21 @@ function App() {
           )}
 
           {/* Workspace */}
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div
+            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg"
+            style={{
+              margin: prefs.panelGaps > 0
+                ? `var(--panel-gaps) var(--panel-gaps) var(--panel-gaps) 0`
+                : undefined,
+            }}
+          >
             <div className="relative flex min-h-0 min-w-0 flex-1">
               {/* Terminal layer */}
               <div
                 className={cn(
                   "absolute inset-0 flex flex-col",
                   activeKind !== "term" && "invisible pointer-events-none",
+                  prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
                 )}
                 aria-hidden={activeKind !== "term"}
               >
@@ -978,26 +1142,47 @@ function App() {
                 className={cn(
                   "relative min-h-0 min-w-0 flex-1",
                   activeKind !== "file" && "invisible pointer-events-none",
+                  prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
                 )}
                 aria-hidden={activeKind !== "file"}
               >
-                {/* Editor layer — ALWAYS fills the whole container. */}
+                {/* Editor layer — shrinks when AI pane + gaps are active so a
+                    visible wallpaper gap shows between editor and AI pane. */}
                 {openFiles.length > 0 ? (
-                  <div className="absolute inset-0 overflow-hidden">
+                  <div
+                    className="absolute top-0 left-0 bottom-0 overflow-hidden"
+                    style={{
+                      right: aiPaneOpen && prefs.panelGaps > 0
+                        ? `calc(var(--panel-gaps) + ${aiPaneWidth}px + var(--panel-gaps))`
+                        : 0,
+                    }}
+                  >
                     <EditorArea files={openFiles} activePath={activeFile} />
                   </div>
                 ) : null}
 
-                {/* AI panel — always at fixed width; only opacity toggles.
-                    No width/minWidth changes = zero layout reflow = no slide. */}
+                {/* AI panel — fixed width at the right edge with gap inset. */}
                 <div
-                  className="ai-pane-static no-drag-region absolute top-0 right-0 bottom-0 z-10 flex flex-col overflow-hidden border-l border-border bg-background/80"
+                  className={cn(
+                    "ai-pane-static no-drag-region absolute z-10 flex flex-col overflow-hidden border-l border-border rounded-r-lg",
+                    prefs.frostedGlass && bgDataUrl && "backdrop-blur-md",
+                    prefs.animationsEnabled && "animate-ai-pane-enter",
+                  )}
                   style={{
+                    backgroundColor: `rgba(0,0,0,${prefs.aiPaneOpacity / 100})`,
+                    top: `var(--panel-gaps)`,
+                    right: `var(--panel-gaps)`,
+                    bottom: `var(--panel-gaps)`,
                     width: aiPaneWidth,
                     minWidth: 260,
                     maxWidth: 500,
                     opacity: aiPaneOpen && openFiles.length > 0 ? 1 : 0,
                     pointerEvents: aiPaneOpen && openFiles.length > 0 ? "auto" : "none",
+                    transform: prefs.animationsEnabled
+                      ? aiPaneOpen && openFiles.length > 0
+                        ? "translateX(0)"
+                        : "translateX(20px)"
+                      : undefined,
                     boxSizing: "border-box",
                   }}
                 >
@@ -1024,11 +1209,13 @@ function App() {
                       window.addEventListener("mouseup", onUp);
                     }}
                   />
-                  <AiEditorPane
-                    activePath={activeFile}
-                    openFiles={openFiles}
-                    onClose={() => setAiPaneOpen(false)}
-                  />
+                  {prefs.aiEnabled && (
+                    <AiEditorPane
+                      activePath={activeFile}
+                      openFiles={openFiles}
+                      onClose={() => setAiPaneOpen(false)}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -1036,8 +1223,14 @@ function App() {
               {settingsOpen ? (
                 <div
                   className={cn(
-                    "absolute inset-0 bg-background/95",
+                    "absolute inset-0",
+                    prefs.frostedGlass && bgDataUrl
+                      ? "bg-background/80 backdrop-blur-xl"
+                      : "bg-background/95",
                     activeKind !== "settings" && "invisible pointer-events-none",
+                    prefs.animationsEnabled && "transition-all duration-200 ease-out",
+                    activeKind !== "settings" && prefs.animationsEnabled && "scale-95 opacity-0",
+                    prefs.neonBorderGlow && activeKind === "settings" && "neon-glow",
                   )}
                   aria-hidden={activeKind !== "settings"}
                 >
@@ -1050,6 +1243,7 @@ function App() {
                   className={cn(
                     "absolute inset-0",
                     activeKind !== "git-graph" && "invisible pointer-events-none",
+                    prefs.neonBorderGlow && activeKind === "git-graph" && "neon-glow",
                   )}
                   aria-hidden={activeKind !== "git-graph"}
                 >
@@ -1064,6 +1258,7 @@ function App() {
                   className={cn(
                     "absolute inset-0",
                     activeKind !== "issues" && "invisible pointer-events-none",
+                    prefs.neonBorderGlow && activeKind === "issues" && "neon-glow",
                   )}
                   aria-hidden={activeKind !== "issues"}
                 >
@@ -1078,43 +1273,102 @@ function App() {
         </main>
 
         {/* ── Status bar ─────────────────────────────────────────── */}
-        <StatusBar onExplainError={explainLastError} />
+        <div
+          style={{
+            marginLeft: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+            marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+            marginBottom: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+          }}
+        >
+          <StatusBar onExplainError={prefs.aiEnabled ? explainLastError : undefined} />
+        </div>
 
         {/* ── Floating overlays ──────────────────────────────────── */}
-        {gitHistoryOpen ? <GitHistoryDialog onClose={() => setGitHistoryOpen(false)} /> : null}
-        {shortcutsOpen ? <ShortcutsDialog onClose={() => setShortcutsOpen(false)} /> : null}
-        {totpOpen ? <TotpDialog onClose={() => setTotpOpen(false)} /> : null}
-        {jobsOpen ? <JobsDialog onClose={() => setJobsOpen(false)} /> : null}
-        {activeKind !== "file" && <AiFloatingBubble pendingQuery={pendingAiQuery} />}
-        {suggestOpen ? <SuggestDialog onClose={() => setSuggestOpen(false)} /> : null}
-        {explainCtx ? (
-          <ExplainDialog
-            command={explainCtx.command}
-            output={explainCtx.output}
-            exitCode={explainCtx.exitCode}
-            onClose={() => setExplainCtx(null)}
+        <DialogLayer open={gitHistoryOpen}>
+          <GitHistoryDialog onClose={() => setGitHistoryOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={shortcutsOpen}>
+          <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={totpOpen}>
+          <TotpDialog onClose={() => setTotpOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={jobsOpen}>
+          <JobsDialog onClose={() => setJobsOpen(false)} />
+        </DialogLayer>
+        {prefs.aiEnabled && activeKind !== "settings" && !(activeKind === "file" && aiPaneOpen) && (
+          <AiFloatingBubble
+            pendingQuery={pendingAiQuery}
+            mode={activeKind === "file" ? "editor" : "terminal"}
+            onOpenAiPane={activeKind === "file" ? () => setAiPaneOpen(true) : undefined}
           />
-        ) : null}
-        {dockerOpen ? <DockerView onClose={() => setDockerOpen(false)} /> : null}
-        {k8sOpen ? <KubernetesView onClose={() => setK8sOpen(false)} /> : null}
-        {terraformOpen ? <TerraformView onClose={() => setTerraformOpen(false)} /> : null}
-        {githubOpen ? <GithubIssuesDialog onClose={() => setGithubOpen(false)} /> : null}
-        {cicdOpen ? <CiCdDialog onClose={() => setCicdOpen(false)} /> : null}
-        {toolsOpen ? <ToolsHubDialog onClose={() => setToolsOpen(false)} /> : null}
-        {diffOpen ? (
-          <DiffDialog
-            initialLeft={diffPaths?.left}
-            initialRight={diffPaths?.right}
-            onClose={() => setDiffOpen(false)}
-          />
-        ) : null}
-        {previewOpen ? (
-          <PreviewDialog initialPath={previewPath} onClose={() => setPreviewOpen(false)} />
-        ) : null}
+        )}
+        <DialogLayer open={prefs.aiEnabled && suggestOpen}>
+          <SuggestDialog onClose={() => setSuggestOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={explainCtx !== null}>
+          {explainCtx && (
+            <ExplainDialog
+              command={explainCtx.command}
+              output={explainCtx.output}
+              exitCode={explainCtx.exitCode}
+              onClose={() => setExplainCtx(null)}
+            />
+          )}
+        </DialogLayer>
+        <DialogLayer open={dockerOpen}>
+          <DockerView onClose={() => setDockerOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={k8sOpen}>
+          <KubernetesView onClose={() => setK8sOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={terraformOpen}>
+          <TerraformView onClose={() => setTerraformOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={githubOpen}>
+          <GithubIssuesDialog onClose={() => setGithubOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={cicdOpen}>
+          <CiCdDialog onClose={() => setCicdOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={toolsOpen}>
+          <ToolsHubDialog onClose={() => setToolsOpen(false)} />
+        </DialogLayer>
+        <DialogLayer open={diffOpen}>
+          {diffOpen && (
+            <DiffDialog
+              initialLeft={diffPaths?.left}
+              initialRight={diffPaths?.right}
+              onClose={() => setDiffOpen(false)}
+            />
+          )}
+        </DialogLayer>
+        <DialogLayer open={previewOpen}>
+          {previewOpen && (
+            <PreviewDialog initialPath={previewPath} onClose={() => setPreviewOpen(false)} />
+          )}
+        </DialogLayer>
         {!prefs.hasSeenWelcome ? <WelcomeDialog /> : null}
-        {paletteOpen ? (
-          <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
-        ) : null}
+        {paletteOpen && (
+          <CommandPalette open commands={commands} onClose={() => setPaletteOpen(false)} />
+        )}
+        <DialogLayer open={switcherOpen}>
+          {switcherOpen && (
+            <QuickSwitcher
+              open={switcherOpen}
+              term={term}
+              openFiles={openFiles}
+              active={active}
+              settingsOpen={settingsOpen}
+              onSelect={(item) => {
+                if (item.kind === "term") selectTerm(item.id);
+                else if (item.kind === "file") selectFile(item.path);
+                else openSettings();
+              }}
+              onClose={() => setSwitcherOpen(false)}
+            />
+          )}
+        </DialogLayer>
         <ToastContainer />
       </div>
     </TooltipProvider>

@@ -44,14 +44,25 @@ export function typeInActiveTerminal(text: string): boolean {
 // The active terminal registers an opener for its in-terminal find (scrollback
 // search via xterm's SearchAddon); the titlebar search / ⌘F calls it.
 let searchOpener: (() => void) | null = null;
+let searchRunner: ((query: string) => void) | null = null;
 
 export function setActiveTerminalSearchOpener(fn: (() => void) | null): void {
   searchOpener = fn;
 }
 
+export function setActiveTerminalSearcher(fn: ((query: string) => void) | null): void {
+  searchRunner = fn;
+}
+
 export function openActiveTerminalSearch(): boolean {
   if (!searchOpener) return false;
   searchOpener();
+  return true;
+}
+
+export function searchActiveTerminal(query: string): boolean {
+  if (!searchRunner) return false;
+  searchRunner(query);
   return true;
 }
 

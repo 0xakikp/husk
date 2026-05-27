@@ -50,6 +50,8 @@ function CommandDialog({
       <DialogContent
         className={cn(
           "top-[33%] translate-y-0 overflow-hidden rounded-xl! border border-border/40 p-0 shadow-lg",
+          "[&[data-state=open]]:animate-none", /* suppress radix default zoom */
+          "animate-hyprland-enter",
           className
         )}
         showCloseButton={showCloseButton}

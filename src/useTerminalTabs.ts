@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { getActiveTerminalCwd, useActiveTerminalCwd } from "./ai/terminalContext";
 import { getWorkspaceRoot } from "./workspace/store";
+import { getPrefs } from "./settings/preferences";
+import { homeDir } from "./fs";
 import {
   newLeaf,
   splitPane,
@@ -29,6 +31,39 @@ function basename(p: string): string {
   return parts.length ? parts[parts.length - 1] : "/";
 }
 
+/* ── Session persistence ─────────────────────────────────────────── */
+
+const SESSION_KEY = "huskv2.session.v1";
+
+type SavedTab = { cwd?: string; title?: string; renamed?: boolean };
+type SavedSession = { tabs: SavedTab[]; activeIndex: number };
+
+function getFirstLeafCwd(p: Pane): string | undefined {
+  while (p.kind !== "leaf") {
+    p = p.a;
+  }
+  return p.initialCwd;
+}
+
+function saveSession(tabs: TermTab[], activeId: number) {
+  const saved: SavedTab[] = [];
+  for (const t of tabs) {
+    saved.push({ cwd: getFirstLeafCwd(t.root), title: t.renamed ? t.title : undefined, renamed: t.renamed });
+  }
+  const activeIndex = tabs.findIndex((t) => t.id === activeId);
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ tabs: saved, activeIndex }));
+  } catch { /* storage full or unavailable */ }
+}
+
+function loadSession(): SavedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (raw) return JSON.parse(raw) as SavedSession;
+  } catch { /* corrupt or unavailable */ }
+  return null;
+}
+
 export type TerminalTabsApi = ReturnType<typeof useTerminalTabs>;
 
 /**
@@ -37,46 +72,112 @@ export type TerminalTabsApi = ReturnType<typeof useTerminalTabs>;
  * render in the body — both reading this one source of truth.
  */
 export function useTerminalTabs() {
-  // First terminal opens in the saved workspace (Rust validates / falls back).
-  const [tabs, setTabs] = useState<TermTab[]>(() => [makeTab(1, getWorkspaceRoot() || undefined)]);
+  const [tabs, setTabs] = useState<TermTab[]>([]);
   const [activeId, setActiveId] = useState(1);
+  const [home, setHome] = useState<string>("");
   const nextId = useRef(2);
+  const restoredRef = useRef(false);
+
+  // Refs so callback helpers always see fresh state.
+  const tabsRef = useRef(tabs);
+  const activeIdRef = useRef(activeId);
+  useEffect(() => { tabsRef.current = tabs; }, [tabs]);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
+  // Fetch home directory once on mount so we can use it for explicit CWD.
+  useEffect(() => {
+    void homeDir().then(setHome).catch(() => setHome(""));
+  }, []);
+
+  // Initialise tabs once home is known (or immediately if already cached).
+  useEffect(() => {
+    if (restoredRef.current) return;
+    const prefs = getPrefs();
+    if (prefs.sessionRestoreEnabled) {
+      const saved = loadSession();
+      if (saved && saved.tabs.length > 0) {
+        const out: TermTab[] = [];
+        let id = 1;
+        for (const t of saved.tabs) {
+          out.push(makeTab(id, t.cwd || home || undefined));
+          if (t.renamed && t.title) {
+            out[out.length - 1].title = t.title;
+            out[out.length - 1].renamed = true;
+          }
+          id++;
+        }
+        nextId.current = id;
+        setTabs(out);
+        setActiveId(out[Math.max(0, Math.min(saved.activeIndex, out.length - 1))].id);
+        restoredRef.current = true;
+        return;
+      }
+    }
+    // Fresh start — workspace root, then home, then let Rust decide.
+    const initialCwd = getWorkspaceRoot() || home || undefined;
+    setTabs([makeTab(1, initialCwd)]);
+    setActiveId(1);
+    nextId.current = 2;
+    restoredRef.current = true;
+  }, [home]);
+
+  // Auto-save whenever tabs or active tab change.
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    saveSession(tabs, activeId);
+  }, [tabs, activeId]);
 
   const updateTab = (tabId: number, fn: (t: TermTab) => TermTab) =>
     setTabs((prev) => prev.map((t) => (t.id === tabId ? fn(t) : t)));
 
   const addTab = () => {
     const id = nextId.current++;
-    setTabs((prev) => [...prev, makeTab(id, getActiveTerminalCwd() || undefined)]);
+    setTabs((prev) => [...prev, makeTab(id, getActiveTerminalCwd() || home || undefined)]);
     setActiveId(id);
     return id;
   };
 
-  const closeTab = (id: number) => {
-    const idx = tabs.findIndex((t) => t.id === id);
-    const remaining = tabs.filter((t) => t.id !== id);
+  const closeTab = useCallback((id: number) => {
+    const currentTabs = tabsRef.current;
+    const currentActive = activeIdRef.current;
+    const idx = currentTabs.findIndex((t) => t.id === id);
+    const remaining = currentTabs.filter((t) => t.id !== id);
     if (remaining.length === 0) {
       const fresh = nextId.current++;
-      setTabs([makeTab(fresh)]);
+      setTabs([makeTab(fresh, home || undefined)]);
       setActiveId(fresh);
     } else {
       setTabs(remaining);
-      if (activeId === id) setActiveId(remaining[Math.max(0, idx - 1)].id);
+      if (currentActive === id) {
+        setActiveId(remaining[Math.max(0, idx - 1)].id);
+      }
     }
-  };
+  }, [home]);
 
   const splitLeaf = (tabId: number, leafId: number, dir: "row" | "col") =>
     updateTab(tabId, (t) => {
-      const leaf = newLeaf(getActiveTerminalCwd() || undefined);
+      const leaf = newLeaf(getActiveTerminalCwd() || home || undefined);
       return { ...t, root: splitPane(t.root, leafId, dir, () => leaf), focused: leaf.id };
     });
 
-  const closeLeaf = (tabId: number, leafId: number) => {
-    const tab = tabs.find((t) => t.id === tabId);
+  const closeLeaf = useCallback((tabId: number, leafId: number) => {
+    const tab = tabsRef.current.find((t) => t.id === tabId);
     if (!tab) return;
     const root = removePane(tab.root, leafId);
     if (root === null) {
-      closeTab(tabId); // last pane in the tab — close the tab
+      // last pane in the tab — close the tab
+      const idx = tabsRef.current.findIndex((t) => t.id === tabId);
+      const remaining = tabsRef.current.filter((t) => t.id !== tabId);
+      if (remaining.length === 0) {
+        const fresh = nextId.current++;
+        setTabs([makeTab(fresh, home || undefined)]);
+        setActiveId(fresh);
+      } else {
+        setTabs(remaining);
+        if (activeIdRef.current === tabId) {
+          setActiveId(remaining[Math.max(0, idx - 1)].id);
+        }
+      }
       return;
     }
     updateTab(tabId, (t) => ({
@@ -84,7 +185,7 @@ export function useTerminalTabs() {
       root,
       focused: t.focused === leafId ? firstLeaf(root) : t.focused,
     }));
-  };
+  }, [home]);
 
   const focusLeaf = (tabId: number, leafId: number) =>
     updateTab(tabId, (t) => (t.focused === leafId ? t : { ...t, focused: leafId }));

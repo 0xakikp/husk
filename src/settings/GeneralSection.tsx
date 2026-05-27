@@ -64,6 +64,19 @@ export function GeneralSection() {
       />
 
       <div className="flex flex-col gap-2">
+        <SettingRow
+          className="rounded border border-border/40 bg-muted/20 py-2"
+          title="AI enabled"
+          description="Toggle all AI features on or off. When disabled, the AI panel, agent traces, and AI shortcuts are hidden."
+        >
+          <Switch
+            checked={p.aiEnabled}
+            onCheckedChange={(v) => setPrefs({ aiEnabled: v })}
+          />
+        </SettingRow>
+      </div>
+
+      <div className="flex flex-col gap-2">
         <Label>Editor</Label>
         <div className="grid grid-cols-2 gap-2">
           <SettingRow
@@ -179,16 +192,28 @@ export function GeneralSection() {
 
       <div className="flex flex-col gap-2">
         <Label>Explorer</Label>
-        <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
-          title="Show hidden files"
-          description="Include dot-prefixed files & folders in the tree."
-        >
-          <Switch
-            checked={p.showHidden}
-            onCheckedChange={(v) => setPrefs({ showHidden: v })}
-          />
-        </SettingRow>
+        <div className="grid grid-cols-2 gap-2">
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Show hidden files"
+            description="Include dot-prefixed files & folders in the tree."
+          >
+            <Switch
+              checked={p.showHidden}
+              onCheckedChange={(v) => setPrefs({ showHidden: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Restore session"
+            description="Remember open terminal tabs and their working directories between launches."
+          >
+            <Switch
+              checked={p.sessionRestoreEnabled}
+              onCheckedChange={(v) => setPrefs({ sessionRestoreEnabled: v })}
+            />
+          </SettingRow>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -288,6 +313,18 @@ export function GeneralSection() {
               ))}
             </select>
           </SettingRow>
+          {p.aiEnabled && (
+            <SettingRow
+              className="rounded border border-border/40 bg-muted/20 py-2"
+              title="Error assistance"
+              description="When a command fails, show a toast with an Explain button that opens the AI assistant with the error context."
+            >
+              <Switch
+                checked={p.terminalAiErrorAssist}
+                onCheckedChange={(v) => setPrefs({ terminalAiErrorAssist: v })}
+              />
+            </SettingRow>
+          )}
         </div>
       </div>
     </div>

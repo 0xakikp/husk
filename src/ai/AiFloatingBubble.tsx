@@ -5,27 +5,22 @@ import {
   SparklesIcon,
   Cancel01Icon,
   MinusSignIcon,
-  ArrowUp01Icon,
   Clock01Icon,
   PlusSignIcon,
   PencilEdit02Icon,
   Copy01Icon,
   CopyCheckIcon,
   ComputerTerminal02Icon,
+  ClipboardIcon,
   BugIcon,
   SearchList01Icon,
   SourceCodeIcon,
-  ClipboardIcon,
-  Attachment01Icon,
-  Delete02Icon,
 } from "@hugeicons/core-free-icons";
 import { registerBubbleToggle } from "./bubbleStore";
+import { toast } from "@/toast";
 import { PROVIDERS, getProvider } from "./providers";
 import { useKey } from "./store";
 import { readActiveTerminal, runInActiveTerminal } from "./terminalContext";
-import { toast } from "@/toast";
-import { readFile } from "@/fs";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useAiBubbleChat } from "./bubble/useAiBubbleChat";
 
 type BubbleState = "collapsed" | "expanded";
@@ -142,7 +137,7 @@ function CodeBlock({ lang, value }: { lang: string; value: string }) {
           </button>
         </div>
       </div>
-      <pre className="overflow-x-auto p-2.5 font-mono text-[11px] leading-relaxed text-foreground/90">
+      <pre className="overflow-x-auto p-2 font-mono text-[10px] leading-relaxed text-foreground/90">
         <code>{value}</code>
       </pre>
     </div>
@@ -158,7 +153,7 @@ function FormattedBubbleMessage({ content, isStreaming }: { content: string; isS
         part.type === "code" ? (
           <CodeBlock key={i} lang={part.lang || "code"} value={part.value} />
         ) : (
-          <div key={i} className="whitespace-pre-wrap text-[12px] leading-relaxed">
+          <div key={i} className="whitespace-pre-wrap text-[11px] leading-relaxed">
             {part.value}
           </div>
         )
@@ -168,7 +163,8 @@ function FormattedBubbleMessage({ content, isStreaming }: { content: string; isS
   );
 }
 
-/* ── Quick action buttons for empty state ── */
+
+/* ── Quick actions triggered via /ai in terminal ── */
 const QUICK_ACTIONS = [
   {
     id: "explain",
@@ -205,7 +201,15 @@ const QUICK_ACTIONS = [
 ];
 
 /* ── Main component ── */
-export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
+export function AiFloatingBubble({
+  pendingQuery,
+  mode = "terminal",
+  onOpenAiPane,
+}: {
+  pendingQuery?: string;
+  mode?: "terminal" | "editor";
+  onOpenAiPane?: () => void;
+}) {
   const [state, setState] = useState<BubbleState>("collapsed");
   const [pos, setPos] = useState(readBubblePos);
   const [size, setSize] = useState(readBubbleSize);
@@ -234,8 +238,6 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
 
   const {
     messages,
-    input,
-    setInput,
     busy,
     send,
     stop,
@@ -245,8 +247,7 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
     ensureSession,
     selectedProviderId,
     setSelectedProviderId,
-    attachedFiles,
-    setAttachedFiles,
+    setSelectedModel,
     store: sessionStore,
     newSession,
     switchSession,
@@ -387,10 +388,9 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
     window.addEventListener("mouseup", onUp);
   }, [size, pos]);
 
-  const handleSend = () => {
-    if (needsKey || !input.trim() || busy) return;
-    ensureSession();
-    void send();
+  const handleClose = () => {
+    setState("collapsed");
+    clear();
   };
 
   const handleQuickAction = (prompt: string) => {
@@ -399,35 +399,17 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
     void send(prompt);
   };
 
-  const handleClose = () => {
-    setState("collapsed");
-    clear();
-  };
-
-  const handleAttachFile = async () => {
-    try {
-      const selected = await open({ multiple: true, filters: [{ name: "All files", extensions: ["*"] }] });
-      if (!selected || selected.length === 0) return;
-      const paths = Array.isArray(selected) ? selected : [selected];
-      for (const path of paths) {
-        if (attachedFiles.some((f) => f.name === path)) continue;
-        const content = await readFile(path);
-        setAttachedFiles((prev) => [...prev, { name: path.split("/").pop() || path, content }]);
-      }
-    } catch {
-      toast({ title: "Failed to attach file", variant: "error" });
-    }
-  };
-
-  const removeAttachedFile = (name: string) => {
-    setAttachedFiles((prev) => prev.filter((f) => f.name !== name));
-  };
-
   if (state === "collapsed") {
     return (
       <button
         type="button"
-        onClick={() => setState("expanded")}
+        onClick={() => {
+          if (mode === "editor" && onOpenAiPane) {
+            onOpenAiPane();
+          } else {
+            setState("expanded");
+          }
+        }}
         className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0"
         style={{
           right: PAD,
@@ -435,8 +417,8 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
           width: BUBBLE_SIZE,
           height: BUBBLE_SIZE,
         }}
-        aria-label="Open AI chat"
-        title="AI Chat"
+        aria-label={mode === "editor" ? "Open AI panel" : "Open AI chat"}
+        title={mode === "editor" ? "Open AI panel" : "AI Chat"}
       >
         <HugeiconsIcon icon={SparklesIcon} size={20} strokeWidth={1.5} />
       </button>
@@ -504,20 +486,24 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
           </button>
           {/* Model dropdown */}
           {showModelDropdown && (
-            <div className="absolute top-full right-0 z-30 mt-1 w-48 rounded-md border border-border/60 bg-popover py-1 shadow-lg">
+            <div className="absolute top-full right-0 z-30 mt-1 w-60 rounded-md border border-border/60 bg-popover py-1 shadow-lg">
               {PROVIDERS.map((p) => (
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => { setSelectedProviderId(p.id); setShowModelDropdown(false); }}
+                  onClick={() => {
+                    setSelectedProviderId(p.id);
+                    setSelectedModel(p.defaultModel);
+                    setShowModelDropdown(false);
+                  }}
                   className={cn(
-                    "flex w-full items-center justify-between px-2.5 py-1 text-left text-[11px] hover:bg-muted/50",
+                    "flex w-full items-center justify-between gap-2 px-2.5 py-1 text-left text-[11px] hover:bg-muted/50",
                     selectedProviderId === p.id && "bg-accent/10 text-accent-foreground"
                   )}
                 >
                   <span className="truncate">{p.label}</span>
                   {selectedProviderId === p.id && (
-                    <span className="text-[9px] text-muted-foreground">{p.defaultModel}</span>
+                    <span className="shrink-0 text-[9px] text-muted-foreground">{p.defaultModel}</span>
                   )}
                 </button>
               ))}
@@ -566,7 +552,7 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
             )}
           </button>
           {showSessions && (
-            <div className="absolute top-full right-0 z-30 mt-1 w-56 rounded-md border border-border/60 bg-popover py-1 shadow-lg">
+            <div className="absolute top-full right-0 z-30 mt-1 w-60 rounded-md border border-border/60 bg-popover py-1 shadow-lg">
               <div className="flex items-center justify-between px-2 py-1">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sessions</span>
                 <button
@@ -697,9 +683,8 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
               <HugeiconsIcon icon={SparklesIcon} size={18} strokeWidth={1.5} className="text-primary" />
             </div>
             <div className="max-w-[220px] text-center text-[12px] leading-relaxed text-muted-foreground">
-              Type <code className="rounded bg-muted px-1 py-0.5 text-primary">/ai</code> in your terminal to ask about errors, commands, or anything on screen.
+              Type <code className="rounded bg-muted px-1 py-0.5 text-primary">/ai</code> in your terminal to ask questions. Responses appear here.
             </div>
-            {/* Quick action grid */}
             <div className="grid w-full grid-cols-2 gap-1.5 px-1">
               {QUICK_ACTIONS.map((action) => (
                 <button
@@ -743,65 +728,18 @@ export function AiFloatingBubble({ pendingQuery }: { pendingQuery?: string }) {
         )}
       </div>
 
-      {/* ── INPUT ── */}
+      {/* ── FOOTER ── */}
       <div className="shrink-0 border-t border-border/60 bg-muted/10 px-2.5 py-2">
-        {/* Attached file chips */}
-        {attachedFiles.length > 0 && (
-          <div className="mb-1.5 flex flex-wrap gap-1">
-            {attachedFiles.map((f) => (
-              <div
-                key={f.name}
-                className="flex items-center gap-1 rounded-md border border-border/40 bg-muted/30 px-1.5 py-0.5 text-[10px] text-foreground"
-              >
-                <span className="truncate max-w-[120px]">{f.name}</span>
-                <button
-                  type="button"
-                  onClick={() => removeAttachedFile(f.name)}
-                  className="flex size-3.5 items-center justify-center rounded text-muted-foreground hover:text-destructive"
-                >
-                  <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={2} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
         {needsKey ? (
           <div className="rounded-md bg-muted/30 px-3 py-2 text-center text-[11px] text-muted-foreground">
             Set a {provider.label} API key in{" "}
             <span className="text-primary">Settings → Models</span>
           </div>
         ) : (
-          <div className="flex items-end gap-1.5 rounded-lg border border-border/40 bg-muted/20 p-1">
-            <button
-              type="button"
-              onClick={handleAttachFile}
-              disabled={busy}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
-              title="Attach file"
-            >
-              <HugeiconsIcon icon={Attachment01Icon} size={12} strokeWidth={1.5} />
-            </button>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Ask about the terminal…"
-              rows={1}
-              className="min-h-[32px] w-full resize-none border-0 bg-transparent px-1.5 py-1 text-[12px] text-foreground outline-none ring-0 placeholder:text-muted-foreground/40"
-            />
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={busy || (!input.trim() && attachedFiles.length === 0)}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors hover:bg-primary/20 disabled:opacity-30"
-            >
-              <HugeiconsIcon icon={ArrowUp01Icon} size={12} strokeWidth={2} />
-            </button>
+          <div className="flex items-center justify-center rounded-lg border border-border/40 bg-muted/20 py-2 text-[11px] text-muted-foreground">
+            Type{" "}
+            <code className="mx-1 rounded bg-muted px-1 py-0.5 text-primary">/ai</code>{" "}
+            in the terminal to chat
           </div>
         )}
       </div>

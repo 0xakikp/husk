@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { SettingsPage } from "./settings/SettingsPage";
@@ -9,6 +9,30 @@ import "./styles/tailwind.css";
 import "./styles/fonts.css";
 import "./styles/code-highlight.css";
 import "./App.css";
+
+/** Wraps the settings page with focus/blur listeners that dim the window
+ *  when it loses focus — a hyprland-style inactive window treatment. */
+function SettingsWindowWrapper() {
+  useEffect(() => {
+    let unsubFocus: (() => void) | undefined;
+    let unsubBlur: (() => void) | undefined;
+    const setup = async () => {
+      const win = getCurrentWindow();
+      unsubFocus = await win.listen("tauri://focus", () => {
+        document.documentElement.classList.remove("settings-unfocused");
+      });
+      unsubBlur = await win.listen("tauri://blur", () => {
+        document.documentElement.classList.add("settings-unfocused");
+      });
+    };
+    setup();
+    return () => {
+      unsubFocus?.();
+      unsubBlur?.();
+    };
+  }, []);
+  return <SettingsPage onClose={() => void getCurrentWindow().close()} />;
+}
 
 // Paint with the saved theme + mono font immediately, so either entry point
 // (the main app or the standalone settings window) starts with the right
@@ -41,10 +65,6 @@ const isSettings = new URLSearchParams(location.search).get("view") === "setting
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {isSettings ? (
-      <SettingsPage onClose={() => void getCurrentWindow().close()} />
-    ) : (
-      <App />
-    )}
+    {isSettings ? <SettingsWindowWrapper /> : <App />}
   </React.StrictMode>,
 );

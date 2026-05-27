@@ -9,6 +9,76 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Image02Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 
+const PRESET_COLORS = [
+  "#11c700", // husk green
+  "#00d4ff", // cyan
+  "#ff6b9d", // rose
+  "#f1c40f", // yellow
+  "#e74c3c", // red
+  "#9b59b6", // purple
+  "#3498db", // blue
+  "#e67e22", // orange
+  "#1abc9c", // teal
+  "#ff79c6", // pink
+];
+
+/** A slider row with title/description on the left and a full-width slider on the right. */
+function SliderRow({
+  title,
+  description,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded border border-border/40 bg-muted/20 px-5 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[12.5px] font-medium text-foreground">{title}</span>
+          <span className="text-[10.5px] leading-relaxed text-muted-foreground">{description}</span>
+        </div>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground font-mono">
+          {value}
+        </span>
+      </div>
+      <Slider value={[value]} min={min} max={max} step={step} onValueChange={([v]) => onChange(v)} />
+    </div>
+  );
+}
+
+/** A switch row inside the grid. */
+function SwitchRow({
+  title,
+  description,
+  checked,
+  onCheckedChange,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onCheckedChange: (v: boolean) => void;
+}) {
+  return (
+    <SettingRow
+      className="rounded border border-border/40 bg-muted/20 py-2"
+      title={title}
+      description={description}
+    >
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    </SettingRow>
+  );
+}
+
 export function AppearanceSection() {
   const p = usePrefs();
   const bg = p.background;
@@ -45,21 +115,18 @@ export function AppearanceSection() {
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionHeader
-        title="Appearance"
-        description="Customize the app background image and transparency."
-      />
+      <SectionHeader title="Appearance" description="Customize colors, effects, animations, and layout." />
 
+      {/* ── Background image ── */}
       <div className="flex flex-col gap-2">
+        <Label>Background</Label>
+
         <SettingRow
           className="rounded border border-border/40 bg-muted/20 py-2"
           title="Background image"
           description="Show a custom image behind the terminal and editor."
         >
-          <Switch
-            checked={bg.enabled}
-            onCheckedChange={(v) => patchBg({ enabled: v })}
-          />
+          <Switch checked={bg.enabled} onCheckedChange={(v) => patchBg({ enabled: v })} />
         </SettingRow>
 
         <SettingRow
@@ -91,54 +158,133 @@ export function AppearanceSection() {
           </div>
         </SettingRow>
 
-        <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
-          title="Opacity"
-          description={`${bg.opacity}%`}
-        >
-          <div className="w-32">
-            <Slider
-              value={[bg.opacity]}
-              min={10}
-              max={100}
-              step={5}
-              onValueChange={([v]) => patchBg({ opacity: v })}
-            />
-          </div>
-        </SettingRow>
+        {/* Sliders in 2-column grid */}
+        <div className="grid grid-cols-2 gap-2">
+          <SliderRow
+            title="Opacity"
+            description="Wallpaper visibility"
+            value={bg.opacity}
+            min={10}
+            max={100}
+            step={5}
+            onChange={(v) => patchBg({ opacity: v })}
+          />
+          <SliderRow
+            title="Blur"
+            description="Wallpaper softness"
+            value={bg.blur}
+            min={0}
+            max={20}
+            step={1}
+            onChange={(v) => patchBg({ blur: v })}
+          />
+          <SliderRow
+            title="Dim"
+            description="Dark overlay strength"
+            value={bg.dim}
+            min={0}
+            max={90}
+            step={5}
+            onChange={(v) => patchBg({ dim: v })}
+          />
+          <SliderRow
+            title="Editor wallpaper"
+            description="Code area transparency"
+            value={p.editorWallpaperOpacity}
+            min={0}
+            max={50}
+            step={5}
+            onChange={(v) => setPrefs({ editorWallpaperOpacity: v })}
+          />
+        </div>
+      </div>
 
-        <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
-          title="Blur"
-          description={`${bg.blur}px`}
-        >
-          <div className="w-32">
-            <Slider
-              value={[bg.blur]}
-              min={0}
-              max={20}
-              step={1}
-              onValueChange={([v]) => patchBg({ blur: v })}
-            />
-          </div>
-        </SettingRow>
+      {/* ── Accent color ── */}
+      <div className="flex flex-col gap-2">
+        <Label>Accent color</Label>
+        <div className="grid grid-cols-5 gap-1.5">
+          {PRESET_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setPrefs({ accentColor: c })}
+              className="relative h-7 w-full rounded-md border border-border/40 transition-transform hover:scale-105"
+              style={{ backgroundColor: c }}
+            >
+              {p.accentColor === c && (
+                <span className="absolute inset-0 flex items-center justify-center">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={p.accentColor}
+            onChange={(e) => setPrefs({ accentColor: e.target.value })}
+            className="size-7 cursor-pointer rounded border border-border/40 bg-transparent p-0"
+          />
+          <span className="text-[11px] text-muted-foreground font-mono">{p.accentColor}</span>
+        </div>
+      </div>
 
-        <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
-          title="Dim"
-          description={`${bg.dim}%`}
-        >
-          <div className="w-32">
-            <Slider
-              value={[bg.dim]}
-              min={0}
-              max={90}
-              step={5}
-              onValueChange={([v]) => patchBg({ dim: v })}
-            />
-          </div>
-        </SettingRow>
+      {/* ── Effects ── */}
+      <div className="flex flex-col gap-2">
+        <Label>Effects</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <SwitchRow
+            title="Animations"
+            description="Smooth transitions"
+            checked={p.animationsEnabled}
+            onCheckedChange={(v) => setPrefs({ animationsEnabled: v })}
+          />
+          <SwitchRow
+            title="Frosted glass"
+            description="Backdrop blur on panels"
+            checked={p.frostedGlass}
+            onCheckedChange={(v) => setPrefs({ frostedGlass: v })}
+          />
+          <SwitchRow
+            title="Neon border glow"
+            description="Active panel glow"
+            checked={p.neonBorderGlow}
+            onCheckedChange={(v) => setPrefs({ neonBorderGlow: v })}
+          />
+        </div>
+      </div>
+
+      {/* ── Layout ── */}
+      <div className="flex flex-col gap-2">
+        <Label>Layout</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <SliderRow
+            title="AI panel opacity"
+            description="AI panel darkness"
+            value={p.aiPaneOpacity}
+            min={20}
+            max={100}
+            step={5}
+            onChange={(v) => setPrefs({ aiPaneOpacity: v })}
+          />
+          <SliderRow
+            title="Panel gaps"
+            description="Padding between panels"
+            value={p.panelGaps}
+            min={0}
+            max={12}
+            step={1}
+            onChange={(v) => setPrefs({ panelGaps: v })}
+          />
+        </div>
       </div>
     </div>
   );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return <span className="text-[11px] font-medium tracking-tight text-muted-foreground">{children}</span>;
 }

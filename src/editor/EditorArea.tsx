@@ -1,12 +1,18 @@
 import { useEffect, useRef } from "react";
-import { monaco } from "./monacoEnv";
+import { monaco, defineHuskTheme } from "./monacoEnv";
 import { initVimMode } from "monaco-vim";
 import { readFile, writeFile } from "../fs";
 import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
 import { registerEditorApplyEdit } from "@/ai/editor/editorStore";
 
-const monacoTheme = (p: Prefs) => (p.theme === "dark" ? "husk-black" : "vs");
+const monacoTheme = (p: Prefs) => {
+  if (p.theme === "dark") {
+    defineHuskTheme(p.editorWallpaperOpacity);
+    return "husk-black";
+  }
+  return "vs";
+};
 
 /** Editor options driven by preferences (theme handled separately). */
 function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.IGlobalEditorOptions {

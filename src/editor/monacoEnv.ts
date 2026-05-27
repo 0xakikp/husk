@@ -28,27 +28,37 @@ self.MonacoEnvironment = {
   },
 };
 
-// Pitch-black editor theme. vs-dark's background is #1e1e1e (grey); override
-// every surface Monaco paints so the editor matches the app's all-black chrome.
-monaco.editor.defineTheme("husk-black", {
-  base: "vs-dark",
-  inherit: true,
-  rules: [],
-  colors: {
-    "editor.background": "#000000",
-    "editorGutter.background": "#000000",
-    "editorLineNumber.background": "#000000",
-    "minimap.background": "#000000",
-    "editorStickyScroll.background": "#000000",
-    "editorStickyScrollHover.background": "#0a0a0a",
-    "breadcrumb.background": "#000000",
-    "editorWidget.background": "#0a0a0a",
-    "editorWidget.border": "#1f1f1f",
-    "editorSuggestWidget.background": "#0a0a0a",
-    "editorHoverWidget.background": "#0a0a0a",
-    "editorOverviewRuler.background": "#000000",
-    "scrollbarSlider.background": "#1f1f1f80",
-  },
-});
+/**
+ * Define the husk-black theme with configurable wallpaper opacity.
+ * opacity = 0 means fully opaque black background (no wallpaper visible).
+ * opacity = 30 means ~12% black overlay, so wallpaper shows through clearly.
+ */
+export function defineHuskTheme(wallpaperOpacity = 0): void {
+  const alpha = Math.max(0, Math.min(255, Math.round((1 - wallpaperOpacity / 100) * 255)));
+  const bg = `#000000${alpha.toString(16).padStart(2, "0")}`;
+  monaco.editor.defineTheme("husk-black", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": bg,
+      "editorGutter.background": bg,
+      "editorLineNumber.background": bg,
+      "editorLineNumber.foreground": "#888888",
+      "minimap.background": bg,
+      "editorStickyScroll.background": bg,
+      "editorStickyScrollHover.background": "#0a0a0a",
+      "breadcrumb.background": bg,
+      "editorWidget.background": "#0a0a0a",
+      "editorWidget.border": "#1f1f1f",
+      "editorSuggestWidget.background": "#0a0a0a",
+      "editorHoverWidget.background": "#0a0a0a",
+      "editorOverviewRuler.background": bg,
+      "scrollbarSlider.background": "#1f1f1f80",
+    },
+  });
+}
+
+defineHuskTheme(0);
 
 export { monaco };

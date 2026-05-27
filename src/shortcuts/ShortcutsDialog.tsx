@@ -3,6 +3,10 @@ const SHORTCUTS = [
   { keys: "⌘/Ctrl F", desc: "Find in terminal" },
   { keys: "⌘/Ctrl +  /  −  /  0", desc: "Zoom in / out / reset" },
   { keys: "⌘/Ctrl S", desc: "Save file (editor)" },
+  { keys: "⌘/Ctrl T", desc: "New terminal tab" },
+  { keys: "⌘/Ctrl W", desc: "Close terminal tab" },
+  { keys: "⌘/Ctrl Tab", desc: "Next terminal tab" },
+  { keys: "⌘/Ctrl Shift Tab", desc: "Previous terminal tab" },
   { keys: "Enter / Shift+Enter", desc: "Next / previous terminal match" },
   { keys: "Esc", desc: "Close dialogs / search" },
 ];

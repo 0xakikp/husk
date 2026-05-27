@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
 import { Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,40 @@ function scrollToSection(id: SectionId) {
 
 export function SettingsPage({ onClose }: { onClose: () => void }) {
   const [search, setSearch] = useState("");
+  const [activeSection, setActiveSection] = useState<SectionId>("about");
+  const mainRef = useRef<HTMLElement>(null);
+
+  // Track which section is currently in view.
+  // getBoundingClientRect().top is measured in viewport coordinates, so
+  // it always matches regardless of whether the scroll container is
+  // relative, absolute, or fixed.
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+
+    const updateActive = () => {
+      const mainRect = main.getBoundingClientRect();
+      const threshold = mainRect.top + 80; // 80 px below top of <main>
+      let current: SectionId = "about";
+      for (const s of SECTIONS) {
+        const el = document.getElementById(`settings-section-${s.id}`);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top <= threshold) {
+          current = s.id;
+        }
+      }
+      setActiveSection(current);
+    };
+
+    main.addEventListener("scroll", updateActive, { passive: true });
+    // Call immediately and again after the enter animation finishes
+    updateActive();
+    const t = setTimeout(updateActive, 400);
+    return () => {
+      main.removeEventListener("scroll", updateActive);
+      clearTimeout(t);
+    };
+  }, []);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -71,16 +106,27 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     <div className="flex h-full flex-col overflow-hidden bg-background text-foreground select-none">
       <div className="flex h-8 shrink-0 items-center justify-between bg-background px-3">
         <div className="flex items-center gap-1">
-          {SECTIONS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => scrollToSection(s.id)}
-              className="h-6 rounded-md px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              {s.label}
-            </button>
-          ))}
+          {SECTIONS.map((s) => {
+            const active = activeSection === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => scrollToSection(s.id)}
+                className={cn(
+                  "relative h-6 rounded-md px-2.5 text-[11.5px] transition-colors",
+                  active
+                    ? "text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {s.label}
+                {active && (
+                  <span className="absolute bottom-0 left-1.5 right-1.5 h-[2px] rounded-full bg-primary" />
+                )}
+              </button>
+            );
+          })}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative w-44">
@@ -108,7 +154,10 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <main className="min-h-0 flex-1 overflow-y-auto px-8 pt-6 pb-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <main
+        ref={mainRef}
+        className="min-h-0 flex-1 overflow-y-auto px-8 pt-6 pb-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         <div className="mx-auto w-full max-w-160">
           {visible.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
@@ -186,6 +235,15 @@ function SectionDivider() {
 
 
 
+const AGENT_DESCRIPTIONS: Record<string, string> = {
+  terminal: "The all-in-one terminal tool. Commands, errors, logs, scripts, and CLI help.",
+  architect: "Plans and designs before implementation. Systems thinking and trade-off analysis.",
+  coder: "Writes, modifies, and refactors code. Production-ready, well-tested, idiomatic.",
+  ask: "Answers questions and explains concepts. Adjusts depth to your level.",
+  debugger: "Diagnoses and fixes issues. Root-cause analysis and surgical fixes.",
+  orchestrator: "Coordinates tasks across agents. Breaks down complexity and sequences work.",
+};
+
 function AgentsSection() {
   const agents = useAgents();
   const [editing, setEditing] = useState<Agent | null>(null);
@@ -206,32 +264,32 @@ function AgentsSection() {
   return (
     <div className="flex flex-col gap-7">
       <SectionHeader title="Agents" description="Named assistant personas for the AI panel." />
-      <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {agents.map((a) => (
           <div
             key={a.id}
-            className="flex items-center justify-between gap-4 rounded border border-border/40 bg-muted/20 px-3 py-2.5"
+            className="flex flex-col gap-1.5 rounded border border-border/40 bg-muted/20 px-4 py-3"
           >
-            <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-[12.5px] font-medium text-foreground">{a.name}</span>
-              <span className="text-[10.5px] text-muted-foreground">
-                {a.builtIn ? "Built-in preset" : "Custom"}
-              </span>
+              {a.builtIn ? (
+                <span className="shrink-0 rounded-full border border-border/40 bg-card px-2 py-0.5 text-[10px] text-muted-foreground">
+                  preset
+                </span>
+              ) : (
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button variant="ghost" size="xs" onClick={() => setEditing(a)}>
+                    Edit
+                  </Button>
+                  <Button variant="ghost" size="xs" onClick={() => removeAgent(a.id)}>
+                    Delete
+                  </Button>
+                </div>
+              )}
             </div>
-            {a.builtIn ? (
-              <span className="rounded-full border border-border/40 bg-card px-2 py-0.5 text-[10px] text-muted-foreground">
-                preset
-              </span>
-            ) : (
-              <div className="flex shrink-0 items-center gap-1">
-                <Button variant="ghost" size="xs" onClick={() => setEditing(a)}>
-                  Edit
-                </Button>
-                <Button variant="ghost" size="xs" onClick={() => removeAgent(a.id)}>
-                  Delete
-                </Button>
-              </div>
-            )}
+            <span className="text-[10.5px] leading-relaxed text-muted-foreground">
+              {AGENT_DESCRIPTIONS[a.id] ?? (a.builtIn ? "Built-in preset" : "Custom agent")}
+            </span>
           </div>
         ))}
       </div>

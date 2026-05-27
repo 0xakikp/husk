@@ -118,9 +118,11 @@ function getGroup(id: string, label: string): string {
 }
 
 export function CommandPalette({
+  open,
   commands,
   onClose,
 }: {
+  open: boolean;
   commands: Command[];
   onClose: () => void;
 }) {
@@ -160,7 +162,8 @@ export function CommandPalette({
 
   return (
     <CommandDialog
-      open
+      open={open}
+      className="sm:max-w-[420px]"
       onOpenChange={(o) => {
         if (!o) onClose();
       }}

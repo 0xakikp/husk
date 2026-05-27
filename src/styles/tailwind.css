@@ -59,27 +59,28 @@
   --card-foreground: #e5e5e5;
   --popover: #1f1f1f;
   --popover-foreground: #e5e5e5;
-  --primary: #11c700;
+  --primary: var(--accent);
   --primary-foreground: #000000;
   --secondary: #1f1f1f;
   --secondary-foreground: #e5e5e5;
   --muted: #1f1f1f;
   --muted-foreground: #868686;
-  --accent: #0da100;
+  --accent: #11c700;
   --accent-foreground: #ffffff;
   --destructive: #ff002b;
   --border: #1f1f1f;
   --input: #1f1f1f;
-  --ring: #11c700;
+  --ring: var(--accent);
   --radius: 0.5rem;
   --sidebar: #000000;
   --sidebar-foreground: #e5e5e5;
-  --sidebar-primary: #11c700;
+  --sidebar-primary: var(--accent);
   --sidebar-primary-foreground: #000000;
   --sidebar-accent: #1f1f1f;
   --sidebar-accent-foreground: #e5e5e5;
   --sidebar-border: #1f1f1f;
-  --sidebar-ring: #11c700;
+  --sidebar-ring: var(--accent);
+  --panel-gaps: 0px;
 }
 
 /* husk v1 light tokens. */
@@ -90,27 +91,27 @@
   --card-foreground: #1c1917;
   --popover: #ffffff;
   --popover-foreground: #1c1917;
-  --primary: #22c55e;
+  --primary: var(--accent);
   --primary-foreground: #ffffff;
   --secondary: #f5f0e8;
   --secondary-foreground: #44403c;
   --muted: #f5f0e8;
   --muted-foreground: #78716c;
-  --accent: #f5f0e8;
-  --accent-foreground: #44403c;
+  --accent: #22c55e;
+  --accent-foreground: #ffffff;
   --destructive: #dc2626;
   --border: #e7e5e4;
   --input: #e7e5e4;
-  --ring: #22c55e;
+  --ring: var(--accent);
   --radius: 0.5rem;
   --sidebar: #f5f0e8;
   --sidebar-foreground: #1c1917;
-  --sidebar-primary: #22c55e;
+  --sidebar-primary: var(--accent);
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ebe5d9;
   --sidebar-accent-foreground: #44403c;
   --sidebar-border: #e7e5e4;
-  --sidebar-ring: #22c55e;
+  --sidebar-ring: var(--accent);
 }
 
 @layer base {

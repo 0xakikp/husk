@@ -45,7 +45,7 @@ export const MODELS: ModelInfo[] = [
   { id: "mistral-small-latest", label: "Mistral Small", provider: getProvider("mistral"), description: "Fast & efficient", contextWindow: "128K" },
 
   // Moonshot
-  { id: "moonshot-k2", label: "Kimi K2", provider: getProvider("moonshot"), description: "Long-context specialist", contextWindow: "2M" },
+  { id: "moonshotai/kimi-k2.6", label: "Kimi K2.6", provider: getProvider("moonshot"), description: "Long-context specialist", contextWindow: "2M" },
 
   // Local / OpenAI-compatible
   { id: "lmstudio-local", label: "LM Studio", provider: getProvider("local"), description: "Local model via LM Studio", contextWindow: "—" },
