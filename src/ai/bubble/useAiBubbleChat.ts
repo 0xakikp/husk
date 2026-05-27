@@ -144,7 +144,7 @@ export function useAiBubbleChat() {
             tools
           ),
           new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error("Request timed out after 30s")), 30000)
+            setTimeout(() => reject(new Error("Request timed out after 60s")), 60000)
           ),
         ]);
       } catch (e) {

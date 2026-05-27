@@ -34,6 +34,7 @@
         { "url": "https://api.x.ai/*" },
         { "url": "https://api.mistral.ai/*" },
         { "url": "https://api.moonshot.ai/*" },
+        { "url": "https://api.kimi.com/*" },
         { "url": "http://localhost:*/*" },
         { "url": "http://127.0.0.1:*/*" }
       ]
