@@ -144,9 +144,9 @@ export function buildTerminalTheme(
     return {
       background: transparentBg ? "rgba(0,0,0,0)" : "#ffffff",
       foreground: "#1a1a1a",
-      cursor: "#555555",
-      cursorAccent: "#ffffff",
-      selectionBackground: "rgba(0, 0, 0, 0.12)",
+      cursor: "rgba(0, 0, 0, 0.25)",
+      cursorAccent: "rgba(0, 0, 0, 0)",
+      selectionBackground: "rgba(0, 0, 0, 0.10)",
       selectionForeground: "#000000",
       ...ansi,
     };
@@ -155,9 +155,9 @@ export function buildTerminalTheme(
   return {
     background: transparentBg ? "rgba(0,0,0,0)" : p.bg,
     foreground: p.fg,
-    cursor: "#888888",
-    cursorAccent: "#000000",
-    selectionBackground: "rgba(128, 128, 128, 0.25)",
+    cursor: "rgba(255, 255, 255, 0.18)",
+    cursorAccent: "rgba(255, 255, 255, 0)",
+    selectionBackground: "rgba(255, 255, 255, 0.12)",
     selectionForeground: "#ffffff",
     ...ansi,
   };
