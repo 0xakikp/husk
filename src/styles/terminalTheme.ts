@@ -8,10 +8,10 @@ export const TERMINAL_THEME_PRESETS: Record<
 > = {
   husk: {
     name: "Husk",
-    bg: "#000000",
-    fg: "#e5e5e5",
+    bg: "#0a0f0a",
+    fg: "#d4e5d4",
     cursor: "#11c700",
-    selectionBg: "rgba(17, 199, 0, 0.35)",
+    selectionBg: "rgba(17, 199, 0, 0.30)",
   },
   hacker: {
     name: "Hacker",
@@ -57,22 +57,22 @@ type Ansi = {
 
 const ANSI_PALETTES: Record<TerminalThemePreset, Ansi> = {
   husk: {
-    black: "#1f1f1f",
+    black: "#1a1f1a",
     red: "#e74c3c",
     green: "#2ecc71",
-    yellow: "#f1c40f",
-    blue: "#3498db",
-    magenta: "#e91e63",
-    cyan: "#1abc9c",
-    white: "#d4d4d4",
-    brightBlack: "#555555",
+    yellow: "#d4c520",
+    blue: "#5a8f5a",
+    magenta: "#b85cb8",
+    cyan: "#3dd68a",
+    white: "#c8d8c8",
+    brightBlack: "#4a554a",
     brightRed: "#ff6b6b",
     brightGreen: "#4ade80",
-    brightYellow: "#fbbf24",
-    brightBlue: "#60a5fa",
-    brightMagenta: "#f472b6",
-    brightCyan: "#22d3ee",
-    brightWhite: "#ffffff",
+    brightYellow: "#fde68a",
+    brightBlue: "#7ab87a",
+    brightMagenta: "#f0a0f0",
+    brightCyan: "#6ee7b7",
+    brightWhite: "#e8f5e8",
   },
   hacker: {
     black: "#0a1a0a",
