@@ -22,15 +22,11 @@ export interface AttachedFile {
 }
 
 export function useAiBubbleChat() {
-  const cfg = loadConfig();
   const [store, setStore] = useState<BubbleSessionStore>(() => loadBubbleSessions());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [includeContext, setIncludeContext] = useState(true);
-  const [selectedProviderId, setSelectedProviderId] = useState(cfg.providerId);
-  const [selectedModel, setSelectedModel] = useState(cfg.model);
-  const [hasUserOverriddenModel, setHasUserOverriddenModel] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const abortRef = useRef(false);
   const messagesRef = useRef(messages);
@@ -69,25 +65,6 @@ export function useAiBubbleChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // Sync with global Settings default model whenever the user changes it there.
-  // If the user has manually overridden the model via the bubble dropdown, keep it.
-  useEffect(() => {
-    if (hasUserOverriddenModel) return;
-    const next = loadConfig();
-    setSelectedProviderId(next.providerId);
-    setSelectedModel(next.model);
-  }, [hasUserOverriddenModel]);
-  // We poll settings changes by checking on window focus — no re-render trigger available.
-  useEffect(() => {
-    const onFocus = () => {
-      if (hasUserOverriddenModel) return;
-      const next = loadConfig();
-      setSelectedProviderId((prev) => (prev !== next.providerId ? next.providerId : prev));
-      setSelectedModel((prev) => (prev !== next.model ? next.model : prev));
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [hasUserOverriddenModel]);
 
   const ensureSession = useCallback(() => {
     if (activeSession) return;
@@ -107,7 +84,9 @@ export function useAiBubbleChat() {
       const text = (textOverride ?? input).trim();
       if (!text || busy) return;
 
-      const provider = getProvider(selectedProviderId);
+      // Read current Settings config fresh — the user may have changed it.
+      const cfg = loadConfig();
+      const provider = getProvider(cfg.providerId);
       const apiKey = getKey(provider.id);
       if (!provider.keyless && !apiKey) {
         setMessages((prev) => [
@@ -140,7 +119,7 @@ export function useAiBubbleChat() {
         system += `\n\nAttached files:\n${fileBlock}`;
       }
 
-      const modelId = selectedModel || agent.model || cfg.model;
+      const modelId = cfg.model || agent.model || provider.defaultModel;
       // eslint-disable-next-line no-console
       console.log("[AI] sending →", { provider: provider.id, model: modelId, hasKey: !!apiKey, baseURL: cfg.baseURL || provider.baseURL });
 
@@ -186,7 +165,7 @@ export function useAiBubbleChat() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [input, busy, includeContext, selectedProviderId, selectedModel, attachedFiles]
+    [input, busy, includeContext, attachedFiles]
   );
 
   const stop = useCallback(() => {
@@ -247,16 +226,8 @@ export function useAiBubbleChat() {
     includeContext,
     setIncludeContext,
     ensureSession,
-    selectedProviderId,
-    setSelectedProviderId,
-    selectedModel,
-    setSelectedModel: (m: string) => {
-      setHasUserOverriddenModel(true);
-      setSelectedModel(m);
-    },
     attachedFiles,
     setAttachedFiles,
-    // Session management
     store,
     activeSession,
     newSession,

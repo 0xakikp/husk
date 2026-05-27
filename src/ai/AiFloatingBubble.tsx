@@ -19,7 +19,7 @@ import {
 import { registerBubbleToggle } from "./bubbleStore";
 import { toast } from "@/toast";
 import { getProvider } from "./providers";
-import { useKey } from "./store";
+import { useKey, loadConfig } from "./store";
 import { readActiveTerminal, runInActiveTerminal } from "./terminalContext";
 import { useAiBubbleChat } from "./bubble/useAiBubbleChat";
 
@@ -245,7 +245,6 @@ export function AiFloatingBubble({
     includeContext,
     setIncludeContext,
     ensureSession,
-    selectedProviderId,
     store: sessionStore,
     newSession,
     switchSession,
@@ -253,7 +252,7 @@ export function AiFloatingBubble({
     renameSession,
   } = useAiBubbleChat();
 
-  const provider = getProvider(selectedProviderId);
+  const provider = getProvider(loadConfig().providerId);
   const apiKey = useKey(provider.id);
   const needsKey = !provider.keyless && !apiKey;
 
