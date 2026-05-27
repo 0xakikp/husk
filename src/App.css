@@ -1013,6 +1013,167 @@ button {
   cursor: default;
 }
 
+/* ── AI mini window header buttons ── */
+.ai-mini-reset {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.ai-mini-reset:hover {
+  opacity: 1;
+}
+
+.ai-mini-stop {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.ai-mini-stop:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.ai-mini-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.ai-mini-close:hover {
+  color: var(--text-strong);
+}
+
+/* ── AI mini quick prompt chips ── */
+.ai-mini-chip {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ai-mini-chip:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* ── AI mini messages ── */
+.ai-mini-msg {
+  display: flex;
+  gap: 6px;
+  max-width: 100%;
+}
+.ai-mini-user {
+  flex-direction: row-reverse;
+}
+.ai-mini-assistant {
+  flex-direction: row;
+}
+
+.ai-mini-avatar {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding-top: 3px;
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+}
+
+.ai-mini-bubble {
+  padding: 6px 9px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: calc(100% - 32px);
+  word-break: break-word;
+}
+.ai-mini-user .ai-mini-bubble {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text-strong);
+  border-bottom-right-radius: 3px;
+}
+.ai-mini-assistant .ai-mini-bubble {
+  background: color-mix(in srgb, var(--bg-input) 55%, transparent);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--border-2) 40%, transparent);
+  border-bottom-left-radius: 3px;
+}
+
+/* Typing shimmer cursor */
+.ai-mini-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: mini-cursor-blink 0.9s step-end infinite;
+  border-radius: 1px;
+}
+@keyframes mini-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ── AI mini code block ── */
+.ai-mini-code {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  margin: 4px 0;
+  overflow: hidden;
+}
+.ai-mini-codebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ai-mini-copy {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+.ai-mini-copy:hover {
+  color: var(--text-strong);
+  background: rgba(255, 255, 255, 0.06);
+}
+.ai-mini-code pre {
+  padding: 6px 8px;
+  margin: 0;
+  overflow-x: auto;
+  color: var(--text);
+  font-family: var(--font-mono);
+  line-height: 1.45;
+}
+
 .settings-group-label {
   font-size: 11px;
   font-weight: 600;

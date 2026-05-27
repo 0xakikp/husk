@@ -1,15 +1,36 @@
-import { useRef, useState, type MouseEvent } from "react";
+import { useRef, useState, useCallback, useMemo, type MouseEvent } from "react";
 import { streamChat, type ChatMessage } from "./client";
 import { loadConfig, getKey } from "./store";
 import { getProvider } from "./providers";
 import { getActiveAgent } from "./agents";
 import { readActiveTerminal } from "./terminalContext";
 
-/**
- * A compact, draggable floating AI chat for quick questions without opening the
- * full panel. Reuses the configured provider/model/key and the active agent,
- * and includes the active terminal's output as context.
- */
+const QUICK_PROMPTS = [
+  "Explain this error",
+  "Fix my code",
+  "Write a test",
+  "Refactor this",
+];
+
+interface MsgPart {
+  type: "text" | "code";
+  content: string;
+  lang?: string;
+}
+
+function parseParts(content: string): MsgPart[] {
+  const parts: MsgPart[] = [];
+  const regex = /```(\w+)?\n([\s\S]*?)```/g;
+  let last = 0;
+  for (const m of content.matchAll(regex)) {
+    if (m.index! > last) parts.push({ type: "text", content: content.slice(last, m.index) });
+    parts.push({ type: "code", content: m[2], lang: m[1] || "plaintext" });
+    last = m.index! + m[0].length;
+  }
+  if (last < content.length) parts.push({ type: "text", content: content.slice(last) });
+  return parts;
+}
+
 export function AiMiniWindow({ onClose }: { onClose: () => void }) {
   const [pos, setPos] = useState(() => ({
     x: Math.max(12, window.innerWidth - 372),
@@ -19,6 +40,7 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef(false);
 
   const startDrag = (e: MouseEvent) => {
     e.preventDefault();
@@ -38,8 +60,13 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
     window.addEventListener("mouseup", onUp);
   };
 
-  const send = async () => {
-    const text = input.trim();
+  const stop = useCallback(() => {
+    abortRef.current = true;
+    setBusy(false);
+  }, []);
+
+  const send = useCallback(async (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
     if (!text || busy) return;
     const cfg = loadConfig();
     const provider = getProvider(cfg.providerId);
@@ -56,17 +83,20 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
     setMessages([...history, { role: "assistant", content: "" }]);
     setInput("");
     setBusy(true);
+    abortRef.current = false;
     const ctx = readActiveTerminal();
     const system = ctx
       ? `${agent.systemPrompt}\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\``
       : agent.systemPrompt;
-    const append = (delta: string) =>
+    const append = (delta: string) => {
+      if (abortRef.current) return;
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last?.role === "assistant") next[next.length - 1] = { ...last, content: last.content + delta };
         return next;
       });
+    };
     try {
       await streamChat(
         { provider, model: agent.model || cfg.model, apiKey, baseURL: cfg.baseURL },
@@ -75,34 +105,86 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
         append,
       );
     } catch (e) {
-      append(`⚠️ ${e instanceof Error ? e.message : String(e)}`);
+      if (!abortRef.current) append(`⚠️ ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
       requestAnimationFrame(() =>
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }),
       );
     }
+  }, [input, busy, messages]);
+
+  const handleQuick = (prompt: string) => {
+    setInput("");
+    void send(prompt);
+  };
+
+  const reset = () => {
+    setMessages([]);
+    setInput("");
+    abortRef.current = true;
+    setBusy(false);
   };
 
   return (
     <div className="ai-mini" style={{ left: pos.x, top: pos.y }} data-ai-mini>
+      {/* Header */}
       <div className="ai-mini-head" onMouseDown={startDrag}>
-        <span>✦ Quick AI</span>
-        <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
-          ×
-        </button>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-medium tracking-wide text-foreground/80">✦ Quick AI</span>
+          {messages.length > 0 && (
+            <button
+              type="button"
+              className="ai-mini-reset"
+              onClick={reset}
+              title="New chat"
+            >
+              ⊕
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {busy && (
+            <button type="button" className="ai-mini-stop" onClick={stop} title="Stop">
+              ■
+            </button>
+          )}
+          <button type="button" className="ai-mini-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
       </div>
+
+      {/* Body */}
       <div className="ai-mini-body font-ai" ref={scrollRef}>
         {messages.length === 0 ? (
-          <div className="ai-empty">Ask a quick question. Drag the header to move me.</div>
+          <div className="flex flex-col gap-2">
+            <div className="ai-empty">Ask a quick question. Drag the header to move me.</div>
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_PROMPTS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className="ai-mini-chip"
+                  onClick={() => handleQuick(p)}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
           messages.map((m, i) => (
-            <div key={i} className={`ai-msg ai-${m.role}`}>
-              {m.content || (busy && i === messages.length - 1 ? "…" : "")}
-            </div>
+            <MiniMessage
+              key={i}
+              msg={m}
+              isStreaming={busy && i === messages.length - 1 && m.role === "assistant"}
+            />
           ))
         )}
       </div>
+
+      {/* Input */}
       <div className="ai-mini-input">
         <textarea
           value={input}
@@ -113,13 +195,54 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
               void send();
             }
           }}
-          placeholder="Ask…"
+          placeholder={busy ? "Generating…" : "Ask…"}
           rows={2}
+          disabled={busy}
         />
-        <button type="button" onClick={() => void send()} disabled={busy}>
+        <button type="button" onClick={() => void send()} disabled={busy || !input.trim()}>
           {busy ? "…" : "Send"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function MiniMessage({ msg, isStreaming }: { msg: ChatMessage; isStreaming?: boolean }) {
+  const parts = useMemo(() => parseParts(msg.content), [msg.content]);
+
+  return (
+    <div className={`ai-mini-msg ai-mini-${msg.role}`}>
+      <div className="ai-mini-avatar">{msg.role === "user" ? "You" : "AI"}</div>
+      <div className="ai-mini-bubble">
+        {parts.map((part, i) =>
+          part.type === "code" ? (
+            <MiniCodeBlock key={i} lang={part.lang} value={part.content} />
+          ) : (
+            <span key={i} className="whitespace-pre-wrap">{part.content}</span>
+          ),
+        )}
+        {isStreaming && <span className="ai-mini-cursor" />}
+      </div>
+    </div>
+  );
+}
+
+function MiniCodeBlock({ lang, value }: { lang?: string; value: string }) {
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <div className="ai-mini-code">
+      <div className="ai-mini-codebar">
+        <span className="text-[10px] text-muted-foreground">{lang || "code"}</span>
+        <button type="button" className="ai-mini-copy" onClick={handleCopy} title="Copy">
+          Copy
+        </button>
+      </div>
+      <pre className="text-[11px]"><code>{value}</code></pre>
     </div>
   );
 }
