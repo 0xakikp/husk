@@ -56,7 +56,7 @@ export function ModelsSection() {
         <Label>Default model</Label>
         <ModelDropdown
           value={config.model}
-          onChange={(model) => updateConfig({ model })}
+          onChange={(model, providerId) => updateConfig({ model, providerId })}
         />
       </div>
 
@@ -94,7 +94,7 @@ function ModelDropdown({
   onChange,
 }: {
   value: string;
-  onChange: (model: string) => void;
+  onChange: (model: string, providerId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const current = getModel(value);
@@ -140,7 +140,7 @@ function ModelDropdown({
                         key={m.id}
                         type="button"
                         onClick={() => {
-                          onChange(m.id);
+                          onChange(m.id, p.id);
                           setOpen(false);
                         }}
                         className={cn(
