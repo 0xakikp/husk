@@ -941,11 +941,13 @@ button {
   height: 400px;
   display: flex;
   flex-direction: column;
-  background: var(--bg-elev);
+  background: color-mix(in srgb, var(--bg-elev) 72%, transparent);
   border: 1px solid var(--border-2);
   border-radius: 10px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
   overflow: hidden;
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
 
 .ai-mini-head {
@@ -953,11 +955,12 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 6px 8px 6px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
   cursor: grab;
   font-size: 12px;
   color: var(--text-strong);
   user-select: none;
+  background: color-mix(in srgb, var(--bg-elev) 55%, transparent);
 }
 
 .ai-mini-head:active {
@@ -977,14 +980,15 @@ button {
   display: flex;
   gap: 6px;
   padding: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-elev) 55%, transparent);
 }
 
 .ai-mini-input textarea {
   flex: 1;
   resize: none;
-  background: var(--bg-input);
-  border: 1px solid var(--border-2);
+  background: color-mix(in srgb, var(--bg-input) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-2) 60%, transparent);
   border-radius: 6px;
   color: var(--text);
   font: inherit;
