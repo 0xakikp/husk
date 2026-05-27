@@ -28,13 +28,17 @@ function buildModel(cfg: ChatConfig) {
       return createOpenAI({ apiKey, fetch: tfetch })(model);
     case "google":
       return createGoogleGenerativeAI({ apiKey, fetch: tfetch })(model);
-    case "openai-compatible":
+    case "openai-compatible": {
+      // Moonshot API expects bare model IDs (e.g. "kimi-k2.6"), not the
+      // namespaced form ("moonshotai/kimi-k2.6") used in the model registry.
+      const resolvedModel = model.replace(/^moonshotai\//, "");
       return createOpenAICompatible({
         name: provider.id,
         apiKey: apiKey || "noauth",
         baseURL: baseURL || provider.baseURL || "",
         fetch: tfetch,
-      })(model);
+      })(resolvedModel);
+    }
   }
 }
 
