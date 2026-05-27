@@ -157,6 +157,18 @@ export function setCurrentCommand(cmd: string): void {
   emitCommandState();
 }
 
+// --- Focus terminal from anywhere -----------------------------------------
+
+let focusTerminalFn: (() => void) | null = null;
+
+export function setFocusTerminalFn(fn: (() => void) | null): void {
+  focusTerminalFn = fn;
+}
+
+export function focusActiveTerminal(): void {
+  focusTerminalFn?.();
+}
+
 export function markCommandStart(): void {
   if (!commandRunning) {
     commandRunning = true;

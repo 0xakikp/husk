@@ -65,7 +65,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DialogLayer } from "./components/DialogLayer";
 import type { OpenPanelKind } from "./git/types";
 import { SuggestDialog, ExplainDialog } from "./ai/AssistDialogs";
-import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState } from "./ai/terminalContext";
+import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal } from "./ai/terminalContext";
 import { PreviewDialog } from "./preview/PreviewDialog";
 import { SidebarRail, type SidebarViewId } from "./sidebar/SidebarRail";
 import { fileIconUrl } from "./explorer/iconResolver";
@@ -147,6 +147,9 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
           <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
         </button>
       ) : null}
+      {active && (
+        <span className="absolute right-2 bottom-0.5 left-2 h-[2px] rounded-full bg-[var(--accent)] opacity-80" />
+      )}
     </div>
   );
 }
@@ -784,6 +787,10 @@ function App() {
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
         e.preventDefault();
         setSwitcherOpen((v) => !v);
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        setActiveKind("term");
+        focusActiveTerminal();
       }
     };
     window.addEventListener("keydown", onKey);

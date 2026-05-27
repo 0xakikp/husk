@@ -23,6 +23,7 @@ import {
   setTerminalLineReader,
   setAiPtyWriter,
 } from "./ai/terminalInput";
+import { setFocusTerminalFn } from "./ai/terminalContext";
 import { getPrefs, subscribePrefs } from "./settings/preferences";
 import { buildTerminalTheme } from "./styles/terminalTheme";
 import { fontStack } from "./styles/fonts";
@@ -265,7 +266,14 @@ export function TerminalView({
   // While this is the active tab, expose its recent output to the AI panel.
   useEffect(() => {
     activeRef.current = active;
-    if (!active) return;
+    if (active) {
+      // Auto-focus the terminal when it becomes the active tab / pane
+      termRef.current?.focus();
+      setFocusTerminalFn(() => termRef.current?.focus());
+    } else {
+      setFocusTerminalFn(null);
+      return;
+    }
     // The moment this terminal becomes active, surface its last-known cwd so a
     // newly-opened tab inherits the right directory.
     if (cwdRef.current) setActiveTerminalCwd(cwdRef.current);
@@ -317,6 +325,7 @@ export function TerminalView({
       setActiveTerminalSearcher(null);
       setTerminalLineReader(null);
       setAiPtyWriter(null);
+      setFocusTerminalFn(null);
     };
   }, [active]);
 
@@ -405,7 +414,10 @@ export function TerminalView({
   return (
     <div
       className="terminal-host-wrap"
-      onMouseDown={() => onFocus?.()}
+      onMouseDown={() => {
+        onFocus?.();
+        termRef.current?.focus();
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         setMenu({ x: e.clientX, y: e.clientY });
