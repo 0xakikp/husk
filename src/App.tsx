@@ -94,6 +94,17 @@ function ThemeToggle() {
 
 /* ── TabBar (husk v1 visual style, huskv2 data model) ─────────────────── */
 
+const TAB_COLORS = [
+  { name: "red", class: "border-l-red-500", bg: "bg-red-500" },
+  { name: "blue", class: "border-l-blue-500", bg: "bg-blue-500" },
+  { name: "green", class: "border-l-emerald-500", bg: "bg-emerald-500" },
+  { name: "violet", class: "border-l-violet-500", bg: "bg-violet-500" },
+  { name: "amber", class: "border-l-amber-500", bg: "bg-amber-500" },
+  { name: "cyan", class: "border-l-cyan-500", bg: "bg-cyan-500" },
+  { name: "pink", class: "border-l-pink-500", bg: "bg-pink-500" },
+  { name: "slate", class: "border-l-slate-500", bg: "bg-slate-500" },
+];
+
 type TabChipProps = {
   active: boolean;
   onClick: () => void;
@@ -101,19 +112,22 @@ type TabChipProps = {
   onContextMenu?: (e: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   animate?: boolean;
+  color?: string;
   children: React.ReactNode;
 };
 
-function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, children }: TabChipProps) {
+function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, children }: TabChipProps) {
   return (
     <div
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
       className={cn(
-        "group relative flex h-6 shrink items-center gap-1.5 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden",
+        "group relative flex h-6 shrink items-center gap-1.5 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden border-l-2",
         onClose ? "pr-1" : "pr-2",
         active ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
         animate && "animate-tab-slide-in",
+        color || "border-l-transparent",
+        color,
       )}
     >
       <button type="button" onClick={onClick} className="flex min-w-0 items-center gap-1.5 pl-2">
@@ -146,6 +160,7 @@ function TabBar({
   onCloseFile,
   onNewTerm,
   onRenameTerm,
+  onSetTabColor,
   settingsOpen,
   onSelectSettings,
   onCloseSettings,
@@ -160,6 +175,7 @@ function TabBar({
   onCloseFile: (path: string) => void;
   onNewTerm: () => void;
   onRenameTerm: (id: number, title: string) => void;
+  onSetTabColor: (id: number, color: string | undefined) => void;
   settingsOpen: boolean;
   onSelectSettings: () => void;
   onCloseSettings: () => void;
@@ -239,6 +255,7 @@ function TabBar({
               }}
               onDoubleClick={() => beginRename(t.id, t.title)}
               animate={animationsEnabled}
+              color={t.color}
             >
               <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={2} className="shrink-0" />
               <span className="truncate">{t.title}</span>
@@ -278,7 +295,7 @@ function TabBar({
           <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
         </Button>
 
-        {/* Simple context menu for rename/close */}
+        {/* Context menu for rename/color/close */}
         {menu ? (
           <>
             <div
@@ -290,20 +307,55 @@ function TabBar({
               }}
             />
             <div
-              className="fixed z-50 min-w-[140px] rounded-md border border-border bg-popover p-1 shadow-md"
+              className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
               style={{ top: menu.y, left: menu.x }}
               role="menu"
             >
               {menu.kind === "term" ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                  onClick={() => beginRename(menu.id, termTabs.find((t) => t.id === menu.id)?.title ?? "")}
-                >
-                  <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.75} />
-                  <span className="flex-1 text-left">Rename</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    onClick={() => beginRename(menu.id, termTabs.find((t) => t.id === menu.id)?.title ?? "")}
+                  >
+                    <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.75} />
+                    <span className="flex-1 text-left">Rename</span>
+                  </button>
+                  {/* Color picker */}
+                  <div className="px-2 py-1.5">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Color</span>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {TAB_COLORS.map((c) => (
+                        <button
+                          key={c.name}
+                          type="button"
+                          onClick={() => {
+                            onSetTabColor(menu.id, c.class);
+                            setMenu(null);
+                          }}
+                          className={cn(
+                            "size-4 rounded-full ring-1 ring-transparent transition-all hover:scale-110",
+                            c.bg,
+                            termTabs.find((t) => t.id === menu.id)?.color === c.class && "ring-white/60 scale-110"
+                          )}
+                          title={c.name}
+                        />
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSetTabColor(menu.id, undefined);
+                          setMenu(null);
+                        }}
+                        className="flex size-4 items-center justify-center rounded-full bg-muted text-[8px] text-muted-foreground hover:bg-muted/80"
+                        title="Clear"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                </>
               ) : null}
               {canClose ? (
                 <button
@@ -954,6 +1006,7 @@ function App() {
               onCloseFile={closeFile}
               onNewTerm={term.addTab}
               onRenameTerm={term.renameTab}
+              onSetTabColor={term.setTabColor}
               settingsOpen={settingsOpen}
               onSelectSettings={() => setActiveKind("settings")}
               onCloseSettings={closeSettings}

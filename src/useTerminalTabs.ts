@@ -19,6 +19,8 @@ export type TermTab = {
   focused: number;
   /** Set once the user manually renames it, so cwd auto-titling stops. */
   renamed?: boolean;
+  /** User-assigned color for visual grouping. */
+  color?: string;
 };
 
 function makeTab(id: number, initialCwd?: string): TermTab {
@@ -35,7 +37,7 @@ function basename(p: string): string {
 
 const SESSION_KEY = "huskv2.session.v1";
 
-type SavedTab = { cwd?: string; title?: string; renamed?: boolean };
+type SavedTab = { cwd?: string; title?: string; renamed?: boolean; color?: string };
 type SavedSession = { tabs: SavedTab[]; activeIndex: number };
 
 function getFirstLeafCwd(p: Pane): string | undefined {
@@ -48,7 +50,7 @@ function getFirstLeafCwd(p: Pane): string | undefined {
 function saveSession(tabs: TermTab[], activeId: number) {
   const saved: SavedTab[] = [];
   for (const t of tabs) {
-    saved.push({ cwd: getFirstLeafCwd(t.root), title: t.renamed ? t.title : undefined, renamed: t.renamed });
+    saved.push({ cwd: getFirstLeafCwd(t.root), title: t.renamed ? t.title : undefined, renamed: t.renamed, color: t.color });
   }
   const activeIndex = tabs.findIndex((t) => t.id === activeId);
   try {
@@ -103,6 +105,9 @@ export function useTerminalTabs() {
           if (t.renamed && t.title) {
             out[out.length - 1].title = t.title;
             out[out.length - 1].renamed = true;
+          }
+          if (t.color) {
+            out[out.length - 1].color = t.color;
           }
           id++;
         }
@@ -196,6 +201,9 @@ export function useTerminalTabs() {
   const renameTab = (id: number, title: string) =>
     updateTab(id, (t) => ({ ...t, title: title.trim() || t.title, renamed: true }));
 
+  const setTabColor = (id: number, color: string | undefined) =>
+    updateTab(id, (t) => ({ ...t, color }));
+
   // Auto-title the active tab from the active terminal's cwd (husk v1), unless
   // it was manually renamed.
   const cwd = useActiveTerminalCwd();
@@ -218,5 +226,6 @@ export function useTerminalTabs() {
     focusLeaf,
     ratioLeaf,
     renameTab,
+    setTabColor,
   };
 }
