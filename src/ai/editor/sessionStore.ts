@@ -1,4 +1,4 @@
-import type { EditorChatMessage } from "./types";
+import type { EditorChatMessage, SessionModelOverride } from "./types";
 
 export interface ChatSession {
   id: string;
@@ -6,6 +6,8 @@ export interface ChatSession {
   createdAt: number;
   updatedAt: number;
   messages: EditorChatMessage[];
+  /** Per-session model override. Falls back to global Settings default when null. */
+  modelOverride?: SessionModelOverride;
 }
 
 export interface SessionStore {
@@ -54,7 +56,10 @@ export function saveSessions(workspace: string, store: SessionStore): void {
   }
 }
 
-export function createSession(messages: EditorChatMessage[] = []): ChatSession {
+export function createSession(
+  messages: EditorChatMessage[] = [],
+  modelOverride?: SessionModelOverride
+): ChatSession {
   const now = Date.now();
   const title =
     messages.length > 0 && messages[0].role === "user"
@@ -66,6 +71,7 @@ export function createSession(messages: EditorChatMessage[] = []): ChatSession {
     createdAt: now,
     updatedAt: now,
     messages,
+    modelOverride,
   };
 }
 
@@ -91,6 +97,19 @@ export function updateSessionMessages(
     ...store,
     sessions: store.sessions.map((s) =>
       s.id === sessionId ? { ...s, messages, updatedAt: Date.now() } : s
+    ),
+  };
+}
+
+export function updateSessionModelOverride(
+  store: SessionStore,
+  sessionId: string,
+  modelOverride: SessionModelOverride
+): SessionStore {
+  return {
+    ...store,
+    sessions: store.sessions.map((s) =>
+      s.id === sessionId ? { ...s, modelOverride, updatedAt: Date.now() } : s
     ),
   };
 }

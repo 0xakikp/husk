@@ -20,3 +20,20 @@ export function registerEditorApplyEdit(fn: ApplyEditFn): () => void {
 export function applyAiEdit(search: string, replace: string): boolean {
   return applyEditFn?.(search, replace) ?? false;
 }
+
+// ── Editor selection reader ────────────────────────────────────────────────
+
+type GetSelectionFn = () => { text: string; startLine: number; endLine: number } | null;
+
+let getSelectionFn: GetSelectionFn | null = null;
+
+export function registerEditorGetSelection(fn: GetSelectionFn): () => void {
+  getSelectionFn = fn;
+  return () => {
+    if (getSelectionFn === fn) getSelectionFn = null;
+  };
+}
+
+export function getEditorSelection(): { text: string; startLine: number; endLine: number } | null {
+  return getSelectionFn?.() ?? null;
+}

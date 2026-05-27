@@ -1,6 +1,32 @@
 import type { ChatMessage } from "../client";
 
-export type EditorChatMessage = ChatMessage & { id: string };
+export type EditorChatMessage = ChatMessage & {
+  id: string;
+  /** Optional base64 image data URI attached to the message */
+  image?: string;
+};
+
+/** Per-session model override. When null, uses global Settings default. */
+export type SessionModelOverride = {
+  providerId: string;
+  model: string;
+} | null;
+
+/** Models that support vision (image input). */
+export const VISION_MODELS = new Set([
+  "claude-sonnet-4",
+  "claude-opus-4",
+  "claude-haiku-4",
+  "gpt-4.1",
+  "gpt-4.1-mini",
+  "gpt-4o",
+  "gemini-2.5-pro",
+  "gemini-2.0-flash",
+]);
+
+export function supportsVision(modelId: string): boolean {
+  return VISION_MODELS.has(modelId);
+}
 
 export interface CodeEdit {
   file: string;

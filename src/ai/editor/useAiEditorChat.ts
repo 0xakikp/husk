@@ -5,8 +5,8 @@ import { streamChat } from "../client";
 import { useAgents, useActiveAgentId } from "../agents";
 import { buildEditorContext, formatContextForPrompt } from "./context";
 import { parseEdits, applyAiEdit } from "./editorStore";
-import type { EditorChatMessage, CodeEdit } from "./types";
-import { EDITOR_SYSTEM_PROMPT } from "./types";
+import type { EditorChatMessage, CodeEdit, SessionModelOverride } from "./types";
+import { EDITOR_SYSTEM_PROMPT, supportsVision } from "./types";
 
 let msgId = 0;
 function nextId() {
@@ -16,6 +16,7 @@ function nextId() {
 export function useAiEditorChat(
   activePath: string | null,
   openFiles: string[],
+  modelOverride?: SessionModelOverride,
 ) {
   const [messages, setMessages] = useState<EditorChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -54,13 +55,17 @@ export function useAiEditorChat(
   }, [busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = useCallback(
-    async (textOverride?: string) => {
-      const text = (textOverride ?? input).trim();
+    async (opts?: { text?: string; image?: string }) => {
+      const text = (opts?.text ?? input).trim();
       if (!text || busy) return;
 
+      // Resolve model: session override > agent override > global default
       const cfg = loadConfig();
-      const provider = getProvider(cfg.providerId);
+      const resolvedProviderId = modelOverride?.providerId ?? cfg.providerId;
+      const resolvedModel = modelOverride?.model ?? agent.model ?? cfg.model;
+      const provider = getProvider(resolvedProviderId);
       const apiKey = getKey(provider.id);
+
       if (!provider.keyless && !apiKey) {
         setMessages((prev) => [
           ...prev,
@@ -69,7 +74,21 @@ export function useAiEditorChat(
         return;
       }
 
-      const userMsg: EditorChatMessage = { id: nextId(), role: "user", content: text };
+      // Vision warning
+      if (opts?.image && !supportsVision(resolvedModel)) {
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: "assistant", content: `⚠️ The selected model (${resolvedModel}) does not support image input. Switch to Claude Sonnet/Opus, GPT-4o, or Gemini for vision.` },
+        ]);
+        return;
+      }
+
+      const userMsg: EditorChatMessage = {
+        id: nextId(),
+        role: "user",
+        content: text,
+        image: opts?.image,
+      };
       const assistantMsg: EditorChatMessage = { id: nextId(), role: "assistant", content: "" };
       const currentMessages = messagesRef.current;
       const history: EditorChatMessage[] = [...currentMessages, userMsg];
@@ -85,7 +104,7 @@ export function useAiEditorChat(
         const system = `${agent.systemPrompt}\n\n${contextBlock}`;
 
         await streamChat(
-          { provider, model: agent.model || cfg.model, apiKey, baseURL: cfg.baseURL },
+          { provider, model: resolvedModel, apiKey, baseURL: cfg.baseURL },
           EDITOR_SYSTEM_PROMPT + "\n\n" + system,
           history,
           (delta) => {
@@ -116,7 +135,7 @@ export function useAiEditorChat(
     },
     // messagesRef is stable; read from it inside callback
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [input, busy, activePath, openFiles, agent]
+    [input, busy, activePath, openFiles, agent, modelOverride]
   );
 
   const applyAll = useCallback(() => {

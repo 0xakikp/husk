@@ -4,7 +4,8 @@ import { initVimMode } from "monaco-vim";
 import { readFile, writeFile } from "../fs";
 import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
-import { registerEditorApplyEdit } from "@/ai/editor/editorStore";
+import { registerEditorApplyEdit, registerEditorGetSelection } from "@/ai/editor/editorStore";
+import { markSaved, markModified, markNew, clearState } from "./dirtyStore";
 
 const monacoTheme = (p: Prefs) => {
   if (p.theme === "dark") {
@@ -99,8 +100,40 @@ export function EditorArea({
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       const path = activePathRef.current;
       const model = editor.getModel();
-      if (path && model) void writeFile(path, model.getValue());
+      if (path && model) {
+        void writeFile(path, model.getValue()).then(() => {
+          markSaved(path, model.getAlternativeVersionId());
+        });
+      }
     });
+
+    // Track dirty state via Monaco model changes
+    const dirtyDisposables: monaco.IDisposable[] = [];
+    const trackModelDirty = (m: monaco.editor.ITextModel | null) => {
+      if (!m) return;
+      const path = m.uri.fsPath;
+      const savedVersion = m.getAlternativeVersionId();
+      markSaved(path, savedVersion);
+      const d = m.onDidChangeContent(() => {
+        const current = m.getAlternativeVersionId();
+        if (current !== savedVersion) {
+          markModified(path, current);
+        }
+      });
+      dirtyDisposables.push(d);
+    };
+
+    // Track the initial model
+    trackModelDirty(editor.getModel());
+
+    // Track when model changes (user switches files)
+    const dModelChange = editor.onDidChangeModel(() => {
+      // Clean up old listeners
+      dirtyDisposables.forEach((d) => d.dispose());
+      dirtyDisposables.length = 0;
+      trackModelDirty(editor.getModel());
+    });
+    dirtyDisposables.push(dModelChange);
 
     const unsub = registerEditorApplyEdit((search, replace) => {
       const model = editor.getModel();
@@ -123,8 +156,22 @@ export function EditorArea({
       return true;
     });
 
+    const unsubSel = registerEditorGetSelection(() => {
+      const sel = editor.getSelection();
+      const model = editor.getModel();
+      if (!sel || !model || sel.isEmpty()) return null;
+      const text = model.getValueInRange(sel);
+      return {
+        text,
+        startLine: sel.startLineNumber,
+        endLine: sel.endLineNumber,
+      };
+    });
+
     return () => {
       unsub();
+      unsubSel();
+      dirtyDisposables.forEach((d) => d.dispose());
       vimRef.current?.dispose();
       vimRef.current = null;
       editor.dispose();
@@ -169,6 +216,11 @@ export function EditorArea({
         if (cancelled) return;
         model = monaco.editor.createModel(content, languageFor(activePath), uri);
         model.updateOptions({ tabSize: getPrefs().editorTabSize, insertSpaces: true });
+        // Check if this file exists on disk; if not, mark as "new"
+        const exists = content !== `// could not open file\n// Error: file not found`;
+        if (!exists) {
+          markNew(activePath);
+        }
       }
       editor.setModel(model);
     })();
@@ -182,6 +234,7 @@ export function EditorArea({
     const open = new Set(files.map((f) => f.path));
     for (const model of monaco.editor.getModels()) {
       if (model.uri.scheme === "file" && !open.has(model.uri.fsPath)) {
+        clearState(model.uri.fsPath);
         model.dispose();
       }
     }

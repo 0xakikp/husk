@@ -1,4 +1,5 @@
 import { readFile } from "@/fs";
+import { getEditorSelection } from "./editorStore";
 
 export interface EditorContext {
   activeFile: {
@@ -8,6 +9,11 @@ export interface EditorContext {
     language: string;
   } | null;
   openFiles: string[];
+  selectedText: {
+    text: string;
+    startLine: number;
+    endLine: number;
+  } | null;
 }
 
 export async function buildEditorContext(
@@ -15,7 +21,7 @@ export async function buildEditorContext(
   openFiles: string[]
 ): Promise<EditorContext> {
   if (!activePath) {
-    return { activeFile: null, openFiles };
+    return { activeFile: null, openFiles, selectedText: null };
   }
 
   const content = await readFile(activePath).catch(() => "// could not read file");
@@ -40,6 +46,7 @@ export async function buildEditorContext(
       language: langMap[ext] ?? "plaintext",
     },
     openFiles,
+    selectedText: getEditorSelection(),
   };
 }
 
@@ -48,6 +55,12 @@ export function formatContextForPrompt(ctx: EditorContext): string {
 
   if (ctx.openFiles.length > 0) {
     lines.push(`Open files: ${ctx.openFiles.map((p) => p.split("/").pop() || p).join(", ")}`);
+  }
+
+  if (ctx.selectedText) {
+    lines.push(`\n--- Selected text (lines ${ctx.selectedText.startLine}-${ctx.selectedText.endLine}) ---`);
+    lines.push(ctx.selectedText.text);
+    lines.push("--- end of selection ---\n");
   }
 
   if (ctx.activeFile) {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -95,14 +96,14 @@ function ThemeToggle() {
 /* ── TabBar (husk v1 visual style, huskv2 data model) ─────────────────── */
 
 const TAB_COLORS = [
-  { name: "red", class: "border-l-red-500", bg: "bg-red-500" },
-  { name: "blue", class: "border-l-blue-500", bg: "bg-blue-500" },
-  { name: "green", class: "border-l-emerald-500", bg: "bg-emerald-500" },
-  { name: "violet", class: "border-l-violet-500", bg: "bg-violet-500" },
-  { name: "amber", class: "border-l-amber-500", bg: "bg-amber-500" },
-  { name: "cyan", class: "border-l-cyan-500", bg: "bg-cyan-500" },
-  { name: "pink", class: "border-l-pink-500", bg: "bg-pink-500" },
-  { name: "slate", class: "border-l-slate-500", bg: "bg-slate-500" },
+  { name: "red", class: "border-l-red-500", hex: "#ef4444" },
+  { name: "blue", class: "border-l-blue-500", hex: "#3b82f6" },
+  { name: "green", class: "border-l-emerald-500", hex: "#10b981" },
+  { name: "violet", class: "border-l-violet-500", hex: "#8b5cf6" },
+  { name: "amber", class: "border-l-amber-500", hex: "#f59e0b" },
+  { name: "cyan", class: "border-l-cyan-500", hex: "#06b6d4" },
+  { name: "pink", class: "border-l-pink-500", hex: "#ec4899" },
+  { name: "slate", class: "border-l-slate-500", hex: "#64748b" },
 ];
 
 type TabChipProps = {
@@ -296,84 +297,89 @@ function TabBar({
         </Button>
 
         {/* Context menu for rename/color/close */}
-        {menu ? (
-          <>
-            <div
-              className="fixed inset-0 z-50"
-              onClick={() => setMenu(null)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setMenu(null);
-              }}
-            />
-            <div
-              className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
-              style={{ top: menu.y, left: menu.x }}
-              role="menu"
-            >
-              {menu.kind === "term" ? (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                    onClick={() => beginRename(menu.id, termTabs.find((t) => t.id === menu.id)?.title ?? "")}
-                  >
-                    <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.75} />
-                    <span className="flex-1 text-left">Rename</span>
-                  </button>
-                  {/* Color picker */}
-                  <div className="px-2 py-1.5">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Color</span>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {TAB_COLORS.map((c) => (
-                        <button
-                          key={c.name}
-                          type="button"
-                          onClick={() => {
-                            onSetTabColor(menu.id, c.class);
-                            setMenu(null);
-                          }}
-                          className={cn(
-                            "size-4 rounded-full ring-1 ring-transparent transition-all hover:scale-110",
-                            c.bg,
-                            termTabs.find((t) => t.id === menu.id)?.color === c.class && "ring-white/60 scale-110"
-                          )}
-                          title={c.name}
-                        />
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onSetTabColor(menu.id, undefined);
-                          setMenu(null);
-                        }}
-                        className="flex size-4 items-center justify-center rounded-full bg-muted text-[8px] text-muted-foreground hover:bg-muted/80"
-                        title="Clear"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : null}
-              {canClose ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
-                  onClick={() => {
-                    if (menu.kind === "term") onCloseTerm(menu.id);
+        {menu
+          ? createPortal(
+              <>
+                <div
+                  className="fixed inset-0 z-50"
+                  onClick={() => setMenu(null)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
                     setMenu(null);
                   }}
+                />
+                <div
+                  className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
+                  style={{ top: menu.y, left: menu.x }}
+                  role="menu"
                 >
-                  <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
-                  <span className="flex-1 text-left">Close</span>
-                </button>
-              ) : null}
-            </div>
-          </>
-        ) : null}
+                  {menu.kind === "term" ? (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        onClick={() => beginRename(menu.id, termTabs.find((t) => t.id === menu.id)?.title ?? "")}
+                      >
+                        <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.75} />
+                        <span className="flex-1 text-left">Rename</span>
+                      </button>
+                      {/* Color picker */}
+                      <div className="px-2 py-1.5">
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</span>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {TAB_COLORS.map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => {
+                                onSetTabColor(menu.id, c.class);
+                                setMenu(null);
+                              }}
+                              className={cn(
+                                "size-4 rounded-full ring-1 ring-transparent transition-all hover:scale-110",
+                                termTabs.find((t) => t.id === menu.id)?.color === c.class && "ring-white/60 scale-110"
+                              )}
+                              style={{ backgroundColor: c.hex }}
+                              title={c.name}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onSetTabColor(menu.id, undefined);
+                              setMenu(null);
+                            }}
+                            className="flex size-4 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-muted/80"
+                            title="Clear"
+                          >
+                            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.2">
+                              <path d="M1 1l6 6M7 1L1 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                  {canClose ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                      onClick={() => {
+                        if (menu.kind === "term") onCloseTerm(menu.id);
+                        setMenu(null);
+                      }}
+                    >
+                      <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
+                      <span className="flex-1 text-left">Close</span>
+                    </button>
+                  ) : null}
+                </div>
+              </>,
+              document.body,
+            )
+          : null}
       </div>
     </div>
   );

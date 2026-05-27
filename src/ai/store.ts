@@ -57,6 +57,11 @@ function emitKeys(): void {
   for (const fn of keySubs) fn();
 }
 
+export function subscribeKeys(fn: () => void): () => void {
+  keySubs.add(fn);
+  return () => keySubs.delete(fn);
+}
+
 export function getKey(providerId: string): string {
   return keyCache[providerId] ?? "";
 }

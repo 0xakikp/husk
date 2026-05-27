@@ -18,6 +18,7 @@ import { useActiveTerminalCwd, runInActiveTerminal } from "../ai/terminalContext
 import { shq } from "../lib/shellQuote";
 import { usePrefs } from "../settings/preferences";
 import { toast } from "../toast";
+import { getFileState, subscribeDirty } from "../editor/dirtyStore";
 
 const joinPath = (dir: string, name: string) => `${dir.replace(/\/+$/, "")}/${name}`;
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
@@ -179,6 +180,13 @@ function Node({
   const [creating, setCreating] = useState<null | "file" | "dir">(null);
   const [renaming, setRenaming] = useState(false);
 
+  // Subscribe to dirty-state changes so file indicators re-render
+  const [, setDirtyTick] = useState(0);
+  useEffect(() => {
+    if (isDir) return;
+    return subscribeDirty(() => setDirtyTick((t) => t + 1));
+  }, [isDir]);
+
   const loadChildren = useCallback(() => {
     void readDir(path)
       .then(setChildren)
@@ -280,6 +288,8 @@ function Node({
     : [];
 
   const isActive = activeFile === path;
+  const dirtyState = !isDir ? getFileState(path) : "clean";
+  const dirtyClass = dirtyState !== "clean" ? ` efile-${dirtyState}` : "";
 
   if (!isDir) {
     return (
@@ -287,10 +297,13 @@ function Node({
         {renaming ? (
           <EditRow depth={depth} initial={name} icon={fileIconUrl(name)} onSubmit={doRename} onCancel={() => setRenaming(false)} />
         ) : (
-          <button type="button" className={`enode efile${isActive ? " active" : ""}`} style={indent} onClick={() => onOpenFile(path, name)} onContextMenu={openMenu}>
+          <button type="button" className={`enode efile${isActive ? " active" : ""}${dirtyClass}`} style={indent} onClick={() => onOpenFile(path, name)} onContextMenu={openMenu}>
             <span className="enode-caret" />
             <img src={fileIconUrl(name)} className="enode-img" alt="" />
-            {name}
+            <span className="truncate">{name}</span>
+            {dirtyState === "modified" && <span className="enode-dot" title="Modified" />}
+            {dirtyState === "new" && <span className="enode-dot enode-dot-new" title="New" />}
+            {dirtyState === "deleted" && <span className="enode-dot enode-dot-del" title="Deleted" />}
           </button>
         )}
         {menu ? (

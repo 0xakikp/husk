@@ -504,6 +504,39 @@ button {
   color: var(--text);
 }
 
+.efile-modified {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.efile-new {
+  color: #34d399;
+}
+
+.efile-deleted {
+  color: #f87171;
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.enode-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.enode-dot-new {
+  background: #34d399;
+}
+
+.enode-dot-del {
+  background: #f87171;
+}
+
 .enode-caret {
   display: inline-block;
   width: 12px;
