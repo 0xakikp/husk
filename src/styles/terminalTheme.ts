@@ -144,7 +144,7 @@ export function buildTerminalTheme(
     return {
       background: transparentBg ? "rgba(0,0,0,0)" : "#ffffff",
       foreground: "#1a1a1a",
-      cursor: "#000000",
+      cursor: "#1a1a1a",
       cursorAccent: "#ffffff",
       selectionBackground: "rgba(0, 0, 0, 0.12)",
       selectionForeground: "#000000",
@@ -155,8 +155,8 @@ export function buildTerminalTheme(
   return {
     background: transparentBg ? "rgba(0,0,0,0)" : p.bg,
     foreground: p.fg,
-    cursor: p.cursor,
-    cursorAccent: p.bg,
+    cursor: p.fg,
+    cursorAccent: transparentBg ? "rgba(0,0,0,0)" : p.bg,
     selectionBackground: p.selectionBg,
     selectionForeground: "#ffffff",
     ...ansi,
