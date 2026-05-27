@@ -784,7 +784,10 @@ function App() {
       const target = e.target as HTMLElement;
       const tag = target.tagName.toLowerCase();
       const isEditing = tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
-      if (isEditing) return;
+      const isTerminalFocused = target.closest(".xterm") !== null;
+      // Allow terminal shortcuts even when xterm's textarea is focused;
+      // skip only for genuine form inputs outside the terminal.
+      if (isEditing && !isTerminalFocused) return;
 
       const key = e.key.toLowerCase();
       if (key === "t") {
