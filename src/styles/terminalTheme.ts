@@ -136,15 +136,17 @@ export function buildTerminalTheme(
   preset: TerminalThemePreset,
   dark: boolean,
   transparentBg?: boolean,
+  accentColor?: string,
 ): ITheme {
   const p = TERMINAL_THEME_PRESETS[preset] ?? TERMINAL_THEME_PRESETS.husk;
   const ansi = ANSI_PALETTES[preset] ?? ANSI_PALETTES.husk;
+  const accent = accentColor || "#11c700";
 
   if (!dark) {
     return {
       background: transparentBg ? "rgba(0,0,0,0)" : "#ffffff",
       foreground: "#1a1a1a",
-      cursor: "#2a2a2a",
+      cursor: accent,
       cursorAccent: "#ffffff",
       selectionBackground: "rgba(45, 50, 60, 0.12)",
       selectionForeground: "#000000",
@@ -155,7 +157,7 @@ export function buildTerminalTheme(
   return {
     background: transparentBg ? "rgba(0,0,0,0)" : p.bg,
     foreground: p.fg,
-    cursor: "#d4d4d8",
+    cursor: accent,
     cursorAccent: "#0a0a0a",
     selectionBackground: "rgba(200, 205, 220, 0.15)",
     selectionForeground: "#ffffff",

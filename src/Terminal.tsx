@@ -97,6 +97,7 @@ export function TerminalView({
         getPrefs().terminalTheme,
         getPrefs().theme === "dark",
         getPrefs().background.enabled,
+        getPrefs().accentColor,
       ),
     });
     const fit = new FitAddon();
@@ -348,6 +349,7 @@ export function TerminalView({
         p.terminalTheme,
         p.theme === "dark",
         p.background.enabled,
+        p.accentColor,
       );
       clearTimeout(t);
       t = window.setTimeout(() => {
