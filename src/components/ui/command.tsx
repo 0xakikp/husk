@@ -49,7 +49,7 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "top-[33%] left-auto right-4 translate-x-0 translate-y-0 overflow-hidden rounded-xl! border border-border/40 p-0 shadow-lg",
+          "top-[33%] left-auto right-4 translate-x-0 translate-y-0 overflow-hidden rounded-xl! border border-border/40 bg-background/70 p-0 shadow-lg backdrop-blur-xl",
           "[&[data-state=open]]:animate-none", /* suppress radix default zoom */
           "animate-hyprland-enter",
           className
