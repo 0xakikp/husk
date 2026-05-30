@@ -1160,7 +1160,7 @@ function App() {
                 <div className="min-h-0 flex-1 overflow-hidden">
                   {sidebarView === "explorer" ? (
                     <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={activeKind === "file" && openFiles.find((f) => f.path === activeFile)?.remoteHost ? remoteHost : null} />
+                      <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
                     </div>
                   ) : sidebarView === "source-control" ? (
                     <SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />
