@@ -1314,12 +1314,12 @@ function App() {
                     prefs.animationsEnabled && "animate-ai-pane-enter",
                   )}
                   style={{
-                    backgroundColor: aiPaneBgUrl
-                      ? `rgba(0,0,0,${prefs.aiMiniBgDim / 100})`
-                      : `rgba(0,0,0,${prefs.aiMiniOpacity / 100})`,
-                    backgroundImage: aiPaneBgUrl ? `url("${aiPaneBgUrl}")` : undefined,
-                    backgroundSize: aiPaneBgUrl ? "cover" : undefined,
-                    backgroundPosition: aiPaneBgUrl ? "center" : undefined,
+                    backgroundColor: `rgba(0,0,0,${prefs.aiMiniOpacity / 100})`,
+                    backgroundImage: aiPaneBgUrl
+                      ? `linear-gradient(rgba(0,0,0,${prefs.aiMiniBgDim / 100}), rgba(0,0,0,${prefs.aiMiniBgDim / 100})), url("${aiPaneBgUrl}")`
+                      : undefined,
+                    backgroundSize: aiPaneBgUrl ? "cover, cover" : undefined,
+                    backgroundPosition: aiPaneBgUrl ? "center, center" : undefined,
                     backdropFilter: aiPaneBgUrl ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
                     WebkitBackdropFilter: aiPaneBgUrl ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
                     top: `var(--panel-gaps)`,
