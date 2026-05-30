@@ -904,7 +904,7 @@ function App() {
           term.setActiveId(prev.id);
           setActiveKind("term");
         }
-      } else if (/^digit[1-9]$/.test(e.code)) {
+      } else if (/^Digit[1-9]$/.test(e.code)) {
         e.preventDefault();
         const idx = parseInt(e.code.replace("digit", ""), 10) - 1;
         const allTabs = [
