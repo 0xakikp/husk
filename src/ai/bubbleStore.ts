@@ -12,3 +12,18 @@ export function registerBubbleToggle(fn: () => void): () => void {
 export function toggleBubble(): void {
   toggleFn?.();
 }
+
+/* ── Session switch requests ── */
+
+let switchBubbleSubscribers: ((id: string) => void)[] = [];
+
+export function subscribeBubbleSwitch(fn: (id: string) => void): () => void {
+  switchBubbleSubscribers.push(fn);
+  return () => {
+    switchBubbleSubscribers = switchBubbleSubscribers.filter((f) => f !== fn);
+  };
+}
+
+export function requestBubbleSwitch(id: string): void {
+  switchBubbleSubscribers.forEach((fn) => fn(id));
+}

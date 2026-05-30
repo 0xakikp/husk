@@ -42,6 +42,7 @@ import {
   deleteSession,
   updateSessionModelOverride,
 } from "./sessionStore";
+import { subscribeEditorSwitch } from "./sessionSwitch";
 
 const ACTION_ICON: Record<string, typeof SparklesIcon> = {
   explain: File01Icon,
@@ -282,6 +283,19 @@ export function AiEditorPane({
     saveSessions(workspace, next);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
+
+  // External session switch listener
+  useEffect(() => {
+    const unsub = subscribeEditorSwitch((id, ws) => {
+      if (ws === workspace) {
+        const next = setActiveSession(store, id);
+        setStore(next);
+        saveSessions(workspace, next);
+        setShowSessions(false);
+      }
+    });
+    return unsub;
+  }, [store, workspace]);
 
   useEffect(() => {
     if (scrollRef.current) {

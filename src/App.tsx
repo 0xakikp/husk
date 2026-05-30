@@ -11,7 +11,8 @@ import { useTerminalTabs } from "./useTerminalTabs";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Search01Icon,
-  SidebarLeftIcon,
+  LayoutThreeColumnIcon,
+  MessageMultiple02Icon,
   SquareLockPasswordIcon,
   Moon02Icon,
   Sun03Icon,
@@ -24,7 +25,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { AiFloatingBubble } from "./ai/AiFloatingBubble";
 import { AiEditorPane } from "./ai/editor/AiEditorPane";
-import { toggleBubble } from "./ai/bubbleStore";
+import { toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
+import { requestEditorSwitch } from "./ai/editor/sessionSwitch";
+import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { setAiQueryListener } from "./ai/terminalInput";
 import { FileExplorer } from "./explorer/FileExplorer";
 import { EditorArea, type OpenFile } from "./editor/EditorArea";
@@ -628,6 +631,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [aiSessionsOpen, setAiSessionsOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [explainCtx, setExplainCtx] = useState<{ command: string; output: string; exitCode: number | null } | null>(null);
@@ -991,7 +995,7 @@ function App() {
             borderTopRightRadius: prefs.panelGaps > 0 ? "0.375rem" : undefined,
           }}
         >
-          {/* Left: sidebar toggle */}
+          {/* Left: sidebar toggle + AI sessions */}
           <div className="flex shrink-0 items-center gap-0.5">
             <Button
               onClick={toggleSidebar}
@@ -1000,8 +1004,36 @@ function App() {
               size="icon"
               className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
             >
-              <HugeiconsIcon icon={SidebarLeftIcon} size={16} strokeWidth={1.75} />
+              <HugeiconsIcon icon={LayoutThreeColumnIcon} size={16} strokeWidth={1.75} />
             </Button>
+            {prefs.aiEnabled && (
+              <div className="relative">
+                <Button
+                  onClick={() => setAiSessionsOpen((v) => !v)}
+                  title="AI Sessions"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "size-6 shrink-0 rounded-md",
+                    aiSessionsOpen
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  <HugeiconsIcon icon={MessageMultiple02Icon} size={15} strokeWidth={1.75} />
+                </Button>
+                <AiSessionsPanel
+                  open={aiSessionsOpen}
+                  onClose={() => setAiSessionsOpen(false)}
+                  onSelectBubbleSession={(id) => requestBubbleSwitch(id)}
+                  onSelectEditorSession={(id, ws) => {
+                    requestEditorSwitch(id, ws);
+                    setActiveKind("file");
+                    setAiPaneOpen(true);
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}

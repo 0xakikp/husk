@@ -16,7 +16,7 @@ import {
   SearchList01Icon,
   SourceCodeIcon,
 } from "@hugeicons/core-free-icons";
-import { registerBubbleToggle } from "./bubbleStore";
+import { registerBubbleToggle, subscribeBubbleSwitch } from "./bubbleStore";
 import { toast } from "@/toast";
 import { getProvider } from "./providers";
 import { useKey, loadConfig } from "./store";
@@ -262,6 +262,15 @@ export function AiFloatingBubble({
       setState((s) => (s === "collapsed" ? "expanded" : "collapsed"));
     });
   }, []);
+
+  // External session switch listener
+  useEffect(() => {
+    const unsub = subscribeBubbleSwitch((id) => {
+      switchSession(id);
+      setState("expanded");
+    });
+    return unsub;
+  }, [switchSession]);
 
   // Window resize handler
   useEffect(() => {
