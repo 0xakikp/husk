@@ -7,6 +7,7 @@ const SHORTCUTS = [
   { keys: "⌘/Ctrl W", desc: "Close terminal tab" },
   { keys: "⌘/Ctrl Tab", desc: "Next terminal tab" },
   { keys: "⌘/Ctrl Shift Tab", desc: "Previous terminal tab" },
+  { keys: "⌘/Ctrl 1–9", desc: "Switch to tab 1–9" },
   { keys: "Enter / Shift+Enter", desc: "Next / previous terminal match" },
   { keys: "Esc", desc: "Close dialogs / search" },
 ];

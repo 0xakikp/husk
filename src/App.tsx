@@ -886,11 +886,28 @@ function App() {
           term.setActiveId(prev.id);
           setActiveKind("term");
         }
+      } else if (/^digit[1-9]$/.test(e.code)) {
+        e.preventDefault();
+        const idx = parseInt(e.code.replace("digit", ""), 10) - 1;
+        const allTabs = [
+          ...term.tabs.map((t) => ({ kind: "term" as const, id: t.id })),
+          ...openFiles.map((f) => ({ kind: "file" as const, path: f.path })),
+        ];
+        const target = allTabs[idx];
+        if (target) {
+          if (target.kind === "term") {
+            term.setActiveId(target.id);
+            setActiveKind("term");
+          } else {
+            setActiveFile(target.path);
+            setActiveKind("file");
+          }
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [term, activeKind]);
+  }, [term, activeKind, openFiles]);
 
   const openSettings = () => {
     setSettingsOpen(true);
