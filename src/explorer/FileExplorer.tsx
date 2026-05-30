@@ -129,17 +129,11 @@ export function FileExplorer({
           )}
           {name}
         </span>
-        <ExBtn icon={Search01Icon} label="Search files" onClick={() => setFilterOpen((v) => !v)} />
+        {!remoteHost && (
+          <ExBtn icon={Search01Icon} label="Search files" onClick={() => setFilterOpen((v) => !v)} />
+        )}
         {remoteHost && (
           <>
-            <ExBtn
-              icon={Cancel01Icon}
-              label="Disconnect"
-              onClick={() => {
-                setActiveSshHost(null);
-                setRemoteHome(null);
-              }}
-            />
             <ExBtn
               icon={Location01Icon}
               label="Sync CWD"
@@ -155,6 +149,14 @@ export function FileExplorer({
                 } catch (err) {
                   toast({ title: String(err), variant: "error" });
                 }
+              }}
+            />
+            <ExBtn
+              icon={Cancel01Icon}
+              label="Disconnect"
+              onClick={() => {
+                setActiveSshHost(null);
+                setRemoteHome(null);
               }}
             />
           </>
