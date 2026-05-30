@@ -25,3 +25,6 @@ export const sshDeletePath = (host: string, path: string) =>
 
 export const sshHomeDir = (host: string) =>
   invoke<string>("ssh_home_dir", { host });
+
+export const sshPwd = (host: string) =>
+  invoke<string>("ssh_pwd", { host });

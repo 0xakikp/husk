@@ -16,10 +16,11 @@ import {
   sshRenamePath,
   sshDeletePath,
   sshHomeDir,
+  sshPwd,
 } from "../remote/remoteFs";
 import { fileIconUrl, folderIconUrl } from "./iconResolver";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { FileAddIcon, FolderAddIcon, Refresh01Icon, Search01Icon, Cancel01Icon, GlobalIcon } from "@hugeicons/core-free-icons";
+import { FileAddIcon, FolderAddIcon, Refresh01Icon, Search01Icon, Cancel01Icon, GlobalIcon, Location01Icon } from "@hugeicons/core-free-icons";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useWorkspaceRoot } from "../workspace/store";
 import { useActiveTerminalCwd, runInActiveTerminal } from "../ai/terminalContext";
@@ -130,14 +131,33 @@ export function FileExplorer({
         </span>
         <ExBtn icon={Search01Icon} label="Search files" onClick={() => setFilterOpen((v) => !v)} />
         {remoteHost && (
-          <ExBtn
-            icon={Cancel01Icon}
-            label="Disconnect"
-            onClick={() => {
-              setActiveSshHost(null);
-              setRemoteHome(null);
-            }}
-          />
+          <>
+            <ExBtn
+              icon={Cancel01Icon}
+              label="Disconnect"
+              onClick={() => {
+                setActiveSshHost(null);
+                setRemoteHome(null);
+              }}
+            />
+            <ExBtn
+              icon={Location01Icon}
+              label="Sync CWD"
+              onClick={async () => {
+                if (!remoteHost) return;
+                try {
+                  const pwd = await sshPwd(remoteHost);
+                  if (pwd) {
+                    setRemoteHome(pwd);
+                    setRefreshKey((k) => k + 1);
+                    toast({ title: `CWD: ${pwd}`, variant: "info" });
+                  }
+                } catch (err) {
+                  toast({ title: String(err), variant: "error" });
+                }
+              }}
+            />
+          </>
         )}
         <ExBtn icon={FileAddIcon} label="New file" onClick={() => setRootCreate("file")} />
         <ExBtn icon={FolderAddIcon} label="New folder" onClick={() => setRootCreate("dir")} />

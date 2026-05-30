@@ -52,6 +52,7 @@ pub fn run() {
             remote::ssh_rename_path,
             remote::ssh_delete_path,
             remote::ssh_home_dir,
+            remote::ssh_pwd,
             mcp::mcp_spawn,
             mcp::mcp_send,
             mcp::mcp_recv,

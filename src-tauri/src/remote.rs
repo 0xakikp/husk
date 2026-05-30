@@ -192,3 +192,9 @@ pub fn ssh_home_dir(host: String) -> Result<String, String> {
     let home = ssh_stdout(&host, "echo $HOME")?;
     Ok(home.trim().to_string())
 }
+
+#[tauri::command]
+pub fn ssh_pwd(host: String) -> Result<String, String> {
+    let pwd = ssh_stdout(&host, "pwd")?;
+    Ok(pwd.trim().to_string())
+}
