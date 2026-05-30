@@ -912,6 +912,8 @@ function App() {
           ...openFiles.map((f) => ({ kind: "file" as const, path: f.path })),
         ];
         const target = allTabs[idx];
+        // eslint-disable-next-line no-console
+        console.log("[tab-switch]", e.code, "idx=", idx, "target=", target?.kind, "tabs=", allTabs.length);
         if (target) {
           if (target.kind === "term") {
             term.setActiveId(target.id);
@@ -923,8 +925,8 @@ function App() {
         }
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [term, activeKind, openFiles]);
 
   const openSettings = () => {
