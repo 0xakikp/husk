@@ -913,12 +913,16 @@ function App() {
         ];
         const target = allTabs[idx];
         // eslint-disable-next-line no-console
-        console.log("[tab-switch]", e.code, "idx=", idx, "target=", target?.kind, "tabs=", allTabs.length);
+        console.log("[tab-switch]", e.code, "idx=", idx, "target=", target, "activeKind=", activeKind, "term.activeId=", term.activeId, "openFiles=", openFiles.length);
         if (target) {
           if (target.kind === "term") {
+            // eslint-disable-next-line no-console
+            console.log("  → switching to term", target.id);
             term.setActiveId(target.id);
             setActiveKind("term");
           } else {
+            // eslint-disable-next-line no-console
+            console.log("  → switching to file", target.path);
             setActiveFile(target.path);
             setActiveKind("file");
           }
