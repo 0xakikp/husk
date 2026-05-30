@@ -673,6 +673,24 @@ function App() {
     return () => { cancelled = true; };
   }, [prefs.background.enabled, prefs.background.path]);
 
+  // ── AI pane background image ────────────────────────────────
+  const [aiPaneBgUrl, setAiPaneBgUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!prefs.aiMiniBgEnabled || !prefs.aiMiniBgPath) {
+      setAiPaneBgUrl(null);
+      return;
+    }
+    let cancelled = false;
+    readFileBase64(prefs.aiMiniBgPath)
+      .then((url) => {
+        if (!cancelled) setAiPaneBgUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setAiPaneBgUrl(null);
+      });
+    return () => { cancelled = true; };
+  }, [prefs.aiMiniBgEnabled, prefs.aiMiniBgPath]);
+
   useEffect(() => {
     document.documentElement.dataset.theme = prefs.theme;
   }, [prefs.theme]);
@@ -1292,11 +1310,18 @@ function App() {
                 <div
                   className={cn(
                     "ai-pane-static no-drag-region absolute z-10 flex flex-col overflow-hidden border-l border-border rounded-r-lg",
-                    prefs.frostedGlass && bgDataUrl && "backdrop-blur-md",
+                    prefs.frostedGlass && bgDataUrl && !aiPaneBgUrl && "backdrop-blur-md",
                     prefs.animationsEnabled && "animate-ai-pane-enter",
                   )}
                   style={{
-                    backgroundColor: `rgba(0,0,0,${prefs.aiPaneOpacity / 100})`,
+                    backgroundColor: aiPaneBgUrl
+                      ? `rgba(0,0,0,${prefs.aiMiniBgDim / 100})`
+                      : `rgba(0,0,0,${prefs.aiPaneOpacity / 100})`,
+                    backgroundImage: aiPaneBgUrl ? `url("${aiPaneBgUrl}")` : undefined,
+                    backgroundSize: aiPaneBgUrl ? "cover" : undefined,
+                    backgroundPosition: aiPaneBgUrl ? "center" : undefined,
+                    backdropFilter: aiPaneBgUrl ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
+                    WebkitBackdropFilter: aiPaneBgUrl ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
                     top: `var(--panel-gaps)`,
                     right: `var(--panel-gaps)`,
                     bottom: `var(--panel-gaps)`,
