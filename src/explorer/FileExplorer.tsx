@@ -9,9 +9,17 @@ import {
   deletePath,
   type DirEntry,
 } from "../fs";
+import {
+  sshReadDir,
+  sshCreateFile,
+  sshCreateDir,
+  sshRenamePath,
+  sshDeletePath,
+  sshHomeDir,
+} from "../remote/remoteFs";
 import { fileIconUrl, folderIconUrl } from "./iconResolver";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { FileAddIcon, FolderAddIcon, Refresh01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { FileAddIcon, FolderAddIcon, Refresh01Icon, Search01Icon, Cancel01Icon, GlobalIcon } from "@hugeicons/core-free-icons";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useWorkspaceRoot } from "../workspace/store";
 import { useActiveTerminalCwd, runInActiveTerminal } from "../ai/terminalContext";
@@ -19,6 +27,7 @@ import { shq } from "../lib/shellQuote";
 import { usePrefs } from "../settings/preferences";
 import { toast } from "../toast";
 import { getFileState, subscribeDirty } from "../editor/dirtyStore";
+import { setActiveSshHost } from "../remote/store";
 
 const joinPath = (dir: string, name: string) => `${dir.replace(/\/+$/, "")}/${name}`;
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
@@ -48,30 +57,36 @@ function ExBtn({
 export function FileExplorer({
   onOpenFile,
   activeFile,
+  remoteHost,
 }: {
   onOpenFile: (path: string, name: string) => void;
   activeFile?: string | null;
+  remoteHost?: string | null;
 }) {
   const wsRoot = useWorkspaceRoot();
-  // The explorer follows the active terminal's cwd (reported via OSC 7): cd in
-  // the terminal and the tree re-roots to match, like husk v1. Falls back to an
-  // explicitly-opened workspace folder, then the home dir.
   const termCwd = useActiveTerminalCwd();
   const [home, setHome] = useState<string | null>(null);
-  // Bumping this remounts the tree (used by Refresh / Collapse-all).
+  const [remoteHome, setRemoteHome] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [rootCreate, setRootCreate] = useState<null | "file" | "dir">(null);
   const [filter, setFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
 
   useEffect(() => {
-    if (!termCwd && !wsRoot && !home) void homeDir().then(setHome);
-  }, [termCwd, wsRoot, home]);
+    if (!termCwd && !wsRoot && !home && !remoteHost) void homeDir().then(setHome);
+  }, [termCwd, wsRoot, home, remoteHost]);
 
-  const root = termCwd || wsRoot || home;
+  useEffect(() => {
+    if (remoteHost && !remoteHome) {
+      void sshHomeDir(remoteHost).then(setRemoteHome).catch(() => setRemoteHome("/"));
+    }
+  }, [remoteHost, remoteHome]);
+
+  // When in remote mode, root is the remote home dir
+  const root = remoteHost ? remoteHome : (termCwd || wsRoot || home);
   if (!root) return <div className="explorer-loading">Loading…</div>;
 
-  const name = root.split("/").filter(Boolean).pop() ?? root;
+  const name = remoteHost ? remoteHost : (root.split("/").filter(Boolean).pop() ?? root);
 
   const doRootCreate = async (raw: string) => {
     const kind = rootCreate;
@@ -80,11 +95,20 @@ export function FileExplorer({
     if (!value || !kind) return;
     const target = joinPath(root, value);
     try {
-      if (kind === "dir") {
-        await createDir(target);
+      if (remoteHost) {
+        if (kind === "dir") {
+          await sshCreateDir(remoteHost, target);
+        } else {
+          await sshCreateFile(remoteHost, target);
+          onOpenFile(target, value);
+        }
       } else {
-        await createFile(target);
-        onOpenFile(target, value);
+        if (kind === "dir") {
+          await createDir(target);
+        } else {
+          await createFile(target);
+          onOpenFile(target, value);
+        }
       }
       setRefreshKey((k) => k + 1);
     } catch (err) {
@@ -97,10 +121,24 @@ export function FileExplorer({
       {/* husk v1's explorer header: workspace name + new/refresh/collapse actions. */}
       <div className="flex h-8 items-center gap-1 px-2">
         <span className="flex flex-1 items-center gap-1.5 truncate text-xs font-medium text-primary" title={root}>
-          <img src={folderIconUrl(name, false)} alt="" width={15} height={15} className="shrink-0" />
+          {remoteHost ? (
+            <HugeiconsIcon icon={GlobalIcon} size={14} strokeWidth={1.75} className="shrink-0 text-[var(--accent)]" />
+          ) : (
+            <img src={folderIconUrl(name, false)} alt="" width={15} height={15} className="shrink-0" />
+          )}
           {name}
         </span>
         <ExBtn icon={Search01Icon} label="Search files" onClick={() => setFilterOpen((v) => !v)} />
+        {remoteHost && (
+          <ExBtn
+            icon={Cancel01Icon}
+            label="Disconnect"
+            onClick={() => {
+              setActiveSshHost(null);
+              setRemoteHome(null);
+            }}
+          />
+        )}
         <ExBtn icon={FileAddIcon} label="New file" onClick={() => setRootCreate("file")} />
         <ExBtn icon={FolderAddIcon} label="New folder" onClick={() => setRootCreate("dir")} />
         <ExBtn icon={Refresh01Icon} label="Refresh" onClick={() => setRefreshKey((k) => k + 1)} />
@@ -131,7 +169,7 @@ export function FileExplorer({
         />
       ) : null}
       <Node
-        key={`${root}:${refreshKey}`}
+        key={`${root}:${refreshKey}:${remoteHost ?? "local"}`}
         path={root}
         name={name}
         depth={0}
@@ -141,6 +179,7 @@ export function FileExplorer({
         onOpenFile={onOpenFile}
         activeFile={activeFile}
         initiallyOpen
+        remoteHost={remoteHost}
       />
     </div>
   );
@@ -157,6 +196,7 @@ function Node({
   headerless = false,
   filter,
   activeFile,
+  remoteHost,
 }: {
   path: string;
   name: string;
@@ -172,6 +212,7 @@ function Node({
   /** Name filter applied to root children (explorer header search). */
   filter?: string;
   activeFile?: string | null;
+  remoteHost?: string | null;
 }) {
   const showHidden = usePrefs().showHidden;
   const [open, setOpen] = useState(initiallyOpen);
@@ -188,10 +229,16 @@ function Node({
   }, [isDir]);
 
   const loadChildren = useCallback(() => {
-    void readDir(path)
-      .then(setChildren)
-      .catch(() => setChildren([]));
-  }, [path]);
+    if (remoteHost) {
+      void sshReadDir(remoteHost, path)
+        .then(setChildren)
+        .catch(() => setChildren([]));
+    } else {
+      void readDir(path)
+        .then(setChildren)
+        .catch(() => setChildren([]));
+    }
+  }, [path, remoteHost]);
 
   useEffect(() => {
     if (isDir && open && children === null) loadChildren();
@@ -221,11 +268,20 @@ function Node({
     if (!value || !kind) return;
     const target = joinPath(path, value);
     try {
-      if (kind === "dir") {
-        await createDir(target);
+      if (remoteHost) {
+        if (kind === "dir") {
+          await sshCreateDir(remoteHost, target);
+        } else {
+          await sshCreateFile(remoteHost, target);
+          onOpenFile(target, value);
+        }
       } else {
-        await createFile(target);
-        onOpenFile(target, value);
+        if (kind === "dir") {
+          await createDir(target);
+        } else {
+          await createFile(target);
+          onOpenFile(target, value);
+        }
       }
       loadChildren();
     } catch (err) {
@@ -238,7 +294,11 @@ function Node({
     const value = raw.trim();
     if (!value || value === name) return;
     try {
-      await renamePath(path, joinPath(parentOf(path), value));
+      if (remoteHost) {
+        await sshRenamePath(remoteHost, path, joinPath(parentOf(path), value));
+      } else {
+        await renamePath(path, joinPath(parentOf(path), value));
+      }
       onMutated?.();
     } catch (err) {
       toast({ title: String(err), variant: "error" });
@@ -253,7 +313,11 @@ function Node({
     );
     if (!ok) return;
     try {
-      await deletePath(path);
+      if (remoteHost) {
+        await sshDeletePath(remoteHost, path);
+      } else {
+        await deletePath(path);
+      }
       onMutated?.();
     } catch (err) {
       toast({ title: String(err), variant: "error" });
@@ -334,15 +398,16 @@ function Node({
               )
               .map((c) => (
                 <Node
-                  key={c.path}
-                  path={c.path}
-                  name={c.name}
-                  depth={0}
-                  isDir={c.is_dir}
-                  onOpenFile={onOpenFile}
-                  onMutated={reload}
-                  activeFile={activeFile}
-                />
+                    key={c.path}
+                    path={c.path}
+                    name={c.name}
+                    depth={0}
+                    isDir={c.is_dir}
+                    onOpenFile={onOpenFile}
+                    onMutated={reload}
+                    activeFile={activeFile}
+                    remoteHost={remoteHost}
+                  />
               ))
           : null}
       </>
@@ -369,7 +434,7 @@ function Node({
             ? children
                 .filter((c) => showHidden || !c.name.startsWith("."))
                 .map((c) => (
-                  <Node key={c.path} path={c.path} name={c.name} depth={depth + 1} isDir={c.is_dir} onOpenFile={onOpenFile} onMutated={reload} activeFile={activeFile} />
+                  <Node key={c.path} path={c.path} name={c.name} depth={depth + 1} isDir={c.is_dir} onOpenFile={onOpenFile} onMutated={reload} activeFile={activeFile} remoteHost={remoteHost} />
                 ))
             : null}
         </>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { monaco, defineHuskTheme } from "./monacoEnv";
 import { initVimMode } from "monaco-vim";
 import { readFile, writeFile } from "../fs";
+import { sshReadFile, sshWriteFile } from "../remote/remoteFs";
 import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
 import { registerEditorApplyEdit, registerEditorGetSelection } from "@/ai/editor/editorStore";
@@ -36,7 +37,7 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
   };
 }
 
-export type OpenFile = { path: string; name: string };
+export type OpenFile = { path: string; name: string; remoteHost?: string | null };
 
 function languageFor(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
@@ -83,6 +84,8 @@ export function EditorArea({
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const activePathRef = useRef<string | null>(activePath);
+  const filesRef = useRef(files);
+  filesRef.current = files;
   const vimRef = useRef<{ dispose(): void } | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
 
@@ -101,7 +104,12 @@ export function EditorArea({
       const path = activePathRef.current;
       const model = editor.getModel();
       if (path && model) {
-        void writeFile(path, model.getValue()).then(() => {
+        const file = filesRef.current.find((f) => f.path === path);
+        const host = file?.remoteHost;
+        const save = host
+          ? sshWriteFile(host, path, model.getValue())
+          : writeFile(path, model.getValue());
+        void save.then(() => {
           markSaved(path, model.getAlternativeVersionId());
         });
       }
@@ -210,9 +218,11 @@ export function EditorArea({
       const uri = monaco.Uri.file(activePath);
       let model = monaco.editor.getModel(uri);
       if (!model) {
-        const content = await readFile(activePath).catch(
-          (e) => `// could not open file\n// ${e}`,
-        );
+        const file = files.find((f) => f.path === activePath);
+        const host = file?.remoteHost;
+        const content = host
+          ? await sshReadFile(host, activePath).catch((e) => `// could not open file\n// ${e}`)
+          : await readFile(activePath).catch((e) => `// could not open file\n// ${e}`);
         if (cancelled) return;
         model = monaco.editor.createModel(content, languageFor(activePath), uri);
         model.updateOptions({ tabSize: getPrefs().editorTabSize, insertSpaces: true });

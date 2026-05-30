@@ -9,7 +9,9 @@ import {
   DatabaseIcon,
   Refresh01Icon,
   PlayIcon,
+  FolderOpenIcon,
 } from "@hugeicons/core-free-icons";
+import { setActiveSshHost } from "../remote/store";
 
 async function readSshHosts(): Promise<string[]> {
   try {
@@ -35,9 +37,11 @@ async function readSshHosts(): Promise<string[]> {
 export function RemotesView({
   onClose,
   inline,
+  onBrowse,
 }: {
   onClose?: () => void;
   inline?: boolean;
+  onBrowse?: (host: string) => void;
 }) {
   const [hosts, setHosts] = useState<string[] | "loading">("loading");
 
@@ -89,25 +93,46 @@ export function RemotesView({
       ) : (
         <div className="flex flex-col gap-1">
           {hosts.map((h) => (
-            <button
+            <div
               key={h}
-              type="button"
-              onClick={() => connect(h)}
-              className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/10"
+              className="group flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/10"
             >
-              <HugeiconsIcon
-                icon={DatabaseIcon}
-                size={14}
-                strokeWidth={1.75}
-                className="shrink-0 text-muted-foreground"
-              />
-              <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
-                {h}
-              </span>
-              <span className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+              <button
+                type="button"
+                onClick={() => connect(h)}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
+                <HugeiconsIcon
+                  icon={DatabaseIcon}
+                  size={14}
+                  strokeWidth={1.75}
+                  className="shrink-0 text-muted-foreground"
+                />
+                <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
+                  {h}
+                </span>
+              </button>
+              <button
+                type="button"
+                title="Browse files"
+                onClick={() => {
+                  setActiveSshHost(h);
+                  onBrowse?.(h);
+                  toast({ title: `Browsing ${h}`, variant: "info" });
+                }}
+                className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+              >
+                <HugeiconsIcon icon={FolderOpenIcon} size={11} strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                title="Connect terminal"
+                onClick={() => connect(h)}
+                className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+              >
                 <HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} />
-              </span>
-            </button>
+              </button>
+            </div>
           ))}
         </div>
       )}

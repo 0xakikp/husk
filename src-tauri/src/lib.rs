@@ -2,6 +2,7 @@ mod fs;
 mod jobs;
 mod mcp;
 mod pty;
+mod remote;
 mod secrets;
 mod shell;
 mod shell_history;
@@ -43,6 +44,14 @@ pub fn run() {
             fs::create_dir,
             fs::rename_path,
             fs::delete_path,
+            remote::ssh_read_dir,
+            remote::ssh_read_file,
+            remote::ssh_write_file,
+            remote::ssh_create_file,
+            remote::ssh_create_dir,
+            remote::ssh_rename_path,
+            remote::ssh_delete_path,
+            remote::ssh_home_dir,
             mcp::mcp_spawn,
             mcp::mcp_send,
             mcp::mcp_recv,

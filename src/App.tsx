@@ -52,6 +52,7 @@ import { DockerView } from "./docker/DockerView";
 import { KubernetesView } from "./kubernetes/KubernetesView";
 import { TerraformView } from "./terraform/TerraformView";
 import { RemotesView } from "./remotes/RemotesView";
+import { useActiveSshHost } from "./remote/store";
 import { GithubIssuesDialog } from "./github-issues/GithubIssuesDialog";
 import { CiCdDialog } from "./ci-cd/CiCdDialog";
 import { ClipboardDropdown } from "./clipboard/ClipboardDropdown";
@@ -801,6 +802,7 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [prefs.aiEnabled]);
 
+  const remoteHost = useActiveSshHost();
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const term = useTerminalTabs();
@@ -916,7 +918,7 @@ function App() {
   };
 
   const openFile = (path: string, name: string) => {
-    setOpenFiles((prev) => (prev.some((f) => f.path === path) ? prev : [...prev, { path, name }]));
+    setOpenFiles((prev) => (prev.some((f) => f.path === path) ? prev : [...prev, { path, name, remoteHost }]));
     setActiveFile(path);
     setActiveKind("file");
   };
@@ -1158,12 +1160,19 @@ function App() {
                 <div className="min-h-0 flex-1 overflow-hidden">
                   {sidebarView === "explorer" ? (
                     <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      <FileExplorer onOpenFile={openFile} activeFile={activeFile} />
+                      <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
                     </div>
                   ) : sidebarView === "source-control" ? (
                     <SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />
                   ) : sidebarView === "remotes" ? (
-                    <RemotesView inline />
+                    <RemotesView
+                      inline
+                      onBrowse={(_h) => {
+                        setActiveKind("term");
+                        setExplorerOpen(true);
+                        setSidebarView("explorer");
+                      }}
+                    />
                   ) : sidebarView === "workflows" ? (
                     <RunbooksDialog inline />
                   ) : sidebarView === "tools-hub" ? (
