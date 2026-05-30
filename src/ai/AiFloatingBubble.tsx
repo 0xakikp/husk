@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { usePrefs } from "../settings/preferences";
 import {
   SparklesIcon,
   Cancel01Icon,
@@ -22,6 +23,7 @@ import { getProvider } from "./providers";
 import { useKey, loadConfig } from "./store";
 import { readActiveTerminal, runInActiveTerminal } from "./terminalContext";
 import { useAiBubbleChat } from "./bubble/useAiBubbleChat";
+import { readFileBase64 } from "../fs";
 
 type BubbleState = "collapsed" | "expanded";
 
@@ -210,8 +212,22 @@ export function AiFloatingBubble({
   mode?: "terminal" | "editor";
   onOpenAiPane?: () => void;
 }) {
+  const prefs = usePrefs();
   const [state, setState] = useState<BubbleState>("collapsed");
   const [pos, setPos] = useState(readBubblePos);
+  const [bgUrl, setBgUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!prefs.aiMiniBgEnabled || !prefs.aiMiniBgPath) {
+      setBgUrl(null);
+      return;
+    }
+    let cancelled = false;
+    readFileBase64(prefs.aiMiniBgPath)
+      .then((url) => { if (!cancelled) setBgUrl(url); })
+      .catch(() => { if (!cancelled) setBgUrl(null); });
+    return () => { cancelled = true; };
+  }, [prefs.aiMiniBgEnabled, prefs.aiMiniBgPath]);
   const [size, setSize] = useState(readBubbleSize);
   const posRef = useRef(pos);
   const sizeRef = useRef(size);
@@ -433,12 +449,20 @@ export function AiFloatingBubble({
 
   return (
     <div
-      className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl shadow-black/40"
+      className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border shadow-2xl shadow-black/40"
       style={{
         left: pos.x,
         top: pos.y,
         width: size.w,
         height: size.h,
+        backgroundColor: bgUrl
+          ? `rgba(0,0,0,${prefs.aiMiniBgDim / 100})`
+          : `rgba(0,0,0,${prefs.aiMiniOpacity / 100})`,
+        backgroundImage: bgUrl ? `url("${bgUrl}")` : undefined,
+        backgroundSize: bgUrl ? "cover" : undefined,
+        backgroundPosition: bgUrl ? "center" : undefined,
+        backdropFilter: bgUrl ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
+        WebkitBackdropFilter: bgUrl ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
       }}
     >
       {/* Resize strips */}
