@@ -70,6 +70,14 @@ export type Prefs = {
   neonBorderGlow: boolean;
   editorWallpaperOpacity: number;
   aiPaneOpacity: number;
+
+  // AI Mini Window
+  aiMiniOpacity: number;
+  aiMiniBgEnabled: boolean;
+  aiMiniBgPath: string;
+  aiMiniBgOpacity: number;
+  aiMiniBgBlur: number;
+  aiMiniBgDim: number;
 };
 
 const DEFAULT: Prefs = {
@@ -122,6 +130,13 @@ const DEFAULT: Prefs = {
   neonBorderGlow: false,
   editorWallpaperOpacity: 0,
   aiPaneOpacity: 80,
+
+  aiMiniOpacity: 48,
+  aiMiniBgEnabled: false,
+  aiMiniBgPath: "",
+  aiMiniBgOpacity: 100,
+  aiMiniBgBlur: 0,
+  aiMiniBgDim: 50,
 };
 const LS_KEY = "huskv2.prefs.v2";
 

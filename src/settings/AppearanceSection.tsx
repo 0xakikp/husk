@@ -281,6 +281,95 @@ export function AppearanceSection() {
           />
         </div>
       </div>
+
+      {/* ── AI Mini Window ── */}
+      <div className="flex flex-col gap-2">
+        <Label>AI Mini Window</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <SliderRow
+            title="Window opacity"
+            description="Background transparency"
+            value={p.aiMiniOpacity}
+            min={10}
+            max={100}
+            step={5}
+            onChange={(v) => setPrefs({ aiMiniOpacity: v })}
+          />
+          <SliderRow
+            title="BG opacity"
+            description="Image visibility"
+            value={p.aiMiniBgOpacity}
+            min={10}
+            max={100}
+            step={5}
+            onChange={(v) => setPrefs({ aiMiniBgOpacity: v })}
+          />
+          <SliderRow
+            title="BG blur"
+            description="Image softness"
+            value={p.aiMiniBgBlur}
+            min={0}
+            max={20}
+            step={1}
+            onChange={(v) => setPrefs({ aiMiniBgBlur: v })}
+          />
+          <SliderRow
+            title="BG dim"
+            description="Dark overlay strength"
+            value={p.aiMiniBgDim}
+            min={0}
+            max={90}
+            step={5}
+            onChange={(v) => setPrefs({ aiMiniBgDim: v })}
+          />
+        </div>
+        <SettingRow
+          className="rounded border border-border/40 bg-muted/20 py-2"
+          title="Background image"
+          description="Show a custom image behind the AI mini window."
+        >
+          <Switch checked={p.aiMiniBgEnabled} onCheckedChange={(v) => setPrefs({ aiMiniBgEnabled: v })} />
+        </SettingRow>
+        <SettingRow
+          className="rounded border border-border/40 bg-muted/20 py-2"
+          title="Image file"
+          description={p.aiMiniBgPath ? p.aiMiniBgPath.split(/[\\/]/).pop() ?? "No image selected." : "No image selected."}
+        >
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              title="Pick image"
+              onClick={async () => {
+                const selected = await open({
+                  multiple: false,
+                  filters: [
+                    { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] },
+                    { name: "All files", extensions: ["*"] },
+                  ],
+                });
+                if (selected && typeof selected === "string") {
+                  setPrefs({ aiMiniBgPath: selected, aiMiniBgEnabled: true });
+                }
+              }}
+            >
+              <HugeiconsIcon icon={Image02Icon} size={15} strokeWidth={1.75} />
+            </Button>
+            {p.aiMiniBgPath && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 rounded-md text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                title="Clear image"
+                onClick={() => setPrefs({ aiMiniBgPath: "", aiMiniBgEnabled: false })}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
+              </Button>
+            )}
+          </div>
+        </SettingRow>
+      </div>
     </div>
   );
 }

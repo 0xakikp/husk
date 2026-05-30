@@ -4,6 +4,7 @@ import { loadConfig, getKey } from "./store";
 import { getProvider } from "./providers";
 import { getActiveAgent } from "./agents";
 import { readActiveTerminal } from "./terminalContext";
+import { usePrefs } from "../settings/preferences";
 
 const QUICK_PROMPTS = [
   "Explain this error",
@@ -32,6 +33,7 @@ function parseParts(content: string): MsgPart[] {
 }
 
 export function AiMiniWindow({ onClose }: { onClose: () => void }) {
+  const prefs = usePrefs();
   const [pos, setPos] = useState(() => ({
     x: Math.max(12, window.innerWidth - 372),
     y: Math.max(12, window.innerHeight - 440),
@@ -126,10 +128,41 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
     setBusy(false);
   };
 
+  const miniBg = prefs.aiMiniBgEnabled && prefs.aiMiniBgPath
+    ? {
+        backgroundImage: `url("${prefs.aiMiniBgPath}")`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        opacity: prefs.aiMiniBgOpacity / 100,
+        filter: prefs.aiMiniBgBlur > 0 ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
+      }
+    : undefined;
+
   return (
-    <div className="ai-mini" style={{ left: pos.x, top: pos.y }} data-ai-mini>
-      {/* Header */}
-      <div className="ai-mini-head" onMouseDown={startDrag}>
+    <div
+      className="ai-mini"
+      style={{
+        left: pos.x,
+        top: pos.y,
+        background: `rgba(30, 30, 45, ${prefs.aiMiniOpacity / 100})`,
+      }}
+      data-ai-mini
+    >
+      {miniBg ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-0"
+          style={miniBg}
+        />
+      ) : null}
+      {miniBg ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-0"
+          style={{ background: `rgba(0,0,0,${prefs.aiMiniBgDim / 100})` }}
+        />
+      ) : null}
+      <div className="relative z-10 flex h-full flex-col">
+        {/* Header */}
+        <div className="ai-mini-head" onMouseDown={startDrag}>
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-medium tracking-wide text-foreground/80">✦ Quick AI</span>
           {messages.length > 0 && (
@@ -202,6 +235,7 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
         <button type="button" onClick={() => void send()} disabled={busy || !input.trim()}>
           {busy ? "…" : "Send"}
         </button>
+      </div>
       </div>
     </div>
   );
