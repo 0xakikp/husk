@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
   readDir,
@@ -539,7 +540,7 @@ function ContextMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <>
       <div
         className="ectx-backdrop"
@@ -556,6 +557,7 @@ function ContextMenu({
           </button>
         ))}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
