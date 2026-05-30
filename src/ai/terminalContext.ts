@@ -169,6 +169,18 @@ export function focusActiveTerminal(): void {
   focusTerminalFn?.();
 }
 
+// --- Prompt position tracking (for click-to-edit) -------------------------
+
+let promptPos: { row: number; col: number } | null = null;
+
+export function setPromptPosition(pos: { row: number; col: number } | null): void {
+  promptPos = pos;
+}
+
+export function getPromptPosition(): { row: number; col: number } | null {
+  return promptPos;
+}
+
 export function markCommandStart(): void {
   if (!commandRunning) {
     commandRunning = true;

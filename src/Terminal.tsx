@@ -17,6 +17,9 @@ import {
   setCurrentCommand,
   clearCurrentCommand,
   markCommandStart,
+  setPromptPosition,
+  getPromptPosition,
+  isCommandRunning,
 } from "./ai/terminalContext";
 import {
   interceptTerminalInput,
@@ -129,6 +132,15 @@ export function TerminalView({
       }
       if (data.startsWith("C") && activeRef.current) {
         markCommandStart(); // command started (preexec)
+      }
+      if (data.startsWith("B") && activeRef.current) {
+        // Prompt finished rendering — capture cursor position as prompt start
+        const buf = term.buffer.active;
+        setPromptPosition({ row: buf.cursorY + buf.viewportY, col: buf.cursorX });
+      }
+      if (data.startsWith("A") && activeRef.current) {
+        // Prompt about to start — clear old position
+        setPromptPosition(null);
       }
       return true;
     });
@@ -413,6 +425,51 @@ export function TerminalView({
       .catch(() => {});
   };
 
+  const handleTerminalClick = (e: React.MouseEvent) => {
+    const term = termRef.current;
+    const id = ptyIdRef.current;
+    if (!term || id == null) return;
+    // Only when at a prompt (no command running)
+    if (isCommandRunning()) return;
+    // Skip if user is selecting text
+    if (term.getSelection()) return;
+
+    // @ts-expect-error xterm internal API
+    const core = term._core;
+    if (!core?._renderService?.dimensions) return;
+
+    const dims = core._renderService.dimensions;
+    const cellW = dims.css.cell.width;
+    const cellH = dims.css.cell.height;
+    if (!cellW || !cellH) return;
+
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const col = Math.floor(x / cellW);
+    const row = Math.floor(y / cellH) + term.buffer.active.viewportY;
+
+    const prompt = getPromptPosition();
+    if (!prompt) return;
+    // Only allow clicks on the prompt row for now
+    if (row !== prompt.row) return;
+    if (col < prompt.col) return;
+
+    const buf = term.buffer.active;
+    const curCol = buf.cursorX;
+    const curRow = buf.cursorY + buf.viewportY;
+    if (curRow !== prompt.row) return; // cursor wrapped to next line — skip for now
+
+    const targetOffset = col - prompt.col;
+    const curOffset = curCol - prompt.col;
+    const delta = targetOffset - curOffset;
+    if (delta === 0) return;
+
+    const seq = delta > 0 ? `\x1b[${delta}C` : `\x1b[${-delta}D`;
+    void invoke("pty_write", { id, data: seq });
+  };
+
   return (
     <div
       className="terminal-host-wrap"
@@ -420,6 +477,7 @@ export function TerminalView({
         onFocus?.();
         termRef.current?.focus();
       }}
+      onClick={handleTerminalClick}
       onContextMenu={(e) => {
         e.preventDefault();
         setMenu({ x: e.clientX, y: e.clientY });
