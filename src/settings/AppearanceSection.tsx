@@ -262,15 +262,6 @@ export function AppearanceSection() {
         <Label>Layout</Label>
         <div className="grid grid-cols-2 gap-2">
           <SliderRow
-            title="AI panel opacity"
-            description="AI panel darkness"
-            value={p.aiPaneOpacity}
-            min={20}
-            max={100}
-            step={5}
-            onChange={(v) => setPrefs({ aiPaneOpacity: v })}
-          />
-          <SliderRow
             title="Panel gaps"
             description="Padding between panels"
             value={p.panelGaps}
@@ -282,12 +273,12 @@ export function AppearanceSection() {
         </div>
       </div>
 
-      {/* ── AI Mini Window ── */}
+      {/* ── AI Panel ── */}
       <div className="flex flex-col gap-2">
-        <Label>AI Mini Window</Label>
+        <Label>AI Panel</Label>
         <div className="grid grid-cols-2 gap-2">
           <SliderRow
-            title="Window opacity"
+            title="Panel opacity"
             description="Background transparency"
             value={p.aiMiniOpacity}
             min={10}

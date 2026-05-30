@@ -906,7 +906,7 @@ function App() {
         }
       } else if (/^Digit[1-9]$/.test(e.code)) {
         e.preventDefault();
-        const idx = parseInt(e.code.replace("digit", ""), 10) - 1;
+        const idx = parseInt(e.code.replace("Digit", ""), 10) - 1;
         const allTabs = [
           ...term.tabs.map((t) => ({ kind: "term" as const, id: t.id })),
           ...openFiles.map((f) => ({ kind: "file" as const, path: f.path })),
@@ -1316,7 +1316,7 @@ function App() {
                   style={{
                     backgroundColor: aiPaneBgUrl
                       ? `rgba(0,0,0,${prefs.aiMiniBgDim / 100})`
-                      : `rgba(0,0,0,${prefs.aiPaneOpacity / 100})`,
+                      : `rgba(0,0,0,${prefs.aiMiniOpacity / 100})`,
                     backgroundImage: aiPaneBgUrl ? `url("${aiPaneBgUrl}")` : undefined,
                     backgroundSize: aiPaneBgUrl ? "cover" : undefined,
                     backgroundPosition: aiPaneBgUrl ? "center" : undefined,
