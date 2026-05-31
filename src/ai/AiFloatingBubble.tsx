@@ -114,7 +114,7 @@ function CodeBlock({ lang, value, fontSize }: { lang: string; value: string; fon
     }
   };
   return (
-    <div className="my-1.5 overflow-hidden rounded-lg border border-border/50 bg-black/40">
+    <div className="my-1.5 overflow-hidden rounded-lg border border-border/50 bg-muted/60">
       <div className="flex items-center justify-between border-b border-border/30 bg-muted/20 px-2.5 py-1">
         <span className="font-medium uppercase tracking-wider text-muted-foreground/60" style={{ fontSize: fontSize - 2 }}>
           {lang}
@@ -448,10 +448,13 @@ export function AiFloatingBubble({
     );
   }
 
+  const isDark = prefs.theme === "dark";
   const computedBg = (() => {
     if (bgUrl) {
       const dim = Math.round(prefs.aiMiniBgDim);
-      const dimRgba = `rgba(0,0,0,${dim / 100})`;
+      const dimRgba = isDark
+        ? `rgba(0,0,0,${dim / 100})`
+        : `rgba(255,255,255,${dim / 100})`;
       return {
         background: `linear-gradient(${dimRgba}, ${dimRgba}), url("${bgUrl}")`,
         backgroundSize: "cover, cover",
@@ -459,7 +462,9 @@ export function AiFloatingBubble({
       };
     }
     return {
-      background: `rgba(0,0,0,${prefs.aiMiniOpacity / 100})`,
+      background: isDark
+        ? `rgba(0,0,0,${prefs.aiMiniOpacity / 100})`
+        : `rgba(255,255,255,${prefs.aiMiniOpacity / 100})`,
       backgroundSize: undefined,
       backgroundPosition: undefined,
     };
@@ -469,7 +474,10 @@ export function AiFloatingBubble({
 
   return (
     <div
-      className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border shadow-2xl shadow-black/40"
+      className={cn(
+        "fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border",
+        isDark ? "shadow-2xl shadow-black/40" : "shadow-lg shadow-black/10"
+      )}
       style={{
         left: pos.x,
         top: pos.y,
@@ -539,7 +547,7 @@ export function AiFloatingBubble({
           {showCtxPreview && includeContext && ctxPreview && (
             <div className="absolute top-full right-0 z-40 mt-1.5 w-64 rounded-md border border-border/60 bg-popover p-2 shadow-lg">
               <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Terminal context preview</div>
-              <pre className="max-h-32 overflow-auto rounded bg-black/30 p-1.5 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
+              <pre className="max-h-32 overflow-auto rounded bg-muted/50 p-1.5 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
             </div>
           )}
         </button>
@@ -651,7 +659,7 @@ export function AiFloatingBubble({
 
         {/* Rename modal */}
         {editingTitle && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditingTitle(null)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40" onClick={() => setEditingTitle(null)}>
             <div className="w-64 rounded-lg border border-border bg-popover p-3 shadow-lg" onClick={(e) => e.stopPropagation()}>
               <div className="mb-2 text-[12px] font-medium text-foreground">Rename session</div>
               <input

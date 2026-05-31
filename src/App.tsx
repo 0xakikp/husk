@@ -1297,7 +1297,9 @@ function App() {
                     prefs.animationsEnabled && "animate-ai-pane-enter",
                   )}
                   style={{
-                    backgroundColor: `rgba(0,0,0,${prefs.aiPaneOpacity / 100})`,
+                    backgroundColor: prefs.theme === "dark"
+                      ? `rgba(0,0,0,${prefs.aiPaneOpacity / 100})`
+                      : `rgba(255,255,255,${prefs.aiPaneOpacity / 100})`,
                     top: `var(--panel-gaps)`,
                     right: `var(--panel-gaps)`,
                     bottom: `var(--panel-gaps)`,

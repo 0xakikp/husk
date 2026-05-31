@@ -107,7 +107,7 @@ function FormattedMessage({ content, isStreaming, fontSize }: { content: string;
     <div className="flex flex-col gap-2">
       {parts.map((part, i) =>
         part.type === "code" ? (
-          <div key={i} className="group/code relative overflow-x-auto rounded-md bg-black/30 p-2.5">
+          <div key={i} className="group/code relative overflow-x-auto rounded-md bg-muted/60 p-2.5">
             <div className="flex items-center justify-between">
               {part.lang && part.lang !== "plaintext" ? (
                 <div className="mb-1 uppercase tracking-wider text-muted-foreground/50" style={{ fontSize: fontSize - 3 }}>{part.lang}</div>
@@ -185,12 +185,12 @@ function EditCard({
       </button>
       {expanded && (
         <div className="mt-1.5 flex flex-col gap-1 font-mono text-[10px]">
-          <div className="rounded bg-red-500/10 p-1.5 text-red-400">
-            <div className="mb-0.5 text-[9px] uppercase tracking-wider text-red-400/60">Remove</div>
+          <div className="rounded bg-red-500/10 p-1.5 text-red-600 dark:text-red-400">
+            <div className="mb-0.5 text-[9px] uppercase tracking-wider text-red-600/60 dark:text-red-400/60">Remove</div>
             <pre className="whitespace-pre-wrap">{edit.search}</pre>
           </div>
-          <div className="rounded bg-emerald-500/10 p-1.5 text-emerald-400">
-            <div className="mb-0.5 text-[9px] uppercase tracking-wider text-emerald-400/60">Add</div>
+          <div className="rounded bg-emerald-500/10 p-1.5 text-emerald-600 dark:text-emerald-400">
+            <div className="mb-0.5 text-[9px] uppercase tracking-wider text-emerald-600/60 dark:text-emerald-400/60">Add</div>
             <pre className="whitespace-pre-wrap">{edit.replace}</pre>
           </div>
         </div>

@@ -85,7 +85,23 @@ Husk is a desktop application that reimagines the developer workspace. Instead o
 
 ## Screenshots
 
-*Coming soon — add screenshots of the terminal, editor, AI panel, and floating bubble here.*
+### Terminal with File Explorer and Background Image
+
+The main workspace with the file explorer sidebar, multi-tab terminal, and a custom background image with configurable blur and dim overlay.
+
+![Husk Terminal](public/images/screenshot-terminal.png)
+
+### AI Floating Bubble
+
+The floating AI chat bubble that appears over the terminal for quick questions. Features quick actions for explaining errors, summarizing output, and more.
+
+![Husk AI Floating Bubble](public/images/screenshot-bubble.png)
+
+### Editor with AI Panel
+
+The Monaco-based code editor alongside the AI panel. The AI panel provides context-aware chat with workspace-scoped sessions and inline code edit suggestions.
+
+![Husk Editor with AI](public/images/screenshot-editor.png)
 
 ---
 
