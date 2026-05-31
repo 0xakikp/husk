@@ -28,6 +28,7 @@ import { AiEditorPane } from "./ai/editor/AiEditorPane";
 import { toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
 import { requestEditorSwitch } from "./ai/editor/sessionSwitch";
 import { AiSessionsPanel } from "./ai/AiSessionsPanel";
+import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
 import { FileExplorer } from "./explorer/FileExplorer";
 import { EditorArea, type OpenFile } from "./editor/EditorArea";
@@ -696,6 +697,11 @@ function App() {
 
   useEffect(() => {
     void initKeys();
+  }, []);
+
+  // Auto-check for updates on app start (non-blocking)
+  useEffect(() => {
+    void checkForUpdates(false);
   }, []);
 
   useEffect(() => {
