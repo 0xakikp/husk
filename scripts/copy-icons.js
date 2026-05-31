@@ -1,5 +1,5 @@
-const fs = require("fs");
-const path = require("path");
+import fs from "fs";
+import path from "path";
 
 const src = path.join("node_modules", "material-icon-theme", "icons");
 const dst = path.join("public", "icons");
