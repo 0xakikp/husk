@@ -262,6 +262,15 @@ export function AppearanceSection() {
         <Label>Layout</Label>
         <div className="grid grid-cols-2 gap-2">
           <SliderRow
+            title="AI panel opacity"
+            description="Editor AI panel darkness"
+            value={p.aiPaneOpacity}
+            min={20}
+            max={100}
+            step={5}
+            onChange={(v) => setPrefs({ aiPaneOpacity: v })}
+          />
+          <SliderRow
             title="Panel gaps"
             description="Padding between panels"
             value={p.panelGaps}
@@ -273,27 +282,18 @@ export function AppearanceSection() {
         </div>
       </div>
 
-      {/* ── AI Panel ── */}
+      {/* ── AI Floating Bubble ── */}
       <div className="flex flex-col gap-2">
-        <Label>AI Panel</Label>
+        <Label>AI Floating Bubble</Label>
         <div className="grid grid-cols-2 gap-2">
           <SliderRow
-            title="Panel opacity"
+            title="Window opacity"
             description="Background transparency"
             value={p.aiMiniOpacity}
             min={10}
             max={100}
             step={5}
             onChange={(v) => setPrefs({ aiMiniOpacity: v })}
-          />
-          <SliderRow
-            title="BG opacity"
-            description="Image visibility"
-            value={p.aiMiniBgOpacity}
-            min={10}
-            max={100}
-            step={5}
-            onChange={(v) => setPrefs({ aiMiniBgOpacity: v })}
           />
           <SliderRow
             title="BG blur"
@@ -317,7 +317,7 @@ export function AppearanceSection() {
         <SettingRow
           className="rounded border border-border/40 bg-muted/20 py-2"
           title="Background image"
-          description="Show a custom image behind the AI mini window."
+          description="Show a custom image behind the AI floating bubble."
         >
           <Switch checked={p.aiMiniBgEnabled} onCheckedChange={(v) => setPrefs({ aiMiniBgEnabled: v })} />
         </SettingRow>
