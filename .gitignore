@@ -25,3 +25,6 @@ dist-ssr
 
 # generated material-icon-theme svgs
 public/icons
+
+# Tauri updater signing keys (NEVER commit private key)
+src-tauri/tauri.key
