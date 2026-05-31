@@ -218,14 +218,24 @@ export function AiFloatingBubble({
   const [bgUrl, setBgUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log("[AiBubble] bg effect:", {
+      enabled: prefs.aiMiniBgEnabled,
+      path: prefs.aiMiniBgPath,
+    });
     if (!prefs.aiMiniBgEnabled || !prefs.aiMiniBgPath) {
       setBgUrl(null);
       return;
     }
     let cancelled = false;
     readFileBase64(prefs.aiMiniBgPath)
-      .then((url) => { if (!cancelled) setBgUrl(url); })
-      .catch(() => { if (!cancelled) setBgUrl(null); });
+      .then((url) => {
+        console.log("[AiBubble] bg loaded:", url.slice(0, 60) + "...");
+        if (!cancelled) setBgUrl(url);
+      })
+      .catch((err) => {
+        console.error("[AiBubble] bg load failed:", err);
+        if (!cancelled) setBgUrl(null);
+      });
     return () => { cancelled = true; };
   }, [prefs.aiMiniBgEnabled, prefs.aiMiniBgPath]);
   const [size, setSize] = useState(readBubbleSize);
@@ -447,6 +457,31 @@ export function AiFloatingBubble({
     );
   }
 
+  const computedBg = (() => {
+    if (bgUrl) {
+      const dim = Math.round(prefs.aiMiniBgDim);
+      const dimRgba = `rgba(0,0,0,${dim / 100})`;
+      return {
+        background: `linear-gradient(${dimRgba}, ${dimRgba}), url("${bgUrl}")`,
+        backgroundSize: "cover, cover",
+        backgroundPosition: "center, center",
+      };
+    }
+    return {
+      background: `rgba(0,0,0,${prefs.aiMiniOpacity / 100})`,
+      backgroundSize: undefined,
+      backgroundPosition: undefined,
+    };
+  })();
+
+  console.log("[AiBubble] render:", {
+    bgUrl: bgUrl ? "yes" : "no",
+    opacity: prefs.aiMiniOpacity,
+    blur: prefs.aiMiniBgBlur,
+    dim: prefs.aiMiniBgDim,
+    computedBg,
+  });
+
   return (
     <div
       className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border shadow-2xl shadow-black/40"
@@ -455,12 +490,7 @@ export function AiFloatingBubble({
         top: pos.y,
         width: size.w,
         height: size.h,
-        backgroundColor: bgUrl
-          ? `rgba(0,0,0,${prefs.aiMiniBgDim / 100})`
-          : `rgba(0,0,0,${prefs.aiMiniOpacity / 100})`,
-        backgroundImage: bgUrl ? `url("${bgUrl}")` : undefined,
-        backgroundSize: bgUrl ? "cover" : undefined,
-        backgroundPosition: bgUrl ? "center" : undefined,
+        ...computedBg,
         backdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
         WebkitBackdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
       }}
