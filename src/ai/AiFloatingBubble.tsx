@@ -95,7 +95,7 @@ function parseMessageParts(content: string): MsgPart[] {
 }
 
 /* ── Code block with copy + run buttons ── */
-function CodeBlock({ lang, value }: { lang: string; value: string }) {
+function CodeBlock({ lang, value, fontSize }: { lang: string; value: string; fontSize: number }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     try {
@@ -116,7 +116,7 @@ function CodeBlock({ lang, value }: { lang: string; value: string }) {
   return (
     <div className="my-1.5 overflow-hidden rounded-lg border border-border/50 bg-black/40">
       <div className="flex items-center justify-between border-b border-border/30 bg-muted/20 px-2.5 py-1">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+        <span className="font-medium uppercase tracking-wider text-muted-foreground/60" style={{ fontSize: fontSize - 2 }}>
           {lang}
         </span>
         <div className="flex items-center gap-0.5">
@@ -131,7 +131,8 @@ function CodeBlock({ lang, value }: { lang: string; value: string }) {
           <button
             type="button"
             onClick={handleRun}
-            className="flex h-5 items-center gap-0.5 rounded px-1 text-[10px] text-emerald-500/80 hover:bg-emerald-500/10 hover:text-emerald-500"
+            className="flex h-5 items-center gap-0.5 rounded px-1 text-emerald-500/80 hover:bg-emerald-500/10 hover:text-emerald-500"
+            style={{ fontSize: fontSize - 2 }}
             title="Run in terminal"
           >
             <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.5} />
@@ -139,7 +140,7 @@ function CodeBlock({ lang, value }: { lang: string; value: string }) {
           </button>
         </div>
       </div>
-      <pre className="overflow-x-auto p-2 font-mono text-[10px] leading-relaxed text-foreground/90">
+      <pre className="overflow-x-auto p-2 font-mono leading-relaxed text-foreground/90" style={{ fontSize }}>
         <code>{value}</code>
       </pre>
     </div>
@@ -147,15 +148,15 @@ function CodeBlock({ lang, value }: { lang: string; value: string }) {
 }
 
 /* ── Formatted message (text + code blocks) ── */
-function FormattedBubbleMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+function FormattedBubbleMessage({ content, isStreaming, fontSize }: { content: string; isStreaming: boolean; fontSize: number }) {
   const parts = useMemo(() => parseMessageParts(content), [content]);
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-0.5" style={{ fontSize }}>
       {parts.map((part, i) =>
         part.type === "code" ? (
-          <CodeBlock key={i} lang={part.lang || "code"} value={part.value} />
+          <CodeBlock key={i} lang={part.lang || "code"} value={part.value} fontSize={fontSize} />
         ) : (
-          <div key={i} className="whitespace-pre-wrap text-[11px] leading-relaxed">
+          <div key={i} className="whitespace-pre-wrap leading-relaxed">
             {part.value}
           </div>
         )
@@ -218,24 +219,14 @@ export function AiFloatingBubble({
   const [bgUrl, setBgUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log("[AiBubble] bg effect:", {
-      enabled: prefs.aiMiniBgEnabled,
-      path: prefs.aiMiniBgPath,
-    });
     if (!prefs.aiMiniBgEnabled || !prefs.aiMiniBgPath) {
       setBgUrl(null);
       return;
     }
     let cancelled = false;
     readFileBase64(prefs.aiMiniBgPath)
-      .then((url) => {
-        console.log("[AiBubble] bg loaded:", url.slice(0, 60) + "...");
-        if (!cancelled) setBgUrl(url);
-      })
-      .catch((err) => {
-        console.error("[AiBubble] bg load failed:", err);
-        if (!cancelled) setBgUrl(null);
-      });
+      .then((url) => { if (!cancelled) setBgUrl(url); })
+      .catch(() => { if (!cancelled) setBgUrl(null); });
     return () => { cancelled = true; };
   }, [prefs.aiMiniBgEnabled, prefs.aiMiniBgPath]);
   const [size, setSize] = useState(readBubbleSize);
@@ -474,13 +465,7 @@ export function AiFloatingBubble({
     };
   })();
 
-  console.log("[AiBubble] render:", {
-    bgUrl: bgUrl ? "yes" : "no",
-    opacity: prefs.aiMiniOpacity,
-    blur: prefs.aiMiniBgBlur,
-    dim: prefs.aiMiniBgDim,
-    computedBg,
-  });
+  const fontSize = prefs.aiMiniFontSize ?? 11;
 
   return (
     <div
@@ -705,7 +690,7 @@ export function AiFloatingBubble({
             <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
               <HugeiconsIcon icon={SparklesIcon} size={18} strokeWidth={1.5} className="text-primary" />
             </div>
-            <div className="max-w-[220px] text-center text-[12px] leading-relaxed text-muted-foreground">
+            <div className="max-w-[220px] text-center leading-relaxed text-muted-foreground" style={{ fontSize }}>
               Type <code className="rounded bg-muted px-1 py-0.5 text-primary">/ai</code> in your terminal to ask questions. Responses appear here.
             </div>
             <div className="grid w-full grid-cols-2 gap-1.5 px-1">
@@ -718,8 +703,8 @@ export function AiFloatingBubble({
                   className="flex flex-col items-center gap-1 rounded-lg border border-border/40 bg-muted/20 px-2 py-2.5 text-foreground transition-colors hover:bg-muted/50 disabled:opacity-40"
                 >
                   <HugeiconsIcon icon={action.icon} size={14} strokeWidth={1.5} className="text-muted-foreground" />
-                  <span className="text-[11px] font-medium">{action.label}</span>
-                  <span className="px-1 text-center text-[9px] leading-tight text-muted-foreground/60">{action.desc}</span>
+                  <span className="font-medium" style={{ fontSize }}>{action.label}</span>
+                  <span className="px-1 text-center leading-tight text-muted-foreground/60" style={{ fontSize: fontSize - 2 }}>{action.desc}</span>
                 </button>
               ))}
             </div>
@@ -737,11 +722,12 @@ export function AiFloatingBubble({
                   )}
                 >
                   {m.role === "user" ? (
-                    <span className="text-[12px] leading-relaxed">{m.content}</span>
+                    <span className="leading-relaxed" style={{ fontSize }}>{m.content}</span>
                   ) : (
                     <FormattedBubbleMessage
                       content={m.content}
                       isStreaming={busy && i === messages.length - 1}
+                      fontSize={fontSize}
                     />
                   )}
                 </div>

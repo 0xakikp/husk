@@ -271,6 +271,15 @@ export function AppearanceSection() {
             onChange={(v) => setPrefs({ aiPaneOpacity: v })}
           />
           <SliderRow
+            title="AI panel font size"
+            description="Chat text size in editor panel"
+            value={p.aiPaneFontSize}
+            min={9}
+            max={18}
+            step={1}
+            onChange={(v) => setPrefs({ aiPaneFontSize: v })}
+          />
+          <SliderRow
             title="Panel gaps"
             description="Padding between panels"
             value={p.panelGaps}
@@ -294,6 +303,15 @@ export function AppearanceSection() {
             max={100}
             step={5}
             onChange={(v) => setPrefs({ aiMiniOpacity: v })}
+          />
+          <SliderRow
+            title="Font size"
+            description="Chat text size in bubble"
+            value={p.aiMiniFontSize}
+            min={9}
+            max={18}
+            step={1}
+            onChange={(v) => setPrefs({ aiMiniFontSize: v })}
           />
           <SliderRow
             title="BG blur"

@@ -31,6 +31,7 @@ import { QUICK_ACTIONS, supportsVision } from "./types";
 import type { EditorChatMessage, CodeEdit, SessionModelOverride } from "./types";
 import { stripEditBlocks } from "./editorStore";
 import { toast } from "@/toast";
+import { usePrefs } from "../../settings/preferences";
 import {
   getWorkspaceKey,
   loadSessions,
@@ -53,15 +54,16 @@ const ACTION_ICON: Record<string, typeof SparklesIcon> = {
   review: SearchList01Icon,
 };
 
-function ChatMessageView({ msg, isLast }: { msg: EditorChatMessage; isLast: boolean }) {
+function ChatMessageView({ msg, isLast, fontSize }: { msg: EditorChatMessage; isLast: boolean; fontSize: number }) {
   const isUser = msg.role === "user";
   return (
     <div className={cn("flex flex-col gap-1 px-3 py-2", isUser ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "max-w-[92%] rounded-lg px-3 py-2 text-[13px] leading-relaxed",
+          "max-w-[92%] rounded-lg px-3 py-2 leading-relaxed",
           isUser ? "bg-primary/10 text-foreground" : "bg-transparent text-foreground"
         )}
+        style={{ fontSize }}
       >
         {msg.image && (
           <img
@@ -73,14 +75,14 @@ function ChatMessageView({ msg, isLast }: { msg: EditorChatMessage; isLast: bool
         {isUser ? (
           <span>{msg.content}</span>
         ) : (
-          <FormattedMessage content={msg.content} isStreaming={isLast && !msg.content} />
+          <FormattedMessage content={msg.content} isStreaming={isLast && !msg.content} fontSize={fontSize} />
         )}
       </div>
     </div>
   );
 }
 
-function FormattedMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+function FormattedMessage({ content, isStreaming, fontSize }: { content: string; isStreaming: boolean; fontSize: number }) {
   const prose = useMemo(() => stripEditBlocks(content), [content]);
   const parts = useMemo(() => {
     const result: { type: "text" | "code"; lang?: string; value: string }[] = [];
@@ -108,7 +110,7 @@ function FormattedMessage({ content, isStreaming }: { content: string; isStreami
           <div key={i} className="group/code relative overflow-x-auto rounded-md bg-black/30 p-2.5">
             <div className="flex items-center justify-between">
               {part.lang && part.lang !== "plaintext" ? (
-                <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground/50">{part.lang}</div>
+                <div className="mb-1 uppercase tracking-wider text-muted-foreground/50" style={{ fontSize: fontSize - 3 }}>{part.lang}</div>
               ) : (
                 <div />
               )}
@@ -124,7 +126,7 @@ function FormattedMessage({ content, isStreaming }: { content: string; isStreami
                 <HugeiconsIcon icon={Copy01Icon} size={12} strokeWidth={1.5} />
               </button>
             </div>
-            <pre className="font-mono text-[12px] leading-relaxed text-foreground/90">
+            <pre className="font-mono leading-relaxed text-foreground/90" style={{ fontSize: fontSize - 1 }}>
               <code>{part.value}</code>
             </pre>
           </div>
@@ -243,6 +245,7 @@ export function AiEditorPane({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showQuickActions, setShowQuickActions] = useState(true);
 
+  const prefs = usePrefs();
   const cfg = loadConfig();
   const provider = getProvider(cfg.providerId);
   const apiKey = useKey(provider.id);
@@ -697,7 +700,7 @@ export function AiEditorPane({
           </div>
         ) : (
           messages.map((msg, i) => (
-            <ChatMessageView key={msg.id} msg={msg} isLast={i === messages.length - 1} />
+            <ChatMessageView key={msg.id} msg={msg} isLast={i === messages.length - 1} fontSize={prefs.aiPaneFontSize} />
           ))
         )}
       </div>

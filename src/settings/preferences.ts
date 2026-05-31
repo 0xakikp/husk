@@ -70,9 +70,11 @@ export type Prefs = {
   neonBorderGlow: boolean;
   editorWallpaperOpacity: number;
   aiPaneOpacity: number;
+  aiPaneFontSize: number;
 
   // AI Mini Window
   aiMiniOpacity: number;
+  aiMiniFontSize: number;
   aiMiniBgEnabled: boolean;
   aiMiniBgPath: string;
   aiMiniBgOpacity: number;
@@ -130,8 +132,10 @@ const DEFAULT: Prefs = {
   neonBorderGlow: false,
   editorWallpaperOpacity: 0,
   aiPaneOpacity: 80,
+  aiPaneFontSize: 13,
 
   aiMiniOpacity: 48,
+  aiMiniFontSize: 11,
   aiMiniBgEnabled: false,
   aiMiniBgPath: "",
   aiMiniBgOpacity: 100,
