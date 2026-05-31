@@ -461,8 +461,8 @@ export function AiFloatingBubble({
         backgroundImage: bgUrl ? `url("${bgUrl}")` : undefined,
         backgroundSize: bgUrl ? "cover" : undefined,
         backgroundPosition: bgUrl ? "center" : undefined,
-        backdropFilter: bgUrl ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
-        WebkitBackdropFilter: bgUrl ? `blur(${prefs.aiMiniBgBlur}px)` : undefined,
+        backdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
+        WebkitBackdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
       }}
     >
       {/* Resize strips */}
