@@ -33,6 +33,8 @@ import { fontStack } from "./styles/fonts";
 import { getShellHistory } from "./shellHistory";
 import { TerminalHistoryPanel } from "./TerminalHistory";
 import { parseBridgeOsc, dispatchBridge } from "./bridge";
+import { useAutocomplete } from "./terminal/useAutocomplete";
+import { AutocompleteBar } from "./terminal/AutocompleteBar";
 import "@xterm/xterm/css/xterm.css";
 
 /**
@@ -85,6 +87,25 @@ export function TerminalView({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLElement | null>(null);
+
+  // ── Autocomplete ─────────────────────────────────────────────────────────
+  const {
+    state: autoState,
+    stateRef: autoStateRef,
+    scheduleCheck: scheduleAutoCheck,
+    accept: acceptAuto,
+    navigate: navigateAuto,
+    dismiss: dismissAuto,
+  } = useAutocomplete(termRef, ptyIdRef);
+
+  const acceptAutoRef = useRef(acceptAuto);
+  const navigateAutoRef = useRef(navigateAuto);
+  const dismissAutoRef = useRef(dismissAuto);
+  useEffect(() => {
+    acceptAutoRef.current = acceptAuto;
+    navigateAutoRef.current = navigateAuto;
+    dismissAutoRef.current = dismissAuto;
+  });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -189,6 +210,29 @@ export function TerminalView({
         onSplit?.(e.shiftKey ? "col" : "row");
         return false;
       }
+      // Autocomplete navigation
+      if (e.type === "keydown" && autoStateRef.current.visible) {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          acceptAutoRef.current();
+          return false;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          navigateAutoRef.current(1);
+          return false;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          navigateAutoRef.current(-1);
+          return false;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          dismissAutoRef.current();
+          return false;
+        }
+      }
       return true;
     });
 
@@ -232,6 +276,7 @@ export function TerminalView({
         setTerminalTyping(true);
         window.clearTimeout(typingTimer);
         typingTimer = window.setTimeout(() => setTerminalTyping(false), 400);
+        scheduleAutoCheck();
       });
       // Fit is debounced (below), so this fires once when a resize settles —
       // send that single final size to the PTY (one SIGWINCH, one prompt
@@ -551,6 +596,7 @@ export function TerminalView({
       onMouseDown={() => {
         onFocus?.();
         termRef.current?.focus();
+        dismissAuto();
       }}
       onClick={handleTerminalClick}
       onMouseMove={handleTerminalMouseMove}
@@ -564,6 +610,13 @@ export function TerminalView({
       }}
     >
       <div ref={containerRef} className="terminal-host" />
+      <AutocompleteBar
+        visible={autoState.visible}
+        suggestions={autoState.suggestions}
+        selectedIndex={autoState.selectedIndex}
+        position={autoState.position}
+        onSelect={(i) => acceptAuto(i)}
+      />
       {searchOpen ? (
         <div className="term-search">
           <input
