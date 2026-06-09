@@ -13,9 +13,14 @@ export function setActiveTerminalReader(fn: (() => string) | null): void {
   reader = fn;
 }
 
-export function readActiveTerminal(maxChars = 4000): string {
+export function readActiveTerminal(maxChars = 8192): string {
   const text = reader ? reader() : "";
-  return text.length > maxChars ? text.slice(-maxChars) : text;
+  if (text.length <= maxChars) return text;
+  // Slice from the end but never start mid-line — find the first complete
+  // line inside the truncated window so the LLM always receives whole lines.
+  const truncated = text.slice(-maxChars);
+  const firstNewline = truncated.indexOf("\n");
+  return firstNewline >= 0 ? truncated.slice(firstNewline + 1) : truncated;
 }
 
 /** The active terminal registers a runner that types a command into its PTY. */
