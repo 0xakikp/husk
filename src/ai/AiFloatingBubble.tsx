@@ -16,7 +16,6 @@ import {
   BugIcon,
   SearchList01Icon,
   SourceCodeIcon,
-  StopIcon,
 } from "@hugeicons/core-free-icons";
 import { registerBubbleToggle, subscribeBubbleSwitch } from "./bubbleStore";
 import { toast } from "@/toast";
@@ -631,15 +630,17 @@ export function AiFloatingBubble({
           type="button"
           onClick={(e) => { e.stopPropagation(); stop(); }}
           disabled={!busy}
-          className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded transition-colors",
-            busy
-              ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
-              : "text-muted-foreground/30 cursor-not-allowed"
-          )}
+          className={
+            "flex size-6 shrink-0 items-center justify-center rounded-md transition-all " +
+            (busy
+              ? "bg-destructive/10 text-destructive hover:bg-destructive/20 animate-pulse"
+              : "text-muted-foreground/20 cursor-not-allowed")
+          }
           title={busy ? "Stop generating" : "Idle"}
         >
-          <HugeiconsIcon icon={StopIcon} size={12} strokeWidth={2} />
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="shrink-0">
+            <rect x="1.5" y="1.5" width="9" height="9" rx="1.5" />
+          </svg>
         </button>
 
         {/* Minimize */}

@@ -186,12 +186,19 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="ai-mini-stop"
             onClick={stop}
             disabled={!busy}
             title={busy ? "Stop generating" : "Idle"}
+            className={
+              "flex size-6 shrink-0 items-center justify-center rounded-md transition-all " +
+              (busy
+                ? "bg-destructive/10 text-destructive hover:bg-destructive/20 animate-pulse"
+                : "text-muted-foreground/20 cursor-not-allowed")
+            }
           >
-            ■
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="shrink-0">
+              <rect x="1.5" y="1.5" width="9" height="9" rx="1.5" />
+            </svg>
           </button>
           <button type="button" className="ai-mini-close" onClick={onClose} aria-label="Close">
             ×

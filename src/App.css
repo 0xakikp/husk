@@ -1029,31 +1029,6 @@ button {
   opacity: 1;
 }
 
-.ai-mini-stop {
-  background: none;
-  border: none;
-  color: #ef4444;
-  font-size: 11px;
-  cursor: pointer;
-  padding: 2px 4px;
-  line-height: 1;
-  border-radius: 4px;
-  transition: background 0.15s, opacity 0.15s;
-  min-width: 22px;
-  min-height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.ai-mini-stop:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.12);
-}
-.ai-mini-stop:disabled {
-  color: var(--text-muted);
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
 .ai-mini-close {
   background: none;
   border: none;
