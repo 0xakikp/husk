@@ -22,6 +22,7 @@ import { toast } from "@/toast";
 import { getProvider } from "./providers";
 import { useKey, loadConfig } from "./store";
 import { readActiveTerminal, runInActiveTerminal } from "./terminalContext";
+import { AiThinkingIndicator } from "./AiThinkingIndicator";
 import { useAiBubbleChat } from "./bubble/useAiBubbleChat";
 import { readFileBase64 } from "../fs";
 
@@ -161,7 +162,7 @@ function FormattedBubbleMessage({ content, isStreaming, fontSize }: { content: s
           </div>
         )
       )}
-      {isStreaming && <span className="inline-block h-3.5 w-0.5 animate-pulse bg-primary" />}
+      {isStreaming && <AiThinkingIndicator label="AI is thinking…" />}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { loadConfig, getKey } from "./store";
 import { getProvider } from "./providers";
 import { getActiveAgent } from "./agents";
 import { readActiveTerminal } from "./terminalContext";
+import { AiThinkingIndicator } from "./AiThinkingIndicator";
 import { usePrefs } from "../settings/preferences";
 
 const QUICK_PROMPTS = [
@@ -273,7 +274,7 @@ function MiniMessage({ msg, isStreaming }: { msg: ChatMessage; isStreaming?: boo
             <span key={i} className="whitespace-pre-wrap">{part.content}</span>
           ),
         )}
-        {isStreaming && <span className="ai-mini-cursor" />}
+        {isStreaming && <AiThinkingIndicator label="AI is thinking…" />}
       </div>
     </div>
   );

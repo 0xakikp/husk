@@ -31,6 +31,7 @@ import { QUICK_ACTIONS, supportsVision } from "./types";
 import type { EditorChatMessage, CodeEdit, SessionModelOverride } from "./types";
 import { stripEditBlocks } from "./editorStore";
 import { toast } from "@/toast";
+import { AiThinkingIndicator } from "../AiThinkingIndicator";
 import { usePrefs } from "../../settings/preferences";
 import {
   getWorkspaceKey,
@@ -134,7 +135,7 @@ function FormattedMessage({ content, isStreaming, fontSize }: { content: string;
           <div key={i} className="whitespace-pre-wrap">{part.value}</div>
         )
       )}
-      {isStreaming && <span className="inline-block h-4 w-1 animate-pulse bg-primary" />}
+      {isStreaming && <AiThinkingIndicator label="AI is thinking…" />}
     </div>
   );
 }
