@@ -83,6 +83,7 @@ export function TerminalView({
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [hoveringCommand, setHoveringCommand] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -429,55 +430,107 @@ export function TerminalView({
     const term = termRef.current;
     const id = ptyIdRef.current;
     if (!term || id == null) return;
-    // Only when at a prompt (no command running)
     if (isCommandRunning()) return;
-    // Skip if user is selecting text
-    if (term.getSelection()) return;
+    if (term.hasSelection()) return;
 
-    // @ts-expect-error xterm internal API
-    const core = term._core;
-    if (!core?._renderService?.dimensions) return;
+    const prompt = getPromptPosition();
+    if (!prompt) return;
 
-    const dims = core._renderService.dimensions;
-    const cellW = dims.css.cell.width;
-    const cellH = dims.css.cell.height;
+    const screenEl = containerRef.current?.querySelector(".xterm-screen") as HTMLElement | null;
+    if (!screenEl) return;
+    const screenRect = screenEl.getBoundingClientRect();
+    const cellW = screenRect.width / term.cols;
+    const cellH = screenRect.height / term.rows;
     if (!cellW || !cellH) return;
 
-    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = e.clientX - screenRect.left;
+    const y = e.clientY - screenRect.top;
 
     const col = Math.floor(x / cellW);
     const row = Math.floor(y / cellH) + term.buffer.active.viewportY;
 
+    const buf = term.buffer.active;
+    const curCol = buf.cursorX;
+    const curRow = buf.cursorY + buf.viewportY;
+
+    if (row < prompt.row || row > curRow) return;
+    if (row === prompt.row && col < prompt.col) return;
+    if (row === curRow && col > curCol) return;
+    if (col < 0 || col >= term.cols) return;
+
+    let seq = "";
+    const rowDelta = row - curRow;
+    const colDelta = col - curCol;
+
+    if (rowDelta < 0) seq += `\x1b[${-rowDelta}A`;
+    else if (rowDelta > 0) seq += `\x1b[${rowDelta}B`;
+
+    if (colDelta < 0) seq += `\x1b[${-colDelta}D`;
+    else if (colDelta > 0) seq += `\x1b[${colDelta}C`;
+
+    if (seq) void invoke("pty_write", { id, data: seq });
+  };
+
+  const handleTerminalMouseMove = (e: React.MouseEvent) => {
+    const term = termRef.current;
+    if (!term) {
+      setHoveringCommand(false);
+      return;
+    }
+    if (isCommandRunning()) {
+      setHoveringCommand(false);
+      return;
+    }
     const prompt = getPromptPosition();
-    if (!prompt) return;
-    // Only allow clicks on the prompt row for now
-    if (row !== prompt.row) return;
-    if (col < prompt.col) return;
+    if (!prompt) {
+      setHoveringCommand(false);
+      return;
+    }
+
+    const screenEl = containerRef.current?.querySelector(".xterm-screen") as HTMLElement | null;
+    if (!screenEl) {
+      setHoveringCommand(false);
+      return;
+    }
+    const screenRect = screenEl.getBoundingClientRect();
+    const cellW = screenRect.width / term.cols;
+    const cellH = screenRect.height / term.rows;
+    if (!cellW || !cellH) {
+      setHoveringCommand(false);
+      return;
+    }
+
+    const x = e.clientX - screenRect.left;
+    const y = e.clientY - screenRect.top;
+
+    const col = Math.floor(x / cellW);
+    const row = Math.floor(y / cellH) + term.buffer.active.viewportY;
 
     const buf = term.buffer.active;
     const curCol = buf.cursorX;
     const curRow = buf.cursorY + buf.viewportY;
-    if (curRow !== prompt.row) return; // cursor wrapped to next line — skip for now
 
-    const targetOffset = col - prompt.col;
-    const curOffset = curCol - prompt.col;
-    const delta = targetOffset - curOffset;
-    if (delta === 0) return;
+    const inCommandArea =
+      row >= prompt.row &&
+      row <= curRow &&
+      !(row === prompt.row && col < prompt.col) &&
+      !(row === curRow && col > curCol) &&
+      col >= 0 &&
+      col < term.cols;
 
-    const seq = delta > 0 ? `\x1b[${delta}C` : `\x1b[${-delta}D`;
-    void invoke("pty_write", { id, data: seq });
+    setHoveringCommand(inCommandArea);
   };
 
   return (
     <div
       className="terminal-host-wrap"
+      style={{ cursor: hoveringCommand ? "text" : "default" }}
       onMouseDown={() => {
         onFocus?.();
         termRef.current?.focus();
       }}
       onClick={handleTerminalClick}
+      onMouseMove={handleTerminalMouseMove}
       onContextMenu={(e) => {
         e.preventDefault();
         setMenu({ x: e.clientX, y: e.clientY });
