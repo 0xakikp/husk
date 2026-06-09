@@ -83,7 +83,8 @@ export function TerminalView({
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const [hoveringCommand, setHoveringCommand] = useState(false);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const screenRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -110,6 +111,7 @@ export function TerminalView({
     term.loadAddon(search);
     term.open(container);
     fit.fit();
+    screenRef.current = container.querySelector(".xterm-screen") as HTMLElement | null;
     termRef.current = term;
     searchRef.current = search;
     fitRef.current = fit;
@@ -433,23 +435,25 @@ export function TerminalView({
     if (isCommandRunning()) return;
     if (term.hasSelection()) return;
 
+    const buf = term.buffer.active;
+    if (buf.type !== "normal") return;
+
     const prompt = getPromptPosition();
     if (!prompt) return;
 
-    const screenEl = containerRef.current?.querySelector(".xterm-screen") as HTMLElement | null;
+    const screenEl = screenRef.current;
     if (!screenEl) return;
     const screenRect = screenEl.getBoundingClientRect();
     const cellW = screenRect.width / term.cols;
     const cellH = screenRect.height / term.rows;
-    if (!cellW || !cellH) return;
+    if (!Number.isFinite(cellW) || !Number.isFinite(cellH) || cellW <= 0 || cellH <= 0) return;
 
     const x = e.clientX - screenRect.left;
     const y = e.clientY - screenRect.top;
 
     const col = Math.floor(x / cellW);
-    const row = Math.floor(y / cellH) + term.buffer.active.viewportY;
+    const row = Math.floor(y / cellH) + buf.viewportY;
 
-    const buf = term.buffer.active;
     const curCol = buf.cursorX;
     const curRow = buf.cursorY + buf.viewportY;
 
@@ -473,30 +477,38 @@ export function TerminalView({
 
   const handleTerminalMouseMove = (e: React.MouseEvent) => {
     const term = termRef.current;
-    if (!term) {
-      setHoveringCommand(false);
+    const host = hostRef.current;
+    if (!term || !host) {
+      host && (host.style.cursor = "");
       return;
     }
-    if (isCommandRunning()) {
-      setHoveringCommand(false);
-      return;
-    }
-    const prompt = getPromptPosition();
-    if (!prompt) {
-      setHoveringCommand(false);
+    if (isCommandRunning() || term.hasSelection()) {
+      host.style.cursor = "";
       return;
     }
 
-    const screenEl = containerRef.current?.querySelector(".xterm-screen") as HTMLElement | null;
+    const buf = term.buffer.active;
+    if (buf.type !== "normal") {
+      host.style.cursor = "";
+      return;
+    }
+
+    const prompt = getPromptPosition();
+    if (!prompt) {
+      host.style.cursor = "";
+      return;
+    }
+
+    const screenEl = screenRef.current;
     if (!screenEl) {
-      setHoveringCommand(false);
+      host.style.cursor = "";
       return;
     }
     const screenRect = screenEl.getBoundingClientRect();
     const cellW = screenRect.width / term.cols;
     const cellH = screenRect.height / term.rows;
-    if (!cellW || !cellH) {
-      setHoveringCommand(false);
+    if (!Number.isFinite(cellW) || !Number.isFinite(cellH) || cellW <= 0 || cellH <= 0) {
+      host.style.cursor = "";
       return;
     }
 
@@ -504,9 +516,8 @@ export function TerminalView({
     const y = e.clientY - screenRect.top;
 
     const col = Math.floor(x / cellW);
-    const row = Math.floor(y / cellH) + term.buffer.active.viewportY;
+    const row = Math.floor(y / cellH) + buf.viewportY;
 
-    const buf = term.buffer.active;
     const curCol = buf.cursorX;
     const curRow = buf.cursorY + buf.viewportY;
 
@@ -518,19 +529,23 @@ export function TerminalView({
       col >= 0 &&
       col < term.cols;
 
-    setHoveringCommand(inCommandArea);
+    host.style.cursor = inCommandArea ? "text" : "";
   };
 
   return (
     <div
+      ref={hostRef}
       className="terminal-host-wrap"
-      style={{ cursor: hoveringCommand ? "text" : "default" }}
       onMouseDown={() => {
         onFocus?.();
         termRef.current?.focus();
       }}
       onClick={handleTerminalClick}
       onMouseMove={handleTerminalMouseMove}
+      onMouseLeave={() => {
+        const host = hostRef.current;
+        if (host) host.style.cursor = "";
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         setMenu({ x: e.clientX, y: e.clientY });
