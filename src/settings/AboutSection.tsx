@@ -11,6 +11,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { checkForUpdates } from "../updater";
 import { SectionHeader } from "./components/SectionHeader";
 
 const REPO_URL = "https://github.com/0xakikp/husk";
@@ -91,14 +92,14 @@ export function AboutSection() {
 
       <div className="flex flex-wrap items-center justify-center gap-5">
         {[
-          { icon: DownloadCircle01Icon, label: "Check for updates", url: `${REPO_URL}/releases/latest` },
+          { icon: DownloadCircle01Icon, label: "Check for updates", action: () => void checkForUpdates(true) as void },
           { icon: Globe02Icon, label: "Website", url: WEBSITE },
           { icon: GithubIcon, label: "GitHub", url: REPO_URL },
           { icon: BugIcon, label: "Report", url: `${REPO_URL}/issues` },
         ].map((a) => (
           <button
             key={a.label}
-            onClick={() => void openUrl(a.url)}
+            onClick={() => void ("action" in a && typeof a.action === "function" ? a.action() : openUrl(a.url))}
             className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
           >
             <HugeiconsIcon icon={a.icon} size={14} strokeWidth={1.5} />

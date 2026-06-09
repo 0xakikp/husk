@@ -842,6 +842,7 @@ function App() {
     { id: "source-control", label: "Open source control", run: () => { cycleSidebarView("source-control"); } },
     { id: "git-history", label: "Open git history", run: () => setGitHistoryOpen(true) },
     { id: "shortcuts", label: "Keyboard shortcuts", run: () => setShortcutsOpen(true) },
+    { id: "check-updates", label: "Check for updates", run: () => void checkForUpdates(true) },
     { id: "preview", label: "Open preview", run: () => { setPreviewPath(undefined); setPreviewOpen(true); } },
     {
       id: "theme",

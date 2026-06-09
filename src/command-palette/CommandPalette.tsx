@@ -43,6 +43,7 @@ import {
   PlayIcon,
   FolderCloudIcon,
   CommandIcon,
+  DownloadCircle01Icon,
 } from "@hugeicons/core-free-icons";
 
 export type Command = {
@@ -95,6 +96,7 @@ const ICON_MAP: Record<string, typeof Search01Icon> = {
   "open-snippets": SourceCodeIcon,
   "open-clipboard": ClipboardIcon,
   "open-totp": SecurityCheckIcon,
+  "check-updates": DownloadCircle01Icon,
   "open-jobs": TimeScheduleIcon,
   "open-authenticator": SecurityCheckIcon,
 };
