@@ -431,22 +431,25 @@ export function TerminalView({
   const handleTerminalClick = (e: React.MouseEvent) => {
     const term = termRef.current;
     const id = ptyIdRef.current;
-    if (!term || id == null) return;
-    if (isCommandRunning()) return;
-    if (term.hasSelection()) return;
+    if (!term || id == null) { console.log("[click] no term or id"); return; }
+    if (isCommandRunning()) { console.log("[click] command running"); return; }
+    if (term.hasSelection()) { console.log("[click] has selection"); return; }
 
     const buf = term.buffer.active;
-    if (buf.type !== "normal") return;
+    if (buf.type !== "normal") { console.log("[click] not normal buffer:", buf.type); return; }
 
     const prompt = getPromptPosition();
-    if (!prompt) return;
+    if (!prompt) { console.log("[click] no prompt pos"); return; }
 
     const screenEl = screenRef.current;
-    if (!screenEl) return;
+    if (!screenEl) { console.log("[click] no screen el"); return; }
     const screenRect = screenEl.getBoundingClientRect();
     const cellW = screenRect.width / term.cols;
     const cellH = screenRect.height / term.rows;
-    if (!Number.isFinite(cellW) || !Number.isFinite(cellH) || cellW <= 0 || cellH <= 0) return;
+    if (!Number.isFinite(cellW) || !Number.isFinite(cellH) || cellW <= 0 || cellH <= 0) {
+      console.log("[click] bad cell dims:", cellW, cellH, term.cols, term.rows);
+      return;
+    }
 
     const x = e.clientX - screenRect.left;
     const y = e.clientY - screenRect.top;
@@ -457,10 +460,12 @@ export function TerminalView({
     const curCol = buf.cursorX;
     const curRow = buf.cursorY + buf.viewportY;
 
-    if (row < prompt.row || row > curRow) return;
-    if (row === prompt.row && col < prompt.col) return;
-    if (row === curRow && col > curCol) return;
-    if (col < 0 || col >= term.cols) return;
+    console.log("[click] prompt:", prompt, "cursor:", { curCol, curRow }, "click:", { col, row }, "dims:", { cellW, cellH, w: screenRect.width, h: screenRect.height });
+
+    if (row < prompt.row || row > curRow) { console.log("[click] out of row bounds"); return; }
+    if (row === prompt.row && col < prompt.col) { console.log("[click] before prompt"); return; }
+    if (row === curRow && col > curCol) { console.log("[click] after cursor"); return; }
+    if (col < 0 || col >= term.cols) { console.log("[click] col out of bounds"); return; }
 
     let seq = "";
     const rowDelta = row - curRow;
@@ -472,6 +477,7 @@ export function TerminalView({
     if (colDelta < 0) seq += `\x1b[${-colDelta}D`;
     else if (colDelta > 0) seq += `\x1b[${colDelta}C`;
 
+    console.log("[click] sending seq:", JSON.stringify(seq), "rowDelta:", rowDelta, "colDelta:", colDelta);
     if (seq) void invoke("pty_write", { id, data: seq });
   };
 
