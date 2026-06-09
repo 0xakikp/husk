@@ -7,6 +7,7 @@ import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { TerminalStack } from "./TerminalStack";
 import { TerminalBottomBar } from "./terminal/TerminalBottomBar";
 import { runInActiveTerminal } from "./ai/terminalContext";
+import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -567,6 +568,23 @@ function App() {
   const [explorerWidth, setExplorerWidth] = useState(readSidebarWidth);
   const sidebarWidthWriteTimerRef = useRef(0);
   const [sidebarView, setSidebarView] = useState<SidebarViewId>(readSidebarView);
+
+  // Track window focus for long-running command notifications
+  useEffect(() => {
+    let unsubFocus: (() => void) | undefined;
+    let unsubBlur: (() => void) | undefined;
+    const setup = async () => {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      unsubFocus = await win.listen("tauri://focus", () => setWindowFocused(true));
+      unsubBlur = await win.listen("tauri://blur", () => setWindowFocused(false));
+    };
+    setup();
+    return () => {
+      unsubFocus?.();
+      unsubBlur?.();
+    };
+  }, []);
 
   const persistSidebarView = useCallback((view: SidebarViewId) => {
     setSidebarView(view);

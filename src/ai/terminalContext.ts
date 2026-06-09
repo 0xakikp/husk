@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { isWindowFocused } from "../windowFocus";
+
 /**
  * Lets the AI panel read the active terminal's recent output. The active
  * TerminalView registers a reader; the panel calls it when sending a message.
@@ -190,6 +192,31 @@ export function markCommandStart(): void {
 }
 
 export function clearCurrentCommand(): void {
+  const durationMs = Date.now() - commandStartTime;
+  const MIN_DURATION_MS = 30_000;
+
+  if (
+    commandRunning &&
+    durationMs >= MIN_DURATION_MS &&
+    !isWindowFocused() &&
+    "Notification" in window
+  ) {
+    const durationSec = Math.round(durationMs / 1000);
+    const body = currentCommand
+      ? `"${currentCommand}" completed in ${durationSec}s`
+      : `Command completed in ${durationSec}s`;
+
+    if (Notification.permission === "granted") {
+      void new Notification("Husk — Command finished", { body });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then((perm) => {
+        if (perm === "granted") {
+          void new Notification("Husk — Command finished", { body });
+        }
+      });
+    }
+  }
+
   currentCommand = "";
   commandRunning = false;
   emitCommandState();
