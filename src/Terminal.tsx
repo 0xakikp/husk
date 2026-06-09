@@ -431,27 +431,28 @@ export function TerminalView({
   const handleTerminalClick = (e: React.MouseEvent) => {
     const term = termRef.current;
     const id = ptyIdRef.current;
-    if (!term || id == null) { console.log("[click] no term or id"); return; }
-    if (isCommandRunning()) { console.log("[click] command running"); return; }
-    if (term.hasSelection()) { console.log("[click] has selection"); return; }
+    if (!term || id == null) return;
+    if (isCommandRunning()) return;
+    if (term.hasSelection()) return;
 
     const buf = term.buffer.active;
-    if (buf.type !== "normal") { console.log("[click] not normal buffer:", buf.type); return; }
+    if (buf.type !== "normal") return;
 
     const prompt = getPromptPosition();
-    if (!prompt) { console.log("[click] no prompt pos"); return; }
+    if (!prompt) return;
 
     const screenEl = screenRef.current;
-    if (!screenEl) { console.log("[click] no screen el"); return; }
+    if (!screenEl) return;
     const screenRect = screenEl.getBoundingClientRect();
-    const cellW = screenRect.width / term.cols;
+    const style = window.getComputedStyle(screenEl);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padR = parseFloat(style.paddingRight) || 0;
+    const contentW = screenRect.width - padL - padR;
+    const cellW = contentW / term.cols;
     const cellH = screenRect.height / term.rows;
-    if (!Number.isFinite(cellW) || !Number.isFinite(cellH) || cellW <= 0 || cellH <= 0) {
-      console.log("[click] bad cell dims:", cellW, cellH, term.cols, term.rows);
-      return;
-    }
+    if (!Number.isFinite(cellW) || !Number.isFinite(cellH) || cellW <= 0 || cellH <= 0) return;
 
-    const x = e.clientX - screenRect.left;
+    const x = e.clientX - screenRect.left - padL;
     const y = e.clientY - screenRect.top;
 
     const col = Math.floor(x / cellW);
@@ -460,24 +461,21 @@ export function TerminalView({
     const curCol = buf.cursorX;
     const curRow = buf.cursorY + buf.viewportY;
 
-    console.log("[click] prompt:", prompt, "cursor:", { curCol, curRow }, "click:", { col, row }, "dims:", { cellW, cellH, w: screenRect.width, h: screenRect.height, cols: term.cols, rows: term.rows, viewportY: buf.viewportY });
+    if (row < prompt.row || row > curRow) return;
+    if (row === prompt.row && col < prompt.col) return;
+    if (col < 0 || col >= term.cols) return;
 
-    if (row < prompt.row || row > curRow) { console.log("[click] out of row bounds"); return; }
-    if (row === prompt.row && col < prompt.col) { console.log("[click] before prompt"); return; }
-    if (row === curRow && col > curCol) { console.log("[click] after cursor"); return; }
-    if (col < 0 || col >= term.cols) { console.log("[click] col out of bounds"); return; }
-
-    let seq = "";
     const rowDelta = row - curRow;
     const colDelta = col - curCol;
 
-    if (rowDelta < 0) seq += `\x1b[${-rowDelta}A`;
-    else if (rowDelta > 0) seq += `\x1b[${rowDelta}B`;
-
-    if (colDelta < 0) seq += `\x1b[${-colDelta}D`;
-    else if (colDelta > 0) seq += `\x1b[${colDelta}C`;
-
-    console.log("[click] sending seq:", JSON.stringify(seq), "rowDelta:", rowDelta, "colDelta:", colDelta);
+    const arrows: string[] = [];
+    for (let i = 0; i < Math.abs(rowDelta); i++) {
+      arrows.push(rowDelta < 0 ? "\x1b[A" : "\x1b[B");
+    }
+    for (let i = 0; i < Math.abs(colDelta); i++) {
+      arrows.push(colDelta < 0 ? "\x1b[D" : "\x1b[C");
+    }
+    const seq = arrows.join("");
     if (seq) void invoke("pty_write", { id, data: seq });
   };
 
@@ -511,27 +509,29 @@ export function TerminalView({
       return;
     }
     const screenRect = screenEl.getBoundingClientRect();
-    const cellW = screenRect.width / term.cols;
+    const style = window.getComputedStyle(screenEl);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padR = parseFloat(style.paddingRight) || 0;
+    const contentW = screenRect.width - padL - padR;
+    const cellW = contentW / term.cols;
     const cellH = screenRect.height / term.rows;
     if (!Number.isFinite(cellW) || !Number.isFinite(cellH) || cellW <= 0 || cellH <= 0) {
       host.style.cursor = "";
       return;
     }
 
-    const x = e.clientX - screenRect.left;
+    const x = e.clientX - screenRect.left - padL;
     const y = e.clientY - screenRect.top;
 
     const col = Math.floor(x / cellW);
     const row = Math.floor(y / cellH) + buf.viewportY;
 
-    const curCol = buf.cursorX;
     const curRow = buf.cursorY + buf.viewportY;
 
     const inCommandArea =
       row >= prompt.row &&
       row <= curRow &&
       !(row === prompt.row && col < prompt.col) &&
-      !(row === curRow && col > curCol) &&
       col >= 0 &&
       col < term.cols;
 
