@@ -460,7 +460,7 @@ export function TerminalView({
     const curCol = buf.cursorX;
     const curRow = buf.cursorY + buf.viewportY;
 
-    console.log("[click] prompt:", prompt, "cursor:", { curCol, curRow }, "click:", { col, row }, "dims:", { cellW, cellH, w: screenRect.width, h: screenRect.height });
+    console.log("[click] prompt:", prompt, "cursor:", { curCol, curRow }, "click:", { col, row }, "dims:", { cellW, cellH, w: screenRect.width, h: screenRect.height, cols: term.cols, rows: term.rows, viewportY: buf.viewportY });
 
     if (row < prompt.row || row > curRow) { console.log("[click] out of row bounds"); return; }
     if (row === prompt.row && col < prompt.col) { console.log("[click] before prompt"); return; }
