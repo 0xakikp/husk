@@ -433,7 +433,9 @@ export function TerminalView({
     const id = ptyIdRef.current;
     if (!term || id == null) return;
     if (isCommandRunning()) return;
-    if (term.hasSelection()) return;
+    if (term.hasSelection()) {
+      term.clearSelection();
+    }
 
     const buf = term.buffer.active;
     if (buf.type !== "normal") return;
@@ -476,7 +478,11 @@ export function TerminalView({
       arrows.push(colDelta < 0 ? "\x1b[D" : "\x1b[C");
     }
     const seq = arrows.join("");
-    if (seq) void invoke("pty_write", { id, data: seq });
+    if (seq) {
+      invoke("pty_write", { id, data: seq }).catch((err: unknown) => {
+        console.error("[click-to-edit] pty_write failed:", err);
+      });
+    }
   };
 
   const handleTerminalMouseMove = (e: React.MouseEvent) => {
