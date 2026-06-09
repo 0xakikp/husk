@@ -184,11 +184,15 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          {busy && (
-            <button type="button" className="ai-mini-stop" onClick={stop} title="Stop">
-              ■
-            </button>
-          )}
+          <button
+            type="button"
+            className="ai-mini-stop"
+            onClick={stop}
+            disabled={!busy}
+            title={busy ? "Stop generating" : "Idle"}
+          >
+            ■
+          </button>
           <button type="button" className="ai-mini-close" onClick={onClose} aria-label="Close">
             ×
           </button>
