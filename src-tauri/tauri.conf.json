@@ -45,7 +45,7 @@
     "updater": {
       "active": true,
       "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRGODlEMTkwRkM2NjVCNzMKUldSelcyYjhrTkdKVHgvWnJmUWFEOUcveG02cmhJS3JVMWFPK0QzUXVzd1o1NEVnZk9vbzFPSU0K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU2NkZGQzYwMzE2QzE0MTAKUldRUUZHd3hZUHh2NWhkaEdDZ2swN1p3TjY4czU0L3hYNGs5Q1F1OGJ0R0dhVEFUb2hQRmNEOXcK",
       "endpoints": [
         "https://github.com/0xakikp/husk/releases/latest/download/latest.json"
       ]
