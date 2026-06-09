@@ -10,20 +10,7 @@ jobs:
   release:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-14
-            args: ""
-          - platform: macos-13
-            args: ""
-          - platform: ubuntu-22.04
-            args: ""
-          - platform: windows-latest
-            args: ""
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -48,12 +35,6 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -66,13 +47,11 @@ jobs:
           releaseName: "Husk ${{ github.ref_name }}"
           releaseBody: |
             See the assets to download this version.
-            
+
             ## Install
-            - **macOS**: Download the `.dmg` or `.app.tar.gz` for your architecture (Intel or Apple Silicon).
-            - **Windows**: Download the `.msi` or `.nsis.zip` installer.
-            - **Linux**: Download the `.AppImage` or `.deb` package.
-            
+            - **macOS**: Download the `.dmg` for fresh install, or let the in-app updater handle it automatically.
+
             The app will automatically check for updates on launch. You can also check manually via **Settings → About → Check for Updates**.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ""
