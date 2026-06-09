@@ -52,6 +52,7 @@ export async function streamChat(
   messages: ChatMessage[],
   onDelta: (text: string) => void,
   tools?: Record<string, Tool>,
+  abortSignal?: AbortSignal,
 ): Promise<void> {
   const result = streamText({
     model: buildModel(cfg),
@@ -59,8 +60,10 @@ export async function streamChat(
     messages: messages as ModelMessage[],
     tools: tools && Object.keys(tools).length > 0 ? tools : undefined,
     stopWhen: stepCountIs(8),
+    abortSignal,
   });
   for await (const delta of result.textStream) {
+    if (abortSignal?.aborted) break;
     onDelta(delta);
   }
 }

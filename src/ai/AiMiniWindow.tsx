@@ -43,6 +43,7 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
+  const abortCtrlRef = useRef<AbortController | null>(null);
 
   const startDrag = (e: MouseEvent) => {
     e.preventDefault();
@@ -64,6 +65,7 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
 
   const stop = useCallback(() => {
     abortRef.current = true;
+    abortCtrlRef.current?.abort();
     setBusy(false);
   }, []);
 
@@ -86,6 +88,8 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
     setInput("");
     setBusy(true);
     abortRef.current = false;
+    abortCtrlRef.current?.abort();
+    abortCtrlRef.current = new AbortController();
     const ctx = readActiveTerminal();
     const system = ctx
       ? `${agent.systemPrompt}\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\``
@@ -105,6 +109,8 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
         system,
         history,
         append,
+        undefined,
+        abortCtrlRef.current?.signal,
       );
     } catch (e) {
       if (!abortRef.current) append(`⚠️ ${e instanceof Error ? e.message : String(e)}`);
@@ -122,6 +128,7 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
   };
 
   const reset = () => {
+    abortCtrlRef.current?.abort();
     setMessages([]);
     setInput("");
     abortRef.current = true;

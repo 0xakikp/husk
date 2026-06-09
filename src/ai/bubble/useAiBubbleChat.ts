@@ -29,6 +29,7 @@ export function useAiBubbleChat() {
   const [includeContext, setIncludeContext] = useState(true);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const abortRef = useRef(false);
+  const abortCtrlRef = useRef<AbortController | null>(null);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
@@ -105,6 +106,8 @@ export function useAiBubbleChat() {
       setInput("");
       setBusy(true);
       abortRef.current = false;
+      abortCtrlRef.current?.abort();
+      abortCtrlRef.current = new AbortController();
 
       const agent = getActiveAgent();
       const ctx = includeContext ? readActiveTerminal() : "";
@@ -141,13 +144,15 @@ export function useAiBubbleChat() {
                 return next;
               });
             },
-            tools
+            tools,
+            abortCtrlRef.current?.signal,
           ),
           new Promise<void>((_, reject) =>
             setTimeout(() => reject(new Error("Request timed out after 60s")), 60000)
           ),
         ]);
       } catch (e) {
+        if (abortCtrlRef.current?.signal.aborted) return;
         const msg = e instanceof Error ? e.message : String(e);
         // eslint-disable-next-line no-console
         console.error("[AI] stream error:", e);
@@ -170,10 +175,12 @@ export function useAiBubbleChat() {
 
   const stop = useCallback(() => {
     abortRef.current = true;
+    abortCtrlRef.current?.abort();
     setBusy(false);
   }, []);
 
   const clear = useCallback(() => {
+    abortCtrlRef.current?.abort();
     setMessages([]);
     setInput("");
   }, []);
