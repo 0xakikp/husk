@@ -676,7 +676,7 @@ export function AiFloatingBubble({
           title={busy ? "Stop generating" : "Idle"}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" className="shrink-0">
-            <circle cx="5" cy="5" r="3.5" fill="currentColor" />
+            <circle cx="5" cy="5" r="3.5" fill="#ef4444" />
           </svg>
         </button>
 
