@@ -132,7 +132,7 @@ const DEFAULT: Prefs = {
   neonBorderGlow: false,
   editorWallpaperOpacity: 0,
   aiPaneOpacity: 80,
-  aiPaneFontSize: 13,
+  aiPaneFontSize: 11,
 
   aiMiniOpacity: 48,
   aiMiniFontSize: 11,
