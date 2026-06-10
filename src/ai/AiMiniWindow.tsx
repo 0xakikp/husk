@@ -1,10 +1,12 @@
 import { useRef, useState, useCallback, useMemo, type MouseEvent } from "react";
+import { cn } from "@/lib/utils";
 import { streamChat, type ChatMessage } from "./client";
 import { loadConfig, getKey } from "./store";
 import { getProvider } from "./providers";
 import { getActiveAgent } from "./agents";
 import { readActiveTerminal } from "./terminalContext";
 import { AiThinkingIndicator } from "./AiThinkingIndicator";
+import { getTerminalContextSize } from "./useTerminalContextSize";
 import { usePrefs } from "../settings/preferences";
 
 const QUICK_PROMPTS = [
@@ -251,9 +253,19 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
           rows={2}
           disabled={busy}
         />
-        <button type="button" onClick={() => void send()} disabled={busy || !input.trim()}>
-          {busy ? "…" : "Send"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          {(() => {
+            const { kb, capped } = getTerminalContextSize();
+            return (
+              <span className={cn("text-[10px]", capped ? "text-amber-500" : "text-muted-foreground/60")} title="Terminal context size">
+                {kb}KB{capped ? " (capped)" : ""}
+              </span>
+            );
+          })()}
+          <button type="button" onClick={() => void send()} disabled={busy || !input.trim()}>
+            {busy ? "…" : "Send"}
+          </button>
+        </div>
       </div>
       </div>
     </div>

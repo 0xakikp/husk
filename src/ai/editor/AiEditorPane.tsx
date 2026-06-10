@@ -32,6 +32,7 @@ import type { EditorChatMessage, CodeEdit, SessionModelOverride } from "./types"
 import { stripEditBlocks } from "./editorStore";
 import { toast } from "@/toast";
 import { AiThinkingIndicator } from "../AiThinkingIndicator";
+import { getTerminalContextSize } from "../useTerminalContextSize";
 import { usePrefs } from "../../settings/preferences";
 import {
   getWorkspaceKey,
@@ -832,6 +833,14 @@ export function AiEditorPane({
             >
               <HugeiconsIcon icon={Attachment01Icon} size={14} strokeWidth={1.5} />
             </button>
+            {(() => {
+              const { kb, capped } = getTerminalContextSize();
+              return (
+                <span className={cn("text-[10px] mr-0.5", capped ? "text-amber-500" : "text-muted-foreground/60")} title="Terminal context size">
+                  {kb}KB{capped ? " (capped)" : ""}
+                </span>
+              );
+            })()}
             {busy ? (
               <button
                 type="button"

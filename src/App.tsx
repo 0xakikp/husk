@@ -1286,7 +1286,18 @@ function App() {
                 aria-hidden={activeKind !== "term"}
               >
                 <div className="min-h-0 flex-1">
-                  <TerminalStack term={term} viewActive={activeKind === "term"} />
+                  <ErrorBoundary
+                    fallback={
+                      <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+                        <div className="text-[13px] font-medium text-destructive">Terminal crashed</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Switch to another tab or restart the app to recover.
+                        </div>
+                      </div>
+                    }
+                  >
+                    <TerminalStack term={term} viewActive={activeKind === "term"} />
+                  </ErrorBoundary>
                 </div>
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
               </div>
