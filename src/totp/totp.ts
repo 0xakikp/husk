@@ -1,5 +1,6 @@
 import { TOTP, Secret, URI } from "otpauth";
 import type { TotpAccount } from "./store";
+import QRCode from "qrcode";
 
 const PERIOD = 30;
 
@@ -42,4 +43,19 @@ export function parseSecretInput(
   }
   const secret = t.replace(/\s/g, "").toUpperCase();
   return secret ? { secret } : null;
+}
+
+/** Generate a QR code data URL for an account. */
+export async function generateQrDataUrl(account: TotpAccount): Promise<string | null> {
+  try {
+    const totp = new TOTP({
+      issuer: account.issuer || "",
+      label: account.label,
+      secret: Secret.fromBase32(account.secret.replace(/\s/g, "").toUpperCase()),
+    });
+    const uri = totp.toString();
+    return await QRCode.toDataURL(uri, { margin: 1, width: 200 });
+  } catch {
+    return null;
+  }
 }
