@@ -30,6 +30,7 @@ import { usePrefs } from "../settings/preferences";
 import { toast } from "../toast";
 import { getFileState, subscribeDirty } from "../editor/dirtyStore";
 import { setActiveSshHost } from "../remote/store";
+import { status as gitStatus } from "../git/client";
 
 const joinPath = (dir: string, name: string) => `${dir.replace(/\/+$/, "")}/${name}`;
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
@@ -73,6 +74,29 @@ export function FileExplorer({
   const [rootCreate, setRootCreate] = useState<null | "file" | "dir">(null);
   const [filter, setFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
+  const [gitMap, setGitMap] = useState<Record<string, string>>({});
+
+  // Fetch git status for workspace
+  useEffect(() => {
+    if (remoteHost || !wsRoot) return;
+    const load = async () => {
+      try {
+        const list = await gitStatus(wsRoot);
+        const map: Record<string, string> = {};
+        for (const f of list) {
+          const abs = joinPath(wsRoot, f.path);
+          // work tree status takes priority over index status
+          map[abs] = f.work !== " " ? f.work : f.index;
+        }
+        setGitMap(map);
+      } catch {
+        setGitMap({});
+      }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [wsRoot, remoteHost, refreshKey]);
 
   useEffect(() => {
     if (!termCwd && !wsRoot && !home && !remoteHost) void homeDir().then(setHome);
@@ -203,6 +227,7 @@ export function FileExplorer({
         activeFile={activeFile}
         initiallyOpen
         remoteHost={remoteHost}
+        gitMap={gitMap}
       />
     </div>
   );
@@ -220,6 +245,7 @@ function Node({
   filter,
   activeFile,
   remoteHost,
+  gitMap = {},
 }: {
   path: string;
   name: string;
@@ -236,6 +262,7 @@ function Node({
   filter?: string;
   activeFile?: string | null;
   remoteHost?: string | null;
+  gitMap?: Record<string, string>;
 }) {
   const showHidden = usePrefs().showHidden;
   const [open, setOpen] = useState(initiallyOpen);
@@ -377,6 +404,7 @@ function Node({
   const isActive = activeFile === path;
   const dirtyState = !isDir ? getFileState(path) : "clean";
   const dirtyClass = dirtyState !== "clean" ? ` efile-${dirtyState}` : "";
+  const gitBadge = !isDir && gitMap[path];
 
   if (!isDir) {
     return (
@@ -388,6 +416,7 @@ function Node({
             <span className="enode-caret" />
             <img src={fileIconUrl(name)} className="enode-img" alt="" />
             <span className="truncate">{name}</span>
+            {gitBadge ? <span className="enode-git" title={`Git: ${gitBadge}`}>{gitBadge}</span> : null}
             {dirtyState === "modified" && <span className="enode-dot" title="Modified" />}
             {dirtyState === "new" && <span className="enode-dot enode-dot-new" title="New" />}
             {dirtyState === "deleted" && <span className="enode-dot enode-dot-del" title="Deleted" />}
@@ -430,6 +459,7 @@ function Node({
                     onMutated={reload}
                     activeFile={activeFile}
                     remoteHost={remoteHost}
+                    gitMap={gitMap}
                   />
               ))
           : null}
@@ -457,7 +487,7 @@ function Node({
             ? children
                 .filter((c) => showHidden || !c.name.startsWith("."))
                 .map((c) => (
-                  <Node key={c.path} path={c.path} name={c.name} depth={depth + 1} isDir={c.is_dir} onOpenFile={onOpenFile} onMutated={reload} activeFile={activeFile} remoteHost={remoteHost} />
+                  <Node key={c.path} path={c.path} name={c.name} depth={depth + 1} isDir={c.is_dir} onOpenFile={onOpenFile} onMutated={reload} activeFile={activeFile} remoteHost={remoteHost} gitMap={gitMap} />
                 ))
             : null}
         </>

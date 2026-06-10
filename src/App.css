@@ -537,6 +537,19 @@ button {
   background: #f87171;
 }
 
+.enode-git {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 3px;
+  border-radius: 3px;
+  margin-left: 4px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--bg-2));
+}
+
 .enode-caret {
   display: inline-block;
   width: 12px;
@@ -1726,6 +1739,11 @@ button {
   border-radius: 8px;
   padding: 6px 10px;
   background: var(--bg-2);
+}
+
+.totp-item-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-2));
 }
 
 .totp-code {
