@@ -90,48 +90,52 @@ export function AiPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="ai-panel">
       <div className="ai-header">
-        <select
-          className="ai-agent"
-          value={activeAgentId}
-          onChange={(e) => setActiveAgent(e.target.value)}
-          title="Agent"
-        >
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className="ai-provider"
-          value={config.providerId}
-          onChange={(e) => selectProvider(e.target.value)}
-          title="Provider"
-        >
-          {PROVIDERS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-        <input
-          className="ai-model"
-          value={config.model}
-          onChange={(e) => setConfig((c) => ({ ...c, model: e.target.value }))}
-          placeholder="model id"
-          title="Model"
-        />
-        <button
-          type="button"
-          className="ai-icon"
-          title="Settings"
-          onClick={() => setShowSettings((s) => !s)}
-        >
-          ⚙
-        </button>
-        <button type="button" className="ai-icon" title="Close" onClick={onClose}>
-          ×
-        </button>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <select
+            className="ai-agent"
+            value={activeAgentId}
+            onChange={(e) => setActiveAgent(e.target.value)}
+            title="Agent"
+          >
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="ai-provider"
+            value={config.providerId}
+            onChange={(e) => selectProvider(e.target.value)}
+            title="Provider"
+          >
+            {PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <input
+            className="ai-model"
+            value={config.model}
+            onChange={(e) => setConfig((c) => ({ ...c, model: e.target.value }))}
+            placeholder="model id"
+            title="Model"
+          />
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="ai-icon"
+            title="Settings"
+            onClick={() => setShowSettings((s) => !s)}
+          >
+            ⚙
+          </button>
+          <button type="button" className="ai-icon" title="Close" onClick={onClose}>
+            ×
+          </button>
+        </div>
       </div>
 
       {showSettings || needsKey ? (
