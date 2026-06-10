@@ -1372,7 +1372,7 @@ function App() {
                 {/* AI panel — fixed width at the right edge with gap inset. */}
                 <div
                   className={cn(
-                    "ai-pane-static no-drag-region absolute z-10 flex flex-col overflow-hidden border-l border-border rounded-r-lg",
+                    "ai-pane-static no-drag-region absolute z-10 flex flex-col overflow-hidden rounded-xl border border-border/60 shadow-xl",
                     prefs.frostedGlass && bgDataUrl && "backdrop-blur-md",
                     prefs.animationsEnabled && "animate-ai-pane-enter",
                   )}
