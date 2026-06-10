@@ -1517,7 +1517,59 @@ button {
   box-shadow: none;
 }
 
-/* modal / runbooks */
+/* ── Panel gap effects ── */
+.gap-pattern-dots {
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--accent) 15%, transparent) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.gap-pattern-grid {
+  background-image: 
+    linear-gradient(to right, color-mix(in srgb, var(--accent) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--accent) 8%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.gap-pattern-cross {
+  background-image: 
+    linear-gradient(45deg, transparent 48%, color-mix(in srgb, var(--accent) 10%, transparent) 49%, color-mix(in srgb, var(--accent) 10%, transparent) 51%, transparent 52%),
+    linear-gradient(-45deg, transparent 48%, color-mix(in srgb, var(--accent) 10%, transparent) 49%, color-mix(in srgb, var(--accent) 10%, transparent) 51%, transparent 52%);
+  background-size: 16px 16px;
+}
+
+/* Panel shadows when gaps are enabled */
+.panel-shadow {
+  box-shadow: 
+    0 1px 2px rgba(0,0,0,0.3),
+    0 4px 8px rgba(0,0,0,0.2),
+    0 8px 16px rgba(0,0,0,0.1);
+}
+
+/* Active panel glow in gaps */
+.active-panel-glow {
+  position: relative;
+}
+
+.active-panel-glow::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 30%, transparent), transparent 50%);
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.active-panel-glow.active::before {
+  opacity: 1;
+}
 .modal-backdrop {
   position: fixed;
   inset: 0;

@@ -67,6 +67,9 @@ export type Prefs = {
   animationsEnabled: boolean;
   frostedGlass: boolean;
   panelGaps: number;
+  panelGapStyle: "none" | "dots" | "grid" | "cross" | "gradient";
+  panelShadows: boolean;
+  activePanelGlow: boolean;
   neonBorderGlow: boolean;
   editorWallpaperOpacity: number;
   aiPaneOpacity: number;
@@ -129,6 +132,9 @@ const DEFAULT: Prefs = {
   animationsEnabled: true,
   frostedGlass: false,
   panelGaps: 0,
+  panelGapStyle: "none",
+  panelShadows: false,
+  activePanelGlow: false,
   neonBorderGlow: false,
   editorWallpaperOpacity: 0,
   aiPaneOpacity: 80,

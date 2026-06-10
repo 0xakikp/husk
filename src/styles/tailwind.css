@@ -81,7 +81,12 @@
   --sidebar-accent-foreground: #e5e5e5;
   --sidebar-border: #1f1f1f;
   --sidebar-ring: var(--accent);
+  /* ── Panel gap styling ── */
   --panel-gaps: 0px;
+  --gap-bg: var(--bg);
+  --gap-pattern: none;
+  --panel-shadow: none;
+  --active-gap-glow: transparent;
 }
 
 /* husk v1 light tokens. */

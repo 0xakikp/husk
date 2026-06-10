@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { usePrefs, setPrefs } from "./preferences";
 import { SectionHeader } from "./components/SectionHeader";
 import { SettingRow } from "./components/SettingRow";
@@ -287,6 +288,48 @@ export function AppearanceSection() {
             max={12}
             step={1}
             onChange={(v) => setPrefs({ panelGaps: v })}
+          />
+          <div className="flex flex-col gap-2 rounded border border-border/40 bg-muted/20 px-5 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[12.5px] font-medium text-foreground">Gap style</span>
+                <span className="text-[10.5px] leading-relaxed text-muted-foreground">Pattern in panel gaps</span>
+              </div>
+              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground font-mono">
+                {p.panelGapStyle}
+              </span>
+            </div>
+            <div className="flex gap-1">
+              {(["none", "dots", "grid", "cross", "gradient"] as const).map((style) => (
+                <button
+                  key={style}
+                  type="button"
+                  onClick={() => setPrefs({ panelGapStyle: style })}
+                  className={cn(
+                    "flex-1 rounded px-2 py-1 text-[10px] font-medium transition-colors",
+                    p.panelGapStyle === style
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {style.charAt(0).toUpperCase() + style.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <SwitchRow
+            title="Panel shadows"
+            description="Floating depth effect"
+            checked={p.panelShadows}
+            onCheckedChange={(v) => setPrefs({ panelShadows: v })}
+          />
+          <SwitchRow
+            title="Active panel glow"
+            description="Highlight focused panel"
+            checked={p.activePanelGlow}
+            onCheckedChange={(v) => setPrefs({ activePanelGlow: v })}
           />
         </div>
       </div>
