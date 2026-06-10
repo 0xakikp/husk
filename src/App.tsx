@@ -1463,9 +1463,7 @@ function App() {
         <DialogLayer open={shortcutsOpen}>
           <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />
         </DialogLayer>
-        <DialogLayer open={totpOpen}>
-          <TotpDialog onClose={() => setTotpOpen(false)} />
-        </DialogLayer>
+        {totpOpen && <TotpDialog onClose={() => setTotpOpen(false)} variant="dropdown" />}
         <DialogLayer open={jobsOpen}>
           <JobsDialog onClose={() => setJobsOpen(false)} />
         </DialogLayer>

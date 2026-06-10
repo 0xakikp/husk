@@ -163,7 +163,7 @@ function AccountRow({
   );
 }
 
-export function TotpDialog({ onClose }: { onClose: () => void }) {
+export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void; variant?: "modal" | "dropdown" }) {
   const [accounts, setAccounts] = useState<TotpAccount[]>(() =>
     loadAccounts().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
   );
@@ -335,138 +335,158 @@ export function TotpDialog({ onClose }: { onClose: () => void }) {
       (a.issuer ?? "").toLowerCase().includes(search.toLowerCase()),
   );
 
-  return (
+  const content = (
     <>
-      <div className="modal-backdrop" onClick={onClose}>
-        <div
-          className="modal"
-          role="dialog"
-          aria-label="Authenticator"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="modal-header">
-            <span>Authenticator</span>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className="ai-icon"
-                title="Export accounts"
-                onClick={handleExport}
-              >
-                <HugeiconsIcon icon={Download02Icon} size={14} strokeWidth={1.5} />
-              </button>
-              <button
-                type="button"
-                className="ai-icon"
-                title="Import accounts"
-                onClick={handleImport}
-              >
-                <HugeiconsIcon icon={Upload02Icon} size={14} strokeWidth={1.5} />
-              </button>
-              <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
-                ×
-              </button>
-            </div>
-          </div>
-
-          <div className="modal-body">
-            {/* Search */}
-            <div className="relative">
-              <HugeiconsIcon
-                icon={Search01Icon}
-                size={12}
-                strokeWidth={1.75}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search accounts…"
-                className="h-7 w-full rounded-md border border-border-2 bg-background py-0 pr-7 pl-7 text-xs text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-primary"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={2} />
-                </button>
-              )}
-            </div>
-
-            {accounts.length === 0 && !adding ? (
-              <p className="rb-empty">
-                No 2FA accounts yet. Add a base32 secret, scan a QR code, or import a backup.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {filtered.map((a) => (
-                  <AccountRow
-                    key={a.id}
-                    account={a}
-                    onCopy={handleCopy}
-                    onDelete={handleDelete}
-                    onEdit={handleEdit}
-                    onShowQr={setQrAccount}
-                    onDragStart={handleDragStart}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                  />
-                ))}
-                {filtered.length === 0 && search && (
-                  <p className="text-center text-xs text-muted-foreground">No accounts match &quot;{search}&quot;</p>
-                )}
-              </div>
-            )}
-
-            {adding ? (
-              <div className="totp-add">
-                <label className="rb-field">
-                  <span>Label</span>
-                  <input
-                    value={label}
-                    onChange={(e) => setLabel(e.target.value)}
-                    placeholder="GitHub"
-                  />
-                </label>
-                <label className="rb-field">
-                  <span>Secret or otpauth:// URI</span>
-                  <input
-                    value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
-                    placeholder="JBSWY3DPEHPK3PXP"
-                  />
-                </label>
-                {error ? <p className="totp-error">{error}</p> : null}
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAdding(false);
-                      setError("");
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button type="button" className="primary" onClick={add}>
-                    Add
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <button type="button" className="rb-new" onClick={() => setAdding(true)}>
-                  + Add account
-                </button>
-                <button type="button" className="rb-new" onClick={handleScanQr}>
-                  <HugeiconsIcon icon={QrCodeIcon} size={13} strokeWidth={1.5} className="inline" /> Scan QR from image
-                </button>
-              </div>
-            )}
-          </div>
+      <div className="modal-header">
+        <span>Authenticator</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="ai-icon"
+            title="Export accounts"
+            onClick={handleExport}
+          >
+            <HugeiconsIcon icon={Download02Icon} size={14} strokeWidth={1.5} />
+          </button>
+          <button
+            type="button"
+            className="ai-icon"
+            title="Import accounts"
+            onClick={handleImport}
+          >
+            <HugeiconsIcon icon={Upload02Icon} size={14} strokeWidth={1.5} />
+          </button>
+          <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
+            ×
+          </button>
         </div>
       </div>
+
+      <div className="modal-body">
+        {/* Search */}
+        <div className="relative">
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={12}
+            strokeWidth={1.75}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search accounts…"
+            className="h-7 w-full rounded-md border border-muted-foreground/25 bg-background py-0 pr-7 pl-7 text-xs text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-primary"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+
+        {accounts.length === 0 && !adding ? (
+          <p className="rb-empty">
+            No 2FA accounts yet. Add a base32 secret, scan a QR code, or import a backup.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {filtered.map((a) => (
+              <AccountRow
+                key={a.id}
+                account={a}
+                onCopy={handleCopy}
+                onDelete={handleDelete}
+                onEdit={handleEdit}
+                onShowQr={setQrAccount}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              />
+            ))}
+            {filtered.length === 0 && search && (
+              <p className="text-center text-xs text-muted-foreground">No accounts match &quot;{search}&quot;</p>
+            )}
+          </div>
+        )}
+
+        {adding ? (
+          <div className="totp-add">
+            <label className="rb-field">
+              <span>Label</span>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="GitHub"
+              />
+            </label>
+            <label className="rb-field">
+              <span>Secret or otpauth:// URI</span>
+              <input
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                placeholder="JBSWY3DPEHPK3PXP"
+              />
+            </label>
+            {error ? <p className="totp-error">{error}</p> : null}
+            <div className="modal-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setAdding(false);
+                  setError("");
+                }}
+              >
+                Cancel
+              </button>
+              <button type="button" className="primary" onClick={add}>
+                Add
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <button type="button" className="rb-new" onClick={() => setAdding(true)}>
+              + Add account
+            </button>
+            <button type="button" className="rb-new" onClick={handleScanQr}>
+              <HugeiconsIcon icon={QrCodeIcon} size={13} strokeWidth={1.5} className="inline" /> Scan QR from image
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      {variant === "dropdown" ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={onClose} />
+          <div
+            className="fixed top-10 right-2 z-50 w-[360px] max-h-[calc(100vh-56px)] flex flex-col bg-card border border-border-2 rounded-xl shadow-2xl overflow-hidden animate-dialog-enter"
+            role="dialog"
+            aria-label="Authenticator"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {content}
+          </div>
+        </>
+      ) : (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-label="Authenticator"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {content}
+          </div>
+        </div>
+      )}
       {qrAccount && <QrModal account={qrAccount} onClose={() => setQrAccount(null)} />}
     </>
   );
