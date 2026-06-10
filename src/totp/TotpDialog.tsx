@@ -258,7 +258,10 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
   const handleImport = async () => {
     const paths = await open({
       multiple: false,
-      filters: [{ name: "JSON", extensions: ["json"] }],
+      filters: [
+        { name: "Backup files", extensions: ["json", "txt"] },
+        { name: "All files", extensions: ["*"] },
+      ],
     });
     if (!paths || Array.isArray(paths)) return;
     try {
