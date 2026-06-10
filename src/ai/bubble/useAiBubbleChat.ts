@@ -123,8 +123,10 @@ export function useAiBubbleChat() {
       }
 
       const modelId = cfg.model || agent.model || provider.defaultModel;
-      // eslint-disable-next-line no-console
-      console.log("[AI] sending →", { provider: provider.id, model: modelId, hasKey: !!apiKey, baseURL: cfg.baseURL || provider.baseURL });
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.log("[AI] sending →", { provider: provider.id, model: modelId, hasKey: !!apiKey, baseURL: cfg.baseURL || provider.baseURL });
+      }
 
       try {
         const tools = await buildMcpTools().catch(() => ({}));
@@ -154,8 +156,10 @@ export function useAiBubbleChat() {
       } catch (e) {
         if (abortCtrlRef.current?.signal.aborted) return;
         const msg = e instanceof Error ? e.message : String(e);
-        // eslint-disable-next-line no-console
-        console.error("[AI] stream error:", e);
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.error("[AI] stream error:", e);
+        }
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];

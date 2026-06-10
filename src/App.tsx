@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -833,46 +833,49 @@ function App() {
   const term = useTerminalTabs();
   const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues">("term");
 
-  const commands: Command[] = [
-    { id: "explorer", label: "Toggle file explorer", run: () => toggleSidebar() },
-    { id: "open-folder", label: "Open folder…", run: () => void pickWorkspaceFolder() },
-    { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
-    { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
-    { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
-    { id: "totp", label: "Open authenticator (2FA)", run: () => setTotpOpen(true) },
-    { id: "tools", label: "Open integrations", run: () => { cycleSidebarView("tools-hub"); } },
-    { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
-    { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
-    ...(prefs.aiEnabled
-      ? [
-          { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
-          { id: "explain", label: "Explain last error (AI)", run: explainLastError },
-          { id: "ai-pane", label: "Toggle AI panel", hint: "Ctrl+Shift+L", run: () => setAiPaneOpen((v) => !v) },
-        ]
-      : []),
-    { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
-    { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
-    { id: "terraform", label: "Open Terraform", run: () => setTerraformOpen(true) },
-    { id: "remotes", label: "Open Remotes / SSH", run: () => { cycleSidebarView("remotes"); } },
-    { id: "github", label: "Open GitHub", run: () => setGithubOpen(true) },
-    { id: "cicd", label: "Open CI / CD", run: () => setCicdOpen(true) },
-    { id: "diff", label: "Open diff viewer", run: () => { setDiffPaths(null); setDiffOpen(true); } },
-    { id: "source-control", label: "Open source control", run: () => { cycleSidebarView("source-control"); } },
-    { id: "git-history", label: "Open git history", run: () => setGitHistoryOpen(true) },
-    { id: "shortcuts", label: "Keyboard shortcuts", run: () => setShortcutsOpen(true) },
-    { id: "check-updates", label: "Check for updates", run: () => void checkForUpdates(true) },
-    { id: "preview", label: "Open preview", run: () => { setPreviewPath(undefined); setPreviewOpen(true); } },
-    {
-      id: "theme",
-      label: "Toggle light / dark theme",
-      run: () => setPrefs({ theme: prefs.theme === "dark" ? "light" : "dark" }),
-    },
-    // Terminal tab commands
-    { id: "new-tab", label: "New terminal tab", hint: "Ctrl/Cmd+T", run: () => { term.addTab(); setActiveKind("term"); } },
-    { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+W", run: () => term.closeTab(term.activeId) },
-    { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind("term"); } } },
-    { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind("term"); } } },
-  ];
+  const commands: Command[] = useMemo(
+    () => [
+      { id: "explorer", label: "Toggle file explorer", run: () => toggleSidebar() },
+      { id: "open-folder", label: "Open folder…", run: () => void pickWorkspaceFolder() },
+      { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
+      { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
+      { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
+      { id: "totp", label: "Open authenticator (2FA)", run: () => setTotpOpen(true) },
+      { id: "tools", label: "Open integrations", run: () => { cycleSidebarView("tools-hub"); } },
+      { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
+      { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
+      ...(prefs.aiEnabled
+        ? [
+            { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
+            { id: "explain", label: "Explain last error (AI)", run: explainLastError },
+            { id: "ai-pane", label: "Toggle AI panel", hint: "Ctrl+Shift+L", run: () => setAiPaneOpen((v) => !v) },
+          ]
+        : []),
+      { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
+      { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
+      { id: "terraform", label: "Open Terraform", run: () => setTerraformOpen(true) },
+      { id: "remotes", label: "Open Remotes / SSH", run: () => { cycleSidebarView("remotes"); } },
+      { id: "github", label: "Open GitHub", run: () => setGithubOpen(true) },
+      { id: "cicd", label: "Open CI / CD", run: () => setCicdOpen(true) },
+      { id: "diff", label: "Open diff viewer", run: () => { setDiffPaths(null); setDiffOpen(true); } },
+      { id: "source-control", label: "Open source control", run: () => { cycleSidebarView("source-control"); } },
+      { id: "git-history", label: "Open git history", run: () => setGitHistoryOpen(true) },
+      { id: "shortcuts", label: "Keyboard shortcuts", run: () => setShortcutsOpen(true) },
+      { id: "check-updates", label: "Check for updates", run: () => void checkForUpdates(true) },
+      { id: "preview", label: "Open preview", run: () => { setPreviewPath(undefined); setPreviewOpen(true); } },
+      {
+        id: "theme",
+        label: "Toggle light / dark theme",
+        run: () => setPrefs({ theme: prefs.theme === "dark" ? "light" : "dark" }),
+      },
+      // Terminal tab commands
+      { id: "new-tab", label: "New terminal tab", hint: "Ctrl/Cmd+T", run: () => { term.addTab(); setActiveKind("term"); } },
+      { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+W", run: () => term.closeTab(term.activeId) },
+      { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind("term"); } } },
+      { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind("term"); } } },
+    ],
+    [prefs.aiEnabled, prefs.theme, term],
+  );
 
   // ── Terminal tab universal shortcuts ──
   useEffect(() => {

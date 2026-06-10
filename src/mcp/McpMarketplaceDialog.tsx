@@ -247,7 +247,7 @@ export function McpMarketplaceDialog({
             />
             <div className="flex flex-wrap gap-1">
               {categories.map((cat) => (
-                <button
+                <button type="button"
                   key={cat}
                   onClick={() =>
                     setActiveCategory(cat as typeof activeCategory)

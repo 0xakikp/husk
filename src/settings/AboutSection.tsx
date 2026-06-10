@@ -97,7 +97,7 @@ export function AboutSection() {
           { icon: GithubIcon, label: "GitHub", url: REPO_URL },
           { icon: BugIcon, label: "Report", url: `${REPO_URL}/issues` },
         ].map((a) => (
-          <button
+          <button type="button"
             key={a.label}
             onClick={() => void ("action" in a && typeof a.action === "function" ? a.action() : openUrl(a.url))}
             className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"

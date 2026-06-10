@@ -732,7 +732,7 @@ export function AiEditorPane({
           </div>
           <div className="flex flex-col gap-1.5">
             {pendingEdits.map((edit, i) => (
-              <EditCard key={i} edit={edit} index={i} onAccept={applyOne} onReject={rejectOne} />
+              <EditCard key={edit.file || String(i)} edit={edit} index={i} onAccept={applyOne} onReject={rejectOne} />
             ))}
           </div>
         </div>

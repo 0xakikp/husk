@@ -59,7 +59,7 @@ pub fn pty_spawn(
     state
         .sessions
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .insert(id, PtySession { master, writer });
 
     // Stream shell output to the frontend until EOF.
@@ -87,7 +87,7 @@ pub fn pty_spawn(
 
 #[tauri::command]
 pub fn pty_write(state: State<'_, PtyState>, id: u32, data: String) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().unwrap();
+    let mut sessions = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(session) = sessions.get_mut(&id) {
         session
             .writer
@@ -100,7 +100,7 @@ pub fn pty_write(state: State<'_, PtyState>, id: u32, data: String) -> Result<()
 
 #[tauri::command]
 pub fn pty_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
-    let sessions = state.sessions.lock().unwrap();
+    let sessions = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(session) = sessions.get(&id) {
         session
             .master
@@ -118,5 +118,5 @@ pub fn pty_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) -> 
 #[tauri::command]
 pub fn pty_kill(state: State<'_, PtyState>, id: u32) {
     // Dropping the session closes the PTY master, which hangs up the shell.
-    state.sessions.lock().unwrap().remove(&id);
+    state.sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
 }
