@@ -5,10 +5,10 @@ import { SettingsPage } from "./settings/SettingsPage";
 import { getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import "./styles/tailwind.css";
-import "./styles/fonts.css";
-import "./styles/code-highlight.css";
-import "./App.css";
+import "./styles/tailwind.css?v=2";
+import "./styles/fonts.css?v=2";
+import "./styles/code-highlight.css?v=2";
+import "./App.css?v=2";
 
 /** Wraps the settings page with focus/blur listeners that dim the window
  *  when it loses focus — a hyprland-style inactive window treatment. */
