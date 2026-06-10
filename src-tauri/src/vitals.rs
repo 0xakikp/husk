@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::sync::Mutex;
-use sysinfo::{System, MINIMUM_CPU_UPDATE_INTERVAL};
+use sysinfo::System;
 
 #[derive(Serialize, Clone)]
 pub struct Vitals {
@@ -31,7 +31,7 @@ pub fn system_vitals() -> Vitals {
 
     // Load average is Unix-only; default to 0 on Windows
     #[cfg(unix)]
-    let load_1 = sys.load_average().one as f32;
+    let load_1 = System::load_average().one as f32;
     #[cfg(not(unix))]
     let load_1 = 0.0f32;
 
