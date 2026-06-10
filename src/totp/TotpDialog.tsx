@@ -382,7 +382,7 @@ export function TotpDialog({ onClose }: { onClose: () => void }) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search accounts…"
-                className="h-7 w-full rounded-md border border-border bg-background py-0 pr-7 pl-7 text-xs text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-primary"
+                className="h-7 w-full rounded-md border border-border-2 bg-background py-0 pr-7 pl-7 text-xs text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-primary"
               />
               {search && (
                 <button
