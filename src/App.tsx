@@ -125,8 +125,24 @@ type TabChipProps = {
 };
 
 function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, children }: TabChipProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    if (!active || !ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const parent = ref.current.parentElement;
+    if (!parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    setIndicatorStyle({
+      left: rect.left - parentRect.left + 8,
+      width: rect.width - 16,
+    });
+  }, [active]);
+
   return (
     <div
+      ref={ref}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
       className={cn(
@@ -154,8 +170,11 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
           <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
         </button>
       ) : null}
-      {active && (
-        <span className="absolute right-2 bottom-0.5 left-2 h-[2px] rounded-full bg-[var(--accent)] opacity-80" />
+      {active && indicatorStyle && (
+        <span
+          className="absolute bottom-0.5 h-[2px] rounded-full bg-[var(--accent)] opacity-80 transition-all duration-200 ease-out"
+          style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
+        />
       )}
     </div>
   );

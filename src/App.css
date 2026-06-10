@@ -313,9 +313,10 @@ button {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--text-faint) 60%, transparent);
+  background: var(--accent);
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s;
+  transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
 }
 
 .pane-divider:hover {
@@ -324,7 +325,8 @@ button {
 
 .pane-divider:hover::after {
   opacity: 1;
-  background: var(--accent);
+  transform: translate(-50%, -50%) scale(1.5);
+  box-shadow: 0 0 8px 2px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .pane-divider.row {
@@ -1503,7 +1505,7 @@ button {
 
 /* ── Panel entrance animations ── */
 @keyframes sidebar-slide-in {
-  from { transform: translateX(-100%); opacity: 0; }
+  from { transform: translateX(-12px); opacity: 0; }
   to   { transform: translateX(0);     opacity: 1; }
 }
 @keyframes ai-pane-fade-in {
