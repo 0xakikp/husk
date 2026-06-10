@@ -286,8 +286,6 @@ export function AiFloatingBubble({
 
   const {
     messages,
-    input,
-    setInput,
     busy,
     send,
     stop,
@@ -820,44 +818,10 @@ export function AiFloatingBubble({
             <span className="text-primary">Settings → Models</span>
           </div>
         ) : (
-          <div className="flex items-end gap-1.5">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!busy && input.trim()) {
-                    ensureSession();
-                    void send();
-                  }
-                }
-              }}
-              placeholder="Ask anything..."
-              className="max-h-24 min-h-[32px] flex-1 resize-none rounded-lg border border-border/40 bg-muted/20 px-2.5 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary/50"
-              rows={1}
-              disabled={busy}
-            />
-            {busy ? (
-              <button
-                type="button"
-                onClick={stop}
-                className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-destructive/80 text-destructive-foreground hover:bg-destructive"
-                title="Stop"
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => { if (input.trim()) { ensureSession(); void send(); } }}
-                disabled={!input.trim()}
-                className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
-                title="Send"
-              >
-                <HugeiconsIcon icon={SparklesIcon} size={12} strokeWidth={1.5} />
-              </button>
-            )}
+          <div className="flex items-center justify-center rounded-lg border border-border/40 bg-muted/20 py-2 text-[11px] text-muted-foreground">
+            Type{" "}
+            <code className="mx-1 rounded bg-muted px-1 py-0.5 text-primary">/ai</code>{" "}
+            in the terminal to chat
           </div>
         )}
       </div>
