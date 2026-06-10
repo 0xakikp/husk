@@ -675,8 +675,8 @@ export function AiFloatingBubble({
           }
           title={busy ? "Stop generating" : "Idle"}
         >
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="shrink-0">
-            <path d="M2 2l4 4M6 2l-4 4" />
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="shrink-0">
+            <circle cx="5" cy="5" r="3.5" />
           </svg>
         </button>
 
