@@ -747,7 +747,9 @@ function App() {
 
   useEffect(() => {
     document.documentElement.style.setProperty("--panel-gaps", `${prefs.panelGaps}px`);
-  }, [prefs.panelGaps]);
+    document.documentElement.style.setProperty("--panel-shadow", prefs.panelShadows ? "0 4px 12px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.2)" : "none");
+    document.documentElement.style.setProperty("--active-gap-glow", prefs.activePanelGlow ? "color-mix(in srgb, var(--accent) 20%, transparent)" : "transparent");
+  }, [prefs.panelGaps, prefs.panelShadows, prefs.activePanelGlow]);
 
   useEffect(() => {
     void initKeys();
@@ -1218,7 +1220,10 @@ function App() {
 
         {/* ── Main workspace (manual layout, husk v1 visual) ─────── */}
         <main
-          className="zoom-content flex min-h-0 flex-1 overflow-hidden"
+          className={cn(
+            "zoom-content flex min-h-0 flex-1 overflow-hidden",
+            prefs.panelGaps > 0 && prefs.panelGapStyle !== "none" && `gap-pattern-${prefs.panelGapStyle}`,
+          )}
           style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
         >
           {/* Sidebar */}
@@ -1232,6 +1237,7 @@ function App() {
                     : "bg-background/95",
                   prefs.animationsEnabled && "animate-sidebar-enter",
                   prefs.neonBorderGlow && "neon-glow",
+                  prefs.panelShadows && "panel-shadow",
                 )}
                 style={{
                   width: explorerWidth,
@@ -1305,7 +1311,11 @@ function App() {
 
           {/* Workspace */}
           <div
-            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg"
+            className={cn(
+              "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg",
+              prefs.panelShadows && "panel-shadow",
+              prefs.activePanelGlow && activeKind === "term" && "active-panel-glow active",
+            )}
             style={{
               margin: prefs.panelGaps > 0
                 ? `var(--panel-gaps) var(--panel-gaps) var(--panel-gaps) 0`
@@ -1357,6 +1367,8 @@ function App() {
                     className={cn(
                       "absolute top-0 left-0 bottom-0 overflow-hidden rounded-lg border border-border bg-background",
                       prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
+                      prefs.panelShadows && "panel-shadow",
+                      prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active",
                     )}
                     style={{
                       right: aiPaneOpen && prefs.panelGaps > 0
@@ -1375,6 +1387,8 @@ function App() {
                     "ai-pane-static no-drag-region absolute z-10 flex flex-col overflow-hidden rounded-xl border border-border/60 shadow-xl",
                     prefs.frostedGlass && bgDataUrl && "backdrop-blur-md",
                     prefs.animationsEnabled && "animate-ai-pane-enter",
+                    prefs.panelShadows && "panel-shadow",
+                    prefs.activePanelGlow && activeKind === "file" && aiPaneOpen && "active-panel-glow active",
                   )}
                   style={{
                     backgroundColor: prefs.theme === "dark"
