@@ -1204,7 +1204,7 @@ function App() {
                   "flex flex-col border-r border-[var(--border)] overflow-hidden rounded-lg",
                   prefs.frostedGlass && bgDataUrl
                     ? "bg-background/50 backdrop-blur-md"
-                    : "bg-background/88",
+                    : "bg-background/95",
                   prefs.animationsEnabled && "animate-sidebar-enter",
                   prefs.neonBorderGlow && "neon-glow",
                 )}

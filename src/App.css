@@ -54,6 +54,32 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Custom scrollbar (thin accent thumb, expands on hover) ── */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 3px;
+  transition: width 0.15s, height 0.15s, background 0.15s;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 40%, transparent) transparent;
+}
+
 /* Form controls don't inherit font-family from their parent by default, and
    huskv2's Tailwind build omits preflight (so it can coexist with this file).
    Without this, buttons/inputs/selects (incl. shadcn <Button>) fall back to the
@@ -2564,6 +2590,14 @@ button {
 .header-streaming {
   position: relative;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent),
+              0 0 12px color-mix(in srgb, var(--accent) 15%, transparent),
+              0 0 24px color-mix(in srgb, var(--accent) 8%, transparent);
+  animation: header-glow-pulse 2s ease-in-out infinite;
+}
+@keyframes header-glow-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 12px color-mix(in srgb, var(--accent) 15%, transparent), 0 0 24px color-mix(in srgb, var(--accent) 8%, transparent); }
+  50% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), 0 0 20px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 40px color-mix(in srgb, var(--accent) 12%, transparent); }
 }
 .header-streaming::after {
   content: "";

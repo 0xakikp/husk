@@ -195,6 +195,59 @@ export function useTerminalTabs() {
   const focusLeaf = (tabId: number, leafId: number) =>
     updateTab(tabId, (t) => (t.focused === leafId ? t : { ...t, focused: leafId }));
 
+  /** Find the geometric sibling of a leaf in the pane tree.
+   *  dir: which direction to look — 'left' means the leaf that is
+   *  visually to the left (i.e. in the same row split, the 'a' sibling).
+   */
+  const findSiblingLeaf = (node: Pane, leafId: number, dir: "left" | "right" | "up" | "down"): number | null => {
+    if (node.kind === "leaf") return null;
+    // Check if leafId is in left/top child
+    const inA = containsLeaf(node.a, leafId);
+    const inB = containsLeaf(node.b, leafId);
+    if (!inA && !inB) return null;
+
+    // If we're looking for a sibling in the same split
+    if (node.dir === "row" && (dir === "left" || dir === "right")) {
+      if (inA && dir === "right") return firstLeaf(node.b);
+      if (inB && dir === "left") return firstLeaf(node.a);
+    }
+    if (node.dir === "col" && (dir === "up" || dir === "down")) {
+      if (inA && dir === "down") return firstLeaf(node.b);
+      if (inB && dir === "up") return firstLeaf(node.a);
+    }
+
+    // Recurse into the child that contains leafId
+    const child = inA ? node.a : node.b;
+    const sibling = findSiblingLeaf(child, leafId, dir);
+    if (sibling) return sibling;
+
+    // If no sibling found deeper, and we're at the top level where
+    // the split direction matches, return the other branch's first leaf
+    if (node.dir === "row" && (dir === "left" || dir === "right")) {
+      if (inA && dir === "right") return firstLeaf(node.b);
+      if (inB && dir === "left") return firstLeaf(node.a);
+    }
+    if (node.dir === "col" && (dir === "up" || dir === "down")) {
+      if (inA && dir === "down") return firstLeaf(node.b);
+      if (inB && dir === "up") return firstLeaf(node.a);
+    }
+    return null;
+  };
+
+  function containsLeaf(node: Pane, leafId: number): boolean {
+    if (node.kind === "leaf") return node.id === leafId;
+    return containsLeaf(node.a, leafId) || containsLeaf(node.b, leafId);
+  }
+
+  const focusLeafDirection = (tabId: number, dir: "left" | "right" | "up" | "down") => {
+    const tab = tabsRef.current.find((t) => t.id === tabId);
+    if (!tab) return;
+    const sibling = findSiblingLeaf(tab.root, tab.focused, dir);
+    if (sibling) {
+      updateTab(tabId, (t) => ({ ...t, focused: sibling }));
+    }
+  };
+
   const ratioLeaf = (tabId: number, splitId: number, ratio: number) =>
     updateTab(tabId, (t) => ({ ...t, root: setRatio(t.root, splitId, ratio) }));
 
@@ -224,6 +277,7 @@ export function useTerminalTabs() {
     splitLeaf,
     closeLeaf,
     focusLeaf,
+    focusLeafDirection,
     ratioLeaf,
     renameTab,
     setTabColor,

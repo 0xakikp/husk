@@ -59,6 +59,7 @@ type Ops = {
   onSplit: (leafId: number, dir: "row" | "col") => void;
   onClose: (leafId: number) => void;
   onFocus: (leafId: number) => void;
+  onFocusDirection?: (dir: "left" | "right" | "up" | "down") => void;
   onRatio: (splitId: number, ratio: number) => void;
 };
 
@@ -74,6 +75,7 @@ export function PaneView({ node, ...ops }: { node: Pane } & Ops) {
           onSplit={(dir) => ops.onSplit(node.id, dir)}
           onClose={() => ops.onClose(node.id)}
           onFocus={() => ops.onFocus(node.id)}
+          onFocusDirection={ops.onFocusDirection}
         />
       </div>
     );

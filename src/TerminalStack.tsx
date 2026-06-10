@@ -13,7 +13,7 @@ export function TerminalStack({
   term: TerminalTabsApi;
   viewActive: boolean;
 }) {
-  const { tabs, activeId, splitLeaf, closeLeaf, focusLeaf, ratioLeaf } = term;
+  const { tabs, activeId, splitLeaf, closeLeaf, focusLeaf, focusLeafDirection, ratioLeaf } = term;
   return (
     <div className="terminal-stack">
       {tabs.map((t) => (
@@ -30,6 +30,7 @@ export function TerminalStack({
             onSplit={(leafId, dir) => splitLeaf(t.id, leafId, dir)}
             onClose={(leafId) => closeLeaf(t.id, leafId)}
             onFocus={(leafId) => focusLeaf(t.id, leafId)}
+            onFocusDirection={(dir) => focusLeafDirection(t.id, dir)}
             onRatio={(splitId, ratio) => ratioLeaf(t.id, splitId, ratio)}
           />
         </div>

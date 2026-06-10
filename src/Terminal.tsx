@@ -62,6 +62,7 @@ export function TerminalView({
   onClose,
   canClose = false,
   onFocus,
+  onFocusDirection,
 }: {
   active?: boolean;
   initialCwd?: string;
@@ -69,6 +70,7 @@ export function TerminalView({
   onClose?: () => void;
   canClose?: boolean;
   onFocus?: () => void;
+  onFocusDirection?: (dir: "left" | "right" | "up" | "down") => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -209,6 +211,20 @@ export function TerminalView({
       if (e.type === "keydown" && e.metaKey && e.key.toLowerCase() === "d") {
         onSplit?.(e.shiftKey ? "col" : "row");
         return false;
+      }
+      // Cmd+Alt+Arrow navigates focus between panes (Hyprland-style)
+      if (e.type === "keydown" && e.metaKey && e.altKey) {
+        const dirMap: Record<string, "left" | "right" | "up" | "down" | undefined> = {
+          ArrowLeft: "left",
+          ArrowRight: "right",
+          ArrowUp: "up",
+          ArrowDown: "down",
+        };
+        const dir = dirMap[e.key];
+        if (dir) {
+          onFocusDirection?.(dir);
+          return false;
+        }
       }
       // Autocomplete navigation
       if (e.type === "keydown" && autoStateRef.current.visible) {
