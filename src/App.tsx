@@ -1354,7 +1354,7 @@ function App() {
                   Monaco automaticLayout slide. */}
               <div
                 className={cn(
-                  "relative min-h-0 min-w-0 flex-1",
+                  "absolute inset-0 flex flex-col",
                   activeKind !== "file" && "invisible pointer-events-none",
                   prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
                 )}
