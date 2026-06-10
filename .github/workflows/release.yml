@@ -38,7 +38,7 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0.5
+        uses: tauri-apps/tauri-action@action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -58,15 +58,31 @@ jobs:
           prerelease: false
           args: "--target aarch64-apple-darwin"
 
-      - name: Upload latest.json explicitly (fallback)
+      - name: Upload updater artifacts (fallback)
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LATEST_JSON="src-tauri/target/release/bundle/latest.json"
-          if [ -f "$LATEST_JSON" ]; then
-            echo "Uploading latest.json to release ${{ github.ref_name }}"
+          set -e
+          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
+          # Look for latest.json in common locations
+          LATEST_JSON=""
+          for path in "$BUNDLE_DIR/latest.json" "src-tauri/target/release/bundle/latest.json" "src-tauri/target/universal-apple-darwin/release/bundle/latest.json"; do
+            if [ -f "$path" ]; then
+              LATEST_JSON="$path"
+              break
+            fi
+          done
+          if [ -n "$LATEST_JSON" ]; then
+            echo "Uploading latest.json from $LATEST_JSON"
             gh release upload "${{ github.ref_name }}" "$LATEST_JSON" --clobber --repo "${{ github.repository }}"
           else
-            echo "latest.json not found at $LATEST_JSON"
+            echo "latest.json not found"
           fi
+          # Upload any .sig files
+          for sig in "$BUNDLE_DIR"/*.sig "$BUNDLE_DIR"/macos/*.sig; do
+            if [ -f "$sig" ]; then
+              echo "Uploading signature: $sig"
+              gh release upload "${{ github.ref_name }}" "$sig" --clobber --repo "${{ github.repository }}"
+            fi
+          done
