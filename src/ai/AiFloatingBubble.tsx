@@ -668,15 +668,15 @@ export function AiFloatingBubble({
           onClick={(e) => { e.stopPropagation(); stop(); }}
           disabled={!busy}
           className={
-            "flex size-6 shrink-0 items-center justify-center rounded-md transition-all " +
+            "flex size-5 shrink-0 items-center justify-center rounded-md transition-all " +
             (busy
-              ? "bg-destructive/10 text-destructive hover:bg-destructive/20 animate-pulse"
+              ? "bg-destructive/15 text-destructive hover:bg-destructive/25 animate-pulse"
               : "text-muted-foreground/20 cursor-not-allowed")
           }
           title={busy ? "Stop generating" : "Idle"}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="shrink-0">
-            <rect x="1.5" y="1.5" width="9" height="9" rx="1.5" />
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="shrink-0">
+            <rect x="1" y="1" width="8" height="8" rx="1.5" />
           </svg>
         </button>
 
