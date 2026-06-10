@@ -16,7 +16,7 @@ export function DialogLayer({
 }) {
   if (!open) return null;
   return (
-    <div className={cn("animate-dialog-enter", className)}>
+    <div className={cn("fixed inset-0 z-50 animate-dialog-enter", className)}>
       {children}
     </div>
   );
