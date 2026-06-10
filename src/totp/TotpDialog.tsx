@@ -145,19 +145,30 @@ function AccountRow({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="text-muted-foreground/60 hover:text-foreground"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
             title="Show QR code"
             onClick={() => onShowQr(account)}
           >
-            <HugeiconsIcon icon={QrCodeIcon} size={13} strokeWidth={1.5} />
+            <HugeiconsIcon icon={QrCodeIcon} size={11} strokeWidth={1.5} />
+            QR
           </button>
           <button
             type="button"
-            className="text-muted-foreground/60 hover:text-destructive"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
+            title="Edit label"
+            onClick={() => setEditing(true)}
+          >
+            <HugeiconsIcon icon={PencilEdit02Icon} size={11} strokeWidth={1.5} />
+            Edit
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive transition-colors"
             title="Remove"
             onClick={() => onDelete(account.id)}
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.5} />
+            <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={1.5} />
+            Remove
           </button>
         </div>
       </div>
