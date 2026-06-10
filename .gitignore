@@ -28,3 +28,4 @@ public/icons
 
 # Tauri updater signing keys (NEVER commit private key)
 src-tauri/tauri.key
+.tauri-signing-private-key.txt

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "husk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.akikp.husk",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -45,7 +45,7 @@
     "updater": {
       "active": true,
       "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU2NkZGQzYwMzE2QzE0MTAKUldRUUZHd3hZUHh2NWhkaEdDZ2swN1p3TjY4czU0L3hYNGs5Q1F1OGJ0R0dhVEFUb2hQRmNEOXcK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFGRDc1RkVBMjAzOEE2QUUKUldTdXBqZ2c2bC9YSDB6Z1dRQ1RiMHN1V2RwZ3hyaXg2Wiszc3hYQ2ZDU3VsblJEM0ptc3llOTYK",
       "endpoints": [
         "https://github.com/0xakikp/husk/releases/latest/download/latest.json"
       ]

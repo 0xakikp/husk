@@ -26,6 +26,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -36,7 +38,7 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -54,4 +56,17 @@ jobs:
             The app will automatically check for updates on launch. You can also check manually via **Settings → About → Check for Updates**.
           releaseDraft: false
           prerelease: false
-          args: ""
+          args: "--target aarch64-apple-darwin"
+
+      - name: Upload latest.json explicitly (fallback)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_JSON="src-tauri/target/release/bundle/latest.json"
+          if [ -f "$LATEST_JSON" ]; then
+            echo "Uploading latest.json to release ${{ github.ref_name }}"
+            gh release upload "${{ github.ref_name }}" "$LATEST_JSON" --clobber --repo "${{ github.repository }}"
+          else
+            echo "latest.json not found at $LATEST_JSON"
+          fi
