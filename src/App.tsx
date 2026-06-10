@@ -35,6 +35,7 @@ import { FileExplorer } from "./explorer/FileExplorer";
 import { EditorArea, type OpenFile } from "./editor/EditorArea";
 import { RunbooksDialog } from "./workflows/RunbooksDialog";
 import { TotpDialog } from "./totp/TotpDialog";
+import { useTotpTimer } from "./totp/useTotpTimer";
 import { SettingsPage } from "./settings/SettingsPage";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
@@ -674,6 +675,16 @@ function App() {
   const prefs = usePrefs();
   useClipboardListener();
 
+  /* ── TOTP toolbar countdown badge ── */
+  function TotpBadge() {
+    const remaining = useTotpTimer();
+    if (remaining > 10) return null;
+    const color = remaining <= 5 ? "bg-destructive" : "bg-amber-500";
+    return (
+      <span className={`absolute -top-0.5 -right-0.5 block h-2 w-2 rounded-full ${color} ring-1 ring-background`} />
+    );
+  }
+
   // ── Background image (base64 via Rust) ──────────────────────
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -1115,11 +1126,12 @@ function App() {
           <Button
             variant="ghost"
             size="icon"
-            className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="relative size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
             title="Authenticator (2FA)"
             onClick={() => setTotpOpen(true)}
           >
             <HugeiconsIcon icon={SquareLockPasswordIcon} size={14} strokeWidth={1.75} />
+            <TotpBadge />
           </Button>
           <ClipboardDropdown />
           <SnippetsDropdown />

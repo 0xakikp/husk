@@ -61,6 +61,7 @@ function QrModal({ account, onClose }: { account: TotpAccount; onClose: () => vo
 /* ── Account row ── */
 function AccountRow({
   account,
+  selected,
   onCopy,
   onDelete,
   onEdit,
@@ -70,6 +71,7 @@ function AccountRow({
   onDrop,
 }: {
   account: TotpAccount;
+  selected?: boolean;
   onCopy: (code: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string, label: string) => void;
@@ -84,7 +86,7 @@ function AccountRow({
 
   return (
     <div
-      className="totp-item"
+      className={`totp-item ${selected ? "totp-item-selected" : ""}`}
       draggable
       onDragStart={() => onDragStart(account.id)}
       onDragOver={(e) => onDragOver(e, account.id)}
@@ -175,6 +177,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
   const [search, setSearch] = useState("");
   const [qrAccount, setQrAccount] = useState<TotpAccount | null>(null);
   const dragIdRef = useRef<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => saveAccounts(accounts), [accounts]);
   useEffect(() => {
@@ -335,6 +338,37 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
       (a.issuer ?? "").toLowerCase().includes(search.toLowerCase()),
   );
 
+  /* ── Keyboard navigation ── */
+  useEffect(() => {
+    if (variant !== "dropdown") return;
+    const handler = (e: KeyboardEvent) => {
+      if (filtered.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedId((prev) => {
+          const idx = filtered.findIndex((a) => a.id === prev);
+          return filtered[Math.min(idx + 1, filtered.length - 1)].id;
+        });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedId((prev) => {
+          const idx = filtered.findIndex((a) => a.id === prev);
+          return filtered[Math.max(idx - 1, 0)].id;
+        });
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const target = filtered.find((a) => a.id === selectedId) || filtered[0];
+        const gen = generateCode(target);
+        if (gen) handleCopy(gen.code);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [filtered, selectedId, handleCopy, onClose, variant]);
+
   const content = (
     <>
       <div className="modal-header">
@@ -398,6 +432,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
               <AccountRow
                 key={a.id}
                 account={a}
+                selected={a.id === selectedId}
                 onCopy={handleCopy}
                 onDelete={handleDelete}
                 onEdit={handleEdit}
