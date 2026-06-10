@@ -265,6 +265,19 @@ html[data-chrome="borderless"] #settings-root {
   display: none !important;
 }
 
+/* ── Monaco Editor scrollbar (thin, rounded, themed) ── */
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+  background: color-mix(in srgb, var(--muted-foreground) 35%, transparent) !important;
+  border-radius: 3px !important;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider:hover {
+  background: color-mix(in srgb, var(--muted-foreground) 55%, transparent) !important;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar.vertical,
+.monaco-editor .monaco-scrollable-element > .scrollbar.horizontal {
+  background: transparent !important;
+}
+
 /* Kill native scrollbars everywhere by default */
 html,
 html *,

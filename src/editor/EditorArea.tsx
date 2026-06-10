@@ -33,6 +33,15 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
     stickyScroll: { enabled: p.editorStickyScroll },
     formatOnPaste: p.editorFormatOnPaste,
     scrollBeyondLastLine: false,
+    scrollbar: {
+      vertical: "auto",
+      horizontal: "auto",
+      useShadows: false,
+      verticalHasArrows: false,
+      horizontalHasArrows: false,
+      verticalScrollbarSize: 6,
+      horizontalScrollbarSize: 6,
+    },
     renderLineHighlight: p.editorLineHighlight,
   };
 }

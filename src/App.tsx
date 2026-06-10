@@ -1317,11 +1317,15 @@ function App() {
                     visible wallpaper gap shows between editor and AI pane. */}
                 {openFiles.length > 0 ? (
                   <div
-                    className="absolute top-0 left-0 bottom-0 overflow-hidden"
+                    className={cn(
+                      "absolute top-0 left-0 bottom-0 overflow-hidden rounded-lg border border-border bg-background",
+                      prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
+                    )}
                     style={{
                       right: aiPaneOpen && prefs.panelGaps > 0
                         ? `calc(var(--panel-gaps) + ${aiPaneWidth}px + var(--panel-gaps))`
-                        : 0,
+                        : aiPaneOpen ? `${aiPaneWidth}px` : 0,
+                      margin: prefs.panelGaps > 0 ? `var(--panel-gaps) 0 var(--panel-gaps) var(--panel-gaps)` : undefined,
                     }}
                   >
                     <EditorArea files={openFiles} activePath={activeFile} />
