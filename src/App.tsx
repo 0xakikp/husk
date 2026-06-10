@@ -1379,7 +1379,13 @@ function App() {
                   >
                     <EditorArea files={openFiles} activePath={activeFile} />
                   </div>
-                ) : null}
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                    <HugeiconsIcon icon={PencilEdit02Icon} size={32} strokeWidth={1.5} className="opacity-40" />
+                    <p className="text-sm font-medium">No files open</p>
+                    <p className="text-xs opacity-60">Open a file from the sidebar or press Ctrl+O</p>
+                  </div>
+                )}
 
                 {/* AI panel — fixed width at the right edge with gap inset. */}
                 <div
