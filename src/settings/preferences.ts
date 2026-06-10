@@ -146,7 +146,13 @@ const LS_KEY = "huskv2.prefs.v2";
 
 function load(): Prefs {
   try {
-    return { ...DEFAULT, ...(JSON.parse(localStorage.getItem(LS_KEY) || "{}") as Partial<Prefs>) };
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}") as Partial<Prefs>;
+    const merged = { ...DEFAULT, ...saved };
+    // Migration: old default aiPaneFontSize was 13, new is 11
+    if (merged.aiPaneFontSize === 13) {
+      merged.aiPaneFontSize = 11;
+    }
+    return merged;
   } catch {
     return DEFAULT;
   }
