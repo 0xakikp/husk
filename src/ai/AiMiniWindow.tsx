@@ -195,12 +195,12 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
             className={
               "flex size-6 shrink-0 items-center justify-center rounded-md transition-all " +
               (busy
-                ? "bg-destructive/10 text-destructive hover:bg-destructive/20 animate-pulse"
-                : "text-muted-foreground/20 cursor-not-allowed")
+                ? "bg-muted-foreground/15 hover:bg-muted-foreground/25 animate-pulse"
+                : "bg-muted-foreground/10 cursor-not-allowed opacity-50")
             }
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="shrink-0">
-              <rect x="1.5" y="1.5" width="9" height="9" rx="1.5" />
+            <svg width="10" height="10" viewBox="0 0 10 10" className="shrink-0">
+              <circle cx="5" cy="5" r="3" fill="none" stroke="#9ca3af" strokeWidth="1.5" />
             </svg>
           </button>
           <button type="button" className="ai-mini-close" onClick={onClose} aria-label="Close">

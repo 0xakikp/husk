@@ -670,8 +670,8 @@ export function AiFloatingBubble({
           className={
             "flex size-5 shrink-0 items-center justify-center rounded-full transition-all " +
             (busy
-              ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 animate-pulse"
-              : "bg-muted-foreground/15 text-red-500/40 cursor-not-allowed")
+              ? "bg-muted-foreground/15 hover:bg-muted-foreground/25 animate-pulse"
+              : "bg-muted-foreground/10 cursor-not-allowed opacity-50")
           }
           title={busy ? "Stop generating" : "Idle"}
         >

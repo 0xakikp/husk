@@ -350,7 +350,9 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
           </span>
           {vitals.load_1 > 0 && (
             <span className="inline-flex items-center gap-1">
-              <span className="size-1.5 rounded-full text-muted-foreground/40">⬆</span>
+              <svg width="8" height="8" viewBox="0 0 8 8" className="text-muted-foreground/40">
+                <path d="M1 7V4M4 7V2M7 7V5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+              </svg>
               {vitals.load_1.toFixed(2)}
             </span>
           )}
