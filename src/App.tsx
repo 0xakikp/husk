@@ -1222,7 +1222,7 @@ function App() {
         <main
           className={cn(
             "zoom-content flex min-h-0 flex-1 overflow-hidden",
-            prefs.panelGaps > 0 && prefs.panelGapStyle !== "none" && `gap-pattern-${prefs.panelGapStyle}`,
+            prefs.panelGaps > 0 && prefs.panelGapStyle !== "none" && activeKind === "file" && `gap-pattern-${prefs.panelGapStyle}`,
           )}
           style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
         >
