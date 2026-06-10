@@ -449,9 +449,9 @@ export function AiEditorPane({
   }, []);
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col rounded-xl border border-border/60 bg-card/95 shadow-xl overflow-hidden backdrop-blur-sm">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-3 py-2.5 bg-gradient-to-b from-card to-card/80">
         <div className="flex items-center gap-1.5">
           <HugeiconsIcon icon={SparklesIcon} size={14} strokeWidth={1.5} className="text-primary" />
           <span className="text-[12px] font-semibold text-foreground">AI</span>
