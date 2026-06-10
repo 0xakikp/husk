@@ -670,13 +670,13 @@ export function AiFloatingBubble({
           className={
             "flex size-5 shrink-0 items-center justify-center rounded-full transition-all " +
             (busy
-              ? "bg-destructive/20 text-destructive hover:bg-destructive/30 animate-pulse"
-              : "text-muted-foreground/20 cursor-not-allowed")
+              ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 animate-pulse"
+              : "bg-muted-foreground/15 text-red-500/40 cursor-not-allowed")
           }
           title={busy ? "Stop generating" : "Idle"}
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="shrink-0">
-            <circle cx="5" cy="5" r="3.5" />
+          <svg width="10" height="10" viewBox="0 0 10 10" className="shrink-0">
+            <circle cx="5" cy="5" r="3.5" fill="currentColor" />
           </svg>
         </button>
 
