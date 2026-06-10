@@ -5,6 +5,7 @@ import { streamChat, type ChatMessage } from "../client";
 import { getActiveAgent } from "../agents";
 import { readActiveTerminal } from "../terminalContext";
 import { buildMcpTools } from "../../mcp/tools";
+import { subscribeWorkspaceRoot } from "../../workspace/store";
 import {
   loadBubbleSessions,
   saveBubbleSessions,
@@ -35,6 +36,16 @@ export function useAiBubbleChat() {
 
   const activeSession = store.sessions.find((s) => s.id === store.activeSessionId) ?? null;
   const loadedSessionIdRef = useRef<string | null>(null);
+
+  // Reload sessions when workspace changes
+  useEffect(() => {
+    return subscribeWorkspaceRoot(() => {
+      const next = loadBubbleSessions();
+      setStore(next);
+      loadedSessionIdRef.current = next.activeSessionId;
+      setMessages(next.activeSessionId ? next.sessions.find((s) => s.id === next.activeSessionId)?.messages ?? [] : []);
+    });
+  }, []);
 
   // Load messages when active session changes
   useEffect(() => {

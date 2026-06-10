@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../client";
+import { getWorkspaceRoot } from "../../workspace/store";
 
 export interface BubbleSession {
   id: string;
@@ -15,9 +16,14 @@ export interface BubbleSessionStore {
 
 const LS_PREFIX = "huskv2.ai.bubble.sessions";
 
+function getLsKey(): string {
+  const ws = getWorkspaceRoot();
+  return ws ? `${LS_PREFIX}:${encodeURIComponent(ws)}` : LS_PREFIX;
+}
+
 export function loadBubbleSessions(): BubbleSessionStore {
   try {
-    const raw = localStorage.getItem(LS_PREFIX);
+    const raw = localStorage.getItem(getLsKey());
     if (!raw) return { activeSessionId: null, sessions: [] };
     return JSON.parse(raw) as BubbleSessionStore;
   } catch {
@@ -27,7 +33,7 @@ export function loadBubbleSessions(): BubbleSessionStore {
 
 export function saveBubbleSessions(store: BubbleSessionStore): void {
   try {
-    localStorage.setItem(LS_PREFIX, JSON.stringify(store));
+    localStorage.setItem(getLsKey(), JSON.stringify(store));
   } catch {
     // storage unavailable
   }

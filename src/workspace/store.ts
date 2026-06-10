@@ -18,6 +18,11 @@ export function getWorkspaceRoot(): string {
   return root;
 }
 
+export function subscribeWorkspaceRoot(fn: () => void): () => void {
+  subscribers.add(fn);
+  return () => subscribers.delete(fn);
+}
+
 export function setWorkspaceRoot(path: string): void {
   root = path;
   try {

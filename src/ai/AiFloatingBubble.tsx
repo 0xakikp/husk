@@ -25,6 +25,7 @@ import { readActiveTerminal, runInActiveTerminal } from "./terminalContext";
 import { AiThinkingIndicator } from "./AiThinkingIndicator";
 import { useAiBubbleChat } from "./bubble/useAiBubbleChat";
 import { readFileBase64 } from "../fs";
+import { Upload02Icon } from "@hugeicons/core-free-icons";
 
 type BubbleState = "collapsed" | "expanded";
 
@@ -254,8 +255,39 @@ export function AiFloatingBubble({
   const [showCtxPreview, setShowCtxPreview] = useState(false);
   const [ctxPreview, setCtxPreview] = useState("");
 
+  // Drag-and-drop file attachments
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    const newFiles = await Promise.all(
+      files.map(async (file) => {
+        const content = await file.text();
+        return { name: file.name, content };
+      })
+    );
+    setAttachedFiles((prev) => [...prev, ...newFiles]);
+    toast({ title: `Attached ${newFiles.length} file(s)`, variant: "info", duration: 2000 });
+  };
+
   const {
     messages,
+    input,
+    setInput,
     busy,
     send,
     stop,
@@ -263,6 +295,8 @@ export function AiFloatingBubble({
     includeContext,
     setIncludeContext,
     ensureSession,
+    attachedFiles,
+    setAttachedFiles,
     store: sessionStore,
     newSession,
     switchSession,
@@ -476,7 +510,8 @@ export function AiFloatingBubble({
   return (
     <div
       className={cn(
-        "fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border",
+        "fixed z-50 flex flex-col overflow-hidden rounded-xl border",
+        dragOver ? "border-primary ring-1 ring-primary/30" : "border-border",
         isDark ? "shadow-2xl shadow-black/40" : "shadow-lg shadow-black/10"
       )}
       style={{
@@ -488,6 +523,9 @@ export function AiFloatingBubble({
         backdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
         WebkitBackdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
       }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       {/* Resize strips */}
       <div className="absolute top-0 left-2 right-2 z-20 cursor-ns-resize" style={{ height: 4 }} onMouseDown={startResize("n")} />
@@ -754,16 +792,72 @@ export function AiFloatingBubble({
 
       {/* ── FOOTER ── */}
       <div className="shrink-0 border-t border-border/60 bg-muted/10 px-2.5 py-2">
+        {dragOver && (
+          <div className="mb-2 flex items-center gap-1.5 rounded-md border border-dashed border-primary/50 bg-primary/5 px-2 py-1.5 text-[11px] text-primary">
+            <HugeiconsIcon icon={Upload02Icon} size={12} strokeWidth={1.5} />
+            Drop files to attach
+          </div>
+        )}
+        {attachedFiles.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1">
+            {attachedFiles.map((f, i) => (
+              <span key={i} className="inline-flex items-center gap-1 rounded-full bg-accent/20 px-2 py-0.5 text-[10px] text-accent">
+                {f.name}
+                <button
+                  type="button"
+                  onClick={() => setAttachedFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="text-accent/70 hover:text-accent"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         {needsKey ? (
           <div className="rounded-md bg-muted/30 px-3 py-2 text-center text-[11px] text-muted-foreground">
             Set a {provider.label} API key in{" "}
             <span className="text-primary">Settings → Models</span>
           </div>
         ) : (
-          <div className="flex items-center justify-center rounded-lg border border-border/40 bg-muted/20 py-2 text-[11px] text-muted-foreground">
-            Type{" "}
-            <code className="mx-1 rounded bg-muted px-1 py-0.5 text-primary">/ai</code>{" "}
-            in the terminal to chat
+          <div className="flex items-end gap-1.5">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!busy && input.trim()) {
+                    ensureSession();
+                    void send();
+                  }
+                }
+              }}
+              placeholder="Ask anything..."
+              className="max-h-24 min-h-[32px] flex-1 resize-none rounded-lg border border-border/40 bg-muted/20 px-2.5 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary/50"
+              rows={1}
+              disabled={busy}
+            />
+            {busy ? (
+              <button
+                type="button"
+                onClick={stop}
+                className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-destructive/80 text-destructive-foreground hover:bg-destructive"
+                title="Stop"
+              >
+                <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { if (input.trim()) { ensureSession(); void send(); } }}
+                disabled={!input.trim()}
+                className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                title="Send"
+              >
+                <HugeiconsIcon icon={SparklesIcon} size={12} strokeWidth={1.5} />
+              </button>
+            )}
           </div>
         )}
       </div>
