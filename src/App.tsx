@@ -125,24 +125,9 @@ type TabChipProps = {
 };
 
 function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, children }: TabChipProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
-
-  useEffect(() => {
-    if (!active || !ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const parent = ref.current.parentElement;
-    if (!parent) return;
-    const parentRect = parent.getBoundingClientRect();
-    setIndicatorStyle({
-      left: rect.left - parentRect.left + 8,
-      width: rect.width - 16,
-    });
-  }, [active]);
-
   return (
     <div
-      ref={ref}
+      data-active-tab={active ? "true" : undefined}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
       className={cn(
@@ -170,12 +155,6 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
           <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
         </button>
       ) : null}
-      {active && indicatorStyle && (
-        <span
-          className="absolute bottom-0.5 h-[2px] rounded-full bg-[var(--accent)] opacity-80 transition-all duration-200 ease-out"
-          style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
-        />
-      )}
     </div>
   );
 }
@@ -216,6 +195,25 @@ function TabBar({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
   const canClose = termTabs.length + openFiles.length > 1;
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
+
+  // Update sliding indicator position when active tab changes
+  useEffect(() => {
+    const bar = tabBarRef.current;
+    if (!bar) return;
+    const activeTab = bar.querySelector('[data-active-tab="true"]') as HTMLElement | null;
+    if (!activeTab) {
+      setIndicatorStyle(null);
+      return;
+    }
+    const barRect = bar.getBoundingClientRect();
+    const tabRect = activeTab.getBoundingClientRect();
+    setIndicatorStyle({
+      left: tabRect.left - barRect.left + 8,
+      width: tabRect.width - 16,
+    });
+  }, [active, termTabs, openFiles, settingsOpen]);
 
   // Horizontal wheel scroll
   useEffect(() => {
@@ -245,9 +243,9 @@ function TabBar({
     <div
       ref={scrollRef}
       data-tauri-drag-region
-      className="min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="relative min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <div className="flex w-full min-w-0 items-center gap-0.5">
+      <div className="flex w-full min-w-0 items-center gap-0.5" ref={tabBarRef}>
         {termTabs.map((t) =>
           editingId === t.id ? (
             <div
@@ -324,6 +322,14 @@ function TabBar({
         >
           <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
         </Button>
+
+        {/* Sliding active tab indicator */}
+        {indicatorStyle && (
+          <span
+            className="absolute bottom-0.5 h-[2px] rounded-full bg-[var(--accent)] opacity-80 transition-all duration-200 ease-out pointer-events-none"
+            style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
+          />
+        )}
 
         {/* Context menu for rename/color/close */}
         {menu
