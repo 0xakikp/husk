@@ -9,6 +9,7 @@ import {
   Clock01Icon,
 } from "@hugeicons/core-free-icons";
 import { VitalStrip } from "./vitals/VitalStrip";
+import { useSystemVitals } from "./vitals/useSystemVitals";
 import { isRepo, status as gitStatus, currentBranch, branchAheadBehind } from "../git/client";
 import { checkDocker } from "../docker/client";
 import {
@@ -77,6 +78,7 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
 
   const typing = useTyping();
   const online = useOnline();
+  const vitals = useSystemVitals();
 
   /* Live clock */
   useEffect(() => {
@@ -332,6 +334,28 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
 
       {/* Empty state spacer */}
       {!hasJobs && <div className="min-w-0 flex-1" />}
+
+      {/* System vitals */}
+      {vitals && (
+        <div className="hidden md:inline-flex shrink-0 items-center gap-2 text-[10.5px] text-muted-foreground font-mono tabular-nums">
+          <span className="inline-flex items-center gap-1">
+            <span className="size-1.5 rounded-full bg-amber-500/60" />
+            {Math.round(vitals.cpu_percent)}%
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="size-1.5 rounded-full bg-sky-500/60" />
+            {Math.round(vitals.mem_used_mb / 1024)}G
+            <span className="text-muted-foreground/40">/</span>
+            {Math.round(vitals.mem_total_mb / 1024)}G
+          </span>
+          {vitals.load_1 > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <span className="size-1.5 rounded-full text-muted-foreground/40">⬆</span>
+              {vitals.load_1.toFixed(2)}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Live clock */}
       <div className="hidden sm:inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground font-mono">

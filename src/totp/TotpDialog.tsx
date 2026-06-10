@@ -502,7 +502,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
         <>
           <div className="fixed inset-0 z-40" onClick={onClose} />
           <div
-            className="fixed top-10 right-2 z-50 w-[360px] max-h-[calc(100vh-56px)] flex flex-col bg-card border border-border-2 rounded-xl shadow-2xl overflow-hidden animate-dialog-enter"
+            className="fixed top-10 right-2 z-50 w-[360px] max-h-[calc(100vh-56px)] flex flex-col bg-card/90 border border-border-2 rounded-xl shadow-2xl overflow-hidden animate-dialog-enter backdrop-blur-md"
             role="dialog"
             aria-label="Authenticator"
             onClick={(e) => e.stopPropagation()}

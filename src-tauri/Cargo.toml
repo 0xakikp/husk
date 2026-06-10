@@ -30,6 +30,7 @@ tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-window-state = "2.4.1"
 tauri-plugin-updater = "2"
+sysinfo = "0.31"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

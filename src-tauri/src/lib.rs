@@ -7,6 +7,7 @@ mod secrets;
 mod shell;
 mod shell_history;
 mod shell_init;
+mod vitals;
 
 use jobs::JobsState;
 use mcp::McpState;
@@ -68,7 +69,8 @@ pub fn run() {
             jobs::shell_bg_kill,
             jobs::shell_bg_remove,
             jobs::shell_bg_list,
-            shell_history::pty_shell_history
+            shell_history::pty_shell_history,
+            vitals::system_vitals
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
