@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CommandDialog,
   Command as CommandRoot,
@@ -45,6 +45,7 @@ import {
   CommandIcon,
   DownloadCircle01Icon,
 } from "@hugeicons/core-free-icons";
+import { recordCommandUse, getFrecencyScore, getCommandHistory } from "./history";
 
 export type Command = {
   id: string;
@@ -129,6 +130,8 @@ export function CommandPalette({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const historyIndexRef = useRef(-1);
+  const historyRef = useRef<string[]>([]);
 
   useEffect(() => {
     return () => {
@@ -136,12 +139,23 @@ export function CommandPalette({
     };
   }, []);
 
+  // Reset history index when query changes manually
+  useEffect(() => {
+    historyIndexRef.current = -1;
+  }, [query]);
+
   const enriched = useMemo(() => {
-    return commands.map((c) => ({
+    const list = commands.map((c) => ({
       ...c,
       group: c.group || getGroup(c.id, c.label),
+      score: getFrecencyScore(c.id),
     }));
-  }, [commands]);
+    // Sort by frecency when no query; keep stable order otherwise (cmdk filters)
+    if (!query.trim()) {
+      list.sort((a, b) => b.score - a.score);
+    }
+    return list;
+  }, [commands, query]);
 
   const groups = useMemo(() => {
     const map = new Map<string, typeof enriched>();
@@ -162,6 +176,38 @@ export function CommandPalette({
 
   const showEmpty = query.trim().length > 0 && sortedGroups.length === 0;
 
+  const handleSelect = (cmd: Command) => {
+    recordCommandUse(cmd.id);
+    cmd.run();
+    onClose();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowUp") {
+      // Cycle through command history when input is at top of list
+      e.preventDefault();
+      if (historyIndexRef.current === -1) {
+        historyRef.current = getCommandHistory();
+      }
+      const hist = historyRef.current;
+      if (hist.length === 0) return;
+      historyIndexRef.current = Math.min(historyIndexRef.current + 1, hist.length - 1);
+      const id = hist[historyIndexRef.current];
+      const cmd = commands.find((c) => c.id === id);
+      if (cmd) setQuery(cmd.label);
+    } else if (e.key === "ArrowDown" && historyIndexRef.current >= 0) {
+      e.preventDefault();
+      historyIndexRef.current = Math.max(historyIndexRef.current - 1, -1);
+      if (historyIndexRef.current === -1) {
+        setQuery("");
+      } else {
+        const id = historyRef.current[historyIndexRef.current];
+        const cmd = commands.find((c) => c.id === id);
+        if (cmd) setQuery(cmd.label);
+      }
+    }
+  };
+
   return (
     <CommandDialog
       open={open}
@@ -176,6 +222,7 @@ export function CommandPalette({
           placeholder="Search commands, files, or actions..."
           value={query}
           onValueChange={setQuery}
+          onKeyDown={handleKeyDown}
         />
         <CommandList>
           {showEmpty && <CommandEmpty>No results found.</CommandEmpty>}
@@ -188,10 +235,7 @@ export function CommandPalette({
                   <CommandItem
                     key={cmd.id}
                     value={`${cmd.label} ${cmd.id}`}
-                    onSelect={() => {
-                      cmd.run();
-                      onClose();
-                    }}
+                    onSelect={() => handleSelect(cmd)}
                   >
                     <div className="flex size-5 shrink-0 items-center justify-center">
                       <HugeiconsIcon
