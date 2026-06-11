@@ -1354,7 +1354,7 @@ function App() {
                   Monaco automaticLayout slide. */}
               <div
                 className={cn(
-                  "absolute inset-0 flex flex-col",
+                  "relative min-h-0 min-w-0 flex-1",
                   activeKind !== "file" && "invisible pointer-events-none",
                   prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
                 )}
@@ -1365,7 +1365,7 @@ function App() {
                 {openFiles.length > 0 ? (
                   <div
                     className={cn(
-                      "absolute top-0 left-0 bottom-0 overflow-hidden rounded-lg border border-border bg-background",
+                      "absolute inset-0 overflow-hidden rounded-lg border border-border bg-background",
                       prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
                       prefs.panelShadows && "panel-shadow",
                       prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active",
