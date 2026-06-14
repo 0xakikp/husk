@@ -67,7 +67,7 @@ export function GeneralSection() {
         <SettingRow
           className="rounded border border-border/40 bg-muted/20 py-2"
           title="AI enabled"
-          description="Toggle all AI features on or off. When disabled, the AI panel, agent traces, and AI shortcuts are hidden."
+          description="Toggle all AI features on or off. When disabled, the AI chat, agent traces, and AI shortcuts are hidden."
         >
           <Switch
             checked={p.aiEnabled}

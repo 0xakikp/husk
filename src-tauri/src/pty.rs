@@ -11,12 +11,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::thread;
 
-use portable_pty::{native_pty_system, MasterPty, PtyPair, PtySize};
+use portable_pty::{native_pty_system, ChildKiller, MasterPty, PtyPair, PtySize};
 use tauri::{AppHandle, Emitter, State};
 
 struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
+    killer: Box<dyn ChildKiller + Send>,
 }
 
 #[derive(Default)]
@@ -54,13 +55,14 @@ pub fn pty_spawn(
 
     let mut reader = master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = master.take_writer().map_err(|e| e.to_string())?;
+    let killer = child.clone_killer().map_err(|e| e.to_string())?;
 
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     state
         .sessions
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .insert(id, PtySession { master, writer });
+        .insert(id, PtySession { master, writer, killer });
 
     // Stream shell output to the frontend until EOF.
     let app_reader = app.clone();
@@ -117,6 +119,11 @@ pub fn pty_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) -> 
 
 #[tauri::command]
 pub fn pty_kill(state: State<'_, PtyState>, id: u32) {
-    // Dropping the session closes the PTY master, which hangs up the shell.
-    state.sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+    let mut sessions = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(session) = sessions.remove(&id) {
+        // Explicitly kill the child process before dropping the PTY master.
+        // This ensures the shell receives SIGHUP and exits cleanly rather
+        // than potentially lingering as a zombie.
+        let _ = session.killer.kill();
+    }
 }

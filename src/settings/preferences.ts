@@ -72,8 +72,7 @@ export type Prefs = {
   activePanelGlow: boolean;
   neonBorderGlow: boolean;
   editorWallpaperOpacity: number;
-  aiPaneOpacity: number;
-  aiPaneFontSize: number;
+  customCSS?: string;
 
   // AI Mini Window
   aiMiniOpacity: number;
@@ -137,8 +136,6 @@ const DEFAULT: Prefs = {
   activePanelGlow: false,
   neonBorderGlow: false,
   editorWallpaperOpacity: 0,
-  aiPaneOpacity: 80,
-  aiPaneFontSize: 11,
 
   aiMiniOpacity: 48,
   aiMiniFontSize: 11,
@@ -154,10 +151,6 @@ function load(): Prefs {
   try {
     const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}") as Partial<Prefs>;
     const merged = { ...DEFAULT, ...saved };
-    // Migration: old default aiPaneFontSize was 13, new is 11
-    if (merged.aiPaneFontSize === 13) {
-      merged.aiPaneFontSize = 11;
-    }
     return merged;
   } catch {
     return DEFAULT;

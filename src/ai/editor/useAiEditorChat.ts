@@ -24,10 +24,17 @@ export function useAiEditorChat(
   const [pendingEdits, setPendingEdits] = useState<CodeEdit[]>([]);
   const [appliedCount, setAppliedCount] = useState(0);
   const abortRef = useRef(false);
+  const abortCtrlRef = useRef<AbortController | null>(null);
 
   // Ref so send() always reads latest messages even across resets
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+
+  useEffect(() => {
+    return () => {
+      abortCtrlRef.current?.abort();
+    };
+  }, []);
 
   const resetMessages = useCallback((msgs: EditorChatMessage[]) => {
     messagesRef.current = msgs;
@@ -40,7 +47,10 @@ export function useAiEditorChat(
   const activeAgentId = useActiveAgentId();
   const agent = agents.find((a) => a.id === activeAgentId) ?? agents[0];
 
-  // Parse edits when streaming completes (busy → false)
+  // Parse edits when streaming completes (busy → false).
+  // We intentionally omit `messages` from deps: this effect only needs to run
+  // when `busy` flips from true→false (stream done). Including `messages` would
+  // re-parse on every streaming delta update, which is wasteful and can race.
   useEffect(() => {
     if (busy) {
       setPendingEdits([]);
@@ -52,7 +62,8 @@ export function useAiEditorChat(
       const edits = parseEdits(last.content);
       setPendingEdits(edits);
     }
-  }, [busy]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
 
   const send = useCallback(
     async (opts?: { text?: string; image?: string }) => {
@@ -97,6 +108,8 @@ export function useAiEditorChat(
       setInput("");
       setBusy(true);
       abortRef.current = false;
+      abortCtrlRef.current?.abort();
+      abortCtrlRef.current = new AbortController();
 
       try {
         const ctx = await buildEditorContext(activePath, openFiles.map((f) => f));
@@ -117,7 +130,9 @@ export function useAiEditorChat(
               }
               return next;
             });
-          }
+          },
+          undefined,
+          abortCtrlRef.current?.signal,
         );
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -133,7 +148,9 @@ export function useAiEditorChat(
         setBusy(false);
       }
     },
-    // messagesRef is stable; read from it inside callback
+    // messagesRef is a stable ref (mutated, not reassigned); we read from it
+    // inside the callback so it doesn't need to be in deps. Including it would
+    // create a new callback on every message update, breaking memoisation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [input, busy, activePath, openFiles, agent, modelOverride]
   );
@@ -167,6 +184,7 @@ export function useAiEditorChat(
 
   const stop = useCallback(() => {
     abortRef.current = true;
+    abortCtrlRef.current?.abort();
     setBusy(false);
   }, []);
 

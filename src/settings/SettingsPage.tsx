@@ -103,9 +103,13 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   const show = (id: SectionId) => visible.some((s) => s.id === id);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-background text-foreground select-none">
-      <div className="flex h-8 shrink-0 items-center justify-between bg-background px-3">
-        <div className="flex items-center gap-1">
+    <div className="flex h-full overflow-hidden bg-background text-foreground select-none">
+      {/* Sidebar */}
+      <aside className="flex w-44 flex-col border-r border-border/40 bg-muted/20">
+        <div className="flex h-8 shrink-0 items-center px-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          Settings
+        </div>
+        <nav className="flex-1 overflow-y-auto py-1">
           {SECTIONS.map((s) => {
             const active = activeSection === s.id;
             return (
@@ -114,34 +118,37 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 type="button"
                 onClick={() => scrollToSection(s.id)}
                 className={cn(
-                  "relative h-6 rounded-md px-2.5 text-[11.5px] transition-colors",
+                  "flex w-full items-center px-3 py-1.5 text-[12px] transition-colors text-left",
                   active
-                    ? "text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "text-foreground font-medium bg-primary/10 border-r-2 border-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
                 )}
               >
                 {s.label}
-                {active && (
-                  <span className="absolute bottom-0 left-1.5 right-1.5 h-[2px] rounded-full bg-primary" />
-                )}
               </button>
             );
           })}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative w-44">
-            <HugeiconsIcon
-              icon={Search01Icon}
-              size={14}
-              strokeWidth={1.5}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              placeholder="Find setting…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-7 rounded-full border-border/40 bg-muted/40 py-0 pl-8 pr-3 text-[11.5px]"
-            />
+        </nav>
+      </aside>
+
+      {/* Main content */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-8 shrink-0 items-center justify-between bg-background px-3 border-b border-border/40">
+          <div className="flex items-center gap-2">
+            <div className="relative w-44">
+              <HugeiconsIcon
+                icon={Search01Icon}
+                size={14}
+                strokeWidth={1.5}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                placeholder="Find setting…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-7 rounded-full border-border/40 bg-muted/40 py-0 pl-8 pr-3 text-[11.5px]"
+              />
+            </div>
           </div>
           <button
             type="button"
@@ -152,73 +159,73 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
           </button>
         </div>
-      </div>
 
-      <main
-        ref={mainRef}
-        className="min-h-0 flex-1 overflow-y-auto px-8 pt-6 pb-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        <div className="mx-auto w-full max-w-160">
-          {visible.length === 0 ? (
-            <div className="py-12 text-center text-sm text-muted-foreground">
-              No settings match “{search}”
-            </div>
-          ) : null}
-          {show("about") ? (
-            <div id="settings-section-about" className="scroll-mt-6">
-              <AboutSection />
-            </div>
-          ) : null}
-          {show("general") ? (
-            <>
-              <SectionDivider />
-              <div id="settings-section-general" className="scroll-mt-6">
-                <GeneralSection />
+        <main
+          ref={mainRef}
+          className="min-h-0 flex-1 overflow-y-auto px-8 pt-6 pb-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <div className="mx-auto w-full max-w-160">
+            {visible.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                No settings match "{search}"
               </div>
-            </>
-          ) : null}
-          {show("appearance") ? (
-            <>
-              <SectionDivider />
-              <div id="settings-section-appearance" className="scroll-mt-6">
-                <AppearanceSection />
+            ) : null}
+            {show("about") ? (
+              <div id="settings-section-about" className="scroll-mt-6">
+                <AboutSection />
               </div>
-            </>
-          ) : null}
-          {show("models") ? (
-            <>
-              <SectionDivider />
-              <div id="settings-section-models" className="scroll-mt-6">
-                <ModelsSection />
-              </div>
-            </>
-          ) : null}
-          {show("agents") ? (
-            <>
-              <SectionDivider />
-              <div id="settings-section-agents" className="scroll-mt-6">
-                <AgentsSection />
-              </div>
-            </>
-          ) : null}
-          {show("mcp") ? (
-            <>
-              <SectionDivider />
-              <div id="settings-section-mcp" className="scroll-mt-6">
-                <McpSection />
-              </div>
-            </>
-          ) : null}
-          {show("tools") ? (
-            <>
-              <SectionDivider />
-              <div id="settings-section-tools" className="scroll-mt-6">
-                <ToolsSection />
-              </div>
-            </>
-          ) : null}
-        </div>
-      </main>
+            ) : null}
+            {show("general") ? (
+              <>
+                <SectionDivider />
+                <div id="settings-section-general" className="scroll-mt-6">
+                  <GeneralSection />
+                </div>
+              </>
+            ) : null}
+            {show("appearance") ? (
+              <>
+                <SectionDivider />
+                <div id="settings-section-appearance" className="scroll-mt-6">
+                  <AppearanceSection />
+                </div>
+              </>
+            ) : null}
+            {show("models") ? (
+              <>
+                <SectionDivider />
+                <div id="settings-section-models" className="scroll-mt-6">
+                  <ModelsSection />
+                </div>
+              </>
+            ) : null}
+            {show("agents") ? (
+              <>
+                <SectionDivider />
+                <div id="settings-section-agents" className="scroll-mt-6">
+                  <AgentsSection />
+                </div>
+              </>
+            ) : null}
+            {show("mcp") ? (
+              <>
+                <SectionDivider />
+                <div id="settings-section-mcp" className="scroll-mt-6">
+                  <McpSection />
+                </div>
+              </>
+            ) : null}
+            {show("tools") ? (
+              <>
+                <SectionDivider />
+                <div id="settings-section-tools" className="scroll-mt-6">
+                  <ToolsSection />
+                </div>
+              </>
+            ) : null}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
@@ -263,7 +270,7 @@ function AgentsSection() {
 
   return (
     <div className="flex flex-col gap-7">
-      <SectionHeader title="Agents" description="Named assistant personas for the AI panel." />
+      <SectionHeader title="Agents" description="Named assistant personas for the AI chat." />
       <div className="grid grid-cols-2 gap-2">
         {agents.map((a) => (
           <div

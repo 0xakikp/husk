@@ -43,6 +43,8 @@ export function DockerView({ onClose, inline }: { onClose?: () => void; inline?:
 
   useEffect(() => {
     void refresh();
+    const timer = setInterval(() => void refresh(), 5000);
+    return () => clearInterval(timer);
   }, [refresh]);
 
   const action = async (fn: () => Promise<unknown>, label: string) => {

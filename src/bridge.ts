@@ -34,9 +34,9 @@ export function parseBridgeOsc(data: string): BridgeCommand | null {
     case "notify":
       return rest ? { kind: "notify", message: rest } : null;
     case "diff": {
-      const i = rest.indexOf(";");
-      if (i < 0) return null;
-      return { kind: "diff", left: rest.slice(0, i), right: rest.slice(i + 1) };
+      const parts = rest.split(";");
+      if (parts.length < 3) return null;
+      return { kind: "diff", left: parts[0], right: parts.slice(1).join(";") };
     }
     default:
       return null;

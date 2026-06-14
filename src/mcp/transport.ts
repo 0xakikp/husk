@@ -35,7 +35,7 @@ export class TauriMcpTransport implements Transport {
       env: this.options.env ?? null,
       cwd: this.options.cwd ?? null,
     });
-    this.pollTimer = setInterval(() => void this.poll(), 100);
+    this.pollTimer = setInterval(() => void this.poll(), 250);
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
@@ -68,11 +68,15 @@ export class TauriMcpTransport implements Transport {
         try {
           this.onmessage?.(JSON.parse(line) as JSONRPCMessage);
         } catch (e) {
-          console.warn("[mcp] invalid JSON-RPC message:", line, e);
+          if (import.meta.env.DEV) {
+            console.warn("[mcp] invalid JSON-RPC message:", line, e);
+          }
         }
       }
     } catch (e) {
-      console.warn("[mcp] recv error:", e);
+      if (import.meta.env.DEV) {
+        console.warn("[mcp] recv error:", e);
+      }
     }
   }
 }

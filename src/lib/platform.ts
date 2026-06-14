@@ -3,13 +3,13 @@ const PLATFORM = (() => {
     // Tauri plugin-os may not be installed in huskv2; fall back to navigator
     const p = (window as any).__TAURI__?.os?.platform?.();
     if (p) return p;
-  } catch {}
+  } catch (e) { console.error("Platform detection failed", e); }
   try {
     const nav = navigator.platform.toLowerCase();
     if (nav.includes("mac")) return "macos";
     if (nav.includes("win")) return "windows";
     if (nav.includes("linux")) return "linux";
-  } catch {}
+  } catch (e) { console.error("Platform detection failed", e); }
   return "";
 })();
 

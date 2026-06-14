@@ -320,15 +320,27 @@ export function TerminalView({
     };
     // Snap-on-settle: don't resize mid-drag. Fit once ~150ms after the last
     // size change so there's a single resize, not one per drag frame.
+    // maxWait=500 guarantees a fit even during continuous resize (e.g. drag).
     const resizeObserver = new ResizeObserver(() => {
       clearTimeout(resizeTimer);
       resizeTimer = window.setTimeout(doFit, 150);
     });
+    // Safety: force-fit at least every 500ms during continuous resize, but only
+    // if a resize is actually pending (resizeTimer is set). Reset the timer so
+    // we don't fit again until the observer schedules another one.
+    const maxWaitTimer = window.setInterval(() => {
+      if (resizeTimer) {
+        clearTimeout(resizeTimer);
+        resizeTimer = 0;
+        doFit();
+      }
+    }, 500);
     resizeObserver.observe(container);
 
     return () => {
       disposed = true;
       clearTimeout(resizeTimer);
+      clearInterval(maxWaitTimer);
       resizeObserver.disconnect();
       for (const un of unlisteners) un();
       if (ptyId !== null) void invoke("pty_kill", { id: ptyId });
@@ -359,11 +371,17 @@ export function TerminalView({
       if (!term) return "";
       const buf = term.buffer.active;
       const lines: string[] = [];
-      const start = Math.max(0, buf.length - 60);
-      for (let i = start; i < buf.length; i += 1) {
-        lines.push(buf.getLine(i)?.translateToString(true) ?? "");
+      let chars = 0;
+      // Build from the bottom up until we hit the 8KB cap, then reverse so the
+      // LLM sees chronological order.
+      const maxChars = 8192;
+      for (let i = buf.length - 1; i >= 0; i -= 1) {
+        const line = buf.getLine(i)?.translateToString(true) ?? "";
+        if (chars + line.length + 1 > maxChars && lines.length > 0) break;
+        lines.push(line);
+        chars += line.length + 1;
       }
-      return lines.join("\n").replace(/\n+$/, "");
+      return lines.reverse().join("\n").replace(/\n+$/, "");
     });
     setActiveTerminalRunner((cmd) => {
       const id = ptyIdRef.current;
@@ -605,6 +623,16 @@ export function TerminalView({
     host.style.cursor = inCommandArea ? "text" : "";
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Clamp menu position to viewport so it never renders off-screen
+    const MENU_W = 168;
+    const MENU_H = 220; // approximate max height
+    const x = Math.min(e.clientX, window.innerWidth - MENU_W - 8);
+    const y = Math.min(e.clientY, window.innerHeight - MENU_H - 8);
+    setMenu({ x: Math.max(8, x), y: Math.max(8, y) });
+  };
+
   return (
     <div
       ref={hostRef}
@@ -620,10 +648,7 @@ export function TerminalView({
         const host = hostRef.current;
         if (host) host.style.cursor = "";
       }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setMenu({ x: e.clientX, y: e.clientY });
-      }}
+      onContextMenu={handleContextMenu}
     >
       <div ref={containerRef} className="terminal-host" />
       <AutocompleteBar

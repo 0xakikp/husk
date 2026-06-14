@@ -263,24 +263,6 @@ export function AppearanceSection() {
         <Label>Layout</Label>
         <div className="grid grid-cols-2 gap-2">
           <SliderRow
-            title="AI panel opacity"
-            description="Editor AI panel darkness"
-            value={p.aiPaneOpacity}
-            min={20}
-            max={100}
-            step={5}
-            onChange={(v) => setPrefs({ aiPaneOpacity: v })}
-          />
-          <SliderRow
-            title="AI panel font size"
-            description="Chat text size in editor panel"
-            value={p.aiPaneFontSize}
-            min={9}
-            max={18}
-            step={1}
-            onChange={(v) => setPrefs({ aiPaneFontSize: v })}
-          />
-          <SliderRow
             title="Panel gaps"
             description="Padding between panels"
             value={p.panelGaps}
@@ -330,6 +312,26 @@ export function AppearanceSection() {
             description="Highlight focused panel"
             checked={p.activePanelGlow}
             onCheckedChange={(v) => setPrefs({ activePanelGlow: v })}
+          />
+        </div>
+      </div>
+
+      {/* ── Custom CSS ── */}
+      <div className="flex flex-col gap-2">
+        <Label>Custom CSS</Label>
+        <div className="flex flex-col gap-2 rounded border border-border/40 bg-muted/20 px-5 py-2.5">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[12.5px] font-medium text-foreground">User stylesheet</span>
+            <span className="text-[10.5px] leading-relaxed text-muted-foreground">
+              Inject custom CSS rules. Applied globally — use with care.
+            </span>
+          </div>
+          <textarea
+            value={p.customCSS || ""}
+            onChange={(e) => setPrefs({ customCSS: e.target.value })}
+            placeholder={"/* Example: make terminal text larger */\n.terminal-host { font-size: 14px; }"}
+            rows={6}
+            className="rounded border border-border/40 bg-background px-3 py-2 text-[11px] font-mono text-foreground"
           />
         </div>
       </div>

@@ -39,7 +39,7 @@ function loadAllSessions(): UnifiedSession[] {
         });
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.error("Failed to load AI sessions", e); }
 
   // Editor sessions (scan all workspace keys)
   const prefix = "huskv2.ai.sessions.";
@@ -60,7 +60,7 @@ function loadAllSessions(): UnifiedSession[] {
         });
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.error("Failed to load AI sessions", e); }
 
   return results.sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -122,7 +122,7 @@ export function AiSessionsPanel({
           };
           localStorage.setItem("huskv2.ai.bubble.sessions", JSON.stringify(next));
         }
-      } catch { /* ignore */ }
+      } catch (e) { console.error("Failed to delete bubble session", e); }
     } else {
       const prefix = "huskv2.ai.sessions.";
       try {
@@ -139,7 +139,7 @@ export function AiSessionsPanel({
           };
           localStorage.setItem(prefix + (s.workspace ?? "default"), JSON.stringify(next));
         }
-      } catch { /* ignore */ }
+      } catch (e) { console.error("Failed to delete editor session", e); }
     }
     setSessions((prev) => prev.filter((x) => x.id !== s.id));
     setConfirmDeleteId(null);

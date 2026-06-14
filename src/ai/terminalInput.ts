@@ -59,17 +59,15 @@ export function interceptTerminalInput(data: string): string | null {
   const query = line.slice(idx + 4).trim();
   if (!query) return data;
 
+  // Only intercept if we can both clear the shell input and forward the query.
+  if (!ptyWriter || !listener) return data;
+
   // Intercept! Don't send Enter to the shell.
   // Send Ctrl+A (\x01) then Ctrl+K (\x0b) to the PTY.
   // Readline moves cursor to start of input, then deletes to end.
   // The prompt remains; the `/ai ...` text disappears.
-  if (ptyWriter) {
-    ptyWriter("\x01\x0b");
-  }
-
-  if (listener) {
-    listener(query);
-  }
+  ptyWriter("\x01\x0b");
+  listener(query);
 
   return null; // swallow the Enter
 }

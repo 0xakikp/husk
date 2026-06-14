@@ -4,8 +4,10 @@ import { toast } from "@/toast";
 
 let checking = false;
 let pendingUpdate: Update | null = null;
+const updaterState = { downloaded: 0 };
 
 async function installUpdate(update: Update): Promise<void> {
+  updaterState.downloaded = 0;
   try {
     await update.downloadAndInstall((event: { event: string; data?: Record<string, unknown> }) => {
       switch (event.event) {
@@ -16,7 +18,9 @@ async function installUpdate(update: Update): Promise<void> {
           const chunk = event.data?.chunkLength as number | undefined;
           const total = event.data?.contentLength as number | undefined;
           if (chunk && total) {
-            const pct = Math.round((chunk / total) * 100);
+            // Track cumulative downloaded bytes for accurate percentage
+            updaterState.downloaded += chunk;
+            const pct = Math.round((updaterState.downloaded / total) * 100);
             toast({ title: `Downloading… ${pct}%`, variant: "info", duration: 1500 });
           }
           break;

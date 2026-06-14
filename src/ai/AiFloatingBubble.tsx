@@ -43,14 +43,18 @@ function readBubblePos(): { x: number; y: number } {
       const p = JSON.parse(raw) as { x: number; y: number };
       if (typeof p.x === "number" && typeof p.y === "number") return p;
     }
-  } catch {}
+  } catch (e) {
+    console.error("Failed to read bubble position:", e);
+  }
   return { x: window.innerWidth - BUBBLE_SIZE - PAD, y: window.innerHeight - BUBBLE_SIZE - PAD };
 }
 
 function saveBubblePos(p: { x: number; y: number }) {
   try {
     localStorage.setItem("husk.ai-bubble.pos", JSON.stringify(p));
-  } catch {}
+  } catch (e) {
+    console.error("Failed to save bubble position:", e);
+  }
 }
 
 function readBubbleSize(): { w: number; h: number } {
@@ -60,14 +64,18 @@ function readBubbleSize(): { w: number; h: number } {
       const s = JSON.parse(raw) as { w: number; h: number };
       if (typeof s.w === "number" && typeof s.h === "number") return s;
     }
-  } catch {}
+  } catch (e) {
+    console.error("Failed to read bubble size:", e);
+  }
   return { w: DEFAULT_W, h: DEFAULT_H };
 }
 
 function saveBubbleSize(s: { w: number; h: number }) {
   try {
     localStorage.setItem("husk.ai-bubble.size", JSON.stringify(s));
-  } catch {}
+  } catch (e) {
+    console.error("Failed to save bubble size:", e);
+  }
 }
 
 /* ── Parse message into text / code segments ── */
@@ -208,12 +216,8 @@ const QUICK_ACTIONS = [
 /* ── Main component ── */
 export function AiFloatingBubble({
   pendingQuery,
-  mode = "terminal",
-  onOpenAiPane,
 }: {
   pendingQuery?: string;
-  mode?: "terminal" | "editor";
-  onOpenAiPane?: () => void;
 }) {
   const prefs = usePrefs();
   const [state, setState] = useState<BubbleState>("collapsed");
@@ -376,37 +380,51 @@ export function AiFloatingBubble({
     setShowCtxPreview(true);
   };
 
-  const startDrag = useCallback((e: React.MouseEvent) => {
+  const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    const isTouch = "touches" in e;
+    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
     e.preventDefault();
-    dragRef.current = { ox: e.clientX - pos.x, oy: e.clientY - pos.y };
-    const onMove = (ev: globalThis.MouseEvent) => {
+    dragRef.current = { ox: clientX - pos.x, oy: clientY - pos.y };
+    const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
       if (!dragRef.current) return;
-      const nx = Math.min(window.innerWidth - BUBBLE_SIZE, Math.max(0, ev.clientX - dragRef.current.ox));
-      const ny = Math.min(window.innerHeight - BUBBLE_SIZE, Math.max(0, ev.clientY - dragRef.current.oy));
+      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+      const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
+      const nx = Math.min(window.innerWidth - BUBBLE_SIZE, Math.max(0, cx - dragRef.current.ox));
+      const ny = Math.min(window.innerHeight - BUBBLE_SIZE, Math.max(0, cy - dragRef.current.oy));
       setPos({ x: nx, y: ny });
     };
     const onUp = () => {
       dragRef.current = null;
-      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mousemove", onMove as EventListener);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove as EventListener);
+      window.removeEventListener("touchend", onUp);
       saveBubblePos(posRef.current);
     };
-    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mousemove", onMove as EventListener);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
+    window.addEventListener("touchend", onUp);
   }, [pos]);
 
-  const startResize = useCallback((edge: string) => (e: React.MouseEvent) => {
+  const startResize = useCallback((edge: string) => (e: React.MouseEvent | React.TouchEvent) => {
+    const isTouch = "touches" in e;
+    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
     e.preventDefault();
     e.stopPropagation();
     resizeRef.current = {
-      sx: e.clientX, sy: e.clientY, sw: size.w, sh: size.h,
+      sx: clientX, sy: clientY, sw: size.w, sh: size.h,
       spx: pos.x, spy: pos.y, edge,
     };
-    const onMove = (ev: globalThis.MouseEvent) => {
+    const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
       if (!resizeRef.current) return;
       const r = resizeRef.current;
-      const dx = ev.clientX - r.sx;
-      const dy = ev.clientY - r.sy;
+      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+      const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
+      const dx = cx - r.sx;
+      const dy = cy - r.sy;
       let nw = r.sw;
       let nh = r.sh;
       let nx = r.spx;
@@ -435,13 +453,17 @@ export function AiFloatingBubble({
     };
     const onUp = () => {
       resizeRef.current = null;
-      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mousemove", onMove as EventListener);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove as EventListener);
+      window.removeEventListener("touchend", onUp);
       saveBubbleSize(sizeRef.current);
       saveBubblePos(posRef.current);
     };
-    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mousemove", onMove as EventListener);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
+    window.addEventListener("touchend", onUp);
   }, [size, pos]);
 
   const handleClose = () => {
@@ -460,11 +482,7 @@ export function AiFloatingBubble({
       <button
         type="button"
         onClick={() => {
-          if (mode === "editor" && onOpenAiPane) {
-            onOpenAiPane();
-          } else {
-            setState("expanded");
-          }
+          setState("expanded");
         }}
         className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0"
         style={{
@@ -473,8 +491,8 @@ export function AiFloatingBubble({
           width: BUBBLE_SIZE,
           height: BUBBLE_SIZE,
         }}
-        aria-label={mode === "editor" ? "Open AI panel" : "Open AI chat"}
-        title={mode === "editor" ? "Open AI panel" : "AI Chat"}
+        aria-label="Open AI chat"
+        title="AI Chat"
       >
         <HugeiconsIcon icon={SparklesIcon} size={20} strokeWidth={1.5} />
       </button>

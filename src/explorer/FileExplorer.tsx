@@ -32,6 +32,10 @@ import { getFileState, subscribeDirty } from "../editor/dirtyStore";
 import { setActiveSshHost } from "../remote/store";
 import { status as gitStatus } from "../git/client";
 
+import { IS_MAC, IS_WINDOWS } from "../lib/platform";
+
+const REVEAL_LABEL = IS_MAC ? "Reveal in Finder" : IS_WINDOWS ? "Show in Explorer" : "Show in File Manager";
+
 const joinPath = (dir: string, name: string) => `${dir.replace(/\/+$/, "")}/${name}`;
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 
@@ -282,7 +286,10 @@ function Node({
     if (remoteHost) {
       void sshReadDir(remoteHost, path)
         .then(setChildren)
-        .catch(() => setChildren([]));
+        .catch((err) => {
+          toast({ title: String(err), variant: "error" });
+          setChildren([]);
+        });
     } else {
       void readDir(path)
         .then(setChildren)
@@ -301,7 +308,12 @@ function Node({
   const openMenu = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setMenu({ x: e.clientX, y: e.clientY });
+    // Clamp menu position to viewport so it never renders off-screen
+    const MENU_W = 168;
+    const MENU_H = 220; // approximate max height
+    const x = Math.min(e.clientX, window.innerWidth - MENU_W - 8);
+    const y = Math.min(e.clientY, window.innerHeight - MENU_H - 8);
+    setMenu({ x: Math.max(8, x), y: Math.max(8, y) });
   };
 
   const startCreate = (kind: "file" | "dir") => {
@@ -412,7 +424,14 @@ function Node({
         {renaming ? (
           <EditRow depth={depth} initial={name} icon={fileIconUrl(name)} onSubmit={doRename} onCancel={() => setRenaming(false)} />
         ) : (
-          <button type="button" className={`enode efile${isActive ? " active" : ""}${dirtyClass}`} style={indent} onClick={() => onOpenFile(path, name)} onContextMenu={openMenu}>
+          <button
+            type="button"
+            className={`enode efile${isActive ? " active" : ""}${dirtyClass}`}
+            style={indent}
+            onClick={() => onOpenFile(path, name)}
+            onContextMenu={openMenu}
+            title="Open in editor"
+          >
             <span className="enode-caret" />
             <img src={fileIconUrl(name)} className="enode-img" alt="" />
             <span className="truncate">{name}</span>
@@ -429,7 +448,7 @@ function Node({
             items={[
               { label: "Open", onClick: () => { setMenu(null); onOpenFile(path, name); } },
               { label: "Copy path", onClick: copyPath },
-              { label: "Reveal in Finder", onClick: revealInFinder },
+              { label: REVEAL_LABEL, onClick: revealInFinder },
               ...mutateItems,
             ]}
           />
@@ -501,7 +520,7 @@ function Node({
             { label: "New Folder", onClick: () => startCreate("dir") },
             { label: "Open in terminal", onClick: openInTerminal },
             { label: "Copy path", onClick: copyPath },
-            { label: "Reveal in Finder", onClick: revealInFinder },
+            { label: REVEAL_LABEL, onClick: revealInFinder },
             ...mutateItems,
           ]}
         />

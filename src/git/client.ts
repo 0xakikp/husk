@@ -58,6 +58,37 @@ export function diffFile(p: string, staged: boolean): Promise<string> {
   return git(`diff ${staged ? "--cached " : ""}-- ${shq(p)}`).catch(() => "");
 }
 
+export type BlameLine = {
+  hash: string;
+  author: string;
+  date: string;
+  line: string;
+};
+
+export async function blameFile(p: string): Promise<BlameLine[]> {
+  const out = await git(`blame --line-porcelain -- ${shq(p)}`).catch(() => "");
+  const lines: BlameLine[] = [];
+  const raw = out.split("\n");
+  let current: Partial<BlameLine> = {};
+  for (const line of raw) {
+    if (line.startsWith("\t")) {
+      current.line = line.slice(1);
+      if (current.hash && current.author && current.date) {
+        lines.push(current as BlameLine);
+      }
+      current = {};
+    } else if (line.startsWith("author ")) {
+      current.author = line.slice(7);
+    } else if (line.startsWith("author-time ")) {
+      const ts = parseInt(line.slice(12), 10);
+      current.date = new Date(ts * 1000).toLocaleDateString();
+    } else if (/^[0-9a-f]{40}/.test(line)) {
+      current.hash = line.slice(0, 8);
+    }
+  }
+  return lines;
+}
+
 export function log(n = 80): Promise<string> {
   return git(`log --oneline --graph --decorate -n ${n}`).catch(() => "");
 }

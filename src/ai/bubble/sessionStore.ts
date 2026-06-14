@@ -46,7 +46,7 @@ export function createBubbleSession(messages: ChatMessage[] = []): BubbleSession
       ? messages[0].content.slice(0, 40) + (messages[0].content.length > 40 ? "…" : "")
       : "New Chat";
   return {
-    id: `b-${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `b-${now.toString(36)}-${crypto.randomUUID()}`,
     title,
     createdAt: now,
     updatedAt: now,

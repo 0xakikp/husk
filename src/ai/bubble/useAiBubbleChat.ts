@@ -74,6 +74,9 @@ export function useAiBubbleChat() {
     const next = updateBubbleSessionMessages(currentStore, activeSession.id, messages);
     setStore(next);
     saveBubbleSessions(next);
+    // We intentionally omit `store` from deps: it is updated inside this effect
+    // (via setStore), so including it would cause an infinite loop. We only want
+    // to persist when `messages` or `activeSession` change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
@@ -141,6 +144,10 @@ export function useAiBubbleChat() {
 
       try {
         const tools = await buildMcpTools().catch(() => ({}));
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        const timeoutPromise = new Promise<void>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error("Request timed out after 60s")), 60000);
+        });
         await Promise.race([
           streamChat(
             { provider, model: modelId, apiKey, baseURL: cfg.baseURL },
@@ -160,10 +167,9 @@ export function useAiBubbleChat() {
             tools,
             abortCtrlRef.current?.signal,
           ),
-          new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error("Request timed out after 60s")), 60000)
-          ),
+          timeoutPromise,
         ]);
+        if (timeoutId) clearTimeout(timeoutId);
       } catch (e) {
         if (abortCtrlRef.current?.signal.aborted) return;
         const msg = e instanceof Error ? e.message : String(e);
@@ -184,6 +190,9 @@ export function useAiBubbleChat() {
         setAttachedFiles([]);
       }
     },
+    // messagesRef is a stable ref (mutated, not reassigned); we read from it
+    // inside the callback so it doesn't need to be in deps. Including it would
+    // create a new callback on every message update, breaking memoisation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [input, busy, includeContext, attachedFiles]
   );
@@ -192,6 +201,8 @@ export function useAiBubbleChat() {
     abortRef.current = true;
     abortCtrlRef.current?.abort();
     setBusy(false);
+    // Also clear any pending timeout so it doesn't leak
+    // (handled by finally in send, but belt-and-suspenders)
   }, []);
 
   const clear = useCallback(() => {

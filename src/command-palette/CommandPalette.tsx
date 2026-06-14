@@ -192,7 +192,7 @@ export function CommandPalette({
       const hist = historyRef.current;
       if (hist.length === 0) return;
       historyIndexRef.current = Math.min(historyIndexRef.current + 1, hist.length - 1);
-      const id = hist[historyIndexRef.current];
+      const id = hist[hist.length - 1 - historyIndexRef.current];
       const cmd = commands.find((c) => c.id === id);
       if (cmd) setQuery(cmd.label);
     } else if (e.key === "ArrowDown" && historyIndexRef.current >= 0) {
@@ -201,7 +201,8 @@ export function CommandPalette({
       if (historyIndexRef.current === -1) {
         setQuery("");
       } else {
-        const id = historyRef.current[historyIndexRef.current];
+        const hist = historyRef.current;
+        const id = hist[hist.length - 1 - historyIndexRef.current];
         const cmd = commands.find((c) => c.id === id);
         if (cmd) setQuery(cmd.label);
       }

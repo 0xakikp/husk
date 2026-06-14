@@ -286,6 +286,9 @@ export function AiEditorPane({
     const next = updateSessionMessages(currentStore, activeSession.id, messages);
     setStore(next);
     saveSessions(workspace, next);
+    // We intentionally omit `store` from deps: it is updated inside this effect
+    // (via setStore), so including it would cause an infinite loop. We only want
+    // to persist when `messages` or `activeSession` change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
@@ -702,7 +705,7 @@ export function AiEditorPane({
           </div>
         ) : (
           messages.map((msg, i) => (
-            <ChatMessageView key={msg.id} msg={msg} isLast={i === messages.length - 1} fontSize={prefs.aiPaneFontSize} />
+            <ChatMessageView key={msg.id} msg={msg} isLast={i === messages.length - 1} fontSize={prefs.aiMiniFontSize} />
           ))
         )}
       </div>

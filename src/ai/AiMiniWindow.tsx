@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useMemo, type MouseEvent } from "react";
+import { useRef, useState, useCallback, useMemo, useEffect, type MouseEvent } from "react";
 import { cn } from "@/lib/utils";
 import { streamChat, type ChatMessage } from "./client";
 import { loadConfig, getKey } from "./store";
@@ -47,6 +47,18 @@ export function AiMiniWindow({ onClose }: { onClose: () => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
   const abortCtrlRef = useRef<AbortController | null>(null);
+
+  // Clamp position when window resizes so the mini window never floats off-screen
+  useEffect(() => {
+    const clamp = () => {
+      setPos((p) => ({
+        x: Math.min(p.x, window.innerWidth - 80),
+        y: Math.min(p.y, window.innerHeight - 40),
+      }));
+    };
+    window.addEventListener("resize", clamp);
+    return () => window.removeEventListener("resize", clamp);
+  }, []);
 
   const startDrag = (e: MouseEvent) => {
     e.preventDefault();
@@ -296,7 +308,7 @@ function MiniCodeBlock({ lang, value }: { lang?: string; value: string }) {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(value);
-    } catch { /* ignore */ }
+    } catch (e) { console.error("Clipboard write failed", e); }
   };
 
   return (

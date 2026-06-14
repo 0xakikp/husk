@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { loadSnippets, saveSnippets, newSnippetId, type Snippet } from "./store";
-import { runInActiveTerminal } from "../ai/terminalContext";
+import { runInActiveTerminal, typeInActiveTerminal } from "../ai/terminalContext";
 import { getActiveTerminalCwd } from "../ai/terminalContext";
 import { toast } from "../toast";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -29,18 +29,27 @@ function fuzzyMatch(query: string, target: string): boolean {
   return true;
 }
 
-/** Replace snippet variables with contextual values */
-function interpolate(content: string): string {
+/** Replace snippet variables with contextual values. Returns the processed text
+ *  and the number of characters before the `{{cursor}}` placeholder (if any). */
+function interpolate(content: string): { text: string; cursorOffset: number } {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const cwd = getActiveTerminalCwd();
   const filename = cwd ? cwd.split("/").pop() || cwd : "";
-  return content
+  const cursorMarker = "\u0000";
+  let markerIndex = -1;
+  const replaced = content
     .replace(/\{\{date\}\}/g, `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`)
     .replace(/\{\{time\}\}/g, `${pad(now.getHours())}:${pad(now.getMinutes())}`)
     .replace(/\{\{datetime\}\}/g, now.toISOString())
     .replace(/\{\{filename\}\}/g, filename)
-    .replace(/\{\{cursor\}\}/g, "");
+    .replace(/\{\{cursor\}\}/g, () => {
+      markerIndex = replaced.length;
+      return cursorMarker;
+    });
+  const text = replaced.replace(new RegExp(cursorMarker, "g"), "");
+  const cursorOffset = markerIndex >= 0 ? markerIndex - (replaced.slice(0, markerIndex).match(new RegExp(cursorMarker, "g"))?.length ?? 0) : -1;
+  return { text, cursorOffset };
 }
 
 /** Snippets as a toolbar dropdown (husk v1 style): list with insert/copy/edit/
@@ -80,8 +89,14 @@ export function SnippetsDropdown() {
     setFormOpen(false);
   };
   const insert = (s: Snippet) => {
-    const text = interpolate(s.content);
-    if (runInActiveTerminal(text)) {
+    const { text, cursorOffset } = interpolate(s.content);
+    if (typeInActiveTerminal(text)) {
+      if (cursorOffset >= 0 && cursorOffset < text.length) {
+        // Move cursor to the {{cursor}} position by sending Left arrow keys
+        // for the remaining characters after the marker.
+        const leftMoves = text.length - cursorOffset;
+        runInActiveTerminal("\x1b[".concat(String(leftMoves), "D"));
+      }
       toast({ title: `Inserted: ${s.name}`, variant: "success" });
       setOpen(false);
     } else {
@@ -89,7 +104,8 @@ export function SnippetsDropdown() {
     }
   };
   const copy = (s: Snippet) => {
-    void navigator.clipboard.writeText(interpolate(s.content));
+    const { text } = interpolate(s.content);
+    void navigator.clipboard.writeText(text);
     toast({ title: "Copied to clipboard", variant: "info" });
   };
 

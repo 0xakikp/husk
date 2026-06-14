@@ -16,14 +16,14 @@ function load(): HistoryStore {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) return JSON.parse(raw) as HistoryStore;
-  } catch { /* ignore */ }
+  } catch (e) { console.error("Failed to load command history", e); }
   return { records: {}, recent: [] };
 }
 
 function save(store: HistoryStore): void {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(store));
-  } catch { /* ignore */ }
+  } catch (e) { console.error("Failed to save command history", e); }
 }
 
 let cache = load();

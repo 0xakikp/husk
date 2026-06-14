@@ -25,9 +25,7 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { AiFloatingBubble } from "./ai/AiFloatingBubble";
-import { AiEditorPane } from "./ai/editor/AiEditorPane";
 import { toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
-import { requestEditorSwitch } from "./ai/editor/sessionSwitch";
 import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
@@ -585,7 +583,7 @@ function readSidebarView(): SidebarViewId {
       "kubernetes", "ci-cd", "terraform", "docker",
     ];
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
-  } catch {}
+  } catch (e) { console.error("Failed to read sidebar view", e); }
   return "explorer";
 }
 
@@ -616,7 +614,7 @@ function App() {
     setSidebarView(view);
     try {
       window.localStorage.setItem(SIDEBAR_VIEW_STORAGE_KEY, view);
-    } catch {}
+    } catch (e) { console.error("Failed to save sidebar view", e); }
   }, []);
 
   const toggleSidebar = useCallback(() => {
@@ -646,7 +644,7 @@ function App() {
       sidebarWidthWriteTimerRef.current = 0;
       try {
         window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(next));
-      } catch {}
+      } catch (e) { console.error("Failed to save sidebar width", e); }
     }, 200);
   }, []);
 
@@ -654,22 +652,6 @@ function App() {
     return () => {
       if (sidebarWidthWriteTimerRef.current) window.clearTimeout(sidebarWidthWriteTimerRef.current);
     };
-  }, []);
-
-  /* ── AI Editor Pane state ── */
-  const [aiPaneOpen, setAiPaneOpen] = useState(() => {
-    try { return window.localStorage.getItem("husk:ai-pane-open") === "true"; } catch { return false; }
-  });
-  const [aiPaneWidth, setAiPaneWidth] = useState(() => {
-    try { return Number(window.localStorage.getItem("husk:ai-pane-width") || "320"); } catch { return 320; }
-  });
-  const aiPaneWidthTimerRef = useRef(0);
-  const persistAiPaneWidth = useCallback((w: number) => {
-    if (aiPaneWidthTimerRef.current) window.clearTimeout(aiPaneWidthTimerRef.current);
-    aiPaneWidthTimerRef.current = window.setTimeout(() => {
-      aiPaneWidthTimerRef.current = 0;
-      try { window.localStorage.setItem("husk:ai-pane-width", String(w)); } catch {}
-    }, 200);
   }, []);
 
   /* ── Dialog state (unchanged from huskv2) ── */
@@ -736,6 +718,20 @@ function App() {
   useEffect(() => {
     document.documentElement.style.setProperty("--font-mono", fontStack(prefs.fontFamily));
   }, [prefs.fontFamily]);
+
+  // Apply custom CSS from preferences reactively
+  useEffect(() => {
+    const existing = document.getElementById("husk-custom-css");
+    if (!prefs.customCSS) {
+      existing?.remove();
+      return;
+    }
+    if (existing && existing.textContent === prefs.customCSS) return;
+    const style = existing ?? document.createElement("style");
+    style.id = "husk-custom-css";
+    style.textContent = prefs.customCSS;
+    if (!existing) document.head.appendChild(style);
+  }, [prefs.customCSS]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--accent", prefs.accentColor);
@@ -851,7 +847,7 @@ function App() {
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
         if (!prefs.aiEnabled) return;
         e.preventDefault();
-        setAiPaneOpen((v) => !v);
+        toggleBubble();
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
         e.preventDefault();
         setSwitcherOpen((v) => !v);
@@ -886,7 +882,7 @@ function App() {
         ? [
             { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
             { id: "explain", label: "Explain last error (AI)", run: explainLastError },
-            { id: "ai-pane", label: "Toggle AI panel", hint: "Ctrl+Shift+L", run: () => setAiPaneOpen((v) => !v) },
+            { id: "ai-bubble", label: "Toggle AI chat", hint: "Ctrl+Shift+L", run: () => toggleBubble() },
           ]
         : []),
       { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
@@ -1112,10 +1108,9 @@ function App() {
                   open={aiSessionsOpen}
                   onClose={() => setAiSessionsOpen(false)}
                   onSelectBubbleSession={(id) => requestBubbleSwitch(id)}
-                  onSelectEditorSession={(id, ws) => {
-                    requestEditorSwitch(id, ws);
+                  onSelectEditorSession={(id) => {
+                    requestBubbleSwitch(id);
                     setActiveKind("file");
-                    setAiPaneOpen(true);
                   }}
                 />
               </div>
@@ -1167,19 +1162,10 @@ function App() {
               variant="ghost"
               size="icon"
               className={cn(
-                "size-6 shrink-0 rounded-md",
-                activeKind === "file" && aiPaneOpen
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                "size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
-              title={activeKind === "file" ? "Toggle AI panel (Ctrl+Shift+L)" : "Toggle AI chat"}
-              onClick={() => {
-                if (activeKind === "file") {
-                  setAiPaneOpen((v) => !v);
-                } else {
-                  toggleBubble();
-                }
-              }}
+              title="Toggle AI chat (Ctrl+Shift+L)"
+              onClick={() => toggleBubble()}
             >
               <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
             </Button>
@@ -1360,8 +1346,7 @@ function App() {
                 )}
                 aria-hidden={activeKind !== "file"}
               >
-                {/* Editor layer — shrinks when AI pane + gaps are active so a
-                    visible wallpaper gap shows between editor and AI pane. */}
+                {/* Editor layer */}
                 {openFiles.length > 0 ? (
                   <div
                     className={cn(
@@ -1371,9 +1356,6 @@ function App() {
                       prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active",
                     )}
                     style={{
-                      right: aiPaneOpen && prefs.panelGaps > 0
-                        ? `calc(var(--panel-gaps) + ${aiPaneWidth}px + var(--panel-gaps))`
-                        : aiPaneOpen ? `${aiPaneWidth}px` : 0,
                       margin: prefs.panelGaps > 0 ? `var(--panel-gaps) 0 var(--panel-gaps) var(--panel-gaps)` : undefined,
                     }}
                   >
@@ -1386,67 +1368,6 @@ function App() {
                     <p className="text-xs opacity-60">Open a file from the sidebar or press Ctrl+O</p>
                   </div>
                 )}
-
-                {/* AI panel — fixed width at the right edge with gap inset. */}
-                <div
-                  className={cn(
-                    "ai-pane-static no-drag-region absolute z-10 flex flex-col overflow-hidden rounded-xl border border-border/60 shadow-xl",
-                    prefs.frostedGlass && bgDataUrl && "backdrop-blur-md",
-                    prefs.animationsEnabled && "animate-ai-pane-enter",
-                    prefs.panelShadows && "panel-shadow",
-                    prefs.activePanelGlow && activeKind === "file" && aiPaneOpen && "active-panel-glow active",
-                  )}
-                  style={{
-                    backgroundColor: prefs.theme === "dark"
-                      ? `rgba(0,0,0,${prefs.aiPaneOpacity / 100})`
-                      : `rgba(255,255,255,${prefs.aiPaneOpacity / 100})`,
-                    top: `var(--panel-gaps)`,
-                    right: `var(--panel-gaps)`,
-                    bottom: `var(--panel-gaps)`,
-                    width: aiPaneWidth,
-                    minWidth: 260,
-                    maxWidth: 500,
-                    opacity: aiPaneOpen && openFiles.length > 0 ? 1 : 0,
-                    pointerEvents: aiPaneOpen && openFiles.length > 0 ? "auto" : "none",
-                    transform: prefs.animationsEnabled
-                      ? aiPaneOpen && openFiles.length > 0
-                        ? "translateX(0)"
-                        : "translateX(20px)"
-                      : undefined,
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {/* Resize strip on left edge */}
-                  <div
-                    className="absolute top-0 bottom-0 left-0 z-20 w-1 cursor-col-resize select-none hover:bg-border/40"
-                    style={{ userSelect: "none" }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const startX = e.clientX;
-                      const startW = aiPaneWidth;
-                      let final = startW;
-                      const onMove = (ev: globalThis.MouseEvent) => {
-                        final = Math.min(500, Math.max(260, startW - (ev.clientX - startX)));
-                        setAiPaneWidth(final);
-                      };
-                      const onUp = () => {
-                        window.removeEventListener("mousemove", onMove);
-                        window.removeEventListener("mouseup", onUp);
-                        persistAiPaneWidth(final);
-                      };
-                      window.addEventListener("mousemove", onMove);
-                      window.addEventListener("mouseup", onUp);
-                    }}
-                  />
-                  {prefs.aiEnabled && (
-                    <AiEditorPane
-                      activePath={activeFile}
-                      openFiles={openFiles}
-                      onClose={() => setAiPaneOpen(false)}
-                    />
-                  )}
-                </div>
               </div>
 
               {/* Settings layer */}
@@ -1524,11 +1445,9 @@ function App() {
         <DialogLayer open={jobsOpen}>
           <JobsDialog onClose={() => setJobsOpen(false)} />
         </DialogLayer>
-        {prefs.aiEnabled && activeKind !== "settings" && !(activeKind === "file" && aiPaneOpen) && (
+        {prefs.aiEnabled && activeKind !== "settings" && (
           <AiFloatingBubble
             pendingQuery={pendingAiQuery}
-            mode={activeKind === "file" ? "editor" : "terminal"}
-            onOpenAiPane={activeKind === "file" ? () => setAiPaneOpen(true) : undefined}
           />
         )}
         <DialogLayer open={prefs.aiEnabled && suggestOpen}>
