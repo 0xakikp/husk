@@ -380,30 +380,49 @@ export function AiFloatingBubble({
     setShowCtxPreview(true);
   };
 
+  // Track if a drag happened to prevent click after drag
+  const didDragRef = useRef(false);
+
   const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const isTouch = "touches" in e;
     const clientX = isTouch ? e.touches[0].clientX : e.clientX;
     const clientY = isTouch ? e.touches[0].clientY : e.clientY;
     // Prevent default to stop text selection during drag
     if (!isTouch) e.preventDefault();
+    didDragRef.current = false;
     dragRef.current = { ox: clientX - pos.x, oy: clientY - pos.y, moved: false };
+    let rafId: number | null = null;
+    let pendingX = pos.x;
+    let pendingY = pos.y;
+    
     const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
       if (!dragRef.current) return;
       const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
       const dx = Math.abs(cx - clientX);
       const dy = Math.abs(cy - clientY);
-      if (dx > 3 || dy > 3) {
+      if (dx > 5 || dy > 5) {
         dragRef.current.moved = true;
+        didDragRef.current = true;
       }
       // Constrain to viewport with padding - keep away from edges and top bar
       const PADDING = 8;
       const TOP_BAR_HEIGHT = 32; // Approximate top bar height
-      const nx = Math.min(window.innerWidth - BUBBLE_SIZE - PADDING, Math.max(PADDING, cx - dragRef.current.ox));
-      const ny = Math.min(window.innerHeight - BUBBLE_SIZE - PADDING, Math.max(TOP_BAR_HEIGHT, cy - dragRef.current.oy));
-      setPos({ x: nx, y: ny });
+      pendingX = Math.min(window.innerWidth - BUBBLE_SIZE - PADDING, Math.max(PADDING, cx - dragRef.current.ox));
+      pendingY = Math.min(window.innerHeight - BUBBLE_SIZE - PADDING, Math.max(TOP_BAR_HEIGHT, cy - dragRef.current.oy));
+      
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          setPos({ x: pendingX, y: pendingY });
+        });
+      }
     };
     const onUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       dragRef.current = null;
       window.removeEventListener("mousemove", onMove as EventListener);
       window.removeEventListener("mouseup", onUp);
@@ -510,9 +529,10 @@ export function AiFloatingBubble({
         }}
         onClick={() => {
           // Only expand if we didn't drag
-          if (!dragRef.current?.moved) {
+          if (!didDragRef.current) {
             setState("expanded");
           }
+          didDragRef.current = false;
         }}
         className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0 cursor-move"
         style={{
