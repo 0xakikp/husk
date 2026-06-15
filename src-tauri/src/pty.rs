@@ -17,7 +17,7 @@ use tauri::{AppHandle, Emitter, State};
 struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    killer: Box<dyn ChildKiller + Send>,
+    killer: Box<dyn ChildKiller + Send + Sync>,
 }
 
 #[derive(Default)]
@@ -55,7 +55,7 @@ pub fn pty_spawn(
 
     let mut reader = master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = master.take_writer().map_err(|e| e.to_string())?;
-    let killer = child.clone_killer().map_err(|e| e.to_string())?;
+    let killer = child.clone_killer();
 
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     state
@@ -120,7 +120,7 @@ pub fn pty_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) -> 
 #[tauri::command]
 pub fn pty_kill(state: State<'_, PtyState>, id: u32) {
     let mut sessions = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(session) = sessions.remove(&id) {
+    if let Some(mut session) = sessions.remove(&id) {
         // Explicitly kill the child process before dropping the PTY master.
         // This ensures the shell receives SIGHUP and exits cleanly rather
         // than potentially lingering as a zombie.
