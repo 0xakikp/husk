@@ -241,7 +241,7 @@ export function AiFloatingBubble({
   posRef.current = pos;
   sizeRef.current = size;
   const scrollRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ ox: number; oy: number } | null>(null);
+  const dragRef = useRef<{ ox: number; oy: number; moved: boolean } | null>(null);
   const resizeRef = useRef<{
     sx: number; sy: number; sw: number; sh: number;
     spx: number; spy: number;
@@ -384,23 +384,34 @@ export function AiFloatingBubble({
     const isTouch = "touches" in e;
     const clientX = isTouch ? e.touches[0].clientX : e.clientX;
     const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-    e.preventDefault();
-    dragRef.current = { ox: clientX - pos.x, oy: clientY - pos.y };
+    // Don't prevent default immediately - let click work if no drag happens
+    dragRef.current = { ox: clientX - pos.x, oy: clientY - pos.y, moved: false };
     const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
       if (!dragRef.current) return;
       const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
+      const dx = Math.abs(cx - clientX);
+      const dy = Math.abs(cy - clientY);
+      if (dx > 3 || dy > 3) {
+        dragRef.current.moved = true;
+        if (!isTouch) ev.preventDefault();
+      }
       const nx = Math.min(window.innerWidth - BUBBLE_SIZE, Math.max(0, cx - dragRef.current.ox));
       const ny = Math.min(window.innerHeight - BUBBLE_SIZE, Math.max(0, cy - dragRef.current.oy));
       setPos({ x: nx, y: ny });
     };
-    const onUp = () => {
+    const onUp = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
+      const didMove = dragRef.current?.moved ?? false;
       dragRef.current = null;
       window.removeEventListener("mousemove", onMove as EventListener);
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove as EventListener);
       window.removeEventListener("touchend", onUp);
       saveBubblePos(posRef.current);
+      // If it was a click (no drag), let the click handler work
+      if (!didMove && ev.target instanceof HTMLElement) {
+        ev.target.click();
+      }
     };
     window.addEventListener("mousemove", onMove as EventListener);
     window.addEventListener("mouseup", onUp);
@@ -484,15 +495,16 @@ export function AiFloatingBubble({
         onClick={() => {
           setState("expanded");
         }}
-        className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0"
+        onMouseDown={startDrag}
+        className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0 cursor-move"
         style={{
-          right: PAD,
-          bottom: 52,
+          left: pos.x,
+          top: pos.y,
           width: BUBBLE_SIZE,
           height: BUBBLE_SIZE,
         }}
         aria-label="Open AI chat"
-        title="AI Chat"
+        title="AI Chat (drag to move)"
       >
         <HugeiconsIcon icon={SparklesIcon} size={20} strokeWidth={1.5} />
       </button>
