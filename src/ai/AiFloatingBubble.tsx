@@ -384,7 +384,8 @@ export function AiFloatingBubble({
     const isTouch = "touches" in e;
     const clientX = isTouch ? e.touches[0].clientX : e.clientX;
     const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-    // Don't prevent default immediately - let click work if no drag happens
+    // Prevent default to stop text selection during drag
+    if (!isTouch) e.preventDefault();
     dragRef.current = { ox: clientX - pos.x, oy: clientY - pos.y, moved: false };
     const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
       if (!dragRef.current) return;
@@ -394,24 +395,21 @@ export function AiFloatingBubble({
       const dy = Math.abs(cy - clientY);
       if (dx > 3 || dy > 3) {
         dragRef.current.moved = true;
-        if (!isTouch) ev.preventDefault();
       }
-      const nx = Math.min(window.innerWidth - BUBBLE_SIZE, Math.max(0, cx - dragRef.current.ox));
-      const ny = Math.min(window.innerHeight - BUBBLE_SIZE, Math.max(0, cy - dragRef.current.oy));
+      // Constrain to viewport with padding - keep away from edges and top bar
+      const PADDING = 8;
+      const TOP_BAR_HEIGHT = 32; // Approximate top bar height
+      const nx = Math.min(window.innerWidth - BUBBLE_SIZE - PADDING, Math.max(PADDING, cx - dragRef.current.ox));
+      const ny = Math.min(window.innerHeight - BUBBLE_SIZE - PADDING, Math.max(TOP_BAR_HEIGHT, cy - dragRef.current.oy));
       setPos({ x: nx, y: ny });
     };
-    const onUp = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
-      const didMove = dragRef.current?.moved ?? false;
+    const onUp = () => {
       dragRef.current = null;
       window.removeEventListener("mousemove", onMove as EventListener);
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove as EventListener);
       window.removeEventListener("touchend", onUp);
       saveBubblePos(posRef.current);
-      // If it was a click (no drag), let the click handler work
-      if (!didMove && ev.target instanceof HTMLElement) {
-        ev.target.click();
-      }
     };
     window.addEventListener("mousemove", onMove as EventListener);
     window.addEventListener("mouseup", onUp);
@@ -477,6 +475,18 @@ export function AiFloatingBubble({
     window.addEventListener("touchend", onUp);
   }, [size, pos]);
 
+  const expandPosition = useMemo(() => {
+    // When expanding, ensure the window fits within viewport
+    const maxX = window.innerWidth - size.w - 8;
+    const maxY = window.innerHeight - size.h - 8;
+    const minX = 8;
+    const minY = 8; // Keep below top bar
+    return {
+      x: Math.max(minX, Math.min(maxX, pos.x)),
+      y: Math.max(minY, Math.min(maxY, pos.y)),
+    };
+  }, [pos, size]);
+
   const handleClose = () => {
     setState("collapsed");
     clear();
@@ -492,10 +502,18 @@ export function AiFloatingBubble({
     return (
       <button
         type="button"
-        onClick={() => {
-          setState("expanded");
+        onMouseDown={(e) => {
+          // Only left-click starts drag
+          if (e.button !== 0) return;
+          // Start drag - click will be handled by onClick if no drag happened
+          startDrag(e);
         }}
-        onMouseDown={startDrag}
+        onClick={() => {
+          // Only expand if we didn't drag
+          if (!dragRef.current?.moved) {
+            setState("expanded");
+          }
+        }}
         className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0 cursor-move"
         style={{
           left: pos.x,
@@ -543,8 +561,8 @@ export function AiFloatingBubble({
         isDark ? "shadow-2xl shadow-black/40" : "shadow-lg shadow-black/10"
       )}
       style={{
-        left: pos.x,
-        top: pos.y,
+        left: expandPosition.x,
+        top: expandPosition.y,
         width: size.w,
         height: size.h,
         ...computedBg,
