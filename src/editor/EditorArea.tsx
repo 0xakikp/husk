@@ -242,6 +242,9 @@ export function EditorArea({
     }
   }, [prefs.vimMode]);
 
+  // Track whether editor is currently visible (intersecting viewport)
+  const isVisibleRef = useRef(false);
+
   // Watch for visibility changes and force layout when editor becomes visible
   useEffect(() => {
     const host = hostRef.current;
@@ -250,8 +253,21 @@ export function EditorArea({
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
+          isVisibleRef.current = entry.isIntersecting;
           if (entry.isIntersecting) {
+            // Editor became visible — force layout and restore model if needed
             editor.layout();
+            const currentModel = editor.getModel();
+            const expectedPath = activePathRef.current;
+            if (expectedPath && currentModel) {
+              const currentPath = currentModel.uri.fsPath;
+              if (currentPath !== expectedPath) {
+                // Model mismatch — restore correct model
+                const uri = monaco.Uri.file(expectedPath);
+                const model = monaco.editor.getModel(uri);
+                if (model) editor.setModel(model);
+              }
+            }
           }
         });
       },
@@ -289,11 +305,13 @@ export function EditorArea({
       // Ensure we're setting the model on the current editor instance
       if (editorRef.current === editor) {
         editor.setModel(model);
-        // Force layout refresh to ensure content is visible
-        editor.layout();
+        // Only force layout if editor is visible — if hidden, IntersectionObserver will handle it
+        if (isVisibleRef.current) {
+          editor.layout();
+        }
         // Restore focus if this editor area is active
         requestAnimationFrame(() => {
-          if (editorRef.current === editor && !cancelled) {
+          if (editorRef.current === editor && !cancelled && isVisibleRef.current) {
             editor.focus();
           }
         });
