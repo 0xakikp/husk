@@ -312,10 +312,15 @@ export function EditorArea({
       if (editorRef.current === editor) {
         console.log('[Editor] Setting model for', activePath, 'content length:', model.getValue().length);
         editor.setModel(model);
-        requestAnimationFrame(() => {
-          console.log('[Editor] Calling layout()');
+        // Force layout with explicit dimensions from container
+        const host = hostRef.current;
+        if (host) {
+          const rect = host.getBoundingClientRect();
+          console.log('[Editor] Container dimensions:', rect.width, 'x', rect.height);
+          editor.layout({ width: rect.width, height: rect.height });
+        } else {
           editor.layout();
-        });
+        }
         requestAnimationFrame(() => {
           if (editorRef.current === editor && !cancelled) {
             editor.focus();
