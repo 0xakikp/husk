@@ -242,39 +242,39 @@ export function EditorArea({
     }
   }, [prefs.vimMode]);
 
-  // Track whether editor is currently visible (intersecting viewport)
-  const isVisibleRef = useRef(false);
+  // Track whether editor container has real dimensions (not visibility:hidden)
+  const hasDimensionsRef = useRef(false);
 
-  // Watch for visibility changes and force layout when editor becomes visible
+  // Watch for container size changes — when editor becomes visible, dimensions go from 0 to real values
   useEffect(() => {
     const host = hostRef.current;
     const editor = editorRef.current;
     if (!host || !editor) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          isVisibleRef.current = entry.isIntersecting;
-          if (entry.isIntersecting) {
-            // Editor became visible — force layout and restore model if needed
-            editor.layout();
-            const currentModel = editor.getModel();
-            const expectedPath = activePathRef.current;
-            if (expectedPath && currentModel) {
-              const currentPath = currentModel.uri.fsPath;
-              if (currentPath !== expectedPath) {
-                // Model mismatch — restore correct model
-                const uri = monaco.Uri.file(expectedPath);
-                const model = monaco.editor.getModel(uri);
-                if (model) editor.setModel(model);
-              }
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        const nowHasDimensions = width > 0 && height > 0;
+        if (nowHasDimensions && !hasDimensionsRef.current) {
+          // Container just became visible — force layout and restore model
+          hasDimensionsRef.current = true;
+          editor.layout();
+          const currentModel = editor.getModel();
+          const expectedPath = activePathRef.current;
+          if (expectedPath && currentModel) {
+            const currentPath = currentModel.uri.fsPath;
+            if (currentPath !== expectedPath) {
+              const uri = monaco.Uri.file(expectedPath);
+              const model = monaco.editor.getModel(uri);
+              if (model) editor.setModel(model);
             }
           }
-        });
-      },
-      { threshold: 0 }
-    );
-    observer.observe(host);
-    return () => observer.disconnect();
+        } else if (!nowHasDimensions) {
+          hasDimensionsRef.current = false;
+        }
+      }
+    });
+    ro.observe(host);
+    return () => ro.disconnect();
   }, []);
 
   // Load + show the active file (one model per path, reused if already open).
@@ -305,13 +305,13 @@ export function EditorArea({
       // Ensure we're setting the model on the current editor instance
       if (editorRef.current === editor) {
         editor.setModel(model);
-        // Only force layout if editor is visible — if hidden, IntersectionObserver will handle it
-        if (isVisibleRef.current) {
+        // Only force layout if editor has real dimensions — if hidden, ResizeObserver will handle it
+        if (hasDimensionsRef.current) {
           editor.layout();
         }
         // Restore focus if this editor area is active
         requestAnimationFrame(() => {
-          if (editorRef.current === editor && !cancelled && isVisibleRef.current) {
+          if (editorRef.current === editor && !cancelled && hasDimensionsRef.current) {
             editor.focus();
           }
         });
