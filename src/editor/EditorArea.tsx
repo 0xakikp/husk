@@ -138,6 +138,7 @@ export function EditorArea({
     function createEditor() {
       if (!hostRef.current || isEditorReadyRef.current) return;
       isEditorReadyRef.current = true;
+      console.log('[Editor] Creating Monaco editor');
 
       const p = getPrefs();
       const editor = monaco.editor.create(hostRef.current, {
@@ -146,6 +147,7 @@ export function EditorArea({
         ...editorOptions(p),
       });
       editorRef.current = editor;
+      console.log('[Editor] Monaco editor created');
 
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         const path = activePathRef.current;
@@ -308,8 +310,12 @@ export function EditorArea({
       }
       if (cancelled) return;
       if (editorRef.current === editor) {
+        console.log('[Editor] Setting model for', activePath, 'content length:', model.getValue().length);
         editor.setModel(model);
-        requestAnimationFrame(() => editor.layout());
+        requestAnimationFrame(() => {
+          console.log('[Editor] Calling layout()');
+          editor.layout();
+        });
         requestAnimationFrame(() => {
           if (editorRef.current === editor && !cancelled) {
             editor.focus();
