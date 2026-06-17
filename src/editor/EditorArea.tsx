@@ -242,21 +242,32 @@ export function EditorArea({
     }
   }, [prefs.vimMode]);
 
-  // Track whether editor container has real dimensions (not visibility:hidden)
+  // Track whether editor container is currently visible (no 'invisible' class on any parent)
   const hasDimensionsRef = useRef(false);
 
-  // Watch for container size changes — when editor becomes visible, dimensions go from 0 to real values
+  // Watch for container becoming visible (parent class changes from invisible)
   useEffect(() => {
     const host = hostRef.current;
     const editor = editorRef.current;
     if (!host || !editor) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        const nowHasDimensions = width > 0 && height > 0;
-        if (nowHasDimensions && !hasDimensionsRef.current) {
-          // Container just became visible — force layout and restore model
-          hasDimensionsRef.current = true;
+
+    // Check if parent has 'invisible' class initially
+    const checkParentVisible = () => {
+      let el: HTMLElement | null = host;
+      while (el) {
+        if (el.classList.contains('invisible')) return false;
+        el = el.parentElement;
+      }
+      return true;
+    };
+
+    // Watch parent for class changes
+    const mo = new MutationObserver(() => {
+      if (checkParentVisible() && !hasDimensionsRef.current) {
+        hasDimensionsRef.current = true;
+        // Multiple layout calls with delays to ensure Monaco recovers
+        editor.layout();
+        setTimeout(() => {
           editor.layout();
           const currentModel = editor.getModel();
           const expectedPath = activePathRef.current;
@@ -268,13 +279,21 @@ export function EditorArea({
               if (model) editor.setModel(model);
             }
           }
-        } else if (!nowHasDimensions) {
-          hasDimensionsRef.current = false;
-        }
+          setTimeout(() => editor.layout(), 50);
+        }, 50);
+      } else if (!checkParentVisible()) {
+        hasDimensionsRef.current = false;
       }
     });
-    ro.observe(host);
-    return () => ro.disconnect();
+
+    // Observe all parents for class changes
+    let el: HTMLElement | null = host;
+    while (el) {
+      mo.observe(el, { attributes: true, attributeFilter: ['class'] });
+      el = el.parentElement;
+    }
+
+    return () => mo.disconnect();
   }, []);
 
   // Load + show the active file (one model per path, reused if already open).
