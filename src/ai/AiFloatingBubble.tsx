@@ -873,9 +873,9 @@ function PendingEditsPanel() {
   if (edits.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-1 border-t border-border/40 bg-muted/10 px-3 py-2">
+    <div className="flex flex-col gap-1.5 border-t border-border/40 bg-amber-500/5 px-3 py-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-500/80">
           Pending edits ({edits.length})
         </span>
         <button
@@ -929,8 +929,8 @@ function PendingEditItem({ edit }: { edit: PendingEdit }) {
       {expanded && (
         <div className="px-2 pb-2">
           <div className="flex flex-col gap-1 text-[10px]">
-            <div className="rounded bg-red-500/10 px-1.5 py-1 text-red-400 line-through">{edit.search}</div>
-            <div className="rounded bg-green-500/10 px-1.5 py-1 text-green-400">{edit.replace}</div>
+            <div className="rounded bg-red-500/10 px-1.5 py-1 font-mono text-red-400 line-through whitespace-pre-wrap">{edit.search}</div>
+            <div className="rounded bg-green-500/10 px-1.5 py-1 font-mono text-green-400 whitespace-pre-wrap">{edit.replace}</div>
           </div>
           <div className="mt-1.5 flex gap-1">
             <button
