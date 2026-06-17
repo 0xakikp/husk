@@ -248,6 +248,7 @@ export function AiFloatingBubble({
   const prefs = usePrefs();
   const [state, setState] = useState<BubbleState>("collapsed");
   const [pos, setPos] = useState(getBubblePos);
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -362,10 +363,17 @@ export function AiFloatingBubble({
     return unsub;
   }, [switchSession]);
 
-  // Window resize handler — keep bubble pinned to bottom-right
+  // Window resize handler — keep bubble pinned to bottom-right, clamp panel inside viewport
   useEffect(() => {
     const onResize = () => {
       setPos(getBubblePos());
+      setPanelPos((pp) => {
+        if (!pp) return pp;
+        return {
+          x: Math.max(8, Math.min(window.innerWidth - size.w - 8, pp.x)),
+          y: Math.max(8, Math.min(window.innerHeight - size.h - 8, pp.y)),
+        };
+      });
       setSize((s) => ({
         w: Math.min(window.innerWidth - 16, s.w),
         h: Math.min(window.innerHeight - 16, s.h),
@@ -373,7 +381,7 @@ export function AiFloatingBubble({
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [size.w, size.h]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -476,7 +484,8 @@ export function AiFloatingBubble({
     const clientY = isTouch ? e.touches[0].clientY : e.clientY;
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { sx: clientX, sy: clientY, spx: pos.x, spy: pos.y };
+    const startPos = panelPos ?? pos;
+    dragRef.current = { sx: clientX, sy: clientY, spx: startPos.x, spy: startPos.y };
     const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
       if (!dragRef.current) return;
       const r = dragRef.current;
@@ -486,7 +495,7 @@ export function AiFloatingBubble({
       const dy = cy - r.sy;
       const nx = Math.max(0, Math.min(window.innerWidth - size.w - 8, r.spx + dx));
       const ny = Math.max(0, Math.min(window.innerHeight - size.h - 8, r.spy + dy));
-      setPos({ x: nx, y: ny });
+      setPanelPos({ x: nx, y: ny });
     };
     const onUp = () => {
       dragRef.current = null;
@@ -499,9 +508,9 @@ export function AiFloatingBubble({
     window.addEventListener("mouseup", onUp);
     window.addEventListener("touchmove", onMove as EventListener, { passive: false });
     window.addEventListener("touchend", onUp);
-  }, [pos, size]);
+  }, [panelPos, pos, size]);
 
-  // On first expand, snap to bubble position. After that, pos is controlled by drag.
+  // On first expand, snap panel to bubble position. After that, panelPos is controlled by drag.
   const hasExpandedRef = useRef(false);
   useEffect(() => {
     if (state === "expanded" && !hasExpandedRef.current) {
@@ -509,13 +518,14 @@ export function AiFloatingBubble({
       const maxX = window.innerWidth - size.w - 8;
       const maxY = window.innerHeight - size.h - 8;
       const anchor = getBubblePos();
-      setPos({
+      setPanelPos({
         x: Math.max(8, Math.min(maxX, anchor.x)),
         y: Math.max(8, Math.min(maxY, anchor.y)),
       });
     }
     if (state === "collapsed") {
       hasExpandedRef.current = false;
+      setPanelPos(null);
     }
   }, [state, size]);
 
@@ -582,8 +592,8 @@ export function AiFloatingBubble({
         isDark ? "shadow-2xl shadow-black/40" : "shadow-lg shadow-black/10"
       )}
       style={{
-        left: pos.x,
-        top: pos.y,
+        left: panelPos?.x ?? pos.x,
+        top: panelPos?.y ?? pos.y,
         width: size.w,
         height: size.h,
         ...computedBg,
