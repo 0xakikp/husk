@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { usePrefs } from "../settings/preferences";
@@ -185,7 +185,7 @@ function CodeBlock({ lang, value, fontSize }: { lang: string; value: string; fon
 
 /* ── Formatted message (text + code blocks) ── */
 function FormattedBubbleMessage({ content, isStreaming, fontSize }: { content: string; isStreaming: boolean; fontSize: number }) {
-  const parts = useMemo(() => parseMessageParts(content), [content]);
+  const parts = parseMessageParts(content);
   return (
     <div className="flex flex-col gap-0.5" style={{ fontSize }}>
       {parts.map((part, i) =>
@@ -269,6 +269,9 @@ export function AiFloatingBubble({
     sx: number; sy: number; sw: number; sh: number;
     spx: number; spy: number;
     edge: string;
+  } | null>(null);
+  const dragRef = useRef<{
+    sx: number; sy: number; spx: number; spy: number;
   } | null>(null);
   const pendingRef = useRef<string | undefined>(undefined);
 
@@ -467,18 +470,54 @@ export function AiFloatingBubble({
     window.addEventListener("touchend", onUp);
   }, [size, pos]);
 
-  const expandPosition = useMemo(() => {
-    // Expand from the static bottom-right position, keeping inside viewport
-    const maxX = window.innerWidth - size.w - 8;
-    const maxY = window.innerHeight - size.h - 8;
-    const anchor = getBubblePos();
-    const minX = 8;
-    const minY = 8;
-    return {
-      x: Math.max(minX, Math.min(maxX, anchor.x)),
-      y: Math.max(minY, Math.min(maxY, anchor.y)),
+  const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    const isTouch = "touches" in e;
+    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { sx: clientX, sy: clientY, spx: pos.x, spy: pos.y };
+    const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
+      if (!dragRef.current) return;
+      const r = dragRef.current;
+      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+      const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
+      const dx = cx - r.sx;
+      const dy = cy - r.sy;
+      const nx = Math.max(0, Math.min(window.innerWidth - size.w - 8, r.spx + dx));
+      const ny = Math.max(0, Math.min(window.innerHeight - size.h - 8, r.spy + dy));
+      setPos({ x: nx, y: ny });
     };
-  }, [size]);
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove as EventListener);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove as EventListener);
+      window.removeEventListener("touchend", onUp);
+    };
+    window.addEventListener("mousemove", onMove as EventListener);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
+    window.addEventListener("touchend", onUp);
+  }, [pos, size]);
+
+  // On first expand, snap to bubble position. After that, pos is controlled by drag.
+  const hasExpandedRef = useRef(false);
+  useEffect(() => {
+    if (state === "expanded" && !hasExpandedRef.current) {
+      hasExpandedRef.current = true;
+      const maxX = window.innerWidth - size.w - 8;
+      const maxY = window.innerHeight - size.h - 8;
+      const anchor = getBubblePos();
+      setPos({
+        x: Math.max(8, Math.min(maxX, anchor.x)),
+        y: Math.max(8, Math.min(maxY, anchor.y)),
+      });
+    }
+    if (state === "collapsed") {
+      hasExpandedRef.current = false;
+    }
+  }, [state, size]);
 
   const handleClose = () => {
     setState("collapsed");
@@ -543,8 +582,8 @@ export function AiFloatingBubble({
         isDark ? "shadow-2xl shadow-black/40" : "shadow-lg shadow-black/10"
       )}
       style={{
-        left: expandPosition.x,
-        top: expandPosition.y,
+        left: pos.x,
+        top: pos.y,
         width: size.w,
         height: size.h,
         ...computedBg,
@@ -572,8 +611,10 @@ export function AiFloatingBubble({
 
       {/* ── HEADER ── */}
       <div
+        onMouseDown={startDrag}
+        onTouchStart={startDrag}
         className={cn(
-          "relative flex shrink-0 items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-1.5 select-none",
+          "relative flex shrink-0 cursor-move items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-1.5 select-none",
           busy && "header-streaming"
         )}
       >
