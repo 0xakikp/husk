@@ -25,7 +25,8 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { AiFloatingBubble } from "./ai/AiFloatingBubble";
-import { toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
+import { openBubble, toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
+import { getEditorSelection, getEditorFile } from "./ai/editorStore";
 import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
@@ -883,6 +884,37 @@ function App() {
             { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
             { id: "explain", label: "Explain last error (AI)", run: explainLastError },
             { id: "ai-bubble", label: "Toggle AI chat", hint: "Ctrl+Shift+L", run: () => toggleBubble() },
+            { id: "ai-explain-code", label: "AI: Explain selected code", run: () => {
+              const sel = getEditorSelection();
+              const file = getEditorFile();
+              if (!sel) {
+                toast({ title: "No code selected", variant: "error", duration: 2000 });
+                return;
+              }
+              openBubble(`Explain this code from ${file ?? "current file"} (lines ${sel.startLine}-${sel.endLine}):\n\n\`\`\`\n${sel.text}\n\`\`\``);
+            }},
+            { id: "ai-generate-test", label: "AI: Generate tests", run: () => {
+              const file = getEditorFile();
+              if (!file) {
+                toast({ title: "No file open", variant: "error", duration: 2000 });
+                return;
+              }
+              openBubble(`Generate unit tests for ${file}. Include edge cases and error handling.`);
+            }},
+            { id: "ai-refactor", label: "AI: Refactor code", run: () => {
+              const sel = getEditorSelection();
+              const file = getEditorFile();
+              if (!sel) {
+                toast({ title: "No code selected", variant: "error", duration: 2000 });
+                return;
+              }
+              openBubble(`Refactor this code from ${file ?? "current file"} (lines ${sel.startLine}-${sel.endLine}):\n\n\`\`\`\n${sel.text}\n\`\`\`\n\nMake it cleaner, more idiomatic, and better documented.`);
+            }},
+            { id: "ai-fix-error", label: "AI: Fix error / bug", run: () => {
+              const sel = getEditorSelection();
+              const file = getEditorFile();
+              openBubble(`Find and fix the bug in ${file ?? "current file"}${sel ? ` (lines ${sel.startLine}-${sel.endLine})` : ""}.\n${sel ? `\n\`\`\`\n${sel.text}\n\`\`\`` : ""}`);
+            }},
           ]
         : []),
       { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
@@ -949,6 +981,9 @@ function App() {
           term.setActiveId(prev.id);
           setActiveKind("term");
         }
+      } else if (key === "a" && e.shiftKey) {
+        e.preventDefault();
+        openBubble();
       } else if (/^Digit[1-9]$/.test(e.code)) {
         e.preventDefault();
         const idx = parseInt(e.code.replace("Digit", ""), 10) - 1;
@@ -1107,11 +1142,7 @@ function App() {
                 <AiSessionsPanel
                   open={aiSessionsOpen}
                   onClose={() => setAiSessionsOpen(false)}
-                  onSelectBubbleSession={(id) => requestBubbleSwitch(id)}
-                  onSelectEditorSession={(id) => {
-                    requestBubbleSwitch(id);
-                    setActiveKind("file");
-                  }}
+                  onSelectSession={(id) => requestBubbleSwitch(id)}
                 />
               </div>
             )}

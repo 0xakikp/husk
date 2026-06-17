@@ -5,7 +5,7 @@ import { readFile, writeFile } from "../fs";
 import { sshReadFile, sshWriteFile } from "../remote/remoteFs";
 import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
-import { registerEditorApplyEdit, registerEditorGetSelection } from "@/ai/editor/editorStore";
+import { registerEditorApplyEdit, registerEditorGetSelection, registerEditorFile } from "@/ai/editorStore";
 import { markSaved, markModified, markNew, clearState } from "./dirtyStore";
 
 const monacoTheme = (p: Prefs) => {
@@ -185,9 +185,34 @@ export function EditorArea({
       };
     });
 
+    const unsubFile = registerEditorFile(() => {
+      return editor.getModel()?.uri.path ?? null;
+    });
+
+    // ── Editor context menu: Ask AI ───────────────────────────────────────
+    editor.addAction({
+      id: "husk-ask-ai",
+      label: "Ask AI",
+      contextMenuGroupId: "9_cutcopypaste",
+      contextMenuOrder: 3,
+      precondition: "editorHasSelection",
+      run: (ed) => {
+        const sel = ed.getSelection();
+        const model = ed.getModel();
+        if (!sel || !model || sel.isEmpty()) return;
+        const text = model.getValueInRange(sel);
+        const filePath = model.uri.path;
+        // Open bubble and pre-fill with selection context
+        import("../ai/bubbleStore").then(({ openBubble }) => {
+          openBubble(`Explain this code from ${filePath} (lines ${sel.startLineNumber}-${sel.endLineNumber}):\n\n\`\`\`\n${text}\n\`\`\``);
+        });
+      },
+    });
+
     return () => {
       unsub();
       unsubSel();
+      unsubFile();
       dirtyDisposables.forEach((d) => d.dispose());
       vimRef.current?.dispose();
       vimRef.current = null;

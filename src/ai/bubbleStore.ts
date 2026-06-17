@@ -1,6 +1,7 @@
 /** Simple toggle store for AiFloatingBubble from external triggers. */
 
 let toggleFn: (() => void) | null = null;
+let openFn: ((text?: string) => void) | null = null;
 
 export function registerBubbleToggle(fn: () => void): () => void {
   toggleFn = fn;
@@ -9,8 +10,19 @@ export function registerBubbleToggle(fn: () => void): () => void {
   };
 }
 
+export function registerBubbleOpen(fn: (text?: string) => void): () => void {
+  openFn = fn;
+  return () => {
+    if (openFn === fn) openFn = null;
+  };
+}
+
 export function toggleBubble(): void {
   toggleFn?.();
+}
+
+export function openBubble(text?: string): void {
+  openFn?.(text);
 }
 
 /* ── Session switch requests ── */

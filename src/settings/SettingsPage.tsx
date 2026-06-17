@@ -3,18 +3,14 @@ import { cn } from "@/lib/utils";
 import { Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { useAgents, upsertAgent, removeAgent, newAgentId, type Agent } from "../ai/agents";
 import { GeneralSection } from "./GeneralSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { AboutSection } from "./AboutSection";
 import { ModelsSection } from "./ModelsSection";
 import { McpSection } from "./McpSection";
 import { ToolsSection } from "./ToolsSection";
-import { SectionHeader } from "./components/SectionHeader";
 
-type SectionId = "about" | "general" | "appearance" | "models" | "agents" | "mcp" | "tools";
+type SectionId = "about" | "general" | "appearance" | "models" | "mcp" | "tools";
 
 const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   { id: "about", label: "Manifest", keywords: ["about", "version", "build", "license"] },
@@ -32,11 +28,6 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
     id: "models",
     label: "Models",
     keywords: ["model", "provider", "api", "key", "ai", "anthropic", "openai", "local"],
-  },
-  {
-    id: "agents",
-    label: "Agents",
-    keywords: ["agent", "persona", "prompt", "system", "assistant"],
   },
   {
     id: "mcp",
@@ -193,14 +184,6 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 </div>
               </>
             ) : null}
-            {show("agents") ? (
-              <>
-                <SectionDivider />
-                <div id="settings-section-agents" className="scroll-mt-6">
-                  <AgentsSection />
-                </div>
-              </>
-            ) : null}
             {show("mcp") ? (
               <>
                 <SectionDivider />
@@ -234,105 +217,3 @@ function SectionDivider() {
 }
 
 
-
-const AGENT_DESCRIPTIONS: Record<string, string> = {
-  terminal: "The all-in-one terminal tool. Commands, errors, logs, scripts, and CLI help.",
-  architect: "Plans and designs before implementation. Systems thinking and trade-off analysis.",
-  coder: "Writes, modifies, and refactors code. Production-ready, well-tested, idiomatic.",
-  ask: "Answers questions and explains concepts. Adjusts depth to your level.",
-  debugger: "Diagnoses and fixes issues. Root-cause analysis and surgical fixes.",
-  orchestrator: "Coordinates tasks across agents. Breaks down complexity and sequences work.",
-};
-
-function AgentsSection() {
-  const agents = useAgents();
-  const [editing, setEditing] = useState<Agent | null>(null);
-
-  const save = () => {
-    if (!editing) return;
-    const name = editing.name.trim();
-    if (!name || !editing.systemPrompt.trim()) return;
-    upsertAgent({
-      id: editing.id,
-      name,
-      systemPrompt: editing.systemPrompt.trim(),
-      model: editing.model?.trim() || undefined,
-    });
-    setEditing(null);
-  };
-
-  return (
-    <div className="flex flex-col gap-7">
-      <SectionHeader title="Agents" description="Named assistant personas for the AI chat." />
-      <div className="grid grid-cols-2 gap-2">
-        {agents.map((a) => (
-          <div
-            key={a.id}
-            className="flex flex-col gap-1.5 rounded border border-border/40 bg-muted/20 px-4 py-3"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[12.5px] font-medium text-foreground">{a.name}</span>
-              {a.builtIn ? (
-                <span className="shrink-0 rounded-full border border-border/40 bg-card px-2 py-0.5 text-[10px] text-muted-foreground">
-                  preset
-                </span>
-              ) : (
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button variant="ghost" size="xs" onClick={() => setEditing(a)}>
-                    Edit
-                  </Button>
-                  <Button variant="ghost" size="xs" onClick={() => removeAgent(a.id)}>
-                    Delete
-                  </Button>
-                </div>
-              )}
-            </div>
-            <span className="text-[10.5px] leading-relaxed text-muted-foreground">
-              {AGENT_DESCRIPTIONS[a.id] ?? (a.builtIn ? "Built-in preset" : "Custom agent")}
-            </span>
-          </div>
-        ))}
-      </div>
-      {editing ? (
-        <div className="flex flex-col gap-2 rounded border border-border/40 bg-muted/20 p-3">
-          <Input
-            placeholder="Agent name"
-            value={editing.name}
-            onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-            className="h-8 bg-background text-[12px]"
-          />
-          <Input
-            placeholder="Model id override (optional)"
-            value={editing.model ?? ""}
-            onChange={(e) => setEditing({ ...editing, model: e.target.value })}
-            className="h-8 bg-background text-[12px]"
-          />
-          <Textarea
-            placeholder="System prompt"
-            rows={5}
-            value={editing.systemPrompt}
-            onChange={(e) => setEditing({ ...editing, systemPrompt: e.target.value })}
-            className="bg-background text-[12px]"
-          />
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={save}>
-              Save
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          className="self-start"
-          onClick={() => setEditing({ id: newAgentId(), name: "", systemPrompt: "", model: "" })}
-        >
-          + New agent
-        </Button>
-      )}
-    </div>
-  );
-}

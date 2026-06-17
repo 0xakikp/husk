@@ -4,7 +4,9 @@ import { getProvider } from "../providers";
 import { streamChat, type ChatMessage } from "../client";
 import { getActiveAgent } from "../agents";
 import { readActiveTerminal } from "../terminalContext";
+import { getEditorFile, getEditorSelection } from "../editorStore";
 import { buildMcpTools } from "../../mcp/tools";
+import { buildBuiltinTools, mergeTools } from "../builtinTools";
 import { subscribeWorkspaceRoot } from "../../workspace/store";
 import {
   loadBubbleSessions,
@@ -26,6 +28,11 @@ export function useAiBubbleChat() {
   const [store, setStore] = useState<BubbleSessionStore>(() => loadBubbleSessions());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const inputRef = useRef("");
+  inputRef.current = input;
+  const setInputExternal = useRef<(text: string) => void>((text) => setInput(text));
+  setInputExternal.current = (text) => setInput(text);
+
   const [busy, setBusy] = useState(false);
   const [includeContext, setIncludeContext] = useState(true);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -127,7 +134,18 @@ export function useAiBubbleChat() {
       const ctx = includeContext ? readActiveTerminal() : "";
       const base = agent.systemPrompt;
 
-      let system = base;
+      let system = base + "\n\nYou have access to file tools: readFile, writeFile, listFiles, applyEdit. Use them to explore the codebase, read files for context, and make surgical edits. When writing files, always write the complete file content. When editing, use applyEdit for small changes.";
+
+      // Auto-context: current file and selection
+      const currentFile = getEditorFile();
+      const selection = getEditorSelection();
+      if (currentFile) {
+        system += `\n\nCurrent file: ${currentFile}`;
+        if (selection) {
+          system += `\nSelected lines ${selection.startLine}-${selection.endLine}:\n\`\`\`\n${selection.text}\n\`\`\``;
+        }
+      }
+
       if (ctx) {
         system += `\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\``;
       }
@@ -143,7 +161,9 @@ export function useAiBubbleChat() {
       }
 
       try {
-        const tools = await buildMcpTools().catch(() => ({}));
+        const mcpTools = await buildMcpTools().catch(() => ({}));
+        const builtinTools = buildBuiltinTools();
+        const tools = mergeTools(builtinTools, mcpTools);
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         const timeoutPromise = new Promise<void>((_, reject) => {
           timeoutId = setTimeout(() => reject(new Error("Request timed out after 60s")), 60000);

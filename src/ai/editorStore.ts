@@ -1,10 +1,5 @@
-/** Simple store for communicating AI edit requests from the chat pane
+/** Simple store for communicating AI edit requests from the chat
  *  to the active Monaco editor instance. */
-
-import { parseEdits as _parseEdits, stripEditBlocks as _stripEditBlocks } from "./diffParser";
-import type { CodeEdit } from "./types";
-export type { CodeEdit };
-export { _parseEdits as parseEdits, _stripEditBlocks as stripEditBlocks };
 
 type ApplyEditFn = (search: string, replace: string) => boolean;
 
@@ -36,4 +31,21 @@ export function registerEditorGetSelection(fn: GetSelectionFn): () => void {
 
 export function getEditorSelection(): { text: string; startLine: number; endLine: number } | null {
   return getSelectionFn?.() ?? null;
+}
+
+// ── Current file path ──────────────────────────────────────────────────────
+
+type GetFileFn = () => string | null;
+
+let getFileFn: GetFileFn | null = null;
+
+export function registerEditorFile(fn: GetFileFn): () => void {
+  getFileFn = fn;
+  return () => {
+    if (getFileFn === fn) getFileFn = null;
+  };
+}
+
+export function getEditorFile(): string | null {
+  return getFileFn?.() ?? null;
 }

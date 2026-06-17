@@ -16,8 +16,9 @@ import {
   BugIcon,
   SearchList01Icon,
   SourceCodeIcon,
+  File01Icon,
 } from "@hugeicons/core-free-icons";
-import { registerBubbleToggle, subscribeBubbleSwitch } from "./bubbleStore";
+import { registerBubbleToggle, registerBubbleOpen, subscribeBubbleSwitch } from "./bubbleStore";
 import { toast } from "@/toast";
 import { getProvider } from "./providers";
 import { useKey, loadConfig } from "./store";
@@ -25,7 +26,16 @@ import { readActiveTerminal, runInActiveTerminal } from "./terminalContext";
 import { AiThinkingIndicator } from "./AiThinkingIndicator";
 import { useAiBubbleChat } from "./bubble/useAiBubbleChat";
 import { readFileBase64 } from "../fs";
+import { getWorkspaceRoot } from "../workspace/store";
 import { Upload02Icon } from "@hugeicons/core-free-icons";
+import {
+  getPendingEdits,
+  subscribePendingEdits,
+  clearPendingEdits,
+  removePendingEdit,
+  type PendingEdit,
+} from "./pendingEdits";
+import { readFile, writeFile } from "../fs";
 
 type BubbleState = "collapsed" | "expanded";
 
@@ -36,25 +46,12 @@ const MIN_H = 200;
 const DEFAULT_W = 400;
 const DEFAULT_H = 520;
 
-function readBubblePos(): { x: number; y: number } {
-  try {
-    const raw = localStorage.getItem("husk.ai-bubble.pos");
-    if (raw) {
-      const p = JSON.parse(raw) as { x: number; y: number };
-      if (typeof p.x === "number" && typeof p.y === "number") return p;
-    }
-  } catch (e) {
-    console.error("Failed to read bubble position:", e);
-  }
-  return { x: window.innerWidth - BUBBLE_SIZE - PAD, y: window.innerHeight - BUBBLE_SIZE - PAD };
-}
-
-function saveBubblePos(p: { x: number; y: number }) {
-  try {
-    localStorage.setItem("husk.ai-bubble.pos", JSON.stringify(p));
-  } catch (e) {
-    console.error("Failed to save bubble position:", e);
-  }
+/** Static bubble position: bottom-right, just above the status bar (h-6 = 24px) */
+function getBubblePos(): { x: number; y: number } {
+  return {
+    x: window.innerWidth - BUBBLE_SIZE - PAD,
+    y: window.innerHeight - BUBBLE_SIZE - PAD - 24, // 24px = status bar height
+  };
 }
 
 function readBubbleSize(): { w: number; h: number } {
@@ -104,9 +101,10 @@ function parseMessageParts(content: string): MsgPart[] {
   return result;
 }
 
-/* ── Code block with copy + run buttons ── */
+/* ── Code block with copy + run + apply buttons ── */
 function CodeBlock({ lang, value, fontSize }: { lang: string; value: string; fontSize: number }) {
   const [copied, setCopied] = useState(false);
+  const [applied, setApplied] = useState(false);
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(value);
@@ -121,6 +119,24 @@ function CodeBlock({ lang, value, fontSize }: { lang: string; value: string; fon
       toast({ title: "Sent to terminal", variant: "info" });
     } else {
       toast({ title: "No active terminal", variant: "error" });
+    }
+  };
+  const handleApply = async () => {
+    const path = window.prompt("Write to file path (relative to workspace):");
+    if (!path) return;
+    try {
+      const { writeFile, createDir } = await import("../fs");
+      const fullPath = path.startsWith("/") ? path : `${getWorkspaceRoot()}/${path}`;
+      const lastSlash = fullPath.lastIndexOf("/");
+      if (lastSlash > 0) {
+        await createDir(fullPath.slice(0, lastSlash)).catch(() => {});
+      }
+      await writeFile(fullPath, value);
+      setApplied(true);
+      toast({ title: `Written to ${path}`, variant: "info" });
+      setTimeout(() => setApplied(false), 2000);
+    } catch (e) {
+      toast({ title: `Write failed: ${e instanceof Error ? e.message : String(e)}`, variant: "error" });
     }
   };
   return (
@@ -147,6 +163,16 @@ function CodeBlock({ lang, value, fontSize }: { lang: string; value: string; fon
           >
             <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.5} />
             Run
+          </button>
+          <button
+            type="button"
+            onClick={handleApply}
+            className="flex h-5 items-center gap-0.5 rounded px-1 text-blue-500/80 hover:bg-blue-500/10 hover:text-blue-500"
+            style={{ fontSize: fontSize - 2 }}
+            title="Write to file"
+          >
+            <HugeiconsIcon icon={applied ? CopyCheckIcon : PencilEdit02Icon} size={10} strokeWidth={1.5} />
+            {applied ? "Saved" : "Apply"}
           </button>
         </div>
       </div>
@@ -221,7 +247,7 @@ export function AiFloatingBubble({
 }) {
   const prefs = usePrefs();
   const [state, setState] = useState<BubbleState>("collapsed");
-  const [pos, setPos] = useState(readBubblePos);
+  const [pos, setPos] = useState(getBubblePos);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -236,12 +262,9 @@ export function AiFloatingBubble({
     return () => { cancelled = true; };
   }, [prefs.aiMiniBgEnabled, prefs.aiMiniBgPath]);
   const [size, setSize] = useState(readBubbleSize);
-  const posRef = useRef(pos);
   const sizeRef = useRef(size);
-  posRef.current = pos;
   sizeRef.current = size;
   const scrollRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ ox: number; oy: number; moved: boolean } | null>(null);
   const resizeRef = useRef<{
     sx: number; sy: number; sw: number; sh: number;
     spx: number; spy: number;
@@ -290,6 +313,7 @@ export function AiFloatingBubble({
 
   const {
     messages,
+    setInput,
     busy,
     send,
     stop,
@@ -317,6 +341,15 @@ export function AiFloatingBubble({
     });
   }, []);
 
+  // Bubble open listener (with pre-filled text)
+  useEffect(() => {
+    return registerBubbleOpen((text) => {
+      setState("expanded");
+      if (text) setInput(text);
+      ensureSession();
+    });
+  }, [setInput, ensureSession]);
+
   // External session switch listener
   useEffect(() => {
     const unsub = subscribeBubbleSwitch((id) => {
@@ -326,13 +359,10 @@ export function AiFloatingBubble({
     return unsub;
   }, [switchSession]);
 
-  // Window resize handler
+  // Window resize handler — keep bubble pinned to bottom-right
   useEffect(() => {
     const onResize = () => {
-      setPos((p) => ({
-        x: Math.min(window.innerWidth - BUBBLE_SIZE, Math.max(0, p.x)),
-        y: Math.min(window.innerHeight - BUBBLE_SIZE, Math.max(0, p.y)),
-      }));
+      setPos(getBubblePos());
       setSize((s) => ({
         w: Math.min(window.innerWidth - 16, s.w),
         h: Math.min(window.innerHeight - 16, s.h),
@@ -379,62 +409,6 @@ export function AiFloatingBubble({
     setCtxPreview(readActiveTerminal().slice(0, 500));
     setShowCtxPreview(true);
   };
-
-  // Track if a drag happened to prevent click after drag
-  const didDragRef = useRef(false);
-
-  const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    const isTouch = "touches" in e;
-    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-    // Prevent default to stop text selection during drag
-    if (!isTouch) e.preventDefault();
-    didDragRef.current = false;
-    dragRef.current = { ox: clientX - pos.x, oy: clientY - pos.y, moved: false };
-    let rafId: number | null = null;
-    let pendingX = pos.x;
-    let pendingY = pos.y;
-    
-    const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
-      if (!dragRef.current) return;
-      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
-      const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
-      const dx = Math.abs(cx - clientX);
-      const dy = Math.abs(cy - clientY);
-      if (dx > 5 || dy > 5) {
-        dragRef.current.moved = true;
-        didDragRef.current = true;
-      }
-      // Constrain to viewport with padding - keep away from edges and top bar
-      const PADDING = 8;
-      const TOP_BAR_HEIGHT = 32; // Approximate top bar height
-      pendingX = Math.min(window.innerWidth - BUBBLE_SIZE - PADDING, Math.max(PADDING, cx - dragRef.current.ox));
-      pendingY = Math.min(window.innerHeight - BUBBLE_SIZE - PADDING, Math.max(TOP_BAR_HEIGHT, cy - dragRef.current.oy));
-      
-      if (rafId === null) {
-        rafId = requestAnimationFrame(() => {
-          rafId = null;
-          setPos({ x: pendingX, y: pendingY });
-        });
-      }
-    };
-    const onUp = () => {
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      dragRef.current = null;
-      window.removeEventListener("mousemove", onMove as EventListener);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("touchmove", onMove as EventListener);
-      window.removeEventListener("touchend", onUp);
-      saveBubblePos(posRef.current);
-    };
-    window.addEventListener("mousemove", onMove as EventListener);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
-    window.addEventListener("touchend", onUp);
-  }, [pos]);
 
   const startResize = useCallback((edge: string) => (e: React.MouseEvent | React.TouchEvent) => {
     const isTouch = "touches" in e;
@@ -486,7 +460,6 @@ export function AiFloatingBubble({
       window.removeEventListener("touchmove", onMove as EventListener);
       window.removeEventListener("touchend", onUp);
       saveBubbleSize(sizeRef.current);
-      saveBubblePos(posRef.current);
     };
     window.addEventListener("mousemove", onMove as EventListener);
     window.addEventListener("mouseup", onUp);
@@ -495,16 +468,17 @@ export function AiFloatingBubble({
   }, [size, pos]);
 
   const expandPosition = useMemo(() => {
-    // When expanding, ensure the window fits within viewport
+    // Expand from the static bottom-right position, keeping inside viewport
     const maxX = window.innerWidth - size.w - 8;
     const maxY = window.innerHeight - size.h - 8;
+    const anchor = getBubblePos();
     const minX = 8;
-    const minY = 8; // Keep below top bar
+    const minY = 8;
     return {
-      x: Math.max(minX, Math.min(maxX, pos.x)),
-      y: Math.max(minY, Math.min(maxY, pos.y)),
+      x: Math.max(minX, Math.min(maxX, anchor.x)),
+      y: Math.max(minY, Math.min(maxY, anchor.y)),
     };
-  }, [pos, size]);
+  }, [size]);
 
   const handleClose = () => {
     setState("collapsed");
@@ -521,20 +495,8 @@ export function AiFloatingBubble({
     return (
       <button
         type="button"
-        onMouseDown={(e) => {
-          // Only left-click starts drag
-          if (e.button !== 0) return;
-          // Start drag - click will be handled by onClick if no drag happened
-          startDrag(e);
-        }}
-        onClick={() => {
-          // Only expand if we didn't drag
-          if (!didDragRef.current) {
-            setState("expanded");
-          }
-          didDragRef.current = false;
-        }}
-        className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0 cursor-move"
+        onClick={() => setState("expanded")}
+        className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0 cursor-pointer"
         style={{
           left: pos.x,
           top: pos.y,
@@ -542,7 +504,7 @@ export function AiFloatingBubble({
           height: BUBBLE_SIZE,
         }}
         aria-label="Open AI chat"
-        title="AI Chat (drag to move)"
+        title="AI Chat"
       >
         <HugeiconsIcon icon={SparklesIcon} size={20} strokeWidth={1.5} />
       </button>
@@ -611,10 +573,9 @@ export function AiFloatingBubble({
       {/* ── HEADER ── */}
       <div
         className={cn(
-          "relative flex shrink-0 cursor-move items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-1.5 select-none",
+          "relative flex shrink-0 items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-1.5 select-none",
           busy && "header-streaming"
         )}
-        onMouseDown={startDrag}
       >
         {/* Status dot */}
         <div
@@ -893,6 +854,103 @@ export function AiFloatingBubble({
           </div>
         )}
       </div>
+
+      {/* ── PENDING EDITS ── */}
+      <PendingEditsPanel />
     </div>
   );
 }
+
+/* ── Pending Edits Panel ─────────────────────────────────────────────────── */
+
+function PendingEditsPanel() {
+  const [edits, setEdits] = useState(getPendingEdits());
+
+  useEffect(() => {
+    return subscribePendingEdits(() => setEdits(getPendingEdits()));
+  }, []);
+
+  if (edits.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1 border-t border-border/40 bg-muted/10 px-3 py-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Pending edits ({edits.length})
+        </span>
+        <button
+          type="button"
+          onClick={clearPendingEdits}
+          className="text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          Clear all
+        </button>
+      </div>
+      {edits.map((edit) => (
+        <PendingEditItem key={edit.id} edit={edit} />
+      ))}
+    </div>
+  );
+}
+
+function PendingEditItem({ edit }: { edit: PendingEdit }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const accept = async () => {
+    try {
+      const content = await readFile(edit.path);
+      if (!content.includes(edit.search)) {
+        toast({ title: "Search text not found", variant: "error", duration: 3000 });
+        return;
+      }
+      await writeFile(edit.path, content.replace(edit.search, edit.replace));
+      removePendingEdit(edit.id);
+      toast({ title: `Applied edit to ${edit.path.split("/").pop()}`, variant: "success", duration: 2000 });
+    } catch (e) {
+      toast({ title: "Failed to apply edit", variant: "error", duration: 3000 });
+    }
+  };
+
+  const reject = () => {
+    removePendingEdit(edit.id);
+  };
+
+  return (
+    <div className="rounded border border-border/40 bg-card/50">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
+      >
+        <HugeiconsIcon icon={File01Icon} size={12} className="shrink-0 text-muted-foreground" />
+        <span className="truncate text-[11px] text-foreground">{edit.path.split("/").pop()}</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">{expanded ? "▲" : "▼"}</span>
+      </button>
+      {expanded && (
+        <div className="px-2 pb-2">
+          <div className="flex flex-col gap-1 text-[10px]">
+            <div className="rounded bg-red-500/10 px-1.5 py-1 text-red-400 line-through">{edit.search}</div>
+            <div className="rounded bg-green-500/10 px-1.5 py-1 text-green-400">{edit.replace}</div>
+          </div>
+          <div className="mt-1.5 flex gap-1">
+            <button
+              type="button"
+              onClick={accept}
+              className="rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground hover:bg-primary/90"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={reject}
+              className="rounded px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
