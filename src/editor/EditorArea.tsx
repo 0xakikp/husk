@@ -242,6 +242,25 @@ export function EditorArea({
     }
   }, [prefs.vimMode]);
 
+  // Watch for visibility changes and force layout when editor becomes visible
+  useEffect(() => {
+    const host = hostRef.current;
+    const editor = editorRef.current;
+    if (!host || !editor) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            editor.layout();
+          }
+        });
+      },
+      { threshold: 0 }
+    );
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
   // Load + show the active file (one model per path, reused if already open).
   useEffect(() => {
     activePathRef.current = activePath;
