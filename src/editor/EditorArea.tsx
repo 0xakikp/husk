@@ -266,7 +266,19 @@ export function EditorArea({
           markNew(activePath);
         }
       }
-      editor.setModel(model);
+      if (cancelled) return;
+      // Ensure we're setting the model on the current editor instance
+      if (editorRef.current === editor) {
+        editor.setModel(model);
+        // Force layout refresh to ensure content is visible
+        editor.layout();
+        // Restore focus if this editor area is active
+        requestAnimationFrame(() => {
+          if (editorRef.current === editor && !cancelled) {
+            editor.focus();
+          }
+        });
+      }
     })();
     return () => {
       cancelled = true;
