@@ -270,9 +270,11 @@ export function AiFloatingBubble({
     sx: number; sy: number; sw: number; sh: number;
     spx: number; spy: number;
     edge: string;
+    finalW?: number; finalH?: number; finalX?: number; finalY?: number;
   } | null>(null);
   const dragRef = useRef<{
     sx: number; sy: number; spx: number; spy: number;
+    finalX?: number; finalY?: number;
   } | null>(null);
   const pendingRef = useRef<string | undefined>(undefined);
 
@@ -431,6 +433,7 @@ export function AiFloatingBubble({
       sx: clientX, sy: clientY, sw: size.w, sh: size.h,
       spx: pos.x, spy: pos.y, edge,
     };
+    const panel = panelRef.current;
     const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
       if (!resizeRef.current) return;
       const r = resizeRef.current;
@@ -461,22 +464,40 @@ export function AiFloatingBubble({
       nx = Math.max(0, Math.min(nx, window.innerWidth - nw - 8));
       ny = Math.max(0, Math.min(ny, window.innerHeight - nh - 8));
 
-      setSize({ w: nw, h: nh });
-      setPos({ x: nx, y: ny });
+      // Direct DOM manipulation for 60fps resize
+      if (panel) {
+        panel.style.width = `${nw}px`;
+        panel.style.height = `${nh}px`;
+        panel.style.left = `${nx}px`;
+        panel.style.top = `${ny}px`;
+      }
+      resizeRef.current.finalW = nw;
+      resizeRef.current.finalH = nh;
+      resizeRef.current.finalX = nx;
+      resizeRef.current.finalY = ny;
     };
     const onUp = () => {
+      const finalW = resizeRef.current?.finalW ?? size.w;
+      const finalH = resizeRef.current?.finalH ?? size.h;
+      const finalX = resizeRef.current?.finalX ?? pos.x;
+      const finalY = resizeRef.current?.finalY ?? pos.y;
       resizeRef.current = null;
       window.removeEventListener("mousemove", onMove as EventListener);
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove as EventListener);
       window.removeEventListener("touchend", onUp);
-      saveBubbleSize(sizeRef.current);
+      // Single React state update at end of resize
+      setSize({ w: finalW, h: finalH });
+      setPanelPos({ x: finalX, y: finalY });
+      saveBubbleSize({ w: finalW, h: finalH });
     };
     window.addEventListener("mousemove", onMove as EventListener);
     window.addEventListener("mouseup", onUp);
     window.addEventListener("touchmove", onMove as EventListener, { passive: false });
     window.addEventListener("touchend", onUp);
   }, [size, pos]);
+
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const isTouch = "touches" in e;
@@ -486,6 +507,7 @@ export function AiFloatingBubble({
     e.stopPropagation();
     const startPos = panelPos ?? pos;
     dragRef.current = { sx: clientX, sy: clientY, spx: startPos.x, spy: startPos.y };
+    const panel = panelRef.current;
     const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
       if (!dragRef.current) return;
       const r = dragRef.current;
@@ -495,14 +517,25 @@ export function AiFloatingBubble({
       const dy = cy - r.sy;
       const nx = Math.max(0, Math.min(window.innerWidth - size.w - 8, r.spx + dx));
       const ny = Math.max(0, Math.min(window.innerHeight - size.h - 8, r.spy + dy));
-      setPanelPos({ x: nx, y: ny });
+      // Direct DOM manipulation — bypass React render cycle for 60fps drag
+      if (panel) {
+        panel.style.left = `${nx}px`;
+        panel.style.top = `${ny}px`;
+      }
+      // Store final position for React state update on mouse up
+      dragRef.current.finalX = nx;
+      dragRef.current.finalY = ny;
     };
     const onUp = () => {
+      const finalX = dragRef.current?.finalX ?? (panelPos ?? pos).x;
+      const finalY = dragRef.current?.finalY ?? (panelPos ?? pos).y;
       dragRef.current = null;
       window.removeEventListener("mousemove", onMove as EventListener);
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove as EventListener);
       window.removeEventListener("touchend", onUp);
+      // Single React state update at end of drag
+      setPanelPos({ x: finalX, y: finalY });
     };
     window.addEventListener("mousemove", onMove as EventListener);
     window.addEventListener("mouseup", onUp);
@@ -586,6 +619,7 @@ export function AiFloatingBubble({
 
   return (
     <div
+      ref={panelRef}
       className={cn(
         "fixed z-50 flex flex-col overflow-hidden rounded-xl border",
         dragOver ? "border-primary ring-1 ring-primary/30" : "border-border",
