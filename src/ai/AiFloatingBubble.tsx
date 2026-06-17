@@ -50,7 +50,7 @@ const DEFAULT_H = 520;
 function getBubblePos(): { x: number; y: number } {
   return {
     x: window.innerWidth - BUBBLE_SIZE - PAD,
-    y: window.innerHeight - BUBBLE_SIZE - PAD - 40, // 40px = status bar + breathing room
+    y: window.innerHeight - BUBBLE_SIZE - PAD - 56, // 56px = status bar + extra breathing room
   };
 }
 
