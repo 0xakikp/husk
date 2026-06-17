@@ -46,11 +46,11 @@ const MIN_H = 200;
 const DEFAULT_W = 400;
 const DEFAULT_H = 520;
 
-/** Static bubble position: bottom-right, just above the status bar (h-6 = 24px) */
+/** Static bubble position: bottom-right, well above the status bar */
 function getBubblePos(): { x: number; y: number } {
   return {
     x: window.innerWidth - BUBBLE_SIZE - PAD,
-    y: window.innerHeight - BUBBLE_SIZE - PAD - 24, // 24px = status bar height
+    y: window.innerHeight - BUBBLE_SIZE - PAD - 40, // 40px = status bar + breathing room
   };
 }
 
