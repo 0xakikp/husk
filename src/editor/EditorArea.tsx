@@ -309,7 +309,7 @@ export function EditorArea({
       if (cancelled) return;
       if (editorRef.current === editor) {
         editor.setModel(model);
-        editor.layout();
+        requestAnimationFrame(() => editor.layout());
         requestAnimationFrame(() => {
           if (editorRef.current === editor && !cancelled) {
             editor.focus();
