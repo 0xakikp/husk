@@ -704,7 +704,7 @@ export function AiFloatingBubble({
               }
             }}
             onMouseEnter={() => {
-              if (includeContext) refreshCtxPreview();
+              if (!showCtxPreview) refreshCtxPreview();
             }}
             onMouseLeave={() => setShowCtxPreview(false)}
             className={cn(
@@ -720,7 +720,7 @@ export function AiFloatingBubble({
           </button>
 
           {/* Context preview tooltip — fixed position to escape panel overflow clip */}
-          {showCtxPreview && includeContext && ctxPreview && ctxTooltipPos && (
+          {showCtxPreview && ctxPreview && ctxTooltipPos && (
             <div
               className="fixed z-[60] w-44 rounded-md border border-border/60 bg-popover p-1.5 shadow-lg"
               style={{
