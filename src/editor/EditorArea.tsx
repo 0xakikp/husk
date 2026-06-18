@@ -97,191 +97,131 @@ export function EditorArea({
   filesRef.current = files;
   const vimRef = useRef<{ dispose(): void } | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
-  const editorCleanupRef = useRef<(() => void) | null>(null);
-
-  // Defer Monaco creation until the container is actually visible AND has real dimensions.
-  const isEditorReadyRef = useRef(false);
 
   useEffect(() => {
-    if (!hostRef.current || isEditorReadyRef.current) return;
+    if (!hostRef.current) return;
+    const p = getPrefs();
+    const editor = monaco.editor.create(hostRef.current, {
+      theme: monacoTheme(p),
+      automaticLayout: true,
+      ...editorOptions(p),
+    });
+    editorRef.current = editor;
 
-    const isVisible = () => {
-      let el: HTMLElement | null = hostRef.current;
-      while (el) {
-        if (el.classList.contains("invisible")) return false;
-        el = el.parentElement;
+    // Cmd/Ctrl+S saves the active file.
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      const path = activePathRef.current;
+      const model = editor.getModel();
+      if (path && model) {
+        const file = filesRef.current.find((f) => f.path === path);
+        const host = file?.remoteHost;
+        const save = host
+          ? sshWriteFile(host, path, model.getValue())
+          : writeFile(path, model.getValue());
+        void save.then(() => {
+          markSaved(path, model.getAlternativeVersionId());
+        });
       }
-      return true;
-    };
-
-    const hasDimensions = () => {
-      const rect = hostRef.current?.getBoundingClientRect();
-      return rect ? rect.width > 50 && rect.height > 50 : false;
-    };
-
-    const tryCreate = () => {
-      if (isVisible() && hasDimensions() && !isEditorReadyRef.current) {
-        createEditor();
-        return true;
-      }
-      return false;
-    };
-
-    if (tryCreate()) return;
-
-    // Watch for both visibility and dimension changes
-    const mo = new MutationObserver(() => {
-      tryCreate();
     });
 
-    let el: HTMLElement | null = hostRef.current;
-    while (el) {
-      mo.observe(el, { attributes: true, attributeFilter: ["class"] });
-      el = el.parentElement;
-    }
-
-    const ro = new ResizeObserver(() => {
-      if (tryCreate()) {
-        ro.disconnect();
-      }
-    });
-    ro.observe(hostRef.current);
-
-    return () => {
-      mo.disconnect();
-      ro.disconnect();
-    };
-
-    function createEditor() {
-      if (!hostRef.current || isEditorReadyRef.current) return;
-      isEditorReadyRef.current = true;
-      console.log('[Editor] Creating Monaco editor');
-
-      const p = getPrefs();
-      const editor = monaco.editor.create(hostRef.current, {
-        theme: monacoTheme(p),
-        automaticLayout: true,
-        ...editorOptions(p),
-      });
-      editorRef.current = editor;
-      console.log('[Editor] Monaco editor created');
-
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-        const path = activePathRef.current;
-        const model = editor.getModel();
-        if (path && model) {
-          const file = filesRef.current.find((f) => f.path === path);
-          const host = file?.remoteHost;
-          const save = host
-            ? sshWriteFile(host, path, model.getValue())
-            : writeFile(path, model.getValue());
-          void save.then(() => {
-            markSaved(path, model.getAlternativeVersionId());
-          });
+    // Track dirty state via Monaco model changes
+    const dirtyDisposables: monaco.IDisposable[] = [];
+    const trackModelDirty = (m: monaco.editor.ITextModel | null) => {
+      if (!m) return;
+      const path = m.uri.fsPath;
+      const savedVersion = m.getAlternativeVersionId();
+      markSaved(path, savedVersion);
+      const d = m.onDidChangeContent(() => {
+        const current = m.getAlternativeVersionId();
+        if (current !== savedVersion) {
+          markModified(path, current);
         }
       });
+      dirtyDisposables.push(d);
+    };
 
-      const dirtyDisposables: monaco.IDisposable[] = [];
-      const trackModelDirty = (m: monaco.editor.ITextModel | null) => {
-        if (!m) return;
-        const path = m.uri.fsPath;
-        const savedVersion = m.getAlternativeVersionId();
-        markSaved(path, savedVersion);
-        const d = m.onDidChangeContent(() => {
-          const current = m.getAlternativeVersionId();
-          if (current !== savedVersion) {
-            markModified(path, current);
-          }
-        });
-        dirtyDisposables.push(d);
-      };
+    // Track the initial model
+    trackModelDirty(editor.getModel());
 
+    // Track when model changes (user switches files)
+    const dModelChange = editor.onDidChangeModel(() => {
+      // Clean up old listeners
+      dirtyDisposables.forEach((d) => d.dispose());
+      dirtyDisposables.length = 0;
       trackModelDirty(editor.getModel());
+    });
+    dirtyDisposables.push(dModelChange);
 
-      const dModelChange = editor.onDidChangeModel(() => {
-        dirtyDisposables.forEach((d) => d.dispose());
-        dirtyDisposables.length = 0;
-        trackModelDirty(editor.getModel());
-      });
-      dirtyDisposables.push(dModelChange);
+    const unsub = registerEditorApplyEdit((search, replace) => {
+      const model = editor.getModel();
+      if (!model) return false;
+      const text = model.getValue();
+      const idx = text.indexOf(search);
+      if (idx < 0) return false;
+      const startPos = model.getPositionAt(idx);
+      const endPos = model.getPositionAt(idx + search.length);
+      model.pushEditOperations(
+        [],
+        [
+          {
+            range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
+            text: replace,
+          },
+        ],
+        () => null
+      );
+      return true;
+    });
 
-      const unsub = registerEditorApplyEdit((search, replace) => {
-        const model = editor.getModel();
-        if (!model) return false;
-        const text = model.getValue();
-        const idx = text.indexOf(search);
-        if (idx < 0) return false;
-        const startPos = model.getPositionAt(idx);
-        const endPos = model.getPositionAt(idx + search.length);
-        model.pushEditOperations(
-          [],
-          [
-            {
-              range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
-              text: replace,
-            },
-          ],
-          () => null
-        );
-        return true;
-      });
-
-      const unsubSel = registerEditorGetSelection(() => {
-        const sel = editor.getSelection();
-        const model = editor.getModel();
-        if (!sel || !model || sel.isEmpty()) return null;
-        const text = model.getValueInRange(sel);
-        return {
-          text,
-          startLine: sel.startLineNumber,
-          endLine: sel.endLineNumber,
-        };
-      });
-
-      const unsubFile = registerEditorFile(() => {
-        return editor.getModel()?.uri.path ?? null;
-      });
-
-      editor.addAction({
-        id: "husk-ask-ai",
-        label: "Ask AI",
-        contextMenuGroupId: "9_cutcopypaste",
-        contextMenuOrder: 3,
-        precondition: "editorHasSelection",
-        run: (ed) => {
-          const sel = ed.getSelection();
-          const model = ed.getModel();
-          if (!sel || !model || sel.isEmpty()) return;
-          const text = model.getValueInRange(sel);
-          const filePath = model.uri.path;
-          import("../ai/bubbleStore").then(({ openBubble }) => {
-            openBubble(`Explain this code from ${filePath} (lines ${sel.startLineNumber}-${sel.endLineNumber}):\n\n\`\`\`\n${text}\n\`\`\``);
-          });
-        },
-      });
-
-      editorCleanupRef.current = () => {
-        unsub();
-        unsubSel();
-        unsubFile();
-        dirtyDisposables.forEach((d) => d.dispose());
-        vimRef.current?.dispose();
-        vimRef.current = null;
-        editor.dispose();
-        editorRef.current = null;
-        isEditorReadyRef.current = false;
+    const unsubSel = registerEditorGetSelection(() => {
+      const sel = editor.getSelection();
+      const model = editor.getModel();
+      if (!sel || !model || sel.isEmpty()) return null;
+      const text = model.getValueInRange(sel);
+      return {
+        text,
+        startLine: sel.startLineNumber,
+        endLine: sel.endLineNumber,
       };
-    }
-  }, []);
+    });
 
-  // Cleanup on unmount
-  useEffect(() => {
+    const unsubFile = registerEditorFile(() => {
+      return editor.getModel()?.uri.path ?? null;
+    });
+
+    // ── Editor context menu: Ask AI ───────────────────────────────────────
+    editor.addAction({
+      id: "husk-ask-ai",
+      label: "Ask AI",
+      contextMenuGroupId: "9_cutcopypaste",
+      contextMenuOrder: 3,
+      precondition: "editorHasSelection",
+      run: (ed) => {
+        const sel = ed.getSelection();
+        const model = ed.getModel();
+        if (!sel || !model || sel.isEmpty()) return;
+        const text = model.getValueInRange(sel);
+        const filePath = model.uri.path;
+        // Open bubble and pre-fill with selection context
+        import("../ai/bubbleStore").then(({ openBubble }) => {
+          openBubble(`Explain this code from ${filePath} (lines ${sel.startLineNumber}-${sel.endLineNumber}):\n\n\`\`\`\n${text}\n\`\`\``);
+        });
+      },
+    });
+
     return () => {
-      editorCleanupRef.current?.();
+      unsub();
+      unsubSel();
+      unsubFile();
+      dirtyDisposables.forEach((d) => d.dispose());
+      vimRef.current?.dispose();
+      vimRef.current = null;
+      editor.dispose();
+      editorRef.current = null;
     };
   }, []);
 
-  // Apply preference changes
+  // Apply preference changes (theme + all editor options + tab size).
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -290,7 +230,7 @@ export function EditorArea({
     editor.getModel()?.updateOptions({ tabSize: prefs.editorTabSize, insertSpaces: true });
   }, [prefs]);
 
-  // Toggle Vim
+  // Toggle Vim keybindings.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -302,7 +242,9 @@ export function EditorArea({
     }
   }, [prefs.vimMode]);
 
-  // Load + show the active file
+
+
+  // Load + show the active file (one model per path, reused if already open).
   useEffect(() => {
     activePathRef.current = activePath;
     const editor = editorRef.current;
@@ -320,29 +262,23 @@ export function EditorArea({
         if (cancelled) return;
         model = monaco.editor.createModel(content, languageFor(activePath), uri);
         model.updateOptions({ tabSize: getPrefs().editorTabSize, insertSpaces: true });
+        // Check if this file exists on disk; if not, mark as "new"
         const exists = content !== `// could not open file\n// Error: file not found`;
         if (!exists) {
           markNew(activePath);
         }
       }
       if (cancelled) return;
+      // Ensure we're setting the model on the current editor instance
       if (editorRef.current === editor) {
-        console.log('[Editor] Setting model for', activePath, 'content length:', model.getValue().length);
         editor.setModel(model);
-        // Force layout with explicit dimensions from container
-        const host = hostRef.current;
-        if (host) {
-          const rect = host.getBoundingClientRect();
-          console.log('[Editor] Container dimensions:', rect.width, 'x', rect.height);
-          editor.layout({ width: rect.width, height: rect.height });
-        } else {
-          editor.layout();
-        }
-        requestAnimationFrame(() => {
+        // Delay layout to allow container to reach full height after visibility change
+        setTimeout(() => {
           if (editorRef.current === editor && !cancelled) {
+            editor.layout();
             editor.focus();
           }
-        });
+        }, 100);
       }
     })();
     return () => {
@@ -350,7 +286,7 @@ export function EditorArea({
     };
   }, [activePath]);
 
-  // Dispose models for closed files
+  // Dispose models for files that are no longer open.
   useEffect(() => {
     const open = new Set(files.map((f) => f.path));
     for (const model of monaco.editor.getModels()) {
