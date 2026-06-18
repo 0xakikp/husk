@@ -15,6 +15,7 @@ export interface BubbleSessionStore {
 }
 
 const LS_PREFIX = "huskv2.ai.bubble.sessions";
+const LS_ALL_KEY = "huskv2.ai.bubble.all-sessions";
 
 function getLsKey(tabId?: number | string): string {
   const ws = getWorkspaceRoot();
@@ -23,6 +24,7 @@ function getLsKey(tabId?: number | string): string {
   return `${LS_PREFIX}${tabPart}${wsPart}`;
 }
 
+/** Load the active session ID for a specific tab (per-tab state) */
 export function loadBubbleSessions(tabId?: number | string): BubbleSessionStore {
   try {
     const raw = localStorage.getItem(getLsKey(tabId));
@@ -33,12 +35,51 @@ export function loadBubbleSessions(tabId?: number | string): BubbleSessionStore 
   }
 }
 
+/** Save the active session ID for a specific tab (per-tab state) */
 export function saveBubbleSessions(store: BubbleSessionStore, tabId?: number | string): void {
   try {
     localStorage.setItem(getLsKey(tabId), JSON.stringify(store));
   } catch {
     // storage unavailable
   }
+}
+
+/** Load ALL sessions across all tabs (global session registry) */
+export function loadAllBubbleSessions(): BubbleSession[] {
+  try {
+    const raw = localStorage.getItem(LS_ALL_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as BubbleSession[];
+  } catch {
+    return [];
+  }
+}
+
+/** Save ALL sessions across all tabs (global session registry) */
+export function saveAllBubbleSessions(sessions: BubbleSession[]): void {
+  try {
+    localStorage.setItem(LS_ALL_KEY, JSON.stringify(sessions));
+  } catch {
+    // storage unavailable
+  }
+}
+
+/** Add or update a session in the global registry */
+export function upsertGlobalSession(session: BubbleSession): void {
+  const all = loadAllBubbleSessions();
+  const idx = all.findIndex((s) => s.id === session.id);
+  if (idx >= 0) {
+    all[idx] = session;
+  } else {
+    all.unshift(session);
+  }
+  saveAllBubbleSessions(all);
+}
+
+/** Delete a session from the global registry */
+export function deleteGlobalSession(sessionId: string): void {
+  const all = loadAllBubbleSessions().filter((s) => s.id !== sessionId);
+  saveAllBubbleSessions(all);
 }
 
 export function createBubbleSession(messages: ChatMessage[] = []): BubbleSession {

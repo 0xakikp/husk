@@ -11,12 +11,16 @@ import { subscribeWorkspaceRoot } from "../../workspace/store";
 import {
   loadBubbleSessions,
   saveBubbleSessions,
+  loadAllBubbleSessions,
+  saveAllBubbleSessions,
+  upsertGlobalSession,
+  deleteGlobalSession,
   createBubbleSession,
-  updateBubbleSessionTitle,
   updateBubbleSessionMessages,
   deleteBubbleSession,
   setActiveBubbleSession,
   type BubbleSessionStore,
+  type BubbleSession,
 } from "./sessionStore";
 
 export interface AttachedFile {
@@ -28,7 +32,12 @@ export function useAiBubbleChat(tabId?: number) {
   const tabIdRef = useRef(tabId);
   tabIdRef.current = tabId;
 
+  // Per-tab store (only tracks activeSessionId for this tab)
   const [store, setStore] = useState<BubbleSessionStore>(() => loadBubbleSessions(tabId));
+  
+  // Global sessions list (all sessions across all tabs)
+  const [allSessions, setAllSessions] = useState<BubbleSession[]>(() => loadAllBubbleSessions());
+  
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const inputRef = useRef("");
@@ -44,7 +53,8 @@ export function useAiBubbleChat(tabId?: number) {
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
-  const activeSession = store.sessions.find((s) => s.id === store.activeSessionId) ?? null;
+  // Active session is from global list, filtered by current tab's activeSessionId
+  const activeSession = allSessions.find((s) => s.id === store.activeSessionId) ?? null;
   const loadedSessionIdRef = useRef<string | null>(null);
 
   // Reload sessions when workspace changes or tabId changes
@@ -52,8 +62,9 @@ export function useAiBubbleChat(tabId?: number) {
     return subscribeWorkspaceRoot(() => {
       const next = loadBubbleSessions(tabIdRef.current);
       setStore(next);
+      setAllSessions(loadAllBubbleSessions());
       loadedSessionIdRef.current = next.activeSessionId;
-      setMessages(next.activeSessionId ? next.sessions.find((s) => s.id === next.activeSessionId)?.messages ?? [] : []);
+      setMessages(next.activeSessionId ? loadAllBubbleSessions().find((s) => s.id === next.activeSessionId)?.messages ?? [] : []);
     });
   }, []);
 
@@ -61,8 +72,9 @@ export function useAiBubbleChat(tabId?: number) {
   useEffect(() => {
     const next = loadBubbleSessions(tabId);
     setStore(next);
+    setAllSessions(loadAllBubbleSessions());
     loadedSessionIdRef.current = next.activeSessionId;
-    setMessages(next.activeSessionId ? next.sessions.find((s) => s.id === next.activeSessionId)?.messages ?? [] : []);
+    setMessages(next.activeSessionId ? loadAllBubbleSessions().find((s) => s.id === next.activeSessionId)?.messages ?? [] : []);
   }, [tabId]);
 
   // Load messages when active session changes
@@ -81,15 +93,24 @@ export function useAiBubbleChat(tabId?: number) {
   // Persist messages after each change (and auto-title from first user message)
   useEffect(() => {
     if (!activeSession) return;
-    let currentStore = store;
-
-    // Auto-title session from the first user message
-    if (messages.length > 0 && messages[0].role === "user" && activeSession.title === "New Chat") {
-      const autoTitle = messages[0].content.slice(0, 40) + (messages[0].content.length > 40 ? "…" : "");
-      currentStore = updateBubbleSessionTitle(currentStore, activeSession.id, autoTitle);
+    
+    // Update global session with new messages
+    const updatedSession: BubbleSession = {
+      ...activeSession,
+      messages,
+      updatedAt: Date.now(),
+    };
+    
+    // Auto-title from first user message
+    if (messages.length > 0 && messages[0].role === "user" && updatedSession.title === "New Chat") {
+      updatedSession.title = messages[0].content.slice(0, 40) + (messages[0].content.length > 40 ? "…" : "");
     }
-
-    const next = updateBubbleSessionMessages(currentStore, activeSession.id, messages);
+    
+    upsertGlobalSession(updatedSession);
+    setAllSessions(loadAllBubbleSessions());
+    
+    // Also update per-tab store (just the active session ID reference)
+    const next = updateBubbleSessionMessages(store, activeSession.id, messages);
     setStore(next);
     saveBubbleSessions(next, tabIdRef.current);
     // We intentionally omit `store` from deps: it is updated inside this effect
@@ -102,9 +123,15 @@ export function useAiBubbleChat(tabId?: number) {
   const ensureSession = useCallback(() => {
     if (activeSession) return;
     const session = createBubbleSession();
+    
+    // Add to global registry
+    upsertGlobalSession(session);
+    setAllSessions(loadAllBubbleSessions());
+    
+    // Set as active for this tab only
     const next = {
       activeSessionId: session.id,
-      sessions: [session, ...store.sessions],
+      sessions: [], // per-tab store only tracks active ID, not the list
     };
     setStore(next);
     saveBubbleSessions(next, tabIdRef.current);
@@ -245,9 +272,15 @@ export function useAiBubbleChat(tabId?: number) {
   // Session management
   const newSession = useCallback(() => {
     const session = createBubbleSession();
+    
+    // Add to global registry
+    upsertGlobalSession(session);
+    setAllSessions(loadAllBubbleSessions());
+    
+    // Set as active for this tab only
     const next = {
       activeSessionId: session.id,
-      sessions: [session, ...store.sessions],
+      sessions: [],
     };
     setStore(next);
     saveBubbleSessions(next, tabIdRef.current);
@@ -256,20 +289,26 @@ export function useAiBubbleChat(tabId?: number) {
   }, [store]);
 
   const switchSession = useCallback((id: string) => {
+    // Update per-tab active session ID only
     setStore((prev) => {
       const next = setActiveBubbleSession(prev, id);
       saveBubbleSessions(next, tabIdRef.current);
       return next;
     });
-    // Force reload messages for this session
-    const s = store.sessions.find((sess) => sess.id === id);
+    // Load messages from global registry
+    const s = loadAllBubbleSessions().find((sess) => sess.id === id);
     if (s) {
       loadedSessionIdRef.current = id;
       setMessages(s.messages);
     }
-  }, [store]);
+  }, []);
 
   const deleteSession = useCallback((id: string) => {
+    // Remove from global registry
+    deleteGlobalSession(id);
+    setAllSessions(loadAllBubbleSessions());
+    
+    // If this tab had this session active, clear it
     setStore((prev) => {
       const next = deleteBubbleSession(prev, id);
       saveBubbleSessions(next, tabIdRef.current);
@@ -278,11 +317,14 @@ export function useAiBubbleChat(tabId?: number) {
   }, []);
 
   const renameSession = useCallback((id: string, title: string) => {
-    setStore((prev) => {
-      const next = updateBubbleSessionTitle(prev, id, title);
-      saveBubbleSessions(next, tabIdRef.current);
-      return next;
-    });
+    // Update in global registry
+    const all = loadAllBubbleSessions();
+    const idx = all.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      all[idx] = { ...all[idx], title, updatedAt: Date.now() };
+      saveAllBubbleSessions(all);
+      setAllSessions(all);
+    }
   }, []);
 
   return {
@@ -298,7 +340,7 @@ export function useAiBubbleChat(tabId?: number) {
     ensureSession,
     attachedFiles,
     setAttachedFiles,
-    store,
+    store: { activeSessionId: store.activeSessionId, sessions: allSessions },
     activeSession,
     newSession,
     switchSession,
