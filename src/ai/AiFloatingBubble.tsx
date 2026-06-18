@@ -496,6 +496,51 @@ export function AiFloatingBubble({
   }, [size, pos]);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    sx: number; sy: number; spx: number; spy: number;
+    finalX?: number; finalY?: number;
+  } | null>(null);
+
+  const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    const isTouch = "touches" in e;
+    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+    e.preventDefault();
+    e.stopPropagation();
+    const startPos = panelPos ?? pos;
+    dragRef.current = { sx: clientX, sy: clientY, spx: startPos.x, spy: startPos.y };
+    const panel = panelRef.current;
+    const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
+      if (!dragRef.current) return;
+      const r = dragRef.current;
+      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+      const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
+      const dx = cx - r.sx;
+      const dy = cy - r.sy;
+      const nx = Math.max(0, Math.min(window.innerWidth - size.w - 8, r.spx + dx));
+      const ny = Math.max(0, Math.min(window.innerHeight - size.h - 8, r.spy + dy));
+      if (panel) {
+        panel.style.left = `${nx}px`;
+        panel.style.top = `${ny}px`;
+      }
+      dragRef.current.finalX = nx;
+      dragRef.current.finalY = ny;
+    };
+    const onUp = () => {
+      const finalX = dragRef.current?.finalX ?? (panelPos ?? pos).x;
+      const finalY = dragRef.current?.finalY ?? (panelPos ?? pos).y;
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove as EventListener);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove as EventListener);
+      window.removeEventListener("touchend", onUp);
+      setPanelPos({ x: finalX, y: finalY });
+    };
+    window.addEventListener("mousemove", onMove as EventListener);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
+    window.addEventListener("touchend", onUp);
+  }, [panelPos, pos, size]);
 
   // On first expand, snap panel to bubble position. After that, panelPos is controlled by drag.
   const hasExpandedRef = useRef(false);
@@ -610,8 +655,10 @@ export function AiFloatingBubble({
 
       {/* ── HEADER ── */}
       <div
+        onMouseDown={startDrag}
+        onTouchStart={startDrag}
         className={cn(
-          "relative flex shrink-0 items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-0.5 select-none",
+          "relative flex shrink-0 cursor-move items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-0.5 select-none",
           busy && "header-streaming"
         )}
       >
