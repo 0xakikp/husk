@@ -1873,6 +1873,8 @@ button {
   border-radius: 8px;
   padding: 6px 10px;
   background: var(--bg-2);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .totp-item-selected {

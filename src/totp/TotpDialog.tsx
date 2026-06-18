@@ -83,6 +83,7 @@ function AccountRow({
   const gen = generateCode(account);
   const [editing, setEditing] = useState(false);
   const [editLabel, setEditLabel] = useState(account.label);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
   return (
     <div
@@ -91,10 +92,14 @@ function AccountRow({
       onDragStart={() => onDragStart(account.id)}
       onDragOver={(e) => onDragOver(e, account.id)}
       onDrop={(e) => onDrop(e, account.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setCtxMenu({ x: e.clientX, y: e.clientY });
+      }}
     >
       <div className="flex flex-1 flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[11px] text-muted-foreground truncate">
             {account.issuer ? `${account.issuer} · ` : ""}
             {account.label}
           </span>
@@ -140,8 +145,8 @@ function AccountRow({
         )}
         {gen ? <CountdownBar remaining={gen.remaining} /> : null}
       </div>
-      <div className="flex flex-col items-end gap-1.5">
-        <span className="totp-remaining">{gen ? `${gen.remaining}s` : "!"}</span>
+      <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <span className="totp-remaining whitespace-nowrap">{gen ? `${gen.remaining}s` : "!"}</span>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -172,6 +177,63 @@ function AccountRow({
           </button>
         </div>
       </div>
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
+          <div
+            className="fixed z-50 min-w-[140px] rounded-lg border border-border bg-popover shadow-xl py-1"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent"
+              onClick={() => {
+                gen && onCopy(gen.code);
+                setCtxMenu(null);
+              }}
+            >
+              <HugeiconsIcon icon={Copy01Icon} size={12} strokeWidth={1.5} />
+              Copy code
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent"
+              onClick={() => {
+                onShowQr(account);
+                setCtxMenu(null);
+              }}
+            >
+              <HugeiconsIcon icon={QrCodeIcon} size={12} strokeWidth={1.5} />
+              Show QR
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent"
+              onClick={() => {
+                setEditing(true);
+                setCtxMenu(null);
+              }}
+            >
+              <HugeiconsIcon icon={PencilEdit02Icon} size={12} strokeWidth={1.5} />
+              Edit label
+            </button>
+            <div className="my-1 h-px bg-border" />
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+              onClick={() => {
+                onDelete(account.id);
+                setCtxMenu(null);
+              }}
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.5} />
+              Remove
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
