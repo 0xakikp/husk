@@ -368,7 +368,7 @@ html *::-webkit-scrollbar {
 
 /* Accent-colored selection */
 ::selection {
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
-  color: #ffffff;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: inherit;
 }
 
