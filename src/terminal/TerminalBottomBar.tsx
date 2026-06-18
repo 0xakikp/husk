@@ -7,6 +7,11 @@ import {
   CancelCircleIcon,
   CommandIcon,
   Clock01Icon,
+  Folder01Icon,
+  HomeIcon,
+  ArrowRight01Icon,
+  Delete01Icon,
+  TimeScheduleIcon,
 } from "@hugeicons/core-free-icons";
 import { VitalStrip } from "./vitals/VitalStrip";
 import { useSystemVitals } from "./vitals/useSystemVitals";
@@ -22,6 +27,7 @@ import {
 import { bgList, type BgJob } from "../jobs/client";
 import { toast } from "../toast";
 import { usePrefs } from "../settings/preferences";
+import { getWorkspaceRoot } from "../workspace/store";
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -208,11 +214,16 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
   const shimmer = typing || hasJobs;
   const timeStr = clock.toLocaleTimeString("en-US", { hour12: false });
 
+  const workspace = getWorkspaceRoot();
+  const cwd = getActiveTerminalCwd();
+  const dirName = cwd ? cwd.split("/").pop() || cwd : "";
+  const wsName = workspace ? workspace.split("/").pop() || workspace : "";
+
   if (!hasContext && !hasJobs) {
     return (
       <div
         data-command-bar
-        className="flex h-9 items-center gap-2 border-t border-border/15 bg-background/50 px-3"
+        className="flex h-9 items-center gap-2 border-t border-border/15 bg-background/50 px-2"
         onDrop={(e) => {
           e.preventDefault();
           const files = Array.from(e.dataTransfer.files);
@@ -223,7 +234,112 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
         }}
         onDragOver={(e) => e.preventDefault()}
       >
-        <span className="opacity-50 text-[12px] text-muted-foreground">Drop files to paste paths, # / @ to reference</span>
+        {/* Typing pulse */}
+        <div
+          className={`size-2 rounded-full transition-all duration-300 ${
+            typing
+              ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)] animate-pulse"
+              : "bg-muted-foreground/20"
+          }`}
+          title={typing ? "Typing..." : "Idle"}
+        />
+
+        {/* Exit code */}
+        {lastExitCode !== null && (
+          <div
+            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium transition-all ${
+              lastExitCode === 0
+                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                : "bg-red-500/15 text-red-600 dark:text-red-400"
+            } ${exitAnim ? "scale-125" : "scale-100"}`}
+            style={{ transitionDuration: "200ms" }}
+          >
+            {lastExitCode === 0 ? "✓" : "✗"}
+          </div>
+        )}
+
+        {/* Workspace / Cwd */}
+        {wsName && (
+          <div className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/20 px-2 py-0.5 text-[11px] text-muted-foreground">
+            <HugeiconsIcon icon={HomeIcon} size={10} strokeWidth={1.5} />
+            <span className="truncate max-w-[80px] font-medium text-foreground">{wsName}</span>
+            {dirName && dirName !== wsName && (
+              <>
+                <HugeiconsIcon icon={ArrowRight01Icon} size={9} strokeWidth={1.5} className="text-muted-foreground/40" />
+                <span className="truncate max-w-[60px]">{dirName}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Quick actions */}
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => send("clear")}
+            className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+            title="Clear terminal"
+          >
+            <HugeiconsIcon icon={Delete01Icon} size={11} strokeWidth={1.75} />
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => send("history | tail -n 20")}
+            className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+            title="Show recent history"
+          >
+            <HugeiconsIcon icon={TimeScheduleIcon} size={11} strokeWidth={1.75} />
+            History
+          </button>
+          <button
+            type="button"
+            onClick={() => send("ls -la")}
+            className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+            title="List directory"
+          >
+            <HugeiconsIcon icon={Folder01Icon} size={11} strokeWidth={1.75} />
+            ls
+          </button>
+        </div>
+
+        <div className="min-w-0 flex-1" />
+
+        {/* Vitals */}
+        {vitals && (
+          <div className="hidden md:inline-flex shrink-0 items-center gap-2 text-[10.5px] text-muted-foreground font-mono tabular-nums">
+            <span className="inline-flex items-center gap-1">
+              <span className="size-1.5 rounded-full bg-amber-500/60" />
+              {Math.round(vitals.cpu_percent)}%
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="size-1.5 rounded-full bg-sky-500/60" />
+              {Math.round(vitals.mem_used_mb / 1024)}G
+              <span className="text-muted-foreground/40">/</span>
+              {Math.round(vitals.mem_total_mb / 1024)}G
+            </span>
+            {vitals.load_1 > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <svg width="8" height="8" viewBox="0 0 8 8" className="text-muted-foreground/40">
+                  <path d="M1 7V4M4 7V2M7 7V5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+                </svg>
+                {vitals.load_1.toFixed(2)}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Clock */}
+        <div className="hidden sm:inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground font-mono">
+          <HugeiconsIcon icon={Clock01Icon} size={10} strokeWidth={1.75} />
+          {timeStr}
+        </div>
+
+        {/* Online */}
+        <div
+          className={`size-2 rounded-full ${online ? "bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.5)]" : "bg-red-400"}`}
+          title={online ? "Online" : "Offline"}
+        />
       </div>
     );
   }
