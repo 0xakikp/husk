@@ -163,7 +163,7 @@ function AccountRow({
           </button>
           <button
             type="button"
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive transition-colors"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-destructive/70 hover:bg-destructive/15 hover:text-destructive transition-colors"
             title="Remove"
             onClick={() => onDelete(account.id)}
           >
