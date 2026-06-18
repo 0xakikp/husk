@@ -696,11 +696,11 @@ export function AiFloatingBubble({
           >
             <HugeiconsIcon icon={ClipboardIcon} size={10} strokeWidth={1.5} />
             <span>{includeContext ? "Ctx" : "No ctx"}</span>
-            {/* Context preview tooltip */}
+            {/* Context preview tooltip — compact, positioned above to avoid overflow clip */}
             {showCtxPreview && includeContext && ctxPreview && (
-              <div className="absolute top-full right-0 z-40 mt-1.5 max-w-[min(16rem,100%)] rounded-md border border-border/60 bg-popover p-2 shadow-lg">
-                <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Terminal context preview</div>
-                <pre className="max-h-32 overflow-auto rounded bg-muted/50 p-1.5 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
+              <div className="absolute bottom-full right-0 z-40 mb-1 w-44 rounded-md border border-border/60 bg-popover p-1.5 shadow-lg">
+                <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Context preview</div>
+                <pre className="max-h-20 overflow-auto rounded bg-muted/50 p-1 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
               </div>
             )}
           </button>
