@@ -320,7 +320,6 @@ export function AiFloatingBubble({
     busy,
     send,
     stop,
-    clear,
     includeContext,
     setIncludeContext,
     ensureSession,
@@ -521,7 +520,8 @@ export function AiFloatingBubble({
 
   const handleClose = () => {
     setState("collapsed");
-    clear();
+    // Don't clear messages — keep them for when bubble reopens
+    setInput("");
   };
 
   const handleQuickAction = (prompt: string) => {

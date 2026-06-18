@@ -250,7 +250,13 @@ export function useAiBubbleChat() {
       saveBubbleSessions(next);
       return next;
     });
-  }, []);
+    // Force reload messages for this session
+    const s = store.sessions.find((sess) => sess.id === id);
+    if (s) {
+      loadedSessionIdRef.current = id;
+      setMessages(s.messages);
+    }
+  }, [store]);
 
   const deleteSession = useCallback((id: string) => {
     setStore((prev) => {
