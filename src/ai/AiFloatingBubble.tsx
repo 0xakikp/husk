@@ -272,10 +272,6 @@ export function AiFloatingBubble({
     edge: string;
     finalW?: number; finalH?: number; finalX?: number; finalY?: number;
   } | null>(null);
-  const dragRef = useRef<{
-    sx: number; sy: number; spx: number; spy: number;
-    finalX?: number; finalY?: number;
-  } | null>(null);
   const pendingRef = useRef<string | undefined>(undefined);
 
   // Dropdown states
@@ -502,49 +498,7 @@ export function AiFloatingBubble({
 
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    const isTouch = "touches" in e;
-    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-    e.preventDefault();
-    e.stopPropagation();
-    const startPos = panelPos ?? pos;
-    dragRef.current = { sx: clientX, sy: clientY, spx: startPos.x, spy: startPos.y };
-    const panel = panelRef.current;
-    const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
-      if (!dragRef.current) return;
-      const r = dragRef.current;
-      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
-      const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
-      const dx = cx - r.sx;
-      const dy = cy - r.sy;
-      const nx = Math.max(0, Math.min(window.innerWidth - size.w - 8, r.spx + dx));
-      const ny = Math.max(0, Math.min(window.innerHeight - size.h - 8, r.spy + dy));
-      // Direct DOM manipulation — bypass React render cycle for 60fps drag
-      if (panel) {
-        panel.style.left = `${nx}px`;
-        panel.style.top = `${ny}px`;
-      }
-      // Store final position for React state update on mouse up
-      dragRef.current.finalX = nx;
-      dragRef.current.finalY = ny;
-    };
-    const onUp = () => {
-      const finalX = dragRef.current?.finalX ?? (panelPos ?? pos).x;
-      const finalY = dragRef.current?.finalY ?? (panelPos ?? pos).y;
-      dragRef.current = null;
-      window.removeEventListener("mousemove", onMove as EventListener);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("touchmove", onMove as EventListener);
-      window.removeEventListener("touchend", onUp);
-      // Single React state update at end of drag
-      setPanelPos({ x: finalX, y: finalY });
-    };
-    window.addEventListener("mousemove", onMove as EventListener);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
-    window.addEventListener("touchend", onUp);
-  }, [panelPos, pos, size]);
+
 
   // On first expand, snap panel to bubble position. After that, panelPos is controlled by drag.
   const hasExpandedRef = useRef(false);
@@ -641,16 +595,16 @@ export function AiFloatingBubble({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Resize strips */}
-      <div className="absolute top-0 left-2 right-2 z-20 cursor-ns-resize" style={{ height: 4 }} onMouseDown={startResize("n")} />
-      <div className="absolute bottom-0 left-2 right-2 z-20 cursor-ns-resize" style={{ height: 4 }} onMouseDown={startResize("s")} />
-      <div className="absolute top-2 bottom-2 left-0 z-20 cursor-ew-resize" style={{ width: 4 }} onMouseDown={startResize("w")} />
-      <div className="absolute top-2 bottom-2 right-0 z-20 cursor-ew-resize" style={{ width: 4 }} onMouseDown={startResize("e")} />
-      <div className="absolute top-0 left-0 z-20 size-2 cursor-nwse-resize" onMouseDown={startResize("nw")} />
-      <div className="absolute top-0 right-0 z-20 size-2 cursor-nesw-resize" onMouseDown={startResize("ne")} />
-      <div className="absolute bottom-0 left-0 z-20 size-2 cursor-nesw-resize" onMouseDown={startResize("sw")} />
-      <div className="absolute bottom-0 right-0 z-20 size-3 cursor-nwse-resize" onMouseDown={startResize("se")}>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="pointer-events-none text-muted-foreground/40">
+      {/* Resize strips — thicker, easier to grab */}
+      <div className="absolute top-0 left-2 right-2 z-20 cursor-ns-resize hover:bg-primary/10" style={{ height: 6 }} onMouseDown={startResize("n")} onTouchStart={startResize("n")} />
+      <div className="absolute bottom-0 left-2 right-2 z-20 cursor-ns-resize hover:bg-primary/10" style={{ height: 6 }} onMouseDown={startResize("s")} onTouchStart={startResize("s")} />
+      <div className="absolute top-2 bottom-2 left-0 z-20 cursor-ew-resize hover:bg-primary/10" style={{ width: 6 }} onMouseDown={startResize("w")} onTouchStart={startResize("w")} />
+      <div className="absolute top-2 bottom-2 right-0 z-20 cursor-ew-resize hover:bg-primary/10" style={{ width: 6 }} onMouseDown={startResize("e")} onTouchStart={startResize("e")} />
+      <div className="absolute top-0 left-0 z-20 size-3 cursor-nwse-resize hover:bg-primary/10" onMouseDown={startResize("nw")} onTouchStart={startResize("nw")} />
+      <div className="absolute top-0 right-0 z-20 size-3 cursor-nesw-resize hover:bg-primary/10" onMouseDown={startResize("ne")} onTouchStart={startResize("ne")} />
+      <div className="absolute bottom-0 left-0 z-20 size-3 cursor-nesw-resize hover:bg-primary/10" onMouseDown={startResize("sw")} onTouchStart={startResize("sw")} />
+      <div className="absolute bottom-0 right-0 z-20 size-4 cursor-nwse-resize hover:bg-primary/10" onMouseDown={startResize("se")} onTouchStart={startResize("se")}>
+        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" className="pointer-events-none text-muted-foreground/40">
           <path d="M7 11L11 7M11 11L11 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           <path d="M4 11L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
         </svg>
@@ -658,10 +612,8 @@ export function AiFloatingBubble({
 
       {/* ── HEADER ── */}
       <div
-        onMouseDown={startDrag}
-        onTouchStart={startDrag}
         className={cn(
-          "relative flex shrink-0 cursor-move items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-0.5 select-none",
+          "relative flex shrink-0 items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-0.5 select-none",
           busy && "header-streaming"
         )}
       >
