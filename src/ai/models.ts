@@ -31,8 +31,10 @@ export const MODELS: ModelInfo[] = [
   { id: "mixtral-8x7b", label: "Mixtral 8x7B", provider: getProvider("groq"), description: "Open MoE model", contextWindow: "32K" },
 
   // DeepSeek
-  { id: "deepseek-chat", label: "DeepSeek V3", provider: getProvider("deepseek"), description: "General purpose chat", contextWindow: "64K" },
-  { id: "deepseek-reasoner", label: "DeepSeek R1", provider: getProvider("deepseek"), description: "Reasoning specialist", contextWindow: "64K" },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: getProvider("deepseek"), description: "Highest quality, 1M context", contextWindow: "1M" },
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", provider: getProvider("deepseek"), description: "Fast, 1M context", contextWindow: "1M" },
+  { id: "deepseek-chat", label: "DeepSeek V3 (legacy)", provider: getProvider("deepseek"), description: "Deprecated July 2026", contextWindow: "64K" },
+  { id: "deepseek-reasoner", label: "DeepSeek R1 (legacy)", provider: getProvider("deepseek"), description: "Deprecated July 2026", contextWindow: "64K" },
 
   // OpenRouter
   { id: "openrouter-auto", label: "Auto (best available)", provider: getProvider("openrouter"), description: "OpenRouter picks the best model", contextWindow: "—" },

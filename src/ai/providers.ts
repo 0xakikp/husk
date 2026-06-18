@@ -35,7 +35,7 @@ export const PROVIDERS: Provider[] = [
     label: "DeepSeek",
     kind: "openai-compatible",
     baseURL: "https://api.deepseek.com/v1",
-    defaultModel: "deepseek-chat",
+    defaultModel: "deepseek-v4-pro",
   },
   {
     id: "openrouter",
