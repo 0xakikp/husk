@@ -525,8 +525,10 @@ export function TerminalView({
     const id = ptyIdRef.current;
     if (!term || id == null) return;
     if (isCommandRunning()) return;
+
+    // If user has a selection, don't clear it on click — let them copy
     if (term.hasSelection()) {
-      term.clearSelection();
+      return;
     }
 
     const buf = term.buffer.active;
