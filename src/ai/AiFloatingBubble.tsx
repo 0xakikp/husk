@@ -651,7 +651,7 @@ export function AiFloatingBubble({
           <span>{includeContext ? "Ctx" : "No ctx"}</span>
           {/* Context preview tooltip */}
           {showCtxPreview && includeContext && ctxPreview && (
-            <div className="absolute top-full right-0 z-40 mt-1.5 w-64 rounded-md border border-border/60 bg-popover p-2 shadow-lg">
+            <div className="absolute top-full right-0 z-40 mt-1.5 max-w-[min(16rem,100%)] rounded-md border border-border/60 bg-popover p-2 shadow-lg">
               <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Terminal context preview</div>
               <pre className="max-h-32 overflow-auto rounded bg-muted/50 p-1.5 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
             </div>
@@ -674,7 +674,7 @@ export function AiFloatingBubble({
             )}
           </button>
           {showSessions && (
-            <div className="absolute top-full right-0 z-30 mt-1 w-60 rounded-md border border-border/60 bg-popover py-1 shadow-lg">
+            <div className="absolute top-full right-0 z-30 mt-1 max-w-[min(15rem,100%)] rounded-md border border-border/60 bg-popover py-1 shadow-lg">
               <div className="flex items-center justify-between px-2 py-1">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sessions</span>
                 <button
@@ -772,7 +772,7 @@ export function AiFloatingBubble({
         {/* Rename modal */}
         {editingTitle && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40" onClick={() => setEditingTitle(null)}>
-            <div className="w-64 rounded-lg border border-border bg-popover p-3 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="max-w-[min(16rem,100%)] rounded-lg border border-border bg-popover p-3 shadow-lg" onClick={(e) => e.stopPropagation()}>
               <div className="mb-2 text-[12px] font-medium text-foreground">Rename session</div>
               <input
                 ref={editTitleRef}
