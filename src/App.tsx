@@ -981,7 +981,7 @@ function App() {
       },
       // Terminal tab commands
       { id: "new-tab", label: "New terminal tab", hint: "Ctrl/Cmd+T", run: () => { term.addTab(); setActiveKind("term"); } },
-      { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+W", run: () => term.closeTab(term.activeId) },
+      { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+Shift+W", run: () => term.closeTab(term.activeId) },
       { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind("term"); } } },
       { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind("term"); } } },
     ],
@@ -1005,7 +1005,8 @@ function App() {
         e.preventDefault();
         term.addTab();
         setActiveKind("term");
-      } else if (key === "w") {
+      } else if (key === "w" && e.shiftKey) {
+        // Ctrl+Shift+W → close tab (Ctrl+W passes through to shell for word delete)
         if (activeKind === "term" || activeKind === "git-graph" || activeKind === "issues") {
           e.preventDefault();
           term.closeTab(term.activeId);
