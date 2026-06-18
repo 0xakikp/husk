@@ -906,7 +906,7 @@ export function AiFloatingBubble({
       </div>
 
       {/* ── FOOTER ── */}
-      <div className="shrink-0 border-t border-border/60 bg-muted/10 px-2.5 py-1.5">
+      <div className="shrink-0 border-t border-border/60 bg-muted/10 px-2 py-1">
         {dragOver && (
           <div className="mb-1.5 flex items-center gap-1.5 rounded-md border border-dashed border-primary/50 bg-primary/5 px-2 py-1 text-[11px] text-primary">
             <HugeiconsIcon icon={Upload02Icon} size={12} strokeWidth={1.5} />
@@ -959,7 +959,7 @@ export function AiFloatingBubble({
                 }
               }}
               placeholder="Ask Husk anything…"
-              className="min-h-[28px] max-h-[120px] flex-1 resize-none rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40"
+              className="min-h-[24px] max-h-[120px] flex-1 resize-none rounded-lg border border-border/40 bg-muted/30 px-2 py-0.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40"
               rows={1}
             />
             <button
