@@ -496,54 +496,6 @@ export function AiFloatingBubble({
   }, [size, pos]);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{
-    sx: number; sy: number; spx: number; spy: number;
-    finalX?: number; finalY?: number;
-  } | null>(null);
-
-  const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    const isTouch = "touches" in e;
-    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-    e.preventDefault();
-    e.stopPropagation();
-    const startPos = panelPos ?? pos;
-    dragRef.current = { sx: clientX, sy: clientY, spx: startPos.x, spy: startPos.y };
-    const panel = panelRef.current;
-    const onMove = (ev: globalThis.MouseEvent | globalThis.TouchEvent) => {
-      if (!dragRef.current) return;
-      const r = dragRef.current;
-      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
-      const cy = "touches" in ev ? ev.touches[0].clientY : ev.clientY;
-      const dx = cx - r.sx;
-      const dy = cy - r.sy;
-      const nx = Math.max(0, Math.min(window.innerWidth - size.w - 8, r.spx + dx));
-      const ny = Math.max(0, Math.min(window.innerHeight - size.h - 8, r.spy + dy));
-      // Direct DOM manipulation — bypass React render cycle for 60fps drag
-      if (panel) {
-        panel.style.left = `${nx}px`;
-        panel.style.top = `${ny}px`;
-      }
-      // Store final position for React state update on mouse up
-      dragRef.current.finalX = nx;
-      dragRef.current.finalY = ny;
-    };
-    const onUp = () => {
-      const finalX = dragRef.current?.finalX ?? (panelPos ?? pos).x;
-      const finalY = dragRef.current?.finalY ?? (panelPos ?? pos).y;
-      dragRef.current = null;
-      window.removeEventListener("mousemove", onMove as EventListener);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("touchmove", onMove as EventListener);
-      window.removeEventListener("touchend", onUp);
-      // Single React state update at end of drag
-      setPanelPos({ x: finalX, y: finalY });
-    };
-    window.addEventListener("mousemove", onMove as EventListener);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
-    window.addEventListener("touchend", onUp);
-  }, [panelPos, pos, size]);
 
   // On first expand, snap panel to bubble position. After that, panelPos is controlled by drag.
   const hasExpandedRef = useRef(false);
@@ -658,10 +610,8 @@ export function AiFloatingBubble({
 
       {/* ── HEADER ── */}
       <div
-        onMouseDown={startDrag}
-        onTouchStart={startDrag}
         className={cn(
-          "relative flex shrink-0 cursor-move items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-0.5 select-none",
+          "relative flex shrink-0 items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-0.5 select-none",
           busy && "header-streaming"
         )}
       >
@@ -676,109 +626,111 @@ export function AiFloatingBubble({
         <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.5} className="shrink-0 text-primary" />
         <span className="mr-auto text-[11px] font-semibold text-foreground">AI</span>
 
-        {/* Provider label (read-only, synced from Settings) */}
-        <span className="shrink-0 rounded-md border border-border/40 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-          {provider.label.split(" ")[0]}
-        </span>
+        {/* Right-side controls cluster */}
+        <div className="flex items-center gap-1">
+          {/* Provider label */}
+          <span className="shrink-0 rounded-md border border-border/40 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {provider.label.split(" ")[0]}
+          </span>
 
-        {/* Context chip */}
-        <button
-          type="button"
-          onClick={() => setIncludeContext((v) => !v)}
-          onMouseEnter={refreshCtxPreview}
-          onMouseLeave={() => setShowCtxPreview(false)}
-          className={cn(
-            "relative flex h-5 shrink-0 items-center gap-0.5 rounded-md border px-1.5 text-[10px] transition-colors",
-            includeContext
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"
-              : "border-border/40 bg-muted/40 text-muted-foreground hover:bg-muted/70"
-          )}
-          title={includeContext ? "Terminal context ON" : "Terminal context OFF"}
-        >
-          <HugeiconsIcon icon={ClipboardIcon} size={10} strokeWidth={1.5} />
-          <span>{includeContext ? "Ctx" : "No ctx"}</span>
-          {/* Context preview tooltip */}
-          {showCtxPreview && includeContext && ctxPreview && (
-            <div className="absolute top-full right-0 z-40 mt-1.5 max-w-[min(16rem,100%)] rounded-md border border-border/60 bg-popover p-2 shadow-lg">
-              <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Terminal context preview</div>
-              <pre className="max-h-32 overflow-auto rounded bg-muted/50 p-1.5 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
-            </div>
-          )}
-        </button>
-
-        {/* Session menu */}
-        <div className="relative shrink-0" data-bubble-sessions>
+          {/* Context chip */}
           <button
             type="button"
-            onClick={() => setShowSessions((v) => !v)}
-            className="relative flex h-5 items-center gap-0.5 rounded-md border border-border/40 bg-muted/40 px-1.5 text-[10px] text-foreground hover:bg-muted/70"
-            title="Chat sessions"
+            onClick={() => setIncludeContext((v) => !v)}
+            onMouseEnter={refreshCtxPreview}
+            onMouseLeave={() => setShowCtxPreview(false)}
+            className={cn(
+              "relative flex h-5 shrink-0 items-center gap-0.5 rounded-md border px-1.5 text-[10px] transition-colors",
+              includeContext
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"
+                : "border-border/40 bg-muted/40 text-muted-foreground hover:bg-muted/70"
+            )}
+            title={includeContext ? "Terminal context ON" : "Terminal context OFF"}
           >
-            <HugeiconsIcon icon={Clock01Icon} size={10} strokeWidth={1.5} />
-            {sessionStore.sessions.length > 0 && (
-              <span className="flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-primary/20 px-1 text-[9px] text-primary">
-                {sessionStore.sessions.length}
-              </span>
+            <HugeiconsIcon icon={ClipboardIcon} size={10} strokeWidth={1.5} />
+            <span>{includeContext ? "Ctx" : "No ctx"}</span>
+            {/* Context preview tooltip */}
+            {showCtxPreview && includeContext && ctxPreview && (
+              <div className="absolute top-full right-0 z-40 mt-1.5 max-w-[min(16rem,100%)] rounded-md border border-border/60 bg-popover p-2 shadow-lg">
+                <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Terminal context preview</div>
+                <pre className="max-h-32 overflow-auto rounded bg-muted/50 p-1.5 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
+              </div>
             )}
           </button>
-          {showSessions && (
-            <div className="absolute top-full right-0 z-30 mt-1 max-w-[min(15rem,100%)] rounded-md border border-border/60 bg-popover py-1 shadow-lg">
-              <div className="flex items-center justify-between px-2 py-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sessions</span>
-                <button
-                  type="button"
-                  onClick={newSession}
-                  className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-primary hover:bg-primary/10"
-                >
-                  <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
-                  New
-                </button>
-              </div>
-              <div className="max-h-48 overflow-y-auto">
-                {sessionStore.sessions.length === 0 && (
-                  <div className="px-3 py-2 text-[11px] text-muted-foreground">No sessions yet</div>
-                )}
-                {sessionStore.sessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className={cn(
-                      "group flex items-center gap-1.5 px-2 py-1.5",
-                      session.id === sessionStore.activeSessionId ? "bg-accent/10" : "hover:bg-muted/50"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => switchSession(session.id)}
-                      className="flex-1 truncate text-left text-[11px] text-foreground"
-                      title={session.title}
-                    >
-                      {session.title}
-                    </button>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setEditingTitle(session.id); }}
-                        className="flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-                        title="Rename"
-                      >
-                        <HugeiconsIcon icon={PencilEdit02Icon} size={10} strokeWidth={2} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
-                        className="flex size-4 items-center justify-center rounded text-muted-foreground hover:text-destructive"
-                        title="Delete"
-                      >
-                        <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={2} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
 
+          {/* Session menu */}
+          <div className="relative shrink-0" data-bubble-sessions>
+            <button
+              type="button"
+              onClick={() => setShowSessions((v) => !v)}
+              className="relative flex h-5 items-center gap-0.5 rounded-md border border-border/40 bg-muted/40 px-1.5 text-[10px] text-foreground hover:bg-muted/70"
+              title="Chat sessions"
+            >
+              <HugeiconsIcon icon={Clock01Icon} size={10} strokeWidth={1.5} />
+              {sessionStore.sessions.length > 0 && (
+                <span className="flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-primary/20 px-1 text-[9px] text-primary">
+                  {sessionStore.sessions.length}
+                </span>
+              )}
+            </button>
+            {showSessions && (
+              <div className="absolute top-full right-0 z-30 mt-1 w-48 rounded-md border border-border/60 bg-popover py-1 shadow-lg">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sessions</span>
+                  <button
+                    type="button"
+                    onClick={newSession}
+                    className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+                  >
+                    <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
+                    New
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  {sessionStore.sessions.length === 0 && (
+                    <div className="px-3 py-2 text-[11px] text-muted-foreground">No sessions yet</div>
+                  )}
+                  {sessionStore.sessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className={cn(
+                        "group flex items-center gap-1.5 px-2 py-1.5",
+                        session.id === sessionStore.activeSessionId ? "bg-accent/10" : "hover:bg-muted/50"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => switchSession(session.id)}
+                        className="flex-1 truncate text-left text-[11px] text-foreground"
+                        title={session.title}
+                      >
+                        {session.title}
+                      </button>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setEditingTitle(session.id); }}
+                          className="flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                          title="Rename"
+                        >
+                          <HugeiconsIcon icon={PencilEdit02Icon} size={10} strokeWidth={2} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
+                          className="flex size-4 items-center justify-center rounded text-muted-foreground hover:text-destructive"
+                          title="Delete"
+                        >
+                          <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={2} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
         {/* Stop button */}
         <button
           type="button"
@@ -816,40 +768,40 @@ export function AiFloatingBubble({
         >
           <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
         </button>
+      </div>
 
-        {/* Rename modal */}
-        {editingTitle && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40" onClick={() => setEditingTitle(null)}>
-            <div className="max-w-[min(16rem,100%)] rounded-lg border border-border bg-popover p-3 shadow-lg" onClick={(e) => e.stopPropagation()}>
-              <div className="mb-2 text-[12px] font-medium text-foreground">Rename session</div>
-              <input
-                ref={editTitleRef}
-                defaultValue={sessionStore.sessions.find((s) => s.id === editingTitle)?.title ?? ""}
-                className="mb-3 h-8 w-full rounded border border-border/40 bg-muted/50 px-2 text-[12px] text-foreground outline-none"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    renameSession(editingTitle, (e.target as HTMLInputElement).value);
-                    setEditingTitle(null);
-                  } else if (e.key === "Escape") {
-                    setEditingTitle(null);
-                  }
-                }}
-                autoFocus
-              />
-              <div className="flex justify-end gap-1.5">
-                <button type="button" onClick={() => setEditingTitle(null)} className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted">Cancel</button>
-                <button
-                  type="button"
-                  onClick={() => { renameSession(editingTitle, editTitleRef.current?.value ?? ""); setEditingTitle(null); }}
-                  className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:bg-primary/90"
-                >
-                  Save
-                </button>
-              </div>
+      {/* Rename modal */}
+      {editingTitle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40" onClick={() => setEditingTitle(null)}>
+          <div className="max-w-[min(16rem,100%)] rounded-lg border border-border bg-popover p-3 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 text-[12px] font-medium text-foreground">Rename session</div>
+            <input
+              ref={editTitleRef}
+              defaultValue={sessionStore.sessions.find((s) => s.id === editingTitle)?.title ?? ""}
+              className="mb-3 h-8 w-full rounded border border-border/40 bg-muted/50 px-2 text-[12px] text-foreground outline-none"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  renameSession(editingTitle, (e.target as HTMLInputElement).value);
+                  setEditingTitle(null);
+                } else if (e.key === "Escape") {
+                  setEditingTitle(null);
+                }
+              }}
+              autoFocus
+            />
+            <div className="flex justify-end gap-1.5">
+              <button type="button" onClick={() => setEditingTitle(null)} className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted">Cancel</button>
+              <button
+                type="button"
+                onClick={() => { renameSession(editingTitle, editTitleRef.current?.value ?? ""); setEditingTitle(null); }}
+                className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:bg-primary/90"
+              >
+                Save
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── MESSAGES ── */}
       <div ref={scrollRef} className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-2">
