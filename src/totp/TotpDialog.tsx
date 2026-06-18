@@ -6,7 +6,7 @@ import {
   reorderAccounts,
   type TotpAccount,
 } from "./store";
-import { generateCode, parseSecretInput, generateQrDataUrl } from "./totp";
+import { generateCode, parseSecretInput, generateQrDataUrl, parseTotpUri } from "./totp";
 import { toast } from "@/toast";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFileBase64 } from "@/fs";
@@ -278,8 +278,25 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
     try {
       const { readFile } = await import("@/fs");
       const text = await readFile(paths);
-      const imported = JSON.parse(text) as TotpAccount[];
-      if (!Array.isArray(imported)) throw new Error("Invalid file");
+      let imported: TotpAccount[] = [];
+
+      // Check if file contains otpauth:// URIs (common backup format)
+      if (text.trim().startsWith("otpauth://")) {
+        const uris = text.split(/\r?\n/).filter((line) => line.trim().startsWith("otpauth://"));
+        for (const uri of uris) {
+          try {
+            const parsed = parseTotpUri(uri.trim());
+            if (parsed) imported.push(parsed);
+          } catch {
+            // skip invalid URIs
+          }
+        }
+      } else {
+        // Standard JSON backup
+        const parsed = JSON.parse(text) as TotpAccount[];
+        if (Array.isArray(parsed)) imported = parsed;
+      }
+
       const valid = imported.filter(
         (a) => a.id && a.secret && typeof a.secret === "string" && a.secret.length >= 4,
       );

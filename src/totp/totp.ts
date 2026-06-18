@@ -45,6 +45,25 @@ export function parseSecretInput(
   return secret ? { secret } : null;
 }
 
+/** Parse an otpauth:// URI into a full TotpAccount. */
+export function parseTotpUri(uri: string): TotpAccount | null {
+  try {
+    const parsed = URI.parse(uri.trim());
+    if (parsed instanceof TOTP) {
+      return {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        label: parsed.label || "Unknown",
+        issuer: parsed.issuer || "",
+        secret: parsed.secret.base32,
+        order: 0,
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 /** Generate a QR code data URL for an account. */
 export async function generateQrDataUrl(account: TotpAccount): Promise<string | null> {
   try {
