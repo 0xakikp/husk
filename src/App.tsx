@@ -1525,7 +1525,7 @@ function App() {
         {prefs.aiEnabled && activeKind !== "settings" && (
           <AiFloatingBubble
             pendingQuery={pendingAiQuery}
-            activeTabId={activeId}
+            activeTabId={term.activeId}
           />
         )}
         <DialogLayer open={prefs.aiEnabled && suggestOpen}>
