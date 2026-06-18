@@ -284,7 +284,7 @@ export function AiFloatingBubble({
   const [showCtxPreview, setShowCtxPreview] = useState(false);
   const [ctxPreview, setCtxPreview] = useState("");
   const ctxButtonRef = useRef<HTMLButtonElement>(null);
-  const [ctxTooltipPos, setCtxTooltipPos] = useState<{ top: number; right: number } | null>(null);
+  const [ctxTooltipPos, setCtxTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
   // Drag-and-drop file attachments
   const [dragOver, setDragOver] = useState(false);
@@ -424,7 +424,10 @@ export function AiFloatingBubble({
     setCtxPreview(stripAnsi(readActiveTerminal()).slice(0, 500));
     const rect = ctxButtonRef.current?.getBoundingClientRect();
     if (rect) {
-      setCtxTooltipPos({ top: rect.top - 4, right: window.innerWidth - rect.right });
+      setCtxTooltipPos({
+        top: rect.top - 4,
+        left: rect.left + rect.width / 2,
+      });
     }
     setShowCtxPreview(true);
   };
@@ -713,8 +716,8 @@ export function AiFloatingBubble({
               className="fixed z-[60] w-44 rounded-md border border-border/60 bg-popover p-1.5 shadow-lg"
               style={{
                 top: ctxTooltipPos.top,
-                right: ctxTooltipPos.right,
-                transform: 'translateY(-100%)',
+                left: ctxTooltipPos.left,
+                transform: 'translate(-50%, -100%)',
               }}
               onMouseEnter={() => setShowCtxPreview(true)}
               onMouseLeave={() => setShowCtxPreview(false)}
