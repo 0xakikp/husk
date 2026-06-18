@@ -416,8 +416,10 @@ export function AiFloatingBubble({
   }, [showSessions, showModelDropdown]);
 
   // Context preview
+  const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*m/g, "");
+
   const refreshCtxPreview = () => {
-    setCtxPreview(readActiveTerminal().slice(0, 500));
+    setCtxPreview(stripAnsi(readActiveTerminal()).slice(0, 500));
     setShowCtxPreview(true);
   };
 
