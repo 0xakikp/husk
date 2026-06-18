@@ -1,3 +1,4 @@
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   loadAccounts,
@@ -153,30 +154,27 @@ function AccountRow({
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            className="flex items-center gap-0.5 rounded px-1 py-[1px] text-[9px] text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
+            className="flex size-5 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
             title="Show QR code"
             onClick={() => onShowQr(account)}
           >
             <HugeiconsIcon icon={QrCodeIcon} size={10} strokeWidth={1.5} />
-            QR
           </button>
           <button
             type="button"
-            className="flex items-center gap-0.5 rounded px-1 py-[1px] text-[9px] text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
+            className="flex size-5 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
             title="Edit label"
             onClick={() => setEditing(true)}
           >
             <HugeiconsIcon icon={PencilEdit02Icon} size={10} strokeWidth={1.5} />
-            Edit
           </button>
           <button
             type="button"
-            className="flex items-center gap-0.5 rounded px-1 py-[1px] text-[9px] text-destructive/70 hover:bg-destructive/15 hover:text-destructive transition-colors"
+            className="flex size-5 items-center justify-center rounded text-destructive/70 hover:bg-destructive/15 hover:text-destructive transition-colors"
             title="Remove"
             onClick={() => onDelete(account.id)}
           >
             <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={1.5} />
-            Remove
           </button>
         </div>
       </div>
@@ -287,7 +285,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
   };
 
   const handleCopy = useCallback((code: string) => {
-    void navigator.clipboard.writeText(code);
+    void writeText(code);
     toast({ title: "Code copied to clipboard", variant: "success", duration: 2000 });
   }, []);
 
