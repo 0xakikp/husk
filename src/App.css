@@ -1667,11 +1667,11 @@ button {
 }
 
 .modal-body {
-  padding: 14px;
+  padding: 10px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .modal-actions {
@@ -1868,13 +1868,14 @@ button {
 .totp-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: 6px;
+  padding: 4px 8px;
   background: var(--bg-2);
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
 }
 
 .totp-item-selected {

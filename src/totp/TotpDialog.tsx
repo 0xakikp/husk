@@ -27,7 +27,7 @@ function CountdownBar({ remaining }: { remaining: number }) {
   const pct = (remaining / 30) * 100;
   const color = remaining <= 5 ? "bg-destructive" : remaining <= 10 ? "bg-amber-500" : "bg-accent";
   return (
-    <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+    <div className="h-[3px] w-full overflow-hidden rounded-full bg-muted">
       <div
         className={`h-full rounded-full transition-all duration-1000 ease-linear ${color}`}
         style={{ width: `${pct}%` }}
@@ -97,7 +97,7 @@ function AccountRow({
         setCtxMenu({ x: e.clientX, y: e.clientY });
       }}
     >
-      <div className="flex flex-1 flex-col gap-1.5">
+      <div className="flex flex-1 flex-col gap-0.5">
         <div className="flex items-center gap-2 min-w-0">
           <span
             className="text-[11px] text-muted-foreground truncate"
@@ -148,34 +148,34 @@ function AccountRow({
         )}
         {gen ? <CountdownBar remaining={gen.remaining} /> : null}
       </div>
-      <div className="flex flex-col items-end gap-1.5 shrink-0">
-        <span className="totp-remaining whitespace-nowrap">{gen ? `${gen.remaining}s` : "!"}</span>
-        <div className="flex items-center gap-1">
+      <div className="flex flex-col items-end gap-0.5 shrink-0">
+        <span className="totp-remaining whitespace-nowrap text-[10px]">{gen ? `${gen.remaining}s` : "!"}</span>
+        <div className="flex items-center gap-0.5">
           <button
             type="button"
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
+            className="flex items-center gap-0.5 rounded px-1 py-[1px] text-[9px] text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
             title="Show QR code"
             onClick={() => onShowQr(account)}
           >
-            <HugeiconsIcon icon={QrCodeIcon} size={11} strokeWidth={1.5} />
+            <HugeiconsIcon icon={QrCodeIcon} size={10} strokeWidth={1.5} />
             QR
           </button>
           <button
             type="button"
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
+            className="flex items-center gap-0.5 rounded px-1 py-[1px] text-[9px] text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors"
             title="Edit label"
             onClick={() => setEditing(true)}
           >
-            <HugeiconsIcon icon={PencilEdit02Icon} size={11} strokeWidth={1.5} />
+            <HugeiconsIcon icon={PencilEdit02Icon} size={10} strokeWidth={1.5} />
             Edit
           </button>
           <button
             type="button"
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-destructive/70 hover:bg-destructive/15 hover:text-destructive transition-colors"
+            className="flex items-center gap-0.5 rounded px-1 py-[1px] text-[9px] text-destructive/70 hover:bg-destructive/15 hover:text-destructive transition-colors"
             title="Remove"
             onClick={() => onDelete(account.id)}
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={1.5} />
+            <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={1.5} />
             Remove
           </button>
         </div>
@@ -523,7 +523,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
             No 2FA accounts yet. Add a base32 secret, scan a QR code, or import a backup.
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             {filtered.map((a) => (
               <AccountRow
                 key={a.id}
@@ -579,7 +579,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             <button type="button" className="rb-new" onClick={() => setAdding(true)}>
               + Add account
             </button>
@@ -598,7 +598,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
         <>
           <div className="fixed inset-0 z-40" onClick={onClose} />
           <div
-            className="fixed top-10 right-2 z-50 w-[360px] max-h-[calc(100vh-56px)] flex flex-col bg-card/90 border border-border-2 rounded-xl shadow-2xl overflow-hidden animate-dialog-enter backdrop-blur-md"
+            className="fixed top-10 right-2 z-50 w-[320px] max-h-[calc(100vh-56px)] flex flex-col bg-card/90 border border-border-2 rounded-xl shadow-2xl overflow-hidden animate-dialog-enter backdrop-blur-md"
             role="dialog"
             aria-label="Authenticator"
             onClick={(e) => e.stopPropagation()}
