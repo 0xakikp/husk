@@ -30,7 +30,7 @@ export function buildBuiltinTools(): Record<string, Tool> {
     }),
 
     writeFile: tool({
-      description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Creates parent directories automatically.",
+      description: "Write content to a file. For small changes prefer applyEdit. For new files or full rewrites, the user will review before applying.",
       inputSchema: jsonSchema({
         type: "object",
         properties: {
@@ -41,13 +41,20 @@ export function buildBuiltinTools(): Record<string, Tool> {
       }),
       execute: async ({ path, content }) => {
         try {
-          // Ensure parent dir exists
+          // Check if file exists — if so, queue as pending edit for review
+          const existing = await readFile(path).catch(() => null);
+          if (existing !== null) {
+            // File exists — queue as a full-file pending edit for approval
+            addPendingEdit({ path, search: existing, replace: content });
+            return `File ${path} already exists. Proposed overwrite queued for your review. Accept in the AI panel to apply.`;
+          }
+          // New file — write directly (safe)
           const lastSlash = path.lastIndexOf("/");
           if (lastSlash > 0) {
             await createDir(path.slice(0, lastSlash)).catch(() => {});
           }
           await writeFile(path, content);
-          return `File written successfully: ${path}`;
+          return `New file created: ${path}`;
         } catch (e) {
           return `Error writing file: ${e instanceof Error ? e.message : String(e)}`;
         }
