@@ -1726,6 +1726,9 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .rb-item {
