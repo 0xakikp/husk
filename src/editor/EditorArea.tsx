@@ -275,6 +275,20 @@ export function EditorArea({
         // Delay layout to allow container to reach full height after visibility change
         setTimeout(() => {
           if (editorRef.current === editor && !cancelled) {
+            const host = hostRef.current;
+            if (host) {
+              const rect = host.getBoundingClientRect();
+              if (rect.height < 50) {
+                // Container still too small, retry later
+                setTimeout(() => {
+                  if (editorRef.current === editor && !cancelled) {
+                    editor.layout();
+                    editor.focus();
+                  }
+                }, 200);
+                return;
+              }
+            }
             editor.layout();
             editor.focus();
           }
