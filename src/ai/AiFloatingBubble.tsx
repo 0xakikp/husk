@@ -958,7 +958,7 @@ export function AiFloatingBubble({
                   setInput("");
                 }
               }}
-              placeholder="Ask AI anything…"
+              placeholder="Ask Husk anything…"
               className="min-h-[32px] max-h-[120px] flex-1 resize-none rounded-lg border border-border/40 bg-muted/30 px-3 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40"
               rows={1}
             />
