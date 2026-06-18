@@ -206,6 +206,19 @@ export function TerminalView({
           .finally(() => setHistoryLoading(false));
         return false;
       }
+      // Cmd+C / Ctrl+C — copy selection to clipboard
+      if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c" && term.hasSelection()) {
+        const sel = term.getSelection();
+        if (sel) void writeText(sel);
+        return false;
+      }
+      // Cmd+V / Ctrl+V — paste from clipboard
+      if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
+        void readText().then((t) => {
+          if (t && ptyIdRef.current != null) void invoke("pty_write", { id: ptyIdRef.current, data: t });
+        });
+        return false;
+      }
       // Cmd+D splits right, Cmd+Shift+D splits down. Meta-only (macOS) so we
       // never clash with Ctrl+D (EOF) on Linux/Windows.
       if (e.type === "keydown" && e.metaKey && e.key.toLowerCase() === "d") {
