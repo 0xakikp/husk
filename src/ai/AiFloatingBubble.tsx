@@ -421,7 +421,8 @@ export function AiFloatingBubble({
   const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*m/g, "");
 
   const refreshCtxPreview = () => {
-    setCtxPreview(stripAnsi(readActiveTerminal()).slice(0, 500));
+    const raw = stripAnsi(readActiveTerminal()).slice(0, 500);
+    setCtxPreview(raw || "(no terminal content)");
     const rect = ctxButtonRef.current?.getBoundingClientRect();
     if (rect) {
       setCtxTooltipPos({
@@ -720,7 +721,7 @@ export function AiFloatingBubble({
           </button>
 
           {/* Context preview tooltip — fixed position to escape panel overflow clip */}
-          {showCtxPreview && ctxPreview && ctxTooltipPos && (
+          {showCtxPreview && ctxTooltipPos && (
             <div
               className="fixed z-[60] w-44 rounded-md border border-border/60 bg-popover p-1.5 shadow-lg"
               style={{
@@ -732,7 +733,7 @@ export function AiFloatingBubble({
               onMouseLeave={() => setShowCtxPreview(false)}
             >
               <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Context preview</div>
-              <pre className="max-h-20 overflow-auto rounded bg-muted/50 p-1 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
+              <pre className="max-h-20 overflow-auto rounded bg-muted/50 p-1 font-mono text-[9px] text-foreground/70">{ctxPreview || "(no content)"}</pre>
             </div>
           )}
 
