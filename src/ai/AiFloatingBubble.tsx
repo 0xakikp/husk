@@ -319,6 +319,7 @@ export function AiFloatingBubble({
 
   const {
     messages,
+    input,
     setInput,
     busy,
     send,
@@ -335,6 +336,8 @@ export function AiFloatingBubble({
     deleteSession,
     renameSession,
   } = useAiBubbleChat();
+
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const provider = getProvider(loadConfig().providerId);
   const apiKey = useKey(provider.id);
@@ -856,7 +859,7 @@ export function AiFloatingBubble({
               <HugeiconsIcon icon={SparklesIcon} size={18} strokeWidth={1.5} className="text-primary" />
             </div>
             <div className="max-w-[220px] text-center leading-relaxed text-muted-foreground" style={{ fontSize }}>
-              Type <code className="rounded bg-muted px-1 py-0.5 text-primary">/ai</code> in your terminal to ask questions. Responses appear here.
+              Type <code className="rounded bg-muted px-1 py-0.5 text-primary">/ai</code> in your terminal, or type below to ask questions.
             </div>
             <div className="grid w-full grid-cols-2 gap-1.5 px-1">
               {QUICK_ACTIONS.map((action) => (
@@ -932,11 +935,41 @@ export function AiFloatingBubble({
             <span className="text-primary">Settings → Models</span>
           </div>
         ) : (
-          <div className="flex items-center justify-center rounded-lg border border-border/40 bg-muted/20 py-2 text-[11px] text-muted-foreground">
-            Type{" "}
-            <code className="mx-1 rounded bg-muted px-1 py-0.5 text-primary">/ai</code>{" "}
-            in the terminal to chat
-          </div>
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!input.trim() || busy) return;
+              ensureSession();
+              void send(input.trim());
+              setInput("");
+            }}
+          >
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!input.trim() || busy) return;
+                  ensureSession();
+                  void send(input.trim());
+                  setInput("");
+                }
+              }}
+              placeholder="Ask AI anything…"
+              className="min-h-[32px] max-h-[120px] flex-1 resize-none rounded-lg border border-border/40 bg-muted/30 px-3 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40"
+              rows={1}
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || busy}
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+            >
+              <HugeiconsIcon icon={SparklesIcon} size={16} strokeWidth={1.5} />
+            </button>
+          </form>
         )}
       </div>
 
