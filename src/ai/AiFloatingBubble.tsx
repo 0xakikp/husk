@@ -283,6 +283,8 @@ export function AiFloatingBubble({
   // Context preview tooltip
   const [showCtxPreview, setShowCtxPreview] = useState(false);
   const [ctxPreview, setCtxPreview] = useState("");
+  const ctxButtonRef = useRef<HTMLButtonElement>(null);
+  const [ctxTooltipPos, setCtxTooltipPos] = useState<{ top: number; right: number } | null>(null);
 
   // Drag-and-drop file attachments
   const [dragOver, setDragOver] = useState(false);
@@ -420,6 +422,10 @@ export function AiFloatingBubble({
 
   const refreshCtxPreview = () => {
     setCtxPreview(stripAnsi(readActiveTerminal()).slice(0, 500));
+    const rect = ctxButtonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setCtxTooltipPos({ top: rect.top - 4, right: window.innerWidth - rect.right });
+    }
     setShowCtxPreview(true);
   };
 
@@ -684,6 +690,7 @@ export function AiFloatingBubble({
 
           {/* Context chip */}
           <button
+            ref={ctxButtonRef}
             type="button"
             onClick={() => setIncludeContext((v) => !v)}
             onMouseEnter={refreshCtxPreview}
@@ -698,14 +705,24 @@ export function AiFloatingBubble({
           >
             <HugeiconsIcon icon={ClipboardIcon} size={10} strokeWidth={1.5} />
             <span>{includeContext ? "Ctx" : "No ctx"}</span>
-            {/* Context preview tooltip — compact, positioned above to avoid overflow clip */}
-            {showCtxPreview && includeContext && ctxPreview && (
-              <div className="absolute bottom-full right-0 z-40 mb-1 w-44 rounded-md border border-border/60 bg-popover p-1.5 shadow-lg">
-                <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Context preview</div>
-                <pre className="max-h-20 overflow-auto rounded bg-muted/50 p-1 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
-              </div>
-            )}
           </button>
+
+          {/* Context preview tooltip — fixed position to escape panel overflow clip */}
+          {showCtxPreview && includeContext && ctxPreview && ctxTooltipPos && (
+            <div
+              className="fixed z-[60] w-44 rounded-md border border-border/60 bg-popover p-1.5 shadow-lg"
+              style={{
+                top: ctxTooltipPos.top,
+                right: ctxTooltipPos.right,
+                transform: 'translateY(-100%)',
+              }}
+              onMouseEnter={() => setShowCtxPreview(true)}
+              onMouseLeave={() => setShowCtxPreview(false)}
+            >
+              <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Context preview</div>
+              <pre className="max-h-20 overflow-auto rounded bg-muted/50 p-1 font-mono text-[9px] text-foreground/70">{ctxPreview}</pre>
+            </div>
+          )}
 
           {/* Session menu */}
           <div className="relative shrink-0" data-bubble-sessions>
