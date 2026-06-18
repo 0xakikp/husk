@@ -99,8 +99,7 @@ export function EditorArea({
   const statusRef = useRef<HTMLDivElement>(null);
   const editorCleanupRef = useRef<(() => void) | null>(null);
 
-  // Defer Monaco creation until the container is actually visible.
-  // Creating Monaco inside a visibility:hidden container breaks its layout.
+  // Defer Monaco creation until the container is actually visible AND has real dimensions.
   const isEditorReadyRef = useRef(false);
 
   useEffect(() => {
@@ -115,16 +114,24 @@ export function EditorArea({
       return true;
     };
 
-    if (isVisible()) {
-      createEditor();
-      return;
-    }
+    const hasDimensions = () => {
+      const rect = hostRef.current?.getBoundingClientRect();
+      return rect ? rect.width > 50 && rect.height > 50 : false;
+    };
 
-    const mo = new MutationObserver(() => {
-      if (isVisible() && !isEditorReadyRef.current) {
-        mo.disconnect();
+    const tryCreate = () => {
+      if (isVisible() && hasDimensions() && !isEditorReadyRef.current) {
         createEditor();
+        return true;
       }
+      return false;
+    };
+
+    if (tryCreate()) return;
+
+    // Watch for both visibility and dimension changes
+    const mo = new MutationObserver(() => {
+      tryCreate();
     });
 
     let el: HTMLElement | null = hostRef.current;
@@ -133,7 +140,17 @@ export function EditorArea({
       el = el.parentElement;
     }
 
-    return () => mo.disconnect();
+    const ro = new ResizeObserver(() => {
+      if (tryCreate()) {
+        ro.disconnect();
+      }
+    });
+    ro.observe(hostRef.current);
+
+    return () => {
+      mo.disconnect();
+      ro.disconnect();
+    };
 
     function createEditor() {
       if (!hostRef.current || isEditorReadyRef.current) return;
