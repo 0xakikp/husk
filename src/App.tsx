@@ -883,7 +883,7 @@ function App() {
         ? [
             { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
             { id: "explain", label: "Explain last error (AI)", run: explainLastError },
-            { id: "ai-bubble", label: "Toggle AI chat", hint: "Ctrl+Shift+L", run: () => toggleBubble() },
+            { id: "ai-bubble", label: "Toggle AI chat", hint: "Ctrl/Cmd+Shift+A", run: () => toggleBubble() },
             { id: "ai-explain-code", label: "AI: Explain selected code", run: () => {
               const sel = getEditorSelection();
               const file = getEditorFile();
@@ -914,6 +914,39 @@ function App() {
               const sel = getEditorSelection();
               const file = getEditorFile();
               openBubble(`Find and fix the bug in ${file ?? "current file"}${sel ? ` (lines ${sel.startLine}-${sel.endLine})` : ""}.\n${sel ? `\n\`\`\`\n${sel.text}\n\`\`\`` : ""}`);
+            }},
+            { id: "ai-accept-edits", label: "AI: Accept all pending edits", run: () => {
+              import("./ai/pendingEdits").then(({ getPendingEdits, removePendingEdit }) => {
+                const edits = getPendingEdits();
+                if (edits.length === 0) {
+                  toast({ title: "No pending edits", variant: "error", duration: 2000 });
+                  return;
+                }
+                edits.forEach((e) => removePendingEdit(e.id));
+                toast({ title: `Accepted ${edits.length} edit${edits.length > 1 ? "s" : ""}`, variant: "success", duration: 2000 });
+              });
+            }},
+            { id: "ai-reject-edits", label: "AI: Reject all pending edits", run: () => {
+              import("./ai/pendingEdits").then(({ getPendingEdits, removePendingEdit }) => {
+                const edits = getPendingEdits();
+                if (edits.length === 0) {
+                  toast({ title: "No pending edits", variant: "error", duration: 2000 });
+                  return;
+                }
+                edits.forEach((e) => removePendingEdit(e.id));
+                toast({ title: `Rejected ${edits.length} edit${edits.length > 1 ? "s" : ""}`, variant: "success", duration: 2000 });
+              });
+            }},
+            { id: "ai-clear-edits", label: "AI: Clear pending edits", run: () => {
+              import("./ai/pendingEdits").then(({ clearPendingEdits, getPendingEdits }) => {
+                const count = getPendingEdits().length;
+                if (count === 0) {
+                  toast({ title: "No pending edits", variant: "error", duration: 2000 });
+                  return;
+                }
+                clearPendingEdits();
+                toast({ title: `Cleared ${count} edit${count > 1 ? "s" : ""}`, variant: "success", duration: 2000 });
+              });
             }},
           ]
         : []),
