@@ -99,13 +99,16 @@ function AccountRow({
     >
       <div className="flex flex-1 flex-col gap-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[11px] text-muted-foreground truncate">
+          <span
+            className="text-[11px] text-muted-foreground truncate"
+            title={`${account.issuer ? `${account.issuer} · ` : ""}${account.label}`}
+          >
             {account.issuer ? `${account.issuer} · ` : ""}
             {account.label}
           </span>
           <button
             type="button"
-            className="text-muted-foreground/60 hover:text-foreground"
+            className="text-muted-foreground/60 hover:text-foreground shrink-0"
             title="Edit label"
             onClick={() => setEditing(true)}
           >
