@@ -212,8 +212,9 @@ export function TerminalView({
         if (sel) void writeText(sel);
         return false;
       }
-      // Cmd+V / Ctrl+V — paste from clipboard
+      // Cmd+V / Ctrl+V — paste from clipboard (block native xterm paste to avoid double paste)
       if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
+        e.preventDefault();
         void readText().then((t) => {
           if (t && ptyIdRef.current != null) void invoke("pty_write", { id: ptyIdRef.current, data: t });
         });
