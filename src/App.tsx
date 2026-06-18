@@ -1381,7 +1381,7 @@ function App() {
                 {openFiles.length > 0 ? (
                   <div
                     className={cn(
-                      "absolute inset-0 overflow-hidden rounded-lg border border-border bg-background",
+                      "h-full w-full overflow-hidden rounded-lg border border-border bg-background",
                       prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
                       prefs.panelShadows && "panel-shadow",
                       prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active",
@@ -1393,7 +1393,7 @@ function App() {
                     <EditorArea files={openFiles} activePath={activeFile} />
                   </div>
                 ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                  <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
                     <HugeiconsIcon icon={PencilEdit02Icon} size={32} strokeWidth={1.5} className="opacity-40" />
                     <p className="text-sm font-medium">No files open</p>
                     <p className="text-xs opacity-60">Open a file from the sidebar or press Ctrl+O</p>
