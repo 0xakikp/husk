@@ -24,8 +24,11 @@ export interface AttachedFile {
   content: string;
 }
 
-export function useAiBubbleChat() {
-  const [store, setStore] = useState<BubbleSessionStore>(() => loadBubbleSessions());
+export function useAiBubbleChat(tabId?: number) {
+  const tabIdRef = useRef(tabId);
+  tabIdRef.current = tabId;
+
+  const [store, setStore] = useState<BubbleSessionStore>(() => loadBubbleSessions(tabId));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const inputRef = useRef("");
@@ -44,15 +47,23 @@ export function useAiBubbleChat() {
   const activeSession = store.sessions.find((s) => s.id === store.activeSessionId) ?? null;
   const loadedSessionIdRef = useRef<string | null>(null);
 
-  // Reload sessions when workspace changes
+  // Reload sessions when workspace changes or tabId changes
   useEffect(() => {
     return subscribeWorkspaceRoot(() => {
-      const next = loadBubbleSessions();
+      const next = loadBubbleSessions(tabIdRef.current);
       setStore(next);
       loadedSessionIdRef.current = next.activeSessionId;
       setMessages(next.activeSessionId ? next.sessions.find((s) => s.id === next.activeSessionId)?.messages ?? [] : []);
     });
   }, []);
+
+  // Reload when tabId prop changes
+  useEffect(() => {
+    const next = loadBubbleSessions(tabId);
+    setStore(next);
+    loadedSessionIdRef.current = next.activeSessionId;
+    setMessages(next.activeSessionId ? next.sessions.find((s) => s.id === next.activeSessionId)?.messages ?? [] : []);
+  }, [tabId]);
 
   // Load messages when active session changes
   useEffect(() => {
@@ -80,7 +91,7 @@ export function useAiBubbleChat() {
 
     const next = updateBubbleSessionMessages(currentStore, activeSession.id, messages);
     setStore(next);
-    saveBubbleSessions(next);
+    saveBubbleSessions(next, tabIdRef.current);
     // We intentionally omit `store` from deps: it is updated inside this effect
     // (via setStore), so including it would cause an infinite loop. We only want
     // to persist when `messages` or `activeSession` change.
@@ -96,7 +107,7 @@ export function useAiBubbleChat() {
       sessions: [session, ...store.sessions],
     };
     setStore(next);
-    saveBubbleSessions(next);
+    saveBubbleSessions(next, tabIdRef.current);
     loadedSessionIdRef.current = session.id;
     setMessages([]);
   }, [activeSession, store]);
@@ -239,7 +250,7 @@ export function useAiBubbleChat() {
       sessions: [session, ...store.sessions],
     };
     setStore(next);
-    saveBubbleSessions(next);
+    saveBubbleSessions(next, tabIdRef.current);
     loadedSessionIdRef.current = session.id;
     setMessages([]);
   }, [store]);
@@ -247,7 +258,7 @@ export function useAiBubbleChat() {
   const switchSession = useCallback((id: string) => {
     setStore((prev) => {
       const next = setActiveBubbleSession(prev, id);
-      saveBubbleSessions(next);
+      saveBubbleSessions(next, tabIdRef.current);
       return next;
     });
     // Force reload messages for this session
@@ -261,7 +272,7 @@ export function useAiBubbleChat() {
   const deleteSession = useCallback((id: string) => {
     setStore((prev) => {
       const next = deleteBubbleSession(prev, id);
-      saveBubbleSessions(next);
+      saveBubbleSessions(next, tabIdRef.current);
       return next;
     });
   }, []);
@@ -269,7 +280,7 @@ export function useAiBubbleChat() {
   const renameSession = useCallback((id: string, title: string) => {
     setStore((prev) => {
       const next = updateBubbleSessionTitle(prev, id, title);
-      saveBubbleSessions(next);
+      saveBubbleSessions(next, tabIdRef.current);
       return next;
     });
   }, []);

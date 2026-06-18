@@ -16,14 +16,16 @@ export interface BubbleSessionStore {
 
 const LS_PREFIX = "huskv2.ai.bubble.sessions";
 
-function getLsKey(): string {
+function getLsKey(tabId?: number | string): string {
   const ws = getWorkspaceRoot();
-  return ws ? `${LS_PREFIX}:${encodeURIComponent(ws)}` : LS_PREFIX;
+  const wsPart = ws ? `:${encodeURIComponent(ws)}` : "";
+  const tabPart = tabId !== undefined ? `:${tabId}` : "";
+  return `${LS_PREFIX}${tabPart}${wsPart}`;
 }
 
-export function loadBubbleSessions(): BubbleSessionStore {
+export function loadBubbleSessions(tabId?: number | string): BubbleSessionStore {
   try {
-    const raw = localStorage.getItem(getLsKey());
+    const raw = localStorage.getItem(getLsKey(tabId));
     if (!raw) return { activeSessionId: null, sessions: [] };
     return JSON.parse(raw) as BubbleSessionStore;
   } catch {
@@ -31,9 +33,9 @@ export function loadBubbleSessions(): BubbleSessionStore {
   }
 }
 
-export function saveBubbleSessions(store: BubbleSessionStore): void {
+export function saveBubbleSessions(store: BubbleSessionStore, tabId?: number | string): void {
   try {
-    localStorage.setItem(getLsKey(), JSON.stringify(store));
+    localStorage.setItem(getLsKey(tabId), JSON.stringify(store));
   } catch {
     // storage unavailable
   }

@@ -242,8 +242,10 @@ const QUICK_ACTIONS = [
 /* ── Main component ── */
 export function AiFloatingBubble({
   pendingQuery,
+  activeTabId,
 }: {
   pendingQuery?: string;
+  activeTabId?: number;
 }) {
   const prefs = usePrefs();
   const [state, setState] = useState<BubbleState>("collapsed");
@@ -332,7 +334,7 @@ export function AiFloatingBubble({
     switchSession,
     deleteSession,
     renameSession,
-  } = useAiBubbleChat();
+  } = useAiBubbleChat(activeTabId);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
