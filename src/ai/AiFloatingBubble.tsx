@@ -661,7 +661,7 @@ export function AiFloatingBubble({
         onMouseDown={startDrag}
         onTouchStart={startDrag}
         className={cn(
-          "relative flex shrink-0 cursor-move items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-1.5 select-none",
+          "relative flex shrink-0 cursor-move items-center gap-1.5 border-b border-border/60 bg-muted/30 px-2.5 py-1 select-none",
           busy && "header-streaming"
         )}
       >
@@ -906,15 +906,15 @@ export function AiFloatingBubble({
       </div>
 
       {/* ── FOOTER ── */}
-      <div className="shrink-0 border-t border-border/60 bg-muted/10 px-2.5 py-2">
+      <div className="shrink-0 border-t border-border/60 bg-muted/10 px-2.5 py-1.5">
         {dragOver && (
-          <div className="mb-2 flex items-center gap-1.5 rounded-md border border-dashed border-primary/50 bg-primary/5 px-2 py-1.5 text-[11px] text-primary">
+          <div className="mb-1.5 flex items-center gap-1.5 rounded-md border border-dashed border-primary/50 bg-primary/5 px-2 py-1 text-[11px] text-primary">
             <HugeiconsIcon icon={Upload02Icon} size={12} strokeWidth={1.5} />
             Drop files to attach
           </div>
         )}
         {attachedFiles.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1">
+          <div className="mb-1.5 flex flex-wrap gap-1">
             {attachedFiles.map((f, i) => (
               <span key={i} className="inline-flex items-center gap-1 rounded-full bg-accent/20 px-2 py-0.5 text-[10px] text-accent">
                 {f.name}
@@ -930,7 +930,7 @@ export function AiFloatingBubble({
           </div>
         )}
         {needsKey ? (
-          <div className="rounded-md bg-muted/30 px-3 py-2 text-center text-[11px] text-muted-foreground">
+          <div className="rounded-md bg-muted/30 px-3 py-1.5 text-center text-[11px] text-muted-foreground">
             Set a {provider.label} API key in{" "}
             <span className="text-primary">Settings → Models</span>
           </div>
@@ -959,15 +959,15 @@ export function AiFloatingBubble({
                 }
               }}
               placeholder="Ask Husk anything…"
-              className="min-h-[32px] max-h-[120px] flex-1 resize-none rounded-lg border border-border/40 bg-muted/30 px-3 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40"
+              className="min-h-[28px] max-h-[120px] flex-1 resize-none rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40"
               rows={1}
             />
             <button
               type="submit"
               disabled={!input.trim() || busy}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
             >
-              <HugeiconsIcon icon={SparklesIcon} size={16} strokeWidth={1.5} />
+              <HugeiconsIcon icon={SparklesIcon} size={14} strokeWidth={1.5} />
             </button>
           </form>
         )}
