@@ -1,6 +1,8 @@
 import { tool, jsonSchema } from "ai";
 import { readFile, writeFile, createDir, readDir } from "../fs";
 import { addPendingEdit } from "./pendingEdits";
+import { buildCodebaseIndex, searchCodebase, formatSearchResults, getCodebaseIndex } from "./codebaseSearch";
+import { getWorkspaceRoot } from "../workspace/store";
 import type { Tool } from "ai";
 
 /**
@@ -104,6 +106,31 @@ export function buildBuiltinTools(): Record<string, Tool> {
           return `Edit proposed for ${path}. User will review before applying.`;
         } catch (e) {
           return `Error proposing edit: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      },
+    }),
+
+    searchCodebase: tool({
+      description: "Search the codebase for files, functions, or concepts. Use this when the user asks about code location, implementation details, or wants to find where something is defined. Builds an index on first use if needed. Returns ranked results with line numbers and snippets.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Natural language query or keywords to search for (e.g., 'auth middleware', 'user login', 'docker config')" },
+          limit: { type: "number", description: "Max results to return (default 10)" },
+        },
+        required: ["query"],
+      }),
+      execute: async ({ query, limit = 10 }) => {
+        try {
+          const idx = getCodebaseIndex();
+          if (!idx || idx.size === 0) {
+            const root = getWorkspaceRoot() || "/Users/akikp";
+            await buildCodebaseIndex(root);
+          }
+          const results = searchCodebase(query, limit);
+          return formatSearchResults(results);
+        } catch (e) {
+          return `Error searching codebase: ${e instanceof Error ? e.message : String(e)}`;
         }
       },
     }),

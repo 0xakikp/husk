@@ -948,6 +948,18 @@ function App() {
                 toast({ title: `Cleared ${count} edit${count > 1 ? "s" : ""}`, variant: "success", duration: 2000 });
               });
             }},
+            { id: "ai-rebuild-index", label: "AI: Rebuild codebase index", run: () => {
+              import("./ai/codebaseSearch").then(({ buildCodebaseIndex }) => {
+                import("./workspace/store").then(({ getWorkspaceRoot }) => {
+                  const root = getWorkspaceRoot() || "/Users/akikp";
+                  buildCodebaseIndex(root).then(() => {
+                    toast({ title: "Codebase index rebuilt", variant: "success", duration: 2000 });
+                  }).catch((e: Error) => {
+                    toast({ title: `Index failed: ${e.message}`, variant: "error", duration: 3000 });
+                  });
+                });
+              });
+            }},
           ]
         : []),
       { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
