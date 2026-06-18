@@ -695,8 +695,17 @@ export function AiFloatingBubble({
           <button
             ref={ctxButtonRef}
             type="button"
-            onClick={() => setIncludeContext((v) => !v)}
-            onMouseEnter={refreshCtxPreview}
+            onClick={() => {
+              setIncludeContext((v) => !v);
+              if (!showCtxPreview) {
+                refreshCtxPreview();
+              } else {
+                setShowCtxPreview(false);
+              }
+            }}
+            onMouseEnter={() => {
+              if (includeContext) refreshCtxPreview();
+            }}
             onMouseLeave={() => setShowCtxPreview(false)}
             className={cn(
               "relative flex h-5 shrink-0 items-center gap-0.5 rounded-md border px-1.5 text-[10px] transition-colors",
