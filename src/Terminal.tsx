@@ -60,19 +60,27 @@ export function TerminalView({
     let cancelled = false;
 
     void (async () => {
-      await createSession(leafId, initialCwd);
-      if (cancelled) return;
+      try {
+        await createSession(leafId, initialCwd);
+        if (cancelled) return;
 
-      const container = containerRef.current;
-      if (!container) return;
+        const container = containerRef.current;
+        if (!container) {
+          console.error("[husk] Terminal container not found for leaf", leafId);
+          return;
+        }
 
-      attachSession(leafId, container);
-      handleRef.current = getSessionHandle(leafId);
+        attachSession(leafId, container);
+        handleRef.current = getSessionHandle(leafId);
 
-      // Get screen element for click-to-position
-      const term = handleRef.current?.getTerm();
-      if (term?.element) {
-        screenRef.current = term.element.querySelector(".xterm-screen") as HTMLElement | null;
+        // Get screen element for click-to-position
+        const term = handleRef.current?.getTerm();
+        if (term?.element) {
+          screenRef.current = term.element.querySelector(".xterm-screen") as HTMLElement | null;
+        }
+        console.log("[husk] Terminal session created for leaf", leafId);
+      } catch (e) {
+        console.error("[husk] Failed to create terminal session:", e);
       }
     })();
 

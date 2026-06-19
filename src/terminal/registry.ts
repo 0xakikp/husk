@@ -285,16 +285,18 @@ export async function createSession(
   // ── PTY Spawn ─────────────────────────────────────────────────────────────
   session.ptyOpening = true;
   try {
-    const id = await invoke<number>("pty_spawn", {
-      cols: term.cols,
-      rows: term.rows,
-      cwd: initialCwd ?? null,
-    });
-    if (session.disposed) {
-      void invoke("pty_kill", { id });
-      return session;
-    }
-    session.ptyId = id;
+  console.log("[husk] Spawning PTY for leaf", leafId, "with cols:", term.cols, "rows:", term.rows);
+  const id = await invoke<number>("pty_spawn", {
+    cols: term.cols || 80,
+    rows: term.rows || 24,
+    cwd: initialCwd ?? null,
+  });
+  console.log("[husk] PTY spawned with id:", id);
+  if (session.disposed) {
+    void invoke("pty_kill", { id });
+    return session;
+  }
+  session.ptyId = id;
 
     session.unlisteners.push(
       await listen<number[]>(`pty://data/${id}`, (e) => {
