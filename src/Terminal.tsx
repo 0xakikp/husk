@@ -113,13 +113,6 @@ export function TerminalView({
     const container = containerRef.current;
     if (!container) return;
 
-    // Prevent double-mount: if we already have a terminal for this component
-    // instance (e.g. React StrictMode remount), clean it up first.
-    if (termRef.current) {
-      termRef.current.dispose();
-      termRef.current = null;
-    }
-
     const term = new Terminal({
       fontFamily: fontStack(getPrefs().fontFamily),
       fontSize: getPrefs().terminalFontSize,
