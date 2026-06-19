@@ -6,6 +6,8 @@ import type {
   EditorCursorStyle,
   TerminalCursorStyle,
   LineHighlight,
+  LineNumbers,
+  RenderWhitespace,
 } from "./preferences";
 import { FONT_FAMILIES, type FontFamilyId } from "../styles/fonts";
 import { TERMINAL_THEME_PRESETS, type TerminalThemePreset } from "../styles/terminalTheme";
@@ -185,6 +187,76 @@ export function GeneralSection() {
                 { value: "gutter", label: "Gutter" },
                 { value: "all", label: "All" },
               ]}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Line numbers"
+            description="Show line numbers in editor."
+          >
+            <Pick<LineNumbers>
+              value={p.editorLineNumbers}
+              onChange={(editorLineNumbers) => setPrefs({ editorLineNumbers })}
+              options={[
+                { value: "on", label: "On" },
+                { value: "off", label: "Off" },
+                { value: "relative", label: "Relative" },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Whitespace"
+            description="Render whitespace characters."
+          >
+            <Pick<RenderWhitespace>
+              value={p.editorWhitespace}
+              onChange={(editorWhitespace) => setPrefs({ editorWhitespace })}
+              options={[
+                { value: "none", label: "None" },
+                { value: "boundary", label: "Boundary" },
+                { value: "all", label: "All" },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Ligatures"
+            description="Enable font ligatures for nicer operators."
+          >
+            <Switch
+              checked={p.editorLigatures}
+              onCheckedChange={(v) => setPrefs({ editorLigatures: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Bracket colors"
+            description="Color matching bracket pairs."
+          >
+            <Switch
+              checked={p.editorBracketColors}
+              onCheckedChange={(v) => setPrefs({ editorBracketColors: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Smooth scroll"
+            description="Animated editor scrolling."
+          >
+            <Switch
+              checked={p.editorSmoothScroll}
+              onCheckedChange={(v) => setPrefs({ editorSmoothScroll: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Format on paste"
+            description="Auto-format code when pasting."
+          >
+            <Switch
+              checked={p.editorFormatOnPaste}
+              onCheckedChange={(v) => setPrefs({ editorFormatOnPaste: v })}
             />
           </SettingRow>
         </div>
