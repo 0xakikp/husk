@@ -254,6 +254,19 @@ husk() {
       r="${r/#\~/$HOME}"
       _husk_emit "diff;${l};${r}"
       ;;
+    cp)
+      if [ -z "$2" ] || [ -z "$3" ]; then echo "Usage: husk cp <source> <dest>"; return 1; fi
+      local src="${2#file://}"
+      local dst="${3#file://}"
+      src="${src/#\~/$HOME}"
+      dst="${dst/#\~/$HOME}"
+      # Determine direction: if source exists locally, it's a push; else pull
+      if [ -e "$src" ]; then
+        _husk_emit "cp;push;${src};${dst}"
+      else
+        _husk_emit "cp;pull;${src};${dst}"
+      fi
+      ;;
     help|*)
       cat <<'EOF'
 Husk — terminal ↔ GUI bridge commands
@@ -262,6 +275,7 @@ Husk — terminal ↔ GUI bridge commands
   husk preview <path|url>  Open path or URL in preview pane
   husk notify "message"    Send a desktop notification via Husk
   husk diff <l> <r>        Open both files in the editor
+  husk cp <src> <dst>      Copy file between remote and local (auto direction)
   husk help                Show this help
 EOF
       ;;

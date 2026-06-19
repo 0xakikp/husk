@@ -21,6 +21,7 @@ import {
   markCommandStart,
   setPromptPosition,
   setFocusTerminalFn,
+  setActiveTerminalPtyId,
 } from "../ai/terminalContext";
 import {
   setAiPtyWriter as setAiPtyWriterInput,
@@ -481,6 +482,7 @@ export function setSessionActive(leafId: number, active: boolean): void {
   session.active = active;
 
   if (active) {
+    setActiveTerminalPtyId(session.ptyId);
     setActiveTerminalReader(() => {
       const buf = session.term.buffer.active;
       const lines: string[] = [];

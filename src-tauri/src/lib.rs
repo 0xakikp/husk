@@ -40,6 +40,7 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_kill,
+            pty::pty_capture,
             fs::read_dir,
             fs::read_file,
             fs::read_file_base64,

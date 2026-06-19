@@ -8,6 +8,15 @@ import { isWindowFocused } from "../windowFocus";
  */
 let reader: (() => string) | null = null;
 let runner: ((cmd: string) => void) | null = null;
+let activePtyId: number | null = null;
+
+export function setActiveTerminalPtyId(id: number | null): void {
+  activePtyId = id;
+}
+
+export function getActiveTerminalPtyId(): number | null {
+  return activePtyId;
+}
 
 export function setActiveTerminalReader(fn: (() => string) | null): void {
   reader = fn;

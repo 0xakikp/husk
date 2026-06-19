@@ -7,7 +7,8 @@ export type BridgeCommand =
   | { kind: "open"; path: string }
   | { kind: "preview"; path: string }
   | { kind: "notify"; message: string }
-  | { kind: "diff"; left: string; right: string };
+  | { kind: "diff"; left: string; right: string }
+  | { kind: "cp"; direction: "pull" | "push"; source: string; dest: string };
 
 let handler: ((cmd: BridgeCommand) => void) | null = null;
 
@@ -37,6 +38,13 @@ export function parseBridgeOsc(data: string): BridgeCommand | null {
       const parts = rest.split(";");
       if (parts.length < 3) return null;
       return { kind: "diff", left: parts[0], right: parts.slice(1).join(";") };
+    }
+    case "cp": {
+      const parts = rest.split(";");
+      if (parts.length < 4) return null;
+      const direction = parts[0] as "pull" | "push";
+      if (direction !== "pull" && direction !== "push") return null;
+      return { kind: "cp", direction, source: parts[1], dest: parts.slice(2).join(";") };
     }
     default:
       return null;

@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use portable_pty::{native_pty_system, ChildKiller, MasterPty, PtyPair, PtySize};
 use tauri::{AppHandle, Emitter, State};
@@ -126,4 +127,55 @@ pub fn pty_kill(state: State<'_, PtyState>, id: u32) {
         // than potentially lingering as a zombie.
         let _ = session.killer.kill();
     }
+}
+
+/// Capture PTY output after injecting a command. Used by the `husk cp` bridge
+/// to read file contents (base64-encoded) from any terminal session.
+#[tauri::command]
+pub fn pty_capture(
+    state: State<'_, PtyState>,
+    id: u32,
+    command: String,
+    timeout_ms: u64,
+) -> Result<String, String> {
+    let mut sessions = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
+    let session = sessions
+        .get_mut(&id)
+        .ok_or("PTY session not found")?;
+
+    // Clear any pending output by reading briefly
+    let mut drain = [0u8; 4096];
+    let _ = session.master.try_clone_reader().map_err(|e| e.to_string())?.read(&mut drain);
+
+    // Write the command + newline
+    session
+        .writer
+        .write_all(command.as_bytes())
+        .map_err(|e| e.to_string())?;
+    session.writer.write_all(b"\n").map_err(|e| e.to_string())?;
+    session.writer.flush().map_err(|e| e.to_string())?;
+
+    // Read output until timeout
+    let mut reader = session
+        .master
+        .try_clone_reader()
+        .map_err(|e| e.to_string())?;
+    let mut output = Vec::new();
+    let mut buf = [0u8; 4096];
+    let start = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+
+    while start.elapsed() < timeout {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => output.extend_from_slice(&buf[..n]),
+            Err(_) => break,
+        }
+        // Small yield to let more data arrive
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    // Convert bytes to string, best-effort
+    let text = String::from_utf8_lossy(&output).to_string();
+    Ok(text)
 }

@@ -72,7 +72,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DialogLayer } from "./components/DialogLayer";
 import type { OpenPanelKind } from "./git/types";
 import { SuggestDialog, ExplainDialog } from "./ai/AssistDialogs";
-import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal } from "./ai/terminalContext";
+import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId } from "./ai/terminalContext";
+import { invoke } from "@tauri-apps/api/core";
 import { PreviewDialog } from "./preview/PreviewDialog";
 import { SidebarRail, type SidebarViewId } from "./sidebar/SidebarRail";
 import { fileIconUrl } from "./explorer/iconResolver";
@@ -776,6 +777,87 @@ function App() {
           setDiffPaths({ left: cmd.left, right: cmd.right });
           setDiffOpen(true);
           break;
+        case "cp": {
+          const ptyId = getActiveTerminalPtyId();
+          if (!ptyId) {
+            toast({ title: "No active terminal", variant: "error" });
+            return;
+          }
+          if (cmd.direction === "pull") {
+            // Remote → Local: cat file | base64, capture output, decode, write locally
+            const remotePath = cmd.source;
+            const localPath = cmd.dest;
+            const fileName = remotePath.split("/").pop() || "file";
+            toast({ title: `Downloading ${fileName}...`, variant: "info" });
+            void (async () => {
+              try {
+                // Use base64 with 0 wrapping to avoid line breaks in the capture
+                const captureCmd = `cat "${remotePath}" | base64 | tr -d '\\n'`;
+                const output = await invoke("pty_capture", { id: ptyId, command: captureCmd, timeoutMs: 30000 });
+                // Extract base64 from the output (strip shell prompts, etc.)
+                const lines = (output as string).split("\n");
+                // Find the line that looks like base64 (long alphanumeric string)
+                let b64 = "";
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (trimmed.length > 40 && /^[A-Za-z0-9+/=]+$/.test(trimmed)) {
+                    b64 = trimmed;
+                    break;
+                  }
+                }
+                if (!b64) {
+                  toast({ title: "Failed to capture file content", variant: "error" });
+                  return;
+                }
+                // Decode base64 to bytes
+                const binary = atob(b64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                  bytes[i] = binary.charCodeAt(i);
+                }
+                // Write to local file via Tauri fs
+                await invoke("write_binary_file", { path: localPath, data: Array.from(bytes) });
+                toast({ title: `Downloaded ${fileName}`, message: `Saved to ${localPath}`, variant: "success" });
+              } catch (e) {
+                toast({ title: `Download failed: ${String(e)}`, variant: "error" });
+              }
+            })();
+          } else {
+            // Local → Remote: read local file, base64 encode, inject via echo + base64 -d
+            const localPath = cmd.source;
+            const remotePath = cmd.dest;
+            const fileName = localPath.split("/").pop() || "file";
+            toast({ title: `Uploading ${fileName}...`, variant: "info" });
+            void (async () => {
+              try {
+                // Read local file as base64
+                const b64 = await invoke("read_file_base64", { path: localPath }) as string;
+                // Split into chunks to avoid command line length limits
+                const chunkSize = 8000;
+                const chunks: string[] = [];
+                for (let i = 0; i < b64.length; i += chunkSize) {
+                  chunks.push(b64.slice(i, i + chunkSize));
+                }
+                // Write chunks to a temp file on remote, then decode
+                const remoteTmp = `/tmp/.husk-upload-${fileName}`;
+                // Clear temp file
+                await invoke("pty_capture", { id: ptyId, command: `rm -f "${remoteTmp}"`, timeoutMs: 5000 });
+                // Append chunks
+                for (const chunk of chunks) {
+                  const echoCmd = `echo -n "${chunk}" >> "${remoteTmp}"`;
+                  await invoke("pty_capture", { id: ptyId, command: echoCmd, timeoutMs: 5000 });
+                }
+                // Decode base64 to final destination
+                const decodeCmd = `base64 -d "${remoteTmp}" > "${remotePath}" && rm -f "${remoteTmp}"`;
+                await invoke("pty_capture", { id: ptyId, command: decodeCmd, timeoutMs: 10000 });
+                toast({ title: `Uploaded ${fileName}`, message: `To ${remotePath}`, variant: "success" });
+              } catch (e) {
+                toast({ title: `Upload failed: ${String(e)}`, variant: "error" });
+              }
+            })();
+          }
+          break;
+        }
       }
     });
     return () => setBridgeHandler(null);
