@@ -134,9 +134,9 @@ export function ConnectionDialog({
 
   return (
     <Modal title={existing ? "Edit Connection" : "New SSH Connection"} onClose={onClose} className="max-w-lg">
-      <div className="space-y-5">
+      <div className="space-y-6">
         {/* Name */}
-        <div className="space-y-1.5">
+        <div>
           <Label htmlFor="conn-name">Name</Label>
           <Input
             id="conn-name"
@@ -152,7 +152,7 @@ export function ConnectionDialog({
 
         {/* Host + Port */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-2 space-y-1.5">
+          <div className="col-span-2">
             <Label htmlFor="conn-host">Host</Label>
             <Input
               id="conn-host"
@@ -165,7 +165,7 @@ export function ConnectionDialog({
               <p className="text-xs text-red-500">{errors.host}</p>
             )}
           </div>
-          <div className="space-y-1.5">
+          <div>
             <Label htmlFor="conn-port">Port</Label>
             <Input
               id="conn-port"
@@ -180,7 +180,7 @@ export function ConnectionDialog({
         </div>
 
         {/* Username */}
-        <div className="space-y-1.5">
+        <div>
           <Label htmlFor="conn-user">Username</Label>
           <Input
             id="conn-user"
@@ -195,7 +195,7 @@ export function ConnectionDialog({
         </div>
 
         {/* Auth Type */}
-        <div className="space-y-1.5">
+        <div>
           <Label>Authentication</Label>
           <Select
             value={authType}
@@ -216,7 +216,7 @@ export function ConnectionDialog({
 
         {/* Password */}
         {authType === "password" && (
-          <div className="space-y-1.5">
+          <div>
             <Label htmlFor="conn-password">Password</Label>
             <Input
               id="conn-password"
@@ -231,7 +231,7 @@ export function ConnectionDialog({
         {/* Private Key */}
         {authType === "key" && (
           <>
-            <div className="space-y-1.5">
+            <div>
               <Label htmlFor="conn-key">Private Key</Label>
               <div className="flex gap-2">
                 <Input
@@ -249,7 +249,7 @@ export function ConnectionDialog({
                 <p className="text-xs text-red-500">{errors.key}</p>
               )}
             </div>
-            <div className="space-y-1.5">
+            <div>
               <Label htmlFor="conn-passphrase">Key Passphrase (optional)</Label>
               <Input
                 id="conn-passphrase"
@@ -262,7 +262,7 @@ export function ConnectionDialog({
         )}
 
         {/* Jump Host */}
-        <div className="space-y-1.5">
+        <div>
           <Label htmlFor="conn-jump">Jump Host / Bastion (optional)</Label>
           <Input
             id="conn-jump"
@@ -273,7 +273,7 @@ export function ConnectionDialog({
         </div>
 
         {/* Tags */}
-        <div className="space-y-1.5">
+        <div>
           <Label htmlFor="conn-tags">Tags (comma-separated)</Label>
           <Input
             id="conn-tags"
@@ -284,7 +284,7 @@ export function ConnectionDialog({
         </div>
 
         {/* Color */}
-        <div className="space-y-2">
+        <div>
           <Label>Color</Label>
           <div className="flex flex-wrap gap-2">
             {colors.map((c) => (
