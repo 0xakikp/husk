@@ -151,6 +151,7 @@ export function useAutocomplete(
       if (!s.visible) return s;
       const next = s.selectedIndex + delta;
       if (next < 0 || next >= s.suggestions.length) return s;
+      console.log("[navigate] from", s.selectedIndex, "to", next, "total:", s.suggestions.length);
       return { ...s, selectedIndex: next };
     });
   }, []);
