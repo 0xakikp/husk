@@ -19,6 +19,7 @@ export function TerminalHistoryPanel({
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -35,13 +36,38 @@ export function TerminalHistoryPanel({
     el?.scrollIntoView({ block: "nearest" });
   }, [index]);
 
+  // Close on click outside or Escape
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (!panelRef.current?.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    // Delay to avoid catching the Ctrl+R keyup
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClick);
+      document.addEventListener("keydown", handleKey);
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
+
   const choose = (i: number) => {
     const cmd = filtered[i];
     if (cmd) onSelect(cmd);
   };
 
   return (
-    <div className="term-hist">
+    <div className="term-hist" ref={panelRef}>
       <input
         autoFocus
         className="term-hist-input"
