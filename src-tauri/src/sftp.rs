@@ -99,6 +99,30 @@ fn resolve_ssh_host(host: &str) -> (String, u16) {
     (host.to_string(), port.unwrap_or(22))
 }
 
+fn get_ssh_identity_files(host: &str) -> Vec<String> {
+    let output = std::process::Command::new("ssh")
+        .args(["-G", host])
+        .output();
+
+    let mut files = Vec::new();
+    if let Ok(out) = output {
+        if out.status.success() {
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                if line.to_lowercase().starts_with("identityfile ") {
+                    if let Some(f) = line.split_whitespace().nth(1) {
+                        files.push(f.to_string());
+                    }
+                }
+            }
+        }
+    }
+    if files.is_empty() {
+        files.push("~/.ssh/id_rsa".to_string());
+        files.push("~/.ssh/id_ed25519".to_string());
+    }
+    files
+}
+
 /// Shared SFTP session manager.
 #[derive(Clone)]
 pub struct SftpManager {
@@ -148,27 +172,23 @@ impl SftpManager {
             return Ok(sess);
         }
 
-        // Try default key locations
-        let home = dirs::home_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        for key_path in ["id_rsa", "id_ed25519"] {
-            let expanded = format!("{}/.ssh/{}", home, key_path);
+        // Try all identity files from ssh -G output
+        let identity_files = get_ssh_identity_files(host);
+        for key_path in identity_files {
+            let expanded = shellexpand::tilde(&key_path).to_string();
             if std::path::Path::new(&expanded).exists() {
                 if sess
                     .userauth_pubkey_file("", None, std::path::Path::new(&expanded), None)
                     .is_ok()
                     && sess.authenticated()
                 {
-                    let mut map = self.sessions.lock().unwrap();
-                    map.insert(host.to_string(), sess.clone());
                     return Ok(sess);
                 }
             }
         }
 
         Err(
-            "SSH authentication failed. Ensure your key is in ssh-agent or ~/.ssh/"
+            "SSH authentication failed. Ensure your key is in ssh-agent, or add IdentityFile to ~/.ssh/config"
                 .to_string(),
         )
     }
