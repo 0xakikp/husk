@@ -41,6 +41,7 @@ export function AutocompleteBar({
                 ? "bg-[#4ade80] text-black"
                 : "text-foreground hover:bg-accent/50"
             )}
+            style={i === selectedIndex ? { backgroundColor: "#4ade80", color: "#000" } : undefined}
           >
             <span className="font-medium">{s.highlight}</span>
             <span className="text-muted-foreground">{s.rest}</span>
