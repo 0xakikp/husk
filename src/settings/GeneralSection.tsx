@@ -6,6 +6,8 @@ import type {
   EditorCursorStyle,
   TerminalCursorStyle,
   LineHighlight,
+  LineNumbers,
+  RenderWhitespace,
 } from "./preferences";
 import { FONT_FAMILIES, type FontFamilyId } from "../styles/fonts";
 import { TERMINAL_THEME_PRESETS, type TerminalThemePreset } from "../styles/terminalTheme";
@@ -184,6 +186,114 @@ export function GeneralSection() {
                 { value: "line", label: "Line" },
                 { value: "gutter", label: "Gutter" },
                 { value: "all", label: "All" },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Line numbers"
+            description="Show line numbers in editor."
+          >
+            <Pick<LineNumbers>
+              value={p.editorLineNumbers}
+              onChange={(editorLineNumbers) => setPrefs({ editorLineNumbers })}
+              options={[
+                { value: "on", label: "On" },
+                { value: "off", label: "Off" },
+                { value: "relative", label: "Relative" },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Whitespace"
+            description="Render whitespace characters."
+          >
+            <Pick<RenderWhitespace>
+              value={p.editorWhitespace}
+              onChange={(editorWhitespace) => setPrefs({ editorWhitespace })}
+              options={[
+                { value: "none", label: "None" },
+                { value: "boundary", label: "Boundary" },
+                { value: "all", label: "All" },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Ligatures"
+            description="Enable font ligatures for nicer operators."
+          >
+            <Switch
+              checked={p.editorLigatures}
+              onCheckedChange={(v) => setPrefs({ editorLigatures: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Bracket colors"
+            description="Color matching bracket pairs."
+          >
+            <Switch
+              checked={p.editorBracketColors}
+              onCheckedChange={(v) => setPrefs({ editorBracketColors: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Smooth scroll"
+            description="Animated editor scrolling."
+          >
+            <Switch
+              checked={p.editorSmoothScroll}
+              onCheckedChange={(v) => setPrefs({ editorSmoothScroll: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Format on paste"
+            description="Auto-format code when pasting."
+          >
+            <Switch
+              checked={p.editorFormatOnPaste}
+              onCheckedChange={(v) => setPrefs({ editorFormatOnPaste: v })}
+            />
+          </SettingRow>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>App</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Theme"
+            description="Dark or light mode."
+          >
+            <Pick<"dark" | "light">
+              value={p.theme}
+              onChange={(theme) => setPrefs({ theme })}
+              options={[
+                { value: "dark", label: "Dark" },
+                { value: "light", label: "Light" },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Zoom level"
+            description="UI scale factor."
+          >
+            <Pick<number>
+              value={p.zoomLevel}
+              onChange={(zoomLevel) => setPrefs({ zoomLevel })}
+              options={[
+                { value: 0.8, label: "80%" },
+                { value: 0.9, label: "90%" },
+                { value: 1, label: "100%" },
+                { value: 1.1, label: "110%" },
+                { value: 1.2, label: "120%" },
+                { value: 1.3, label: "130%" },
               ]}
             />
           </SettingRow>
