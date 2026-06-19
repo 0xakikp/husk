@@ -21,12 +21,22 @@ export function getConnectedHosts(): string[] {
   return Array.from(connectedHosts);
 }
 
-export function useConnectedHosts(): string[] {
+let lastSnapshot: readonly string[] = [];
+
+export function useConnectedHosts(): readonly string[] {
   return useSyncExternalStore(
     (fn) => {
       subscribers.add(fn);
       return () => subscribers.delete(fn);
     },
-    () => getConnectedHosts(),
+    () => {
+      const hosts = getConnectedHosts();
+      // Only update if changed to prevent infinite re-renders
+      if (hosts.length !== lastSnapshot.length || hosts.some((h, i) => h !== lastSnapshot[i])) {
+        lastSnapshot = hosts;
+      }
+      return lastSnapshot;
+    },
+    () => lastSnapshot,
   );
 }

@@ -47,6 +47,7 @@ export function RemotesView({
 }) {
   const [hosts, setHosts] = useState<string[] | "loading">("loading");
   const connected = useConnectedHosts();
+  const connectedSet = new Set(connected);
 
   const load = () => void readSshHosts().then(setHosts);
 
@@ -125,11 +126,11 @@ export function RemotesView({
                 <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
                   {h}
                 </span>
-                {connected.includes(h) && (
+                {connectedSet.has(h) && (
                   <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-green-500" title="Connected" />
                 )}
               </button>
-              {connected.includes(h) && (
+              {connectedSet.has(h) && (
                 <button
                   type="button"
                   title="Disconnect"
