@@ -99,7 +99,10 @@ export function TerminalView({
         onFocusDirection: (dir) => _onFocusDirection?.(dir),
         onHistoryOpen: () => openHistory(),
         onKey: (e) => {
-          if (e.type !== "keydown" || !autoStateRef.current.visible) return undefined;
+          if (e.type !== "keydown") return undefined;
+          // Don't intercept when history panel or search is open
+          if (historyOpen || searchOpen) return undefined;
+          if (!autoStateRef.current.visible) return undefined;
           if (e.key === "Tab") {
             e.preventDefault();
             acceptAutoRef.current();
