@@ -1766,6 +1766,7 @@ dependencies = [
  "dirs 5.0.1",
  "keyring",
  "libc",
+ "libssh2-sys",
  "portable-pty",
  "serde",
  "serde_json",
