@@ -133,17 +133,23 @@ export function ConnectionDialog({
   ];
 
   return (
-    <Modal title={existing ? "Edit Connection" : "New SSH Connection"} onClose={onClose} className="max-w-lg">
-      <div className="space-y-7">
+    <Modal
+      title={existing ? "Edit Connection" : "New SSH Connection"}
+      onClose={onClose}
+      className="max-w-lg border border-white/10 rounded-xl bg-[#0a0a0a]"
+    >
+      <div className="flex flex-col gap-5">
         {/* Name */}
-        <div>
-          <Label htmlFor="conn-name">Name</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="conn-name" className="text-gray-300 text-sm font-medium">
+            Name
+          </Label>
           <Input
             id="conn-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Production Server"
-            className={errors.name ? "border-red-500" : ""}
+            className={`bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all ${errors.name ? "border-red-500" : ""}`}
           />
           {errors.name && (
             <p className="text-xs text-red-500">{errors.name}</p>
@@ -151,27 +157,31 @@ export function ConnectionDialog({
         </div>
 
         {/* Host + Port */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-2">
-            <Label htmlFor="conn-host">Host</Label>
+        <div className="grid grid-cols-4 gap-4">
+          <div className="col-span-3 flex flex-col gap-1.5">
+            <Label htmlFor="conn-host" className="text-gray-300 text-sm font-medium">
+              Host
+            </Label>
             <Input
               id="conn-host"
               value={host}
               onChange={(e) => setHost(e.target.value)}
               placeholder="192.168.1.100 or server.com"
-              className={errors.host ? "border-red-500" : ""}
+              className={`bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all ${errors.host ? "border-red-500" : ""}`}
             />
             {errors.host && (
               <p className="text-xs text-red-500">{errors.host}</p>
             )}
           </div>
-          <div>
-            <Label htmlFor="conn-port">Port</Label>
+          <div className="col-span-1 flex flex-col gap-1.5">
+            <Label htmlFor="conn-port" className="text-gray-300 text-sm font-medium">
+              Port
+            </Label>
             <Input
               id="conn-port"
               value={port}
               onChange={(e) => setPort(e.target.value)}
-              className={errors.port ? "border-red-500" : ""}
+              className={`bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all ${errors.port ? "border-red-500" : ""}`}
             />
             {errors.port && (
               <p className="text-xs text-red-500">{errors.port}</p>
@@ -180,14 +190,16 @@ export function ConnectionDialog({
         </div>
 
         {/* Username */}
-        <div>
-          <Label htmlFor="conn-user">Username</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="conn-user" className="text-gray-300 text-sm font-medium">
+            Username
+          </Label>
           <Input
             id="conn-user"
             value={user}
             onChange={(e) => setUser(e.target.value)}
             placeholder="root"
-            className={errors.user ? "border-red-500" : ""}
+            className={`bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all ${errors.user ? "border-red-500" : ""}`}
           />
           {errors.user && (
             <p className="text-xs text-red-500">{errors.user}</p>
@@ -195,15 +207,15 @@ export function ConnectionDialog({
         </div>
 
         {/* Auth Type */}
-        <div>
-          <Label>Authentication</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-gray-300 text-sm font-medium">Authentication</Label>
           <Select
             value={authType}
             onValueChange={(v: "password" | "key" | "agent") =>
               setAuthType(v)
             }
           >
-            <SelectTrigger>
+            <SelectTrigger className="bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all h-auto">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -216,14 +228,17 @@ export function ConnectionDialog({
 
         {/* Password */}
         {authType === "password" && (
-          <div>
-            <Label htmlFor="conn-password">Password</Label>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="conn-password" className="text-gray-300 text-sm font-medium">
+              Password
+            </Label>
             <Input
               id="conn-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Optional - will prompt if empty"
+              className="bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
             />
           </div>
         )}
@@ -231,17 +246,24 @@ export function ConnectionDialog({
         {/* Private Key */}
         {authType === "key" && (
           <>
-            <div>
-              <Label htmlFor="conn-key">Private Key</Label>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="conn-key" className="text-gray-300 text-sm font-medium">
+                Private Key
+              </Label>
               <div className="flex gap-2">
                 <Input
                   id="conn-key"
                   value={privateKeyPath}
                   onChange={(e) => setPrivateKeyPath(e.target.value)}
                   placeholder="~/.ssh/id_rsa"
-                  className={`flex-1 ${errors.key ? "border-red-500" : ""}`}
+                  className={`flex-1 bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all ${errors.key ? "border-red-500" : ""}`}
                 />
-                <Button variant="outline" size="icon" onClick={pickKeyFile}>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={pickKeyFile}
+                  className="bg-black/50 border border-white/10 hover:bg-white/10 hover:text-white"
+                >
                   <HugeiconsIcon icon={FolderOpenIcon} size={16} />
                 </Button>
               </div>
@@ -249,51 +271,60 @@ export function ConnectionDialog({
                 <p className="text-xs text-red-500">{errors.key}</p>
               )}
             </div>
-            <div>
-              <Label htmlFor="conn-passphrase">Key Passphrase (optional)</Label>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="conn-passphrase" className="text-gray-300 text-sm font-medium">
+                Key Passphrase (optional)
+              </Label>
               <Input
                 id="conn-passphrase"
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
+                className="bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
               />
             </div>
           </>
         )}
 
         {/* Jump Host */}
-        <div>
-          <Label htmlFor="conn-jump">Jump Host / Bastion (optional)</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="conn-jump" className="text-gray-300 text-sm font-medium">
+            Jump Host / Bastion (optional)
+          </Label>
           <Input
             id="conn-jump"
             value={jumpHost}
             onChange={(e) => setJumpHost(e.target.value)}
             placeholder="bastion.example.com"
+            className="bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
           />
         </div>
 
         {/* Tags */}
-        <div>
-          <Label htmlFor="conn-tags">Tags (comma-separated)</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="conn-tags" className="text-gray-300 text-sm font-medium">
+            Tags (comma-separated)
+          </Label>
           <Input
             id="conn-tags"
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="prod, aws, database"
+            className="bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
           />
         </div>
 
         {/* Color */}
-        <div>
-          <Label>Color</Label>
+        <div className="flex flex-col gap-2">
+          <Label className="text-gray-300 text-sm font-medium">Color</Label>
           <div className="flex flex-wrap gap-2">
             {colors.map((c) => (
               <button
                 key={c}
                 onClick={() => setColor(c)}
-                className={`w-6 h-6 rounded-full border-2 transition-all ${
+                className={`w-7 h-7 rounded-full border-2 transition-all ${
                   color === c
-                    ? "border-white scale-110"
+                    ? "border-white scale-110 ring-2 ring-white/30"
                     : "border-transparent hover:border-white/50"
                 }`}
                 style={{ backgroundColor: c || "#374151" }}
@@ -304,21 +335,33 @@ export function ConnectionDialog({
         </div>
       </div>
 
-      <div className="flex justify-between mt-8 pt-4 border-t border-border">
+      <div className="flex justify-between mt-6 pt-4 border-t border-white/10">
         {existing ? (
-          <Button variant="destructive" size="sm" onClick={handleDelete}>
-            <HugeiconsIcon icon={Delete01Icon} size={16} className="mr-1" />
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDelete}
+            className="bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30"
+          >
+            <HugeiconsIcon icon={Delete01Icon} size={16} className="mr-1.5" />
             Delete
           </Button>
         ) : (
           <div />
         )}
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onClose}>
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
+          >
             Cancel
           </Button>
-          <Button onClick={handleSave}>
-            <HugeiconsIcon icon={SaveIcon} size={16} className="mr-1" />
+          <Button
+            onClick={handleSave}
+            className="bg-blue-600 hover:bg-blue-500 text-white border-0"
+          >
+            <HugeiconsIcon icon={SaveIcon} size={16} className="mr-1.5" />
             Save
           </Button>
         </div>
