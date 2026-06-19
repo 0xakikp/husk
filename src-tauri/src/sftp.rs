@@ -90,52 +90,75 @@ impl SftpManager {
     fn connect(&self, host: &str) -> Result<Session, String> {
         let actual_host = resolve_ssh_host(host);
         eprintln!("[sftp] resolve: '{}' -> '{}'", host, actual_host);
-        let mut map = self.sessions.lock().unwrap();
-        if let Some(sess) = map.get(host) {
-            if !sess.authenticated() {
-                map.remove(host);
-            } else {
-                return Ok(sess.clone());
-            }
-        }
 
-        let tcp = TcpStream::connect(format!("{}:22", actual_host))
-            .map_err(|e| format!("TCP connect failed: {}", e))?;
-        tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
-            .ok();
-        tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)))
-            .ok();
-
-        let mut sess = Session::new().map_err(|e| format!("Session creation failed: {}", e))?;
-        sess.set_tcp_stream(tcp);
-        sess.handshake()
-            .map_err(|e| format!("SSH handshake failed: {}", e))?;
-
-        // Try SSH agent first
-        if sess.userauth_agent("").is_ok() && sess.authenticated() {
-            map.insert(host.to_string(), sess.clone());
-            return Ok(sess);
-        }
-
-        // Try default key locations
-        let home = dirs::home_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        for key_path in ["id_rsa", "id_ed25519"] {
-            let expanded = format!("{}/.ssh/{}", home, key_path);
-            if std::path::Path::new(&expanded).exists() {
-                if sess
-                    .userauth_pubkey_file("", None, std::path::Path::new(&expanded), None)
-                    .is_ok()
-                    && sess.authenticated()
-                {
-                    map.insert(host.to_string(), sess.clone());
-                    return Ok(sess);
+        // Check cache first
+        {
+            let mut map = self.sessions.lock().unwrap();
+            if let Some(sess) = map.get(host) {
+                if !sess.authenticated() {
+                    map.remove(host);
+                } else {
+                    return Ok(sess.clone());
                 }
             }
         }
 
-        Err("SSH authentication failed. Ensure your key is in ssh-agent or ~/.ssh/".to_string())
+        // Blocking SSH connect in background thread
+        let host = host.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = (|| -> Result<Session, String> {
+                let tcp = TcpStream::connect(format!("{}:22", actual_host))
+                    .map_err(|e| format!("TCP connect failed: {}", e))?;
+                tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
+                    .ok();
+                tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)))
+                    .ok();
+
+                let mut sess =
+                    Session::new().map_err(|e| format!("Session creation failed: {}", e))?;
+                sess.set_tcp_stream(tcp);
+                sess.handshake()
+                    .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+                // Try SSH agent first
+                if sess.userauth_agent("").is_ok() && sess.authenticated() {
+                    return Ok(sess);
+                }
+
+                // Try default key locations
+                let home = dirs::home_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                for key_path in ["id_rsa", "id_ed25519"] {
+                    let expanded = format!("{}/.ssh/{}", home, key_path);
+                    if std::path::Path::new(&expanded).exists() {
+                        if sess
+                            .userauth_pubkey_file("", None, std::path::Path::new(&expanded), None)
+                            .is_ok()
+                            && sess.authenticated()
+                        {
+                            return Ok(sess);
+                        }
+                    }
+                }
+
+                Err(
+                    "SSH authentication failed. Ensure your key is in ssh-agent or ~/.ssh/"
+                        .to_string(),
+                )
+            })();
+            let _ = tx.send(result);
+        });
+
+        let sess = rx
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .map_err(|_| "SFTP connection timed out".to_string())?
+            .map_err(|e| e)?;
+
+        let mut map = self.sessions.lock().unwrap();
+        map.insert(host, sess.clone());
+        Ok(sess)
     }
 }
 
