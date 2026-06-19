@@ -69,10 +69,10 @@ export function Modal({
               {title}
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
-              className="text-lg leading-none text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Close"
             >
-              ×
+              <span className="text-lg leading-none">×</span>
             </DialogPrimitive.Close>
           </div>
           <div className="no-scrollbar overflow-y-auto p-4">{children}</div>
