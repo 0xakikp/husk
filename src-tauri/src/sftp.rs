@@ -15,6 +15,11 @@ fn resolve_ssh_host(host: &str) -> String {
         .args(["-G", host])
         .output();
 
+    eprintln!(
+        "[sftp] ssh -G output: {:?}",
+        output.as_ref().map(|o| o.status.success())
+    );
+
     if let Ok(out) = output {
         if out.status.success() {
             for line in String::from_utf8_lossy(&out.stdout).lines() {
@@ -84,6 +89,7 @@ impl SftpManager {
 
     fn connect(&self, host: &str) -> Result<Session, String> {
         let actual_host = resolve_ssh_host(host);
+        eprintln!("[sftp] resolve: '{}' -> '{}'", host, actual_host);
         let mut map = self.sessions.lock().unwrap();
         if let Some(sess) = map.get(host) {
             if !sess.authenticated() {
