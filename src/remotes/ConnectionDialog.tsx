@@ -141,7 +141,7 @@ export function ConnectionDialog({
       <div className="flex flex-col gap-4">
         {/* Name */}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="conn-name" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+          <Label htmlFor="conn-name" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
             Name
           </Label>
           <Input
@@ -149,7 +149,7 @@ export function ConnectionDialog({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Production Server"
-            className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.name ? "border-red-500" : ""}`}
+            className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.name ? "border-red-500" : ""}`}
           />
           {errors.name && (
             <p className="text-xs text-red-500">{errors.name}</p>
@@ -159,7 +159,7 @@ export function ConnectionDialog({
         {/* Host + Port */}
         <div className="flex flex-row gap-4">
           <div className="flex-1 flex flex-col gap-1.5">
-            <Label htmlFor="conn-host" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+            <Label htmlFor="conn-host" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
               Host
             </Label>
             <Input
@@ -167,21 +167,21 @@ export function ConnectionDialog({
               value={host}
               onChange={(e) => setHost(e.target.value)}
               placeholder="192.168.1.100 or server.com"
-              className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.host ? "border-red-500" : ""}`}
+              className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.host ? "border-red-500" : ""}`}
             />
             {errors.host && (
               <p className="text-xs text-red-500">{errors.host}</p>
             )}
           </div>
           <div className="w-24 flex flex-col gap-1.5">
-            <Label htmlFor="conn-port" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+            <Label htmlFor="conn-port" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
               Port
             </Label>
             <Input
               id="conn-port"
               value={port}
               onChange={(e) => setPort(e.target.value)}
-              className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.port ? "border-red-500" : ""}`}
+              className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.port ? "border-red-500" : ""}`}
             />
             {errors.port && (
               <p className="text-xs text-red-500">{errors.port}</p>
@@ -191,7 +191,7 @@ export function ConnectionDialog({
 
         {/* Username */}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="conn-user" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+          <Label htmlFor="conn-user" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
             Username
           </Label>
           <Input
@@ -199,7 +199,7 @@ export function ConnectionDialog({
             value={user}
             onChange={(e) => setUser(e.target.value)}
             placeholder="root"
-            className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.user ? "border-red-500" : ""}`}
+            className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.user ? "border-red-500" : ""}`}
           />
           {errors.user && (
             <p className="text-xs text-red-500">{errors.user}</p>
@@ -208,14 +208,14 @@ export function ConnectionDialog({
 
         {/* Auth Type */}
         <div className="flex flex-col gap-1.5">
-          <Label className="text-slate-600 dark:text-slate-300 text-sm font-medium">Authentication</Label>
+          <Label className="text-slate-900 dark:text-slate-100 text-sm font-medium">Authentication</Label>
           <Select
             value={authType}
             onValueChange={(v: "password" | "key" | "agent") =>
               setAuthType(v)
             }
           >
-            <SelectTrigger className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all h-auto">
+            <SelectTrigger className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all h-auto">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -229,7 +229,7 @@ export function ConnectionDialog({
         {/* Password */}
         {authType === "password" && (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="conn-password" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+            <Label htmlFor="conn-password" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
               Password
             </Label>
             <Input
@@ -238,7 +238,7 @@ export function ConnectionDialog({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Optional - will prompt if empty"
-              className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+              className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
             />
           </div>
         )}
@@ -247,7 +247,7 @@ export function ConnectionDialog({
         {authType === "key" && (
           <>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="conn-key" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+              <Label htmlFor="conn-key" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
                 Private Key
               </Label>
               <div className="flex gap-2">
@@ -256,13 +256,13 @@ export function ConnectionDialog({
                   value={privateKeyPath}
                   onChange={(e) => setPrivateKeyPath(e.target.value)}
                   placeholder="~/.ssh/id_rsa"
-                  className={`flex-1 bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.key ? "border-red-500" : ""}`}
+                  className={`flex-1 bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.key ? "border-red-500" : ""}`}
                 />
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={pickKeyFile}
-                  className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300"
+                  className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400"
                 >
                   <HugeiconsIcon icon={FolderOpenIcon} size={16} />
                 </Button>
@@ -272,7 +272,7 @@ export function ConnectionDialog({
               )}
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="conn-passphrase" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+              <Label htmlFor="conn-passphrase" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
                 Key Passphrase (optional)
               </Label>
               <Input
@@ -280,7 +280,7 @@ export function ConnectionDialog({
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
               />
             </div>
           </>
@@ -288,7 +288,7 @@ export function ConnectionDialog({
 
         {/* Jump Host */}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="conn-jump" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+          <Label htmlFor="conn-jump" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
             Jump Host / Bastion (optional)
           </Label>
           <Input
@@ -296,13 +296,13 @@ export function ConnectionDialog({
             value={jumpHost}
             onChange={(e) => setJumpHost(e.target.value)}
             placeholder="bastion.example.com"
-            className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+            className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
           />
         </div>
 
         {/* Tags */}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="conn-tags" className="text-slate-600 dark:text-slate-300 text-sm font-medium">
+          <Label htmlFor="conn-tags" className="text-slate-900 dark:text-slate-100 text-sm font-medium">
             Tags (comma-separated)
           </Label>
           <Input
@@ -310,13 +310,13 @@ export function ConnectionDialog({
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="prod, aws, database"
-            className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+            className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
           />
         </div>
 
         {/* Color */}
         <div className="flex flex-col gap-2 mb-6">
-          <Label className="text-slate-600 dark:text-slate-300 text-sm font-medium">Color</Label>
+          <Label className="text-slate-900 dark:text-slate-100 text-sm font-medium">Color</Label>
           <div className="flex flex-wrap gap-2">
             {colors.map((c) => (
               <button
