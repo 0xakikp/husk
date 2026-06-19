@@ -11,6 +11,8 @@ import {
   firstLeaf,
   type Pane,
 } from "./terminalPanes";
+import { disposeSession } from "./terminal/registry";
+import { leafIds } from "./terminal/paneUtils";
 
 export type TermTab = {
   id: number;
@@ -146,6 +148,13 @@ export function useTerminalTabs() {
     const currentTabs = tabsRef.current;
     const currentActive = activeIdRef.current;
     const idx = currentTabs.findIndex((t) => t.id === id);
+    const tab = currentTabs[idx];
+    // Dispose all terminals in this tab
+    if (tab) {
+      for (const leafId of leafIds(tab.root)) {
+        disposeSession(leafId);
+      }
+    }
     const remaining = currentTabs.filter((t) => t.id !== id);
     if (remaining.length === 0) {
       const fresh = nextId.current++;
@@ -169,6 +178,8 @@ export function useTerminalTabs() {
     const tab = tabsRef.current.find((t) => t.id === tabId);
     if (!tab) return;
     const root = removePane(tab.root, leafId);
+    // Dispose the closed leaf's terminal
+    disposeSession(leafId);
     if (root === null) {
       // last pane in the tab — close the tab
       const idx = tabsRef.current.findIndex((t) => t.id === tabId);

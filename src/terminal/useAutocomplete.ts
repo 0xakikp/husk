@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { getShellHistory } from "../shellHistory";
 import { getPromptPosition } from "../ai/terminalContext";
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalHandle } from "./registry";
 
 export interface Suggestion {
   command: string;
@@ -18,8 +17,7 @@ export interface AutocompleteState {
 }
 
 export function useAutocomplete(
-  termRef: React.MutableRefObject<Terminal | null>,
-  ptyIdRef: React.MutableRefObject<number | null>,
+  handleRef: React.MutableRefObject<TerminalHandle | null>,
 ) {
   const historyRef = useRef<string[]>([]);
   const [state, setState] = useState<AutocompleteState>({
@@ -49,7 +47,8 @@ export function useAutocomplete(
   }, []);
 
   const calculatePosition = useCallback((): { x: number; y: number } | null => {
-    const term = termRef.current;
+    const handle = handleRef.current;
+    const term = handle?.getTerm();
     if (!term || !term.element) return null;
     const buf = term.buffer.active;
     const screenEl = term.element.querySelector(".xterm-screen") as HTMLElement | null;
@@ -66,10 +65,11 @@ export function useAutocomplete(
     const x = buf.cursorX * cellW + padL;
     const y = (buf.cursorY + 1) * cellH;
     return { x, y };
-  }, [termRef]);
+  }, [handleRef]);
 
   const check = useCallback(() => {
-    const term = termRef.current;
+    const handle = handleRef.current;
+    const term = handle?.getTerm();
     if (!term) return;
 
     const buf = term.buffer.active;
@@ -124,7 +124,7 @@ export function useAutocomplete(
       selectedIndex: 0,
       position,
     });
-  }, [calculatePosition, termRef]);
+  }, [calculatePosition, handleRef]);
 
   const scheduleCheck = useCallback(() => {
     clearTimeout(checkTimerRef.current);
@@ -138,13 +138,12 @@ export function useAutocomplete(
       if (!suggestion) return;
 
       const remaining = suggestion.command.slice(suggestion.highlight.length);
-      const ptyId = ptyIdRef.current;
-      if (ptyId != null && remaining) {
-        void invoke("pty_write", { id: ptyId, data: remaining });
+      if (remaining) {
+        handleRef.current?.write(remaining);
       }
       setState((s) => ({ ...s, visible: false }));
     },
-    [ptyIdRef],
+    [handleRef],
   );
 
   const navigate = useCallback((delta: number) => {

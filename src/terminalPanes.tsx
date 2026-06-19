@@ -67,8 +67,9 @@ export function PaneView({ node, ...ops }: { node: Pane } & Ops) {
   if (node.kind === "leaf") {
     const focused = ops.tabActive && ops.focusedId === node.id;
     return (
-      <div className={`pane-leaf${focused && ops.multi ? " focused" : ""}`}>
+      <div key={`leaf-${node.id}`} className={`pane-leaf${focused && ops.multi ? " focused" : ""}`}>
         <TerminalView
+          leafId={node.id}
           active={focused}
           initialCwd={node.initialCwd}
           canClose={ops.multi}
@@ -80,7 +81,7 @@ export function PaneView({ node, ...ops }: { node: Pane } & Ops) {
       </div>
     );
   }
-  return <SplitView node={node} ops={ops} />;
+  return <SplitView key={`split-${node.id}`} node={node} ops={ops} />;
 }
 
 function SplitView({
