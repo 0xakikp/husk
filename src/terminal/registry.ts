@@ -339,10 +339,6 @@ export async function createSession(
             term.write(new TextEncoder().encode(outputBuffer.slice(0, lastNL + 1)));
             outputBuffer = outputBuffer.slice(lastNL + 1);
           }
-        } else if (outputBuffer.length > 0 && outputBuffer.length < 8) {
-          // Flush small single-character inputs (echo) immediately
-          term.write(new TextEncoder().encode(outputBuffer));
-          outputBuffer = "";
         }
       }),
     );
