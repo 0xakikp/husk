@@ -43,7 +43,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
   const [newName, setNewName] = useState("");
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [mkdirName, setMkdirName] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "grid" | "details">("list");
+  const [viewMode, setViewMode] = useState<"list" | "details">("list");
 
   const load = useCallback(
     async (path: string) => {
@@ -241,17 +241,6 @@ export function SftpView({ host, onClose }: SftpViewProps) {
               type="button"
               className={cn(
                 "p-1 rounded text-[11px] w-6 h-6 flex items-center justify-center",
-                viewMode === "grid" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
-              onClick={() => setViewMode("grid")}
-              title="Grid view"
-            >
-              ▦
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "p-1 rounded text-[11px] w-6 h-6 flex items-center justify-center",
                 viewMode === "details" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )}
               onClick={() => setViewMode("details")}
@@ -321,41 +310,6 @@ export function SftpView({ host, onClose }: SftpViewProps) {
           <div className="p-4 text-xs text-muted-foreground">Loading…</div>
         ) : entries.length === 0 ? (
           <div className="p-4 text-xs text-muted-foreground">Empty directory</div>
-        ) : viewMode === "grid" ? (
-          /* Grid view - dense, many columns */
-          <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-0.5 p-1.5">
-            {entries.map((entry) => (
-              <div
-                key={entry.path}
-                className={cn(
-                  "flex flex-col items-center gap-0.5 p-1 rounded cursor-pointer hover:bg-accent/50 text-center",
-                  selected.has(entry.path) && "bg-accent"
-                )}
-                onClick={() => {
-                  if (entry.is_dir) {
-                    load(entry.path);
-                  } else {
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(entry.path)) next.delete(entry.path);
-                      else next.add(entry.path);
-                      return next;
-                    });
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setContextMenu({ x: e.clientX, y: e.clientY, entry });
-                }}
-              >
-                <span className="text-lg leading-none">{entry.is_dir ? "📁" : "📄"}</span>
-                <span className="text-[10px] truncate w-full leading-tight">{entry.name}</span>
-                <span className="text-[9px] text-muted-foreground leading-none">
-                  {entry.is_dir ? "—" : formatSize(entry.size)}
-                </span>
-              </div>
-            ))}
-          </div>
         ) : viewMode === "details" ? (
           /* Details view */
           <table className="w-full text-[12px]">
