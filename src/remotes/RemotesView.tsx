@@ -96,6 +96,8 @@ export function RemotesView({
     });
     toast({ title: `Imported ${host}`, variant: "success" });
     setImportingHost(undefined);
+    // Refresh SSH config list so imported host disappears
+    load();
   };
 
   const connect = (h: string) => {
