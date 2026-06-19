@@ -8,6 +8,36 @@ use std::sync::Mutex;
 use ssh2::Session;
 use tauri::State;
 
+/// Resolve SSH config alias to actual HostName.
+fn resolve_ssh_host(host: &str) -> String {
+    let home = dirs::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let config_path = format!("{}/.ssh/config", home);
+    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+
+    let mut current_host: Option<&str> = None;
+    let mut host_map: HashMap<String, String> = HashMap::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.to_lowercase().starts_with("host ") {
+            current_host = trimmed.split_whitespace().nth(1);
+        } else if let Some(h) = current_host {
+            if trimmed.to_lowercase().starts_with("hostname ") {
+                if let Some(hostname) = trimmed.split_whitespace().nth(1) {
+                    host_map.insert(h.to_string(), hostname.to_string());
+                }
+            }
+        }
+    }
+
+    host_map
+        .get(host)
+        .cloned()
+        .unwrap_or_else(|| host.to_string())
+}
+
 /// Shared SFTP session manager.
 pub struct SftpManager {
     sessions: Mutex<HashMap<String, Session>>,
@@ -21,6 +51,7 @@ impl SftpManager {
     }
 
     fn connect(&self, host: &str) -> Result<Session, String> {
+        let actual_host = resolve_ssh_host(host);
         let mut map = self.sessions.lock().unwrap();
         if let Some(sess) = map.get(host) {
             if !sess.authenticated() {
@@ -30,7 +61,7 @@ impl SftpManager {
             }
         }
 
-        let tcp = TcpStream::connect(format!("{}:22", host))
+        let tcp = TcpStream::connect(format!("{}:22", actual_host))
             .map_err(|e| format!("TCP connect failed: {}", e))?;
         tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
             .ok();
