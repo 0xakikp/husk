@@ -123,6 +123,26 @@ fn get_ssh_identity_files(host: &str) -> Vec<String> {
     files
 }
 
+fn get_ssh_user(host: &str) -> String {
+    let output = std::process::Command::new("ssh")
+        .args(["-G", host])
+        .output();
+
+    if let Ok(out) = output {
+        if out.status.success() {
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                if line.to_lowercase().starts_with("user ") {
+                    if let Some(u) = line.split_whitespace().nth(1) {
+                        return u.to_string();
+                    }
+                }
+            }
+        }
+    }
+    // Fallback: current user
+    whoami::username().unwrap_or_else(|_| "root".to_string())
+}
+
 /// Shared SFTP session manager.
 #[derive(Clone)]
 pub struct SftpManager {
@@ -166,7 +186,8 @@ impl SftpManager {
             .map_err(|e| format!("SSH handshake failed: {}", e))?;
 
         // Try SSH agent first
-        if sess.userauth_agent("").is_ok() && sess.authenticated() {
+        let username = get_ssh_user(host);
+        if sess.userauth_agent(&username).is_ok() && sess.authenticated() {
             let mut map = self.sessions.lock().unwrap();
             map.insert(host.to_string(), sess.clone());
             return Ok(sess);
@@ -178,7 +199,7 @@ impl SftpManager {
             let expanded = shellexpand::tilde(&key_path).to_string();
             if std::path::Path::new(&expanded).exists() {
                 if sess
-                    .userauth_pubkey_file("", None, std::path::Path::new(&expanded), None)
+                    .userauth_pubkey_file(&username, None, std::path::Path::new(&expanded), None)
                     .is_ok()
                     && sess.authenticated()
                 {
