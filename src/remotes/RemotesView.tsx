@@ -16,6 +16,7 @@ import {
   ArrowRight01Icon,
   ClockIcon,
   Tag01Icon,
+  CloudUploadIcon,
 } from "@hugeicons/core-free-icons";
 import { setActiveSshHost } from "../remote/store";
 import { useConnectedHosts, markHostDisconnected } from "../remote/connectionStore";
@@ -24,6 +25,7 @@ import {
   useConnections,
   getRecentConnections,
   recordConnection,
+  addConnection,
   type SshConnection,
 } from "../remote/connectionManager";
 import { ConnectionDialog } from "./ConnectionDialog";
@@ -66,6 +68,7 @@ export function RemotesView({
   const [showConnDialog, setShowConnDialog] = useState(false);
   const [editingConn, setEditingConn] = useState<string | undefined>();
   const [showPfDialog, setShowPfDialog] = useState<string | undefined>();
+  const [importingHost, setImportingHost] = useState<string | undefined>();
   const [activeTab, setActiveTab] = useState<"saved" | "ssh-config">("saved");
 
   const load = () => void readSshHosts().then(setSshConfigHosts);
@@ -73,6 +76,28 @@ export function RemotesView({
   useEffect(() => {
     load();
   }, []);
+
+  const importHost = (host: string) => {
+    // Check if already imported
+    if (savedConnections.some((c) => c.host === host)) {
+      toast({ title: `${host} already saved`, variant: "info" });
+      return;
+    }
+    setImportingHost(host);
+  };
+
+  const confirmImport = (host: string) => {
+    addConnection({
+      name: host,
+      host,
+      port: 22,
+      user: "",
+      authType: "agent",
+      tags: ["ssh-config"],
+    });
+    toast({ title: `Imported ${host}`, variant: "success" });
+    setImportingHost(undefined);
+  };
 
   const connect = (h: string) => {
     if (runInActiveTerminal(`ssh ${shq(h)}`)) {
@@ -293,61 +318,79 @@ export function RemotesView({
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            {sshConfigHosts.map((h: string) => (
-            <div
-              key={h}
-              className="group flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/10"
-            >
-              <button
-                type="button"
-                onClick={() => connect(h)}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-              >
-                <HugeiconsIcon
-                  icon={DatabaseIcon}
-                  size={14}
-                  strokeWidth={1.75}
-                  className="shrink-0 text-muted-foreground"
-                />
-                <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
-                  {h}
-                </span>
-                {connectedSet.has(h) && (
-                  <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-green-500" title="Connected" />
-                )}
-              </button>
-              {connectedSet.has(h) && (
-                <button
-                  type="button"
-                  title="Disconnect"
-                  onClick={(e) => disconnect(h, e)}
-                  className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-red-500 group-hover:opacity-100"
+            {sshConfigHosts.map((h: string) => {
+              const isSaved = savedConnections.some((c) => c.host === h);
+              return (
+                <div
+                  key={h}
+                  className="group flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/10"
                 >
-                  <span className="text-[10px]">●</span>
-                </button>
-              )}
-              <button
-                type="button"
-                title="SFTP"
-                onClick={() => {
-                  setActiveSshHost(h);
-                  onSftp?.(h);
-                }}
-                className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-              >
-                <HugeiconsIcon icon={FolderUploadIcon} size={11} strokeWidth={2} />
-              </button>
-              <button
-                type="button"
-                title="Connect terminal"
-                onClick={() => connect(h)}
-                className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-              >
-                <HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} />
-              </button>
-            </div>
-          ))}
-        </div>
+                  <button
+                    type="button"
+                    onClick={() => connect(h)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  >
+                    <HugeiconsIcon
+                      icon={DatabaseIcon}
+                      size={14}
+                      strokeWidth={1.75}
+                      className="shrink-0 text-muted-foreground"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
+                      {h}
+                    </span>
+                    {isSaved && (
+                      <span className="shrink-0 text-[10px] text-green-500 px-1.5 py-0.5 rounded bg-green-500/10">
+                        Saved
+                      </span>
+                    )}
+                    {connectedSet.has(h) && (
+                      <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-green-500" title="Connected" />
+                    )}
+                  </button>
+                  {!isSaved && (
+                    <button
+                      type="button"
+                      title="Import to Saved"
+                      onClick={() => importHost(h)}
+                      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                    >
+                      <HugeiconsIcon icon={CloudUploadIcon} size={11} strokeWidth={2} />
+                    </button>
+                  )}
+                  {connectedSet.has(h) && (
+                    <button
+                      type="button"
+                      title="Disconnect"
+                      onClick={(e) => disconnect(h, e)}
+                      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-red-500 group-hover:opacity-100"
+                    >
+                      <span className="text-[10px]">●</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    title="SFTP"
+                    onClick={() => {
+                      setActiveSshHost(h);
+                      onSftp?.(h);
+                    }}
+                    className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                  >
+                    <HugeiconsIcon icon={FolderUploadIcon} size={11} strokeWidth={2} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Connect terminal"
+                    onClick={() => connect(h)}
+                    className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                  >
+                    <HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
       )}
     </Modal>
 
@@ -364,6 +407,37 @@ export function RemotesView({
         connectionId={showPfDialog}
         onClose={() => setShowPfDialog(undefined)}
       />
+    )}
+    {importingHost && (
+      <Modal
+        title="Import Connection"
+        onClose={() => setImportingHost(undefined)}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Import <strong>{importingHost}</strong> from SSH config to Saved connections?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            You can then edit it to add port, username, authentication, and other settings.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportingHost(undefined)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => confirmImport(importingHost)}
+            >
+              <HugeiconsIcon icon={CloudUploadIcon} size={14} className="mr-1" />
+              Import
+            </Button>
+          </div>
+        </div>
+      </Modal>
     )}
     </>
   );
