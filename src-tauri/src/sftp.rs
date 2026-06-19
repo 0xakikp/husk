@@ -10,23 +10,55 @@ use tauri::State;
 
 /// Resolve SSH config alias to actual HostName.
 fn resolve_ssh_host(host: &str) -> String {
+    // Try ssh -G first (most reliable)
+    let output = std::process::Command::new("ssh")
+        .args(["-G", host])
+        .output();
+
+    if let Ok(out) = output {
+        if out.status.success() {
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                if line.to_lowercase().starts_with("hostname ") {
+                    if let Some(hostname) = line.split_whitespace().nth(1) {
+                        if hostname != host {
+                            return hostname.to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: parse ~/.ssh/config manually
     let home = dirs::home_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let config_path = format!("{}/.ssh/config", home);
     let content = std::fs::read_to_string(&config_path).unwrap_or_default();
 
-    let mut current_host: Option<&str> = None;
+    let mut current_hosts: Vec<String> = Vec::new();
     let mut host_map: HashMap<String, String> = HashMap::new();
 
     for line in content.lines() {
         let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
         if trimmed.to_lowercase().starts_with("host ") {
-            current_host = trimmed.split_whitespace().nth(1);
-        } else if let Some(h) = current_host {
-            if trimmed.to_lowercase().starts_with("hostname ") {
+            current_hosts = trimmed
+                .split_whitespace()
+                .skip(1)
+                .map(|s| s.to_string())
+                .collect();
+        } else if !current_hosts.is_empty() {
+            let lower = trimmed.to_lowercase();
+            if lower.starts_with("hostname ") {
                 if let Some(hostname) = trimmed.split_whitespace().nth(1) {
-                    host_map.insert(h.to_string(), hostname.to_string());
+                    for h in &current_hosts {
+                        if !h.contains('*') {
+                            host_map.insert(h.clone(), hostname.to_string());
+                        }
+                    }
                 }
             }
         }
