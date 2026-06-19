@@ -12,6 +12,9 @@ export const getHomeDir = homeDir;
 export const readFileBase64 = (path: string) =>
   invoke<string>("read_file_base64", { path });
 
+export const writeBinaryFile = (path: string, contents: number[]) =>
+  invoke<void>("write_binary_file", { path, contents });
+
 export const createFile = (path: string) => invoke<void>("create_file", { path });
 export const createDir = (path: string) => invoke<void>("create_dir", { path });
 export const renamePath = (from: string, to: string) =>

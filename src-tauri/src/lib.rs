@@ -44,6 +44,8 @@ pub fn run() {
             fs::read_file,
             fs::read_file_base64,
             fs::write_file,
+            fs::write_binary_file,
+            fs::delete_file,
             fs::home_dir,
             fs::create_file,
             fs::create_dir,

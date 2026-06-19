@@ -45,6 +45,16 @@ pub fn write_file(path: String, contents: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn write_binary_file(path: String, contents: Vec<u8>) -> Result<(), String> {
+    fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_file(path: String) -> Result<(), String> {
+    fs::remove_file(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn home_dir() -> String {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))

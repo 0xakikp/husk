@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
   sftpConnect,
   sftpDisconnect,
@@ -12,12 +13,21 @@ import {
 } from "../remote/sftpApi";
 import { cn } from "@/lib/utils";
 import { toast } from "../toast";
-import { getHomeDir } from "../fs";
+import { getHomeDir, writeBinaryFile } from "../fs";
 import { markHostConnected, markHostDisconnected } from "../remote/connectionStore";
 
 interface SftpViewProps {
   host: string;
   onClose: () => void;
+}
+
+interface TransferProgress {
+  type: "download" | "upload";
+  path: string;
+  progress: number;
+  copied?: number;
+  total?: number;
+  done?: boolean;
 }
 
 export function SftpView({ host, onClose }: SftpViewProps) {
@@ -27,6 +37,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
   const [connected, setConnected] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry?: SftpEntry } | null>(null);
+  const [transfers, setTransfers] = useState<TransferProgress[]>([]);
   const [renameTarget, setRenameTarget] = useState<SftpEntry | null>(null);
   const [newName, setNewName] = useState("");
   const [mkdirOpen, setMkdirOpen] = useState(false);
@@ -53,6 +64,29 @@ export function SftpView({ host, onClose }: SftpViewProps) {
 
   useEffect(() => {
     let mounted = true;
+    let progressUnlisten: (() => void) | null = null;
+
+    // Listen for transfer progress events
+    listen<TransferProgress>(`sftp://progress/${host}`, (e) => {
+      if (!mounted) return;
+      const data = e.payload;
+      setTransfers((prev) => {
+        const existing = prev.findIndex((t) => t.path === data.path && t.type === data.type);
+        if (existing >= 0) {
+          const next = [...prev];
+          if (data.done) {
+            next.splice(existing, 1);
+          } else {
+            next[existing] = data;
+          }
+          return next;
+        }
+        return data.done ? prev : [...prev, data];
+      });
+    }).then((unlisten) => {
+      if (mounted) progressUnlisten = unlisten;
+    });
+
     sftpConnect(host)
       .then(() => {
         if (!mounted) return;
@@ -65,8 +99,10 @@ export function SftpView({ host, onClose }: SftpViewProps) {
         toast({ title: `SFTP connect failed: ${e}`, variant: "error" });
         onClose();
       });
+
     return () => {
       mounted = false;
+      progressUnlisten?.();
       sftpDisconnect(host).catch(() => {});
       markHostDisconnected(host);
     };
@@ -90,8 +126,10 @@ export function SftpView({ host, onClose }: SftpViewProps) {
       const home = await getHomeDir();
       for (const file of Array.from(files)) {
         const localPath = `${home}/.husk-tmp-upload-${file.name}`;
-        // Write to temp path via Tauri fs API would be needed here
-        // For now, we rely on the user picking via dialog
+        // Read file as array buffer and write to temp path
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        await writeBinaryFile(localPath, Array.from(bytes));
         await sftpUpload(host, localPath, `${cwd}/${file.name}`);
       }
       toast({ title: `Uploaded ${files.length} file(s)`, variant: "info" });
@@ -315,6 +353,27 @@ export function SftpView({ host, onClose }: SftpViewProps) {
             </button>
           </div>
         </>
+      )}
+
+      {/* Transfer progress */}
+      {transfers.length > 0 && (
+        <div className="absolute inset-x-0 bottom-0 bg-popover border-t border-border p-2 space-y-1.5 max-h-32 overflow-y-auto">
+          {transfers.map((t) => (
+            <div key={`${t.type}-${t.path}`} className="flex items-center gap-2 text-[11px]">
+              <span className="text-muted-foreground w-16 shrink-0">
+                {t.type === "download" ? "↓ Download" : "↑ Upload"}
+              </span>
+              <span className="flex-1 truncate text-foreground">{t.path.split("/").pop()}</span>
+              <span className="text-muted-foreground w-12 text-right shrink-0">{t.progress}%</span>
+              <div className="w-16 h-1 bg-muted rounded-full overflow-hidden shrink-0">
+                <div
+                  className="h-full bg-primary transition-all duration-200"
+                  style={{ width: `${t.progress}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Rename dialog */}

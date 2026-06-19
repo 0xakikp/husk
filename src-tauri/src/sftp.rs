@@ -2,11 +2,12 @@
 //! Persistent SSH connections with SFTP subsystem for fast upload/download.
 
 use std::collections::HashMap;
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Mutex;
 
 use ssh2::Session;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 /// Resolved SSH config: (HostName, Port).
 fn resolve_ssh_host(host: &str) -> (String, u16) {
@@ -174,14 +175,15 @@ impl SftpManager {
         // Blocking SSH connect
         let tcp = TcpStream::connect(format!("{}:{}", actual_host, port))
             .map_err(|e| format!("TCP connect failed: {}", e))?;
-        tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
-            .ok();
-        tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)))
-            .ok();
+        // No timeout for long transfers; keepalive will handle connection health
+        tcp.set_read_timeout(None).ok();
+        tcp.set_write_timeout(None).ok();
+        tcp.set_nodelay(true).ok();
 
         let mut sess =
             Session::new().map_err(|e| format!("Session creation failed: {}", e))?;
         sess.set_tcp_stream(tcp);
+        sess.set_keepalive(true, 60);
         sess.handshake()
             .map_err(|e| format!("SSH handshake failed: {}", e))?;
 
@@ -316,12 +318,14 @@ pub async fn sftp_list_dir(
 
 #[tauri::command]
 pub async fn sftp_download(
+    app: AppHandle,
     host: String,
     remote_path: String,
     local_path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
     let manager = manager.inner().clone();
+    let app_handle = app.clone();
     tokio::task::spawn_blocking(move || {
         let sess = manager.connect(&host)?;
         let sftp = sess
@@ -334,8 +338,46 @@ pub async fn sftp_download(
         let mut local = std::fs::File::create(&local_path)
             .map_err(|e| format!("Local file create failed: {}", e))?;
 
-        std::io::copy(&mut remote, &mut local)
-            .map_err(|e| format!("SFTP download failed: {}", e))?;
+        // Get file size for progress
+        let stat = sftp
+            .stat(std::path::Path::new(&remote_path))
+            .map_err(|e| format!("SFTP stat failed: {}", e))?;
+        let total_size = stat.size.unwrap_or(0) as u64;
+
+        // Copy with progress
+        let mut buf = [0u8; 65536]; // 64KB chunks
+        let mut copied = 0u64;
+        loop {
+            let n = remote.read(&mut buf).map_err(|e| format!("SFTP read failed: {}", e))?;
+            if n == 0 { break; }
+            local.write_all(&buf[..n]).map_err(|e| format!("Local write failed: {}", e))?;
+            copied += n as u64;
+            
+            // Emit progress
+            if total_size > 0 {
+                let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
+                let _ = app_handle.emit(
+                    &format!("sftp://progress/{}", host),
+                    serde_json::json!({
+                        "type": "download",
+                        "path": remote_path,
+                        "progress": progress,
+                        "copied": copied,
+                        "total": total_size,
+                    }),
+                );
+            }
+        }
+
+        let _ = app_handle.emit(
+            &format!("sftp://progress/{}", host),
+            serde_json::json!({
+                "type": "download",
+                "path": remote_path,
+                "progress": 100,
+                "done": true,
+            }),
+        );
 
         Ok(())
     })
@@ -345,12 +387,14 @@ pub async fn sftp_download(
 
 #[tauri::command]
 pub async fn sftp_upload(
+    app: AppHandle,
     host: String,
     local_path: String,
     remote_path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
     let manager = manager.inner().clone();
+    let app_handle = app.clone();
     tokio::task::spawn_blocking(move || {
         let sess = manager.connect(&host)?;
         let sftp = sess
@@ -363,8 +407,43 @@ pub async fn sftp_upload(
             .create(std::path::Path::new(&remote_path))
             .map_err(|e| format!("SFTP create failed: {}", e))?;
 
-        std::io::copy(&mut local, &mut remote)
-            .map_err(|e| format!("SFTP upload failed: {}", e))?;
+        // Get file size for progress
+        let total_size = local.metadata().map(|m| m.len()).unwrap_or(0);
+
+        // Copy with progress
+        let mut buf = [0u8; 65536]; // 64KB chunks
+        let mut copied = 0u64;
+        loop {
+            let n = local.read(&mut buf).map_err(|e| format!("Local read failed: {}", e))?;
+            if n == 0 { break; }
+            remote.write_all(&buf[..n]).map_err(|e| format!("SFTP write failed: {}", e))?;
+            copied += n as u64;
+            
+            // Emit progress
+            if total_size > 0 {
+                let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
+                let _ = app_handle.emit(
+                    &format!("sftp://progress/{}", host),
+                    serde_json::json!({
+                        "type": "upload",
+                        "path": remote_path,
+                        "progress": progress,
+                        "copied": copied,
+                        "total": total_size,
+                    }),
+                );
+            }
+        }
+
+        let _ = app_handle.emit(
+            &format!("sftp://progress/{}", host),
+            serde_json::json!({
+                "type": "upload",
+                "path": remote_path,
+                "progress": 100,
+                "done": true,
+            }),
+        );
 
         Ok(())
     })
