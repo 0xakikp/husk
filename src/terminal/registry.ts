@@ -339,6 +339,10 @@ export async function createSession(
             term.write(new TextEncoder().encode(outputBuffer.slice(0, lastNL + 1)));
             outputBuffer = outputBuffer.slice(lastNL + 1);
           }
+        } else if (outputBuffer.length > 0 && !outputBuffer.match(/husk\s+(cp|open|preview|notify|diff)/)) {
+          // No partial husk command — flush immediately (echo/typing)
+          term.write(new TextEncoder().encode(outputBuffer));
+          outputBuffer = "";
         }
       }),
     );
