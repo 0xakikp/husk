@@ -21,6 +21,7 @@ export function AutocompleteBar({
   position,
   onSelect,
 }: Props) {
+  console.log("[AutocompleteBar] render", { visible, selectedIndex, total: suggestions.length });
   if (!visible || !position || suggestions.length === 0) return null;
 
   return (
