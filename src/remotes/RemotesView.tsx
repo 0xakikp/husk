@@ -14,7 +14,6 @@ import {
 import { setActiveSshHost } from "../remote/store";
 import { useConnectedHosts, markHostDisconnected } from "../remote/connectionStore";
 import { sftpDisconnect } from "../remote/sftpApi";
-import { SftpView } from "./SftpView";
 
 async function readSshHosts(): Promise<string[]> {
   try {
@@ -40,12 +39,13 @@ async function readSshHosts(): Promise<string[]> {
 export function RemotesView({
   onClose,
   inline,
+  onSftp,
 }: {
   onClose?: () => void;
   inline?: boolean;
+  onSftp?: (host: string) => void;
 }) {
   const [hosts, setHosts] = useState<string[] | "loading">("loading");
-  const [sftpHost, setSftpHost] = useState<string | null>(null);
   const connected = useConnectedHosts();
 
   const load = () => void readSshHosts().then(setHosts);
@@ -144,7 +144,7 @@ export function RemotesView({
                 title="SFTP"
                 onClick={() => {
                   setActiveSshHost(h);
-                  setSftpHost(h);
+                  onSftp?.(h);
                 }}
                 className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
               >
@@ -160,11 +160,6 @@ export function RemotesView({
               </button>
             </div>
           ))}
-        </div>
-      )}
-      {sftpHost && (
-        <div className="mt-2 border-t border-border pt-2 flex-1 min-h-0">
-          <SftpView host={sftpHost} onClose={() => setSftpHost(null)} />
         </div>
       )}
     </Modal>

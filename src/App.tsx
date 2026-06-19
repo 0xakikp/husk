@@ -54,7 +54,7 @@ import { DockerView } from "./docker/DockerView";
 import { KubernetesView } from "./kubernetes/KubernetesView";
 import { TerraformView } from "./terraform/TerraformView";
 import { RemotesView } from "./remotes/RemotesView";
-
+import { SftpView } from "./remotes/SftpView";
 import { useActiveSshHost } from "./remote/store";
 import { GithubIssuesDialog } from "./github-issues/GithubIssuesDialog";
 import { CiCdDialog } from "./ci-cd/CiCdDialog";
@@ -867,8 +867,9 @@ function App() {
   const remoteHost = useActiveSshHost();
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [sftpHost, setSftpHost] = useState<string | null>(null);
   const term = useTerminalTabs();
-  const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues">("term");
+  const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues" | "sftp">("term");
 
   const commands: Command[] = useMemo(
     () => [
@@ -1009,7 +1010,7 @@ function App() {
         setActiveKind("term");
       } else if (key === "w" && e.shiftKey) {
         // Ctrl+Shift+W → close tab (Ctrl+W passes through to shell for word delete)
-        if (activeKind === "term" || activeKind === "git-graph" || activeKind === "issues") {
+        if (activeKind === "term" || activeKind === "git-graph" || activeKind === "issues" || activeKind === "sftp") {
           e.preventDefault();
           term.closeTab(term.activeId);
         }
@@ -1078,6 +1079,15 @@ function App() {
   const closeIssues = () => {
     setOpenPanel(null);
     setActiveKind((k) => (k === "issues" ? "term" : k));
+  };
+  const openSftp = (host: string) => {
+    setSftpHost(host);
+    setActiveKind("sftp");
+    setOpenPanel("sftp");
+  };
+  const closeSftp = () => {
+    setOpenPanel(null);
+    setActiveKind((k) => (k === "sftp" ? "term" : k));
   };
 
   const openFile = (path: string, name: string) => {
@@ -1319,7 +1329,10 @@ function App() {
                   ) : sidebarView === "source-control" ? (
                     <SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />
                   ) : sidebarView === "remotes" ? (
-                    <RemotesView inline />
+                    <RemotesView
+                      inline
+                      onSftp={(h) => openSftp(h)}
+                    />
                   ) : sidebarView === "workflows" ? (
                     <RunbooksDialog inline />
                   ) : sidebarView === "tools-hub" ? (
@@ -1487,6 +1500,21 @@ function App() {
                 >
                   <ErrorBoundary>
                     <IssuesPanel onClose={closeIssues} />
+                  </ErrorBoundary>
+                </div>
+              )}
+              {/* SFTP layer */}
+              {openPanel === "sftp" && sftpHost && (
+                <div
+                  className={cn(
+                    "absolute inset-0",
+                    activeKind !== "sftp" && "invisible pointer-events-none",
+                    prefs.neonBorderGlow && activeKind === "sftp" && "neon-glow",
+                  )}
+                  aria-hidden={activeKind !== "sftp"}
+                >
+                  <ErrorBoundary>
+                    <SftpView host={sftpHost} onClose={closeSftp} />
                   </ErrorBoundary>
                 </div>
               )}

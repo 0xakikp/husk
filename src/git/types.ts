@@ -1,1 +1,1 @@
-export type OpenPanelKind = "git-graph" | "issues" | null;
+export type OpenPanelKind = "git-graph" | "issues" | "sftp" | null;
