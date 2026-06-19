@@ -266,8 +266,16 @@ pub async fn sftp_list_dir(
             .map_err(|e| format!("SFTP init failed: {}", e))?;
 
         let mut entries = Vec::new();
+        // Normalize path: resolve . and .. to absolute paths
+        let normalized = if path == "." {
+            ".".to_string()
+        } else if path == ".." {
+            "..".to_string()
+        } else {
+            path.trim_end_matches('/').to_string()
+        };
         let dir = sftp
-            .readdir(std::path::Path::new(&path))
+            .readdir(std::path::Path::new(&normalized))
             .map_err(|e| format!("SFTP readdir failed: {}", e))?;
 
         for (name, stat) in dir {
@@ -275,7 +283,12 @@ pub async fn sftp_list_dir(
             if name == "." || name == ".." {
                 continue;
             }
-            let entry_path = format!("{}/{}", path.trim_end_matches('/'), name);
+            // Build absolute path: if parent is "/", don't add extra slash
+            let entry_path = if normalized == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", normalized, name)
+            };
             let is_dir = stat.is_dir();
             let size = stat.size.unwrap_or(0);
             let modified = stat.mtime.map(|t| t as u64);

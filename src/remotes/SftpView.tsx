@@ -37,9 +37,11 @@ export function SftpView({ host, onClose }: SftpViewProps) {
     async (path: string) => {
       setLoading(true);
       try {
-        const list = await sftpListDir(host, path);
+        // Normalize path: remove trailing slashes, handle empty paths
+        const normalized = path.replace(/\/+$/, "") || "/";
+        const list = await sftpListDir(host, normalized);
         setEntries(list);
-        setCwd(path);
+        setCwd(normalized);
       } catch (e) {
         toast({ title: String(e), variant: "error" });
       } finally {
@@ -198,12 +200,12 @@ export function SftpView({ host, onClose }: SftpViewProps) {
         >
           /
         </button>
-        {cwd !== "." && cwd !== "/" && (
+        {cwd !== "/" && (
           <button
             type="button"
             className="hover:text-foreground text-muted-foreground transition-colors mr-1"
             onClick={() => {
-              const parent = cwd.split("/").slice(0, -1).join("/") || ".";
+              const parent = cwd.split("/").filter(Boolean).slice(0, -1).join("/") || "/";
               load(parent);
             }}
             title="Parent"
