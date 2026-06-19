@@ -31,8 +31,8 @@ tauri-plugin-dialog = "2.7.1"
 tauri-plugin-window-state = "2.4.1"
 tauri-plugin-updater = "2"
 sysinfo = "0.31"
-ssh2 = { version = "0.9", features = ["vendored-openssl"] }
-libssh2-sys = "0.3"
+russh = { version = "0.61", features = ["ring"] }
+russh-sftp = "2.3"
 dirs = "5"
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 shellexpand = "3"

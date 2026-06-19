@@ -1,219 +1,247 @@
-//! SFTP file transfer using ssh2 crate.
-//! Persistent SSH connections with SFTP subsystem for fast upload/download.
+//! SFTP file transfer using russh + russh-sftp (pure-Rust SSH).
+//! Replaces ssh2/libssh2 which doesn't support modern OpenSSH key exchange algorithms.
 
 use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::net::TcpStream;
-use std::sync::Mutex;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Mutex;
 
-use ssh2::Session;
+use russh::client;
+use russh::client::AuthResult;
+use russh::keys::*;
+use russh::Disconnect;
+use russh_sftp::client::SftpSession;
 use tauri::{AppHandle, Emitter, State};
 
-/// Resolved SSH config: (HostName, Port).
-fn resolve_ssh_host(host: &str) -> (String, u16) {
-    // Try ssh -G first (most reliable)
-    let output = std::process::Command::new("ssh")
-        .args(["-G", host])
-        .output();
+/// SSH client handler (required by russh, minimal implementation).
+pub struct SshClient;
 
-    let mut hostname: Option<String> = None;
-    let mut port: Option<u16> = None;
+impl client::Handler for SshClient {
+    type Error = russh::Error;
 
-    if let Ok(out) = output {
-        if out.status.success() {
-            for line in String::from_utf8_lossy(&out.stdout).lines() {
-                let lower = line.to_lowercase();
-                if lower.starts_with("hostname ") {
-                    if let Some(h) = line.split_whitespace().nth(1) {
-                        if h != host {
-                            hostname = Some(h.to_string());
-                        }
-                    }
-                } else if lower.starts_with("port ") {
-                    if let Some(p) = line.split_whitespace().nth(1) {
-                        port = p.parse().ok();
-                    }
-                }
-            }
-        }
+    fn check_server_key(
+        &mut self,
+        _server_public_key: &ssh_key::PublicKey,
+    ) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
+        async move { Ok(true) }
     }
-
-    if hostname.is_some() && port.is_some() {
-        return (hostname.unwrap(), port.unwrap());
-    }
-
-    // Fallback: parse ~/.ssh/config manually
-    let home = dirs::home_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let config_path = format!("{}/.ssh/config", home);
-    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-
-    let mut current_hosts: Vec<String> = Vec::new();
-    let mut host_map: HashMap<String, (String, u16)> = HashMap::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        if trimmed.to_lowercase().starts_with("host ") {
-            current_hosts = trimmed
-                .split_whitespace()
-                .skip(1)
-                .map(|s| s.to_string())
-                .collect();
-        } else if !current_hosts.is_empty() {
-            let lower = trimmed.to_lowercase();
-            if lower.starts_with("hostname ") {
-                if let Some(h) = trimmed.split_whitespace().nth(1) {
-                    for ch in &current_hosts {
-                        if !ch.contains('*') {
-                            host_map
-                                .entry(ch.clone())
-                                .and_modify(|e| e.0 = h.to_string())
-                                .or_insert((h.to_string(), 22));
-                        }
-                    }
-                }
-            } else if lower.starts_with("port ") {
-                if let Some(p) = trimmed.split_whitespace().nth(1) {
-                    if let Ok(port_num) = p.parse::<u16>() {
-                        for ch in &current_hosts {
-                            if !ch.contains('*') {
-                                host_map
-                                    .entry(ch.clone())
-                                    .and_modify(|e| e.1 = port_num)
-                                    .or_insert((host.to_string(), port_num));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some((h, p)) = host_map.get(host) {
-        return (h.clone(), *p);
-    }
-
-    (host.to_string(), port.unwrap_or(22))
 }
 
-fn get_ssh_identity_files(host: &str) -> Vec<String> {
-    let output = std::process::Command::new("ssh")
-        .args(["-G", host])
-        .output();
-
-    let mut files = Vec::new();
-    if let Ok(out) = output {
-        if out.status.success() {
-            for line in String::from_utf8_lossy(&out.stdout).lines() {
-                if line.to_lowercase().starts_with("identityfile ") {
-                    if let Some(f) = line.split_whitespace().nth(1) {
-                        files.push(f.to_string());
-                    }
-                }
-            }
-        }
-    }
-    if files.is_empty() {
-        files.push("~/.ssh/id_rsa".to_string());
-        files.push("~/.ssh/id_ed25519".to_string());
-    }
-    files
+/// Connection info for caching.
+struct Connection {
+    #[allow(dead_code)]
+    session: client::Handle<SshClient>,
+    sftp: SftpSession,
 }
 
-fn get_ssh_user(host: &str) -> String {
-    let output = std::process::Command::new("ssh")
-        .args(["-G", host])
-        .output();
-
-    if let Ok(out) = output {
-        if out.status.success() {
-            for line in String::from_utf8_lossy(&out.stdout).lines() {
-                if line.to_lowercase().starts_with("user ") {
-                    if let Some(u) = line.split_whitespace().nth(1) {
-                        return u.to_string();
-                    }
-                }
-            }
-        }
-    }
-    // Fallback: current user
-    whoami::username().unwrap_or_else(|_| "root".to_string())
-}
-
-/// Shared SFTP session manager.
+/// Shared SFTP session manager using russh.
 #[derive(Clone)]
 pub struct SftpManager {
-    sessions: std::sync::Arc<Mutex<HashMap<String, Session>>>,
+    connections: Arc<Mutex<HashMap<String, Connection>>>,
 }
 
 impl SftpManager {
     pub fn new() -> Self {
         Self {
-            sessions: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            connections: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    fn connect(&self, host: &str) -> Result<Session, String> {
-        let (actual_host, port) = resolve_ssh_host(host);
+    /// Resolve SSH host via `ssh -G` and ~/.ssh/config.
+    fn resolve_host(host: &str) -> (String, u16, String, Vec<String>) {
+        let mut hostname: Option<String> = None;
+        let mut port: Option<u16> = None;
+        let mut user: Option<String> = None;
+        let mut identity_files: Vec<String> = Vec::new();
 
-        // Check cache first
-        {
-            let mut map = self.sessions.lock().unwrap();
-            if let Some(sess) = map.get(host) {
-                if !sess.authenticated() {
-                    map.remove(host);
-                } else {
-                    return Ok(sess.clone());
+        // Try ssh -G first
+        if let Ok(out) = std::process::Command::new("ssh").args(["-G", host]).output() {
+            if out.status.success() {
+                for line in String::from_utf8_lossy(&out.stdout).lines() {
+                    let lower = line.to_lowercase();
+                    if lower.starts_with("hostname ") {
+                        if let Some(h) = line.split_whitespace().nth(1) {
+                            if h != host {
+                                hostname = Some(h.to_string());
+                            }
+                        }
+                    } else if lower.starts_with("port ") {
+                        if let Some(p) = line.split_whitespace().nth(1) {
+                            port = p.parse().ok();
+                        }
+                    } else if lower.starts_with("user ") {
+                        if let Some(u) = line.split_whitespace().nth(1) {
+                            user = Some(u.to_string());
+                        }
+                    } else if lower.starts_with("identityfile ") {
+                        if let Some(f) = line.split_whitespace().nth(1) {
+                            identity_files.push(f.to_string());
+                        }
+                    }
                 }
             }
         }
 
-        // Blocking SSH connect
-        let tcp = TcpStream::connect(format!("{}:{}", actual_host, port))
-            .map_err(|e| format!("TCP connect failed: {}", e))?;
-        // No timeout for long transfers; keepalive will handle connection health
-        tcp.set_read_timeout(None).ok();
-        tcp.set_write_timeout(None).ok();
-        tcp.set_nodelay(true).ok();
+        // Fallback: parse ~/.ssh/config manually
+        if hostname.is_none() || port.is_none() {
+            let home = dirs::home_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let config_path = format!("{}/.ssh/config", home);
+            let content = std::fs::read_to_string(&config_path).unwrap_or_default();
 
-        let mut sess =
-            Session::new().map_err(|e| format!("Session creation failed: {}", e))?;
-        sess.set_tcp_stream(tcp);
-        sess.set_keepalive(true, 60);
-        sess.handshake()
-            .map_err(|e| format!("SSH handshake failed: {}", e))?;
+            let mut current_hosts: Vec<String> = Vec::new();
+            let mut host_map: HashMap<String, (String, u16, String)> = HashMap::new();
 
-        // Try SSH agent first
-        let username = get_ssh_user(host);
-        if sess.userauth_agent(&username).is_ok() && sess.authenticated() {
-            let mut map = self.sessions.lock().unwrap();
-            map.insert(host.to_string(), sess.clone());
-            return Ok(sess);
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                if trimmed.to_lowercase().starts_with("host ") {
+                    current_hosts = trimmed
+                        .split_whitespace()
+                        .skip(1)
+                        .map(|s| s.to_string())
+                        .collect();
+                } else if !current_hosts.is_empty() {
+                    let lower = trimmed.to_lowercase();
+                    if lower.starts_with("hostname ") {
+                        if let Some(h) = trimmed.split_whitespace().nth(1) {
+                            for ch in &current_hosts {
+                                if !ch.contains('*') {
+                                    host_map
+                                        .entry(ch.clone())
+                                        .and_modify(|e| e.0 = h.to_string())
+                                        .or_insert((h.to_string(), 22, user.clone().unwrap_or_default()));
+                                }
+                            }
+                        }
+                    } else if lower.starts_with("port ") {
+                        if let Some(p) = trimmed.split_whitespace().nth(1) {
+                            if let Ok(port_num) = p.parse::<u16>() {
+                                for ch in &current_hosts {
+                                    if !ch.contains('*') {
+                                        host_map
+                                            .entry(ch.clone())
+                                            .and_modify(|e| e.1 = port_num)
+                                            .or_insert((host.to_string(), port_num, user.clone().unwrap_or_default()));
+                                    }
+                                }
+                            }
+                        }
+                    } else if lower.starts_with("user ") {
+                        if let Some(u) = trimmed.split_whitespace().nth(1) {
+                            for ch in &current_hosts {
+                                if !ch.contains('*') {
+                                    host_map
+                                        .entry(ch.clone())
+                                        .and_modify(|e| e.2 = u.to_string())
+                                        .or_insert((host.to_string(), 22, u.to_string()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some((h, p, u)) = host_map.get(host) {
+                hostname = Some(h.clone());
+                port = Some(*p);
+                if user.is_none() {
+                    user = Some(u.clone());
+                }
+            }
         }
 
-        // Try all identity files from ssh -G output
-        let identity_files = get_ssh_identity_files(host);
+        let hostname = hostname.unwrap_or_else(|| host.to_string());
+        let port = port.unwrap_or(22);
+        let user = user.unwrap_or_else(|| whoami::username().unwrap_or_else(|_| "root".to_string()));
+
+        if identity_files.is_empty() {
+            identity_files.push("~/.ssh/id_rsa".to_string());
+            identity_files.push("~/.ssh/id_ed25519".to_string());
+        }
+
+        (hostname, port, user, identity_files)
+    }
+
+    /// Connect or return cached connection.
+    pub async fn connect(&self, host: &str) -> Result<(), String> {
+        let mut conns = self.connections.lock().await;
+        if conns.contains_key(host) {
+            return Ok(());
+        }
+
+        let (actual_host, port, username, identity_files) = Self::resolve_host(host);
+
+        let config = client::Config::default();
+        let config = Arc::new(config);
+
+        let addr: SocketAddr = format!("{}:{}", actual_host, port)
+            .parse()
+            .map_err(|e| format!("Invalid address: {}", e))?;
+
+        let mut session = client::connect(config, addr, SshClient)
+            .await
+            .map_err(|e| format!("SSH connect failed: {}", e))?;
+
+        // Try public key authentication first
+        let mut authenticated = false;
         for key_path in identity_files {
             let expanded = shellexpand::tilde(&key_path).to_string();
             if std::path::Path::new(&expanded).exists() {
-                if sess
-                    .userauth_pubkey_file(&username, None, std::path::Path::new(&expanded), None)
-                    .is_ok()
-                    && sess.authenticated()
-                {
-                    return Ok(sess);
+                let secret_key = load_secret_key(&expanded, None)
+                    .map_err(|e| format!("Failed to load key {}: {}", expanded, e))?;
+                let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(secret_key), None);
+                match session.authenticate_publickey(&username, key_with_hash).await {
+                    Ok(AuthResult::Success) => {
+                        authenticated = true;
+                        break;
+                    }
+                    Ok(_) => continue,
+                    Err(e) => {
+                        eprintln!("Auth error for {}: {}", expanded, e);
+                        continue;
+                    }
                 }
             }
         }
 
-        Err(
-            "SSH authentication failed. Ensure your key is in ssh-agent, or add IdentityFile to ~/.ssh/config"
-                .to_string(),
-        )
+        if !authenticated {
+            return Err(
+                "SSH authentication failed. Ensure your key is in ssh-agent, or add IdentityFile to ~/.ssh/config"
+                    .to_string(),
+            );
+        }
+
+        // Open SFTP channel
+        let channel = session
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("Channel open failed: {}", e))?;
+
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|e| format!("SFTP subsystem failed: {}", e))?;
+
+        let sftp = SftpSession::new(channel.into_stream())
+            .await
+            .map_err(|e| format!("SFTP session failed: {}", e))?;
+
+        conns.insert(host.to_string(), Connection { session, sftp });
+        Ok(())
+    }
+
+    /// Disconnect and remove a host.
+    pub async fn disconnect(&self, host: &str) {
+        let mut conns = self.connections.lock().await;
+        if let Some(conn) = conns.remove(host) {
+            let _ = conn.sftp.close().await;
+            let _ = conn.session.disconnect(Disconnect::ByApplication, "Closed", "English").await;
+        }
     }
 }
 
@@ -223,13 +251,14 @@ impl Default for SftpManager {
     }
 }
 
+/// Entry in a directory listing.
 #[derive(serde::Serialize)]
 pub struct SftpEntry {
-    name: String,
-    path: String,
-    is_dir: bool,
-    size: u64,
-    modified: Option<u64>,
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub modified: Option<u64>,
 }
 
 #[tauri::command]
@@ -237,11 +266,7 @@ pub async fn sftp_connect(
     host: String,
     manager: State<'_, SftpManager>,
 ) -> Result<bool, String> {
-    let manager = manager.inner().clone();
-    tokio::task::spawn_blocking(move || manager.connect(&host))
-        .await
-        .map_err(|e| format!("SFTP task failed: {}", e))?
-        .map(|_| true)
+    manager.connect(&host).await.map(|_| true)
 }
 
 #[tauri::command]
@@ -249,8 +274,7 @@ pub async fn sftp_disconnect(
     host: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let mut map = manager.sessions.lock().unwrap();
-    map.remove(&host);
+    manager.disconnect(&host).await;
     Ok(())
 }
 
@@ -260,60 +284,45 @@ pub async fn sftp_list_dir(
     path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<Vec<SftpEntry>, String> {
-    let manager = manager.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let sess = manager.connect(&host)?;
-        let sftp = sess
-            .sftp()
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
 
-        let mut entries = Vec::new();
-        // Normalize path: resolve . and .. to absolute paths
-        let normalized = if path == "." {
-            ".".to_string()
-        } else if path == ".." {
-            "..".to_string()
-        } else {
-            path.trim_end_matches('/').to_string()
-        };
-        let dir = sftp
-            .readdir(std::path::Path::new(&normalized))
-            .map_err(|e| format!("SFTP readdir failed: {}", e))?;
+    let entries = conn
+        .sftp
+        .read_dir(&path)
+        .await
+        .map_err(|e| format!("SFTP readdir failed: {}", e))?;
 
-        for (name, stat) in dir {
-            let name = name.to_string_lossy().to_string();
-            if name == "." || name == ".." {
-                continue;
-            }
-            // Build absolute path: if parent is "/", don't add extra slash
-            let entry_path = if normalized == "/" {
-                format!("/{}", name)
-            } else {
-                format!("{}/{}", normalized, name)
-            };
-            let is_dir = stat.is_dir();
-            let size = stat.size.unwrap_or(0);
-            let modified = stat.mtime.map(|t| t as u64);
-
-            entries.push(SftpEntry {
-                name,
-                path: entry_path,
-                is_dir,
-                size,
-                modified,
-            });
+    let mut result = Vec::new();
+    for entry in entries {
+        let name = entry.file_name();
+        if name == "." || name == ".." {
+            continue;
         }
-
-        entries.sort_by(|a, b| {
-            b.is_dir
-                .cmp(&a.is_dir)
-                .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        let entry_path = if path == "/" {
+            format!("/{}", name)
+        } else {
+            format!("{}/{}", path, name)
+        };
+        let meta = entry.metadata();
+        result.push(SftpEntry {
+            name,
+            path: entry_path,
+            is_dir: meta.file_type().is_dir(),
+            size: meta.len(),
+            modified: meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())),
         });
+    }
 
-        Ok(entries)
-    })
-    .await
-    .map_err(|e| format!("SFTP task failed: {}", e))?
+    result.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -324,65 +333,70 @@ pub async fn sftp_download(
     local_path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let manager = manager.inner().clone();
-    let app_handle = app.clone();
-    tokio::task::spawn_blocking(move || {
-        let sess = manager.connect(&host)?;
-        let sftp = sess
-            .sftp()
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
 
-        let mut remote = sftp
-            .open(std::path::Path::new(&remote_path))
-            .map_err(|e| format!("SFTP open failed: {}", e))?;
-        let mut local = std::fs::File::create(&local_path)
-            .map_err(|e| format!("Local file create failed: {}", e))?;
+    let meta = conn
+        .sftp
+        .metadata(&remote_path)
+        .await
+        .map_err(|e| format!("SFTP stat failed: {}", e))?;
+    let total_size = meta.len();
 
-        // Get file size for progress
-        let stat = sftp
-            .stat(std::path::Path::new(&remote_path))
-            .map_err(|e| format!("SFTP stat failed: {}", e))?;
-        let total_size = stat.size.unwrap_or(0) as u64;
+    let mut remote = conn
+        .sftp
+        .open(&remote_path)
+        .await
+        .map_err(|e| format!("SFTP open failed: {}", e))?;
 
-        // Copy with progress
-        let mut buf = [0u8; 65536]; // 64KB chunks
-        let mut copied = 0u64;
-        loop {
-            let n = remote.read(&mut buf).map_err(|e| format!("SFTP read failed: {}", e))?;
-            if n == 0 { break; }
-            local.write_all(&buf[..n]).map_err(|e| format!("Local write failed: {}", e))?;
-            copied += n as u64;
-            
-            // Emit progress
-            if total_size > 0 {
-                let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
-                let _ = app_handle.emit(
-                    &format!("sftp://progress/{}", host),
-                    serde_json::json!({
-                        "type": "download",
-                        "path": remote_path,
-                        "progress": progress,
-                        "copied": copied,
-                        "total": total_size,
-                    }),
-                );
-            }
+    let mut local = tokio::fs::File::create(&local_path)
+        .await
+        .map_err(|e| format!("Local file create failed: {}", e))?;
+
+    let mut copied = 0u64;
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = remote
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("SFTP read failed: {}", e))?;
+        if n == 0 {
+            break;
         }
+        local
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("Local write failed: {}", e))?;
+        copied += n as u64;
 
-        let _ = app_handle.emit(
-            &format!("sftp://progress/{}", host),
-            serde_json::json!({
-                "type": "download",
-                "path": remote_path,
-                "progress": 100,
-                "done": true,
-            }),
-        );
+        if total_size > 0 {
+            let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
+            let _ = app.emit(
+                &format!("sftp://progress/{}", host),
+                serde_json::json!({
+                    "type": "download",
+                    "path": remote_path,
+                    "progress": progress,
+                    "copied": copied,
+                    "total": total_size,
+                }),
+            );
+        }
+    }
 
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("SFTP task failed: {}", e))?
+    let _ = app.emit(
+        &format!("sftp://progress/{}", host),
+        serde_json::json!({
+            "type": "download",
+            "path": remote_path,
+            "progress": 100,
+            "done": true,
+        }),
+    );
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -393,62 +407,68 @@ pub async fn sftp_upload(
     remote_path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let manager = manager.inner().clone();
-    let app_handle = app.clone();
-    tokio::task::spawn_blocking(move || {
-        let sess = manager.connect(&host)?;
-        let sftp = sess
-            .sftp()
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
 
-        let mut local =
-            std::fs::File::open(&local_path).map_err(|e| format!("Local file open failed: {}", e))?;
-        let mut remote = sftp
-            .create(std::path::Path::new(&remote_path))
-            .map_err(|e| format!("SFTP create failed: {}", e))?;
+    let total_size = tokio::fs::metadata(&local_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
 
-        // Get file size for progress
-        let total_size = local.metadata().map(|m| m.len()).unwrap_or(0);
+    let mut local = tokio::fs::File::open(&local_path)
+        .await
+        .map_err(|e| format!("Local file open failed: {}", e))?;
 
-        // Copy with progress
-        let mut buf = [0u8; 65536]; // 64KB chunks
-        let mut copied = 0u64;
-        loop {
-            let n = local.read(&mut buf).map_err(|e| format!("Local read failed: {}", e))?;
-            if n == 0 { break; }
-            remote.write_all(&buf[..n]).map_err(|e| format!("SFTP write failed: {}", e))?;
-            copied += n as u64;
-            
-            // Emit progress
-            if total_size > 0 {
-                let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
-                let _ = app_handle.emit(
-                    &format!("sftp://progress/{}", host),
-                    serde_json::json!({
-                        "type": "upload",
-                        "path": remote_path,
-                        "progress": progress,
-                        "copied": copied,
-                        "total": total_size,
-                    }),
-                );
-            }
+    let mut remote = conn
+        .sftp
+        .create(&remote_path)
+        .await
+        .map_err(|e| format!("SFTP create failed: {}", e))?;
+
+    let mut copied = 0u64;
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = local
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("Local read failed: {}", e))?;
+        if n == 0 {
+            break;
         }
+        remote
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("SFTP write failed: {}", e))?;
+        copied += n as u64;
 
-        let _ = app_handle.emit(
-            &format!("sftp://progress/{}", host),
-            serde_json::json!({
-                "type": "upload",
-                "path": remote_path,
-                "progress": 100,
-                "done": true,
-            }),
-        );
+        if total_size > 0 {
+            let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
+            let _ = app.emit(
+                &format!("sftp://progress/{}", host),
+                serde_json::json!({
+                    "type": "upload",
+                    "path": remote_path,
+                    "progress": progress,
+                    "copied": copied,
+                    "total": total_size,
+                }),
+            );
+        }
+    }
 
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("SFTP task failed: {}", e))?
+    let _ = app.emit(
+        &format!("sftp://progress/{}", host),
+        serde_json::json!({
+            "type": "upload",
+            "path": remote_path,
+            "progress": 100,
+            "done": true,
+        }),
+    );
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -457,18 +477,14 @@ pub async fn sftp_mkdir(
     path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let manager = manager.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let sess = manager.connect(&host)?;
-        let sftp = sess
-            .sftp()
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
-        sftp.mkdir(std::path::Path::new(&path), 0o755)
-            .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("SFTP task failed: {}", e))?
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    conn.sftp
+        .create_dir(&path)
+        .await
+        .map_err(|e| format!("SFTP mkdir failed: {}", e))
 }
 
 #[tauri::command]
@@ -478,18 +494,14 @@ pub async fn sftp_rename(
     to: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let manager = manager.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let sess = manager.connect(&host)?;
-        let sftp = sess
-            .sftp()
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
-        sftp.rename(std::path::Path::new(&from), std::path::Path::new(&to), None)
-            .map_err(|e| format!("SFTP rename failed: {}", e))?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("SFTP task failed: {}", e))?
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    conn.sftp
+        .rename(&from, &to)
+        .await
+        .map_err(|e| format!("SFTP rename failed: {}", e))
 }
 
 #[tauri::command]
@@ -498,18 +510,14 @@ pub async fn sftp_delete(
     path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let manager = manager.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let sess = manager.connect(&host)?;
-        let sftp = sess
-            .sftp()
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
-        sftp.unlink(std::path::Path::new(&path))
-            .map_err(|e| format!("SFTP delete failed: {}", e))?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("SFTP task failed: {}", e))?
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    conn.sftp
+        .remove_file(&path)
+        .await
+        .map_err(|e| format!("SFTP delete failed: {}", e))
 }
 
 #[tauri::command]
@@ -518,18 +526,14 @@ pub async fn sftp_rmdir(
     path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let manager = manager.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let sess = manager.connect(&host)?;
-        let sftp = sess
-            .sftp()
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
-        sftp.rmdir(std::path::Path::new(&path))
-            .map_err(|e| format!("SFTP rmdir failed: {}", e))?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("SFTP task failed: {}", e))?
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    conn.sftp
+        .remove_dir(&path)
+        .await
+        .map_err(|e| format!("SFTP rmdir failed: {}", e))
 }
 
 #[tauri::command]
@@ -538,29 +542,24 @@ pub async fn sftp_stat(
     path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<SftpEntry, String> {
-    let manager = manager.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let sess = manager.connect(&host)?;
-        let sftp = sess
-            .sftp()
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
-        let stat = sftp
-            .stat(std::path::Path::new(&path))
-            .map_err(|e| format!("SFTP stat failed: {}", e))?;
-
-        let name = std::path::Path::new(&path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.clone());
-
-        Ok(SftpEntry {
-            name,
-            path,
-            is_dir: stat.is_dir(),
-            size: stat.size.unwrap_or(0),
-            modified: stat.mtime.map(|t| t as u64),
-        })
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    let meta = conn
+        .sftp
+        .metadata(&path)
+        .await
+        .map_err(|e| format!("SFTP stat failed: {}", e))?;
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.clone());
+    Ok(SftpEntry {
+        name,
+        path,
+        is_dir: meta.file_type().is_dir(),
+        size: meta.len(),
+        modified: meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())),
     })
-    .await
-    .map_err(|e| format!("SFTP task failed: {}", e))?
 }
