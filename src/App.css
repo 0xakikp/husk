@@ -332,11 +332,44 @@ button {
 .pane-divider.row {
   cursor: col-resize;
 }
-
 .pane-divider.col {
   cursor: row-resize;
 }
 
+/* ── Pane close button ───────────────────────────────────────────────────── */
+.pane-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.pane-leaf:hover .pane-close {
+  opacity: 1;
+}
+
+.pane-close:hover {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+
+.pane-close:active {
+  background: color-mix(in srgb, var(--danger) 25%, transparent);
+}
 .term-search {
   position: absolute;
   top: 8px;

@@ -68,6 +68,16 @@ export function PaneView({ node, ...ops }: { node: Pane } & Ops) {
     const focused = ops.tabActive && ops.focusedId === node.id;
     return (
       <div key={`leaf-${node.id}`} className={`pane-leaf${focused && ops.multi ? " focused" : ""}`}>
+        {ops.multi ? (
+          <button
+            type="button"
+            className="pane-close"
+            aria-label="Close pane"
+            onClick={() => ops.onClose(node.id)}
+          >
+            ×
+          </button>
+        ) : null}
         <TerminalView
           leafId={node.id}
           active={focused}
