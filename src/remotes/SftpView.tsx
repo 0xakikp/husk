@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "../toast";
 import { getHomeDir } from "../fs";
+import { markHostConnected, markHostDisconnected } from "../remote/connectionStore";
 
 interface SftpViewProps {
   host: string;
@@ -54,6 +55,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
       .then(() => {
         if (!mounted) return;
         setConnected(true);
+        markHostConnected(host);
         return load(".");
       })
       .catch((e) => {
@@ -64,6 +66,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
     return () => {
       mounted = false;
       sftpDisconnect(host).catch(() => {});
+      markHostDisconnected(host);
     };
   }, [host, load, onClose]);
 
@@ -161,6 +164,18 @@ export function SftpView({ host, onClose }: SftpViewProps) {
             title="New Folder"
           >
             +
+          </button>
+          <button
+            type="button"
+            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-red-500"
+            onClick={() => {
+              sftpDisconnect(host).catch(() => {});
+              markHostDisconnected(host);
+              onClose();
+            }}
+            title="Disconnect"
+          >
+            ⏻
           </button>
           <button
             type="button"

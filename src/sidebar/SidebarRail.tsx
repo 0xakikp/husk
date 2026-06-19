@@ -19,7 +19,8 @@ export type SidebarViewId =
   | "kubernetes"
   | "ci-cd"
   | "terraform"
-  | "docker";
+  | "docker"
+  | "sftp";
 
 const RAIL_TOOLTIP_CLASS =
   "border border-border/60 bg-zinc-950 text-zinc-100 shadow-lg shadow-black/30 dark:bg-zinc-950 dark:text-zinc-100";

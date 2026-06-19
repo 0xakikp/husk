@@ -12,6 +12,8 @@ import {
   FolderUploadIcon,
 } from "@hugeicons/core-free-icons";
 import { setActiveSshHost } from "../remote/store";
+import { useConnectedHosts, markHostDisconnected } from "../remote/connectionStore";
+import { sftpDisconnect } from "../remote/sftpApi";
 
 async function readSshHosts(): Promise<string[]> {
   try {
@@ -44,6 +46,7 @@ export function RemotesView({
   onSftp?: (host: string) => void;
 }) {
   const [hosts, setHosts] = useState<string[] | "loading">("loading");
+  const connected = useConnectedHosts();
 
   const load = () => void readSshHosts().then(setHosts);
 
@@ -57,6 +60,17 @@ export function RemotesView({
       onClose?.();
     } else {
       toast({ title: "No active terminal", variant: "error" });
+    }
+  };
+
+  const disconnect = async (h: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await sftpDisconnect(h);
+      markHostDisconnected(h);
+      toast({ title: `Disconnected ${h}`, variant: "info" });
+    } catch {
+      // ignore
     }
   };
 
@@ -111,7 +125,20 @@ export function RemotesView({
                 <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
                   {h}
                 </span>
+                {connected.includes(h) && (
+                  <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-green-500" title="Connected" />
+                )}
               </button>
+              {connected.includes(h) && (
+                <button
+                  type="button"
+                  title="Disconnect"
+                  onClick={(e) => disconnect(h, e)}
+                  className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-red-500 group-hover:opacity-100"
+                >
+                  <span className="text-[10px]">●</span>
+                </button>
+              )}
               <button
                 type="button"
                 title="SFTP"
