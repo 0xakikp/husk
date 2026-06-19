@@ -177,6 +177,7 @@ export function RemotesView({
                 ? "text-foreground border-b-2 border-primary"
                 : "text-muted-foreground hover:text-foreground"
             }`}
+            title="Connections with full config (port, auth, colors, tags, port forwards)"
           >
             Saved ({savedConnections.length})
           </button>
@@ -187,6 +188,7 @@ export function RemotesView({
                 ? "text-foreground border-b-2 border-primary"
                 : "text-muted-foreground hover:text-foreground"
             }`}
+            title="Hosts auto-detected from ~/.ssh/config (basic ssh only)"
           >
             SSH Config
           </button>
