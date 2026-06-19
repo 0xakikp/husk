@@ -133,14 +133,9 @@ export function ConnectionDialog({
   ];
 
   return (
-    <Modal title="New SSH Connection" onClose={onClose} className="max-w-lg">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">
-          {existing ? "Edit Connection" : "New SSH Connection"}
-        </h2>
-      </div>
-
+    <Modal title={existing ? "Edit Connection" : "New SSH Connection"} onClose={onClose} className="max-w-lg">
       <div className="space-y-4">
+        {/* Name */}
         <div>
           <Label htmlFor="conn-name">Name</Label>
           <Input
@@ -155,6 +150,7 @@ export function ConnectionDialog({
           )}
         </div>
 
+        {/* Host + Port */}
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
             <Label htmlFor="conn-host">Host</Label>
@@ -183,6 +179,7 @@ export function ConnectionDialog({
           </div>
         </div>
 
+        {/* Username */}
         <div>
           <Label htmlFor="conn-user">Username</Label>
           <Input
@@ -197,6 +194,7 @@ export function ConnectionDialog({
           )}
         </div>
 
+        {/* Auth Type */}
         <div>
           <Label>Authentication</Label>
           <Select
@@ -216,6 +214,7 @@ export function ConnectionDialog({
           </Select>
         </div>
 
+        {/* Password */}
         {authType === "password" && (
           <div>
             <Label htmlFor="conn-password">Password</Label>
@@ -229,6 +228,7 @@ export function ConnectionDialog({
           </div>
         )}
 
+        {/* Private Key */}
         {authType === "key" && (
           <>
             <div>
@@ -261,6 +261,7 @@ export function ConnectionDialog({
           </>
         )}
 
+        {/* Jump Host */}
         <div>
           <Label htmlFor="conn-jump">Jump Host / Bastion (optional)</Label>
           <Input
@@ -271,6 +272,7 @@ export function ConnectionDialog({
           />
         </div>
 
+        {/* Tags */}
         <div>
           <Label htmlFor="conn-tags">Tags (comma-separated)</Label>
           <Input
@@ -281,6 +283,7 @@ export function ConnectionDialog({
           />
         </div>
 
+        {/* Color */}
         <div>
           <Label>Color</Label>
           <div className="flex flex-wrap gap-2 mt-1">
