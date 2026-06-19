@@ -7,6 +7,7 @@ export const readFile = (path: string) => invoke<string>("read_file", { path });
 export const writeFile = (path: string, contents: string) =>
   invoke<void>("write_file", { path, contents });
 export const homeDir = () => invoke<string>("home_dir");
+export const getHomeDir = homeDir;
 
 export const readFileBase64 = (path: string) =>
   invoke<string>("read_file_base64", { path });

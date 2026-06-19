@@ -9,7 +9,7 @@ import {
   DatabaseIcon,
   Refresh01Icon,
   PlayIcon,
-  FolderOpenIcon,
+  FolderUploadIcon,
 } from "@hugeicons/core-free-icons";
 import { setActiveSshHost } from "../remote/store";
 
@@ -37,11 +37,11 @@ async function readSshHosts(): Promise<string[]> {
 export function RemotesView({
   onClose,
   inline,
-  onBrowse,
+  onSftp,
 }: {
   onClose?: () => void;
   inline?: boolean;
-  onBrowse?: (host: string) => void;
+  onSftp?: (host: string) => void;
 }) {
   const [hosts, setHosts] = useState<string[] | "loading">("loading");
 
@@ -114,15 +114,14 @@ export function RemotesView({
               </button>
               <button
                 type="button"
-                title="Browse files"
+                title="SFTP"
                 onClick={() => {
                   setActiveSshHost(h);
-                  onBrowse?.(h);
-                  toast({ title: `Browsing ${h}`, variant: "info" });
+                  onSftp?.(h);
                 }}
                 className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
               >
-                <HugeiconsIcon icon={FolderOpenIcon} size={11} strokeWidth={2} />
+                <HugeiconsIcon icon={FolderUploadIcon} size={11} strokeWidth={2} />
               </button>
               <button
                 type="button"

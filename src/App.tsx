@@ -54,6 +54,7 @@ import { DockerView } from "./docker/DockerView";
 import { KubernetesView } from "./kubernetes/KubernetesView";
 import { TerraformView } from "./terraform/TerraformView";
 import { RemotesView } from "./remotes/RemotesView";
+import { SftpView } from "./remotes/SftpView";
 import { useActiveSshHost } from "./remote/store";
 import { GithubIssuesDialog } from "./github-issues/GithubIssuesDialog";
 import { CiCdDialog } from "./ci-cd/CiCdDialog";
@@ -580,7 +581,7 @@ function readSidebarView(): SidebarViewId {
   try {
     const stored = window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY);
     const valid: SidebarViewId[] = [
-      "explorer", "source-control", "remotes", "workflows", "tools-hub",
+      "explorer", "source-control", "remotes", "sftp", "workflows", "tools-hub",
       "kubernetes", "ci-cd", "terraform", "docker",
     ];
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
@@ -593,6 +594,7 @@ function App() {
   const [explorerWidth, setExplorerWidth] = useState(readSidebarWidth);
   const sidebarWidthWriteTimerRef = useRef(0);
   const [sidebarView, setSidebarView] = useState<SidebarViewId>(readSidebarView);
+  const [sftpHost, setSftpHost] = useState<string | null>(null);
 
   // Track window focus for long-running command notifications
   useEffect(() => {
@@ -1319,12 +1321,13 @@ function App() {
                   ) : sidebarView === "remotes" ? (
                     <RemotesView
                       inline
-                      onBrowse={(_h) => {
-                        setActiveKind("term");
-                        setExplorerOpen(true);
-                        setSidebarView("explorer");
+                      onSftp={(h) => {
+                        setSftpHost(h);
+                        setSidebarView("sftp");
                       }}
                     />
+                  ) : sidebarView === "sftp" ? (
+                    <SftpView host={sftpHost || ""} onClose={() => setSidebarView("remotes")} />
                   ) : sidebarView === "workflows" ? (
                     <RunbooksDialog inline />
                   ) : sidebarView === "tools-hub" ? (

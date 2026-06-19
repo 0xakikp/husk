@@ -4,6 +4,7 @@ mod mcp;
 mod pty;
 mod remote;
 mod secrets;
+mod sftp;
 mod shell;
 mod shell_history;
 mod shell_init;
@@ -55,6 +56,16 @@ pub fn run() {
             remote::ssh_delete_path,
             remote::ssh_home_dir,
             remote::ssh_pwd,
+            sftp::sftp_connect,
+            sftp::sftp_disconnect,
+            sftp::sftp_list_dir,
+            sftp::sftp_download,
+            sftp::sftp_upload,
+            sftp::sftp_mkdir,
+            sftp::sftp_rename,
+            sftp::sftp_delete,
+            sftp::sftp_rmdir,
+            sftp::sftp_stat,
             mcp::mcp_spawn,
             mcp::mcp_send,
             mcp::mcp_recv,
