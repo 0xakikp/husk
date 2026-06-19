@@ -138,7 +138,7 @@ export function ConnectionDialog({
       onClose={onClose}
       className="max-w-lg border border-white/10 rounded-xl bg-[#0a0a0a]"
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         {/* Name */}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="conn-name" className="text-gray-300 text-sm font-medium">
@@ -157,8 +157,8 @@ export function ConnectionDialog({
         </div>
 
         {/* Host + Port */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="col-span-3 flex flex-col gap-1.5">
+        <div className="flex flex-row gap-4">
+          <div className="flex-1 flex flex-col gap-1.5">
             <Label htmlFor="conn-host" className="text-gray-300 text-sm font-medium">
               Host
             </Label>
@@ -173,7 +173,7 @@ export function ConnectionDialog({
               <p className="text-xs text-red-500">{errors.host}</p>
             )}
           </div>
-          <div className="col-span-1 flex flex-col gap-1.5">
+          <div className="w-24 flex flex-col gap-1.5">
             <Label htmlFor="conn-port" className="text-gray-300 text-sm font-medium">
               Port
             </Label>
@@ -322,7 +322,7 @@ export function ConnectionDialog({
               <button
                 key={c}
                 onClick={() => setColor(c)}
-                className={`w-7 h-7 rounded-full border-2 transition-all ${
+                className={`w-6 h-6 rounded-full shrink-0 border-2 transition-all ${
                   color === c
                     ? "border-white scale-110 ring-2 ring-white/30"
                     : "border-transparent hover:border-white/50"
