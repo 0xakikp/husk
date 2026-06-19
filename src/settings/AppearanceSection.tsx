@@ -376,15 +376,6 @@ export function AppearanceSection() {
             step={5}
             onChange={(v) => setPrefs({ aiMiniBgDim: v })}
           />
-          <SliderRow
-            title="BG opacity"
-            description="Image visibility"
-            value={p.aiMiniBgOpacity}
-            min={10}
-            max={100}
-            step={5}
-            onChange={(v) => setPrefs({ aiMiniBgOpacity: v })}
-          />
         </div>
         <SettingRow
           className="rounded border border-border/40 bg-muted/20 py-2"
