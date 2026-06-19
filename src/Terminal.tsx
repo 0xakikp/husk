@@ -99,6 +99,7 @@ export function TerminalView({
         onFocusDirection: (dir) => _onFocusDirection?.(dir),
         onHistoryOpen: () => openHistory(),
         onKey: (e) => {
+          console.log("[onKey] key:", e.key, "visible:", autoStateRef.current.visible, "type:", e.type);
           if (e.type !== "keydown" || !autoStateRef.current.visible) return undefined;
           if (e.key === "Tab") {
             e.preventDefault();
@@ -107,11 +108,13 @@ export function TerminalView({
           }
           if (e.key === "ArrowDown") {
             e.preventDefault();
+            console.log("[onKey] navigating down");
             navigateAutoRef.current(1);
             return false;
           }
           if (e.key === "ArrowUp") {
             e.preventDefault();
+            console.log("[onKey] navigating up");
             navigateAutoRef.current(-1);
             return false;
           }
