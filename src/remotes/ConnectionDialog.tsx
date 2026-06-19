@@ -134,7 +134,7 @@ export function ConnectionDialog({
 
   return (
     <Modal title={existing ? "Edit Connection" : "New SSH Connection"} onClose={onClose} className="max-w-lg">
-      <div className="space-y-6">
+      <div className="space-y-7">
         {/* Name */}
         <div>
           <Label htmlFor="conn-name">Name</Label>
