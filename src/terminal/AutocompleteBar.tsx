@@ -38,10 +38,10 @@ export function AutocompleteBar({
             className={cn(
               "flex items-center gap-0 px-2.5 py-1 text-left text-[12px] transition-colors",
               i === selectedIndex
-                ? "bg-[#4ade80] text-black"
+                ? "bg-[var(--accent)] text-black"
                 : "text-foreground hover:bg-accent/50"
             )}
-            style={i === selectedIndex ? { backgroundColor: "#4ade80", color: "#000" } : undefined}
+            style={i === selectedIndex ? { backgroundColor: "var(--accent)", color: "#000" } : undefined}
           >
             <span className="font-medium">{s.highlight}</span>
             <span className="text-muted-foreground">{s.rest}</span>

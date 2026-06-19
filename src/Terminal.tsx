@@ -115,6 +115,11 @@ export function TerminalView({
             navigateAutoRef.current(-1);
             return false;
           }
+          if (e.key === "Enter" || e.key === "Return") {
+            e.preventDefault();
+            acceptAutoRef.current();
+            return false;
+          }
           if (e.key === "Escape") {
             e.preventDefault();
             dismissAutoRef.current();
