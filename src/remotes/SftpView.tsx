@@ -42,6 +42,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
   const [newName, setNewName] = useState("");
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [mkdirName, setMkdirName] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "grid" | "details">("list");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
@@ -205,6 +206,41 @@ export function SftpView({ host, onClose }: SftpViewProps) {
           >
             +
           </button>
+          <div className="flex items-center gap-0.5 ml-1 border-l border-border pl-1">
+            <button
+              type="button"
+              className={cn(
+                "p-1 rounded text-[11px]",
+                viewMode === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+              onClick={() => setViewMode("list")}
+              title="List view"
+            >
+              ☰
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "p-1 rounded text-[11px]",
+                viewMode === "grid" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+              onClick={() => setViewMode("grid")}
+              title="Grid view"
+            >
+              ▦
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "p-1 rounded text-[11px]",
+                viewMode === "details" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+              onClick={() => setViewMode("details")}
+              title="Details view"
+            >
+              ☰☰
+            </button>
+          </div>
           <button
             type="button"
             className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-red-500"
@@ -274,7 +310,94 @@ export function SftpView({ host, onClose }: SftpViewProps) {
           <div className="p-4 text-xs text-muted-foreground">Loading…</div>
         ) : entries.length === 0 ? (
           <div className="p-4 text-xs text-muted-foreground">Empty directory</div>
+        ) : viewMode === "grid" ? (
+          /* Grid view */
+          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1 p-2">
+            {entries.map((entry) => (
+              <div
+                key={entry.path}
+                className={cn(
+                  "flex flex-col items-center gap-1 p-2 rounded cursor-pointer hover:bg-accent/50 text-center",
+                  selected.has(entry.path) && "bg-accent"
+                )}
+                onClick={() => {
+                  if (entry.is_dir) {
+                    load(entry.path);
+                  } else {
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(entry.path)) next.delete(entry.path);
+                      else next.add(entry.path);
+                      return next;
+                    });
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, entry });
+                }}
+              >
+                <span className="text-2xl">{entry.is_dir ? "📁" : "📄"}</span>
+                <span className="text-[10px] truncate w-full">{entry.name}</span>
+                <span className="text-[9px] text-muted-foreground">
+                  {entry.is_dir ? "—" : formatSize(entry.size)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : viewMode === "details" ? (
+          /* Details view */
+          <table className="w-full text-[12px]">
+            <thead className="sticky top-0 bg-background border-b border-border">
+              <tr className="text-muted-foreground text-[10px] uppercase">
+                <th className="text-left px-3 py-1 font-medium">Name</th>
+                <th className="text-right px-3 py-1 font-medium w-24">Size</th>
+                <th className="text-left px-3 py-1 font-medium w-32">Modified</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr
+                  key={entry.path}
+                  className={cn(
+                    "cursor-pointer hover:bg-accent/50 border-b border-border/30",
+                    selected.has(entry.path) && "bg-accent"
+                  )}
+                  onClick={() => {
+                    if (entry.is_dir) {
+                      load(entry.path);
+                    } else {
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(entry.path)) next.delete(entry.path);
+                        else next.add(entry.path);
+                        return next;
+                      });
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, entry });
+                  }}
+                >
+                  <td className="px-3 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">{entry.is_dir ? "📁" : "📄"}</span>
+                      <span className="truncate">{entry.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-muted-foreground">
+                    {entry.is_dir ? "—" : formatSize(entry.size)}
+                  </td>
+                  <td className="px-3 py-1.5 text-muted-foreground text-[10px]">
+                    {entry.modified ? formatDate(entry.modified) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : (
+          /* List view (default) */
           entries.map((entry) => (
             <div
               key={entry.path}
@@ -449,4 +572,18 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}G`;
+}
+
+function formatDate(timestamp: number): string {
+  const d = new Date(timestamp * 1000);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) {
+    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+  const isThisYear = d.getFullYear() === now.getFullYear();
+  if (isThisYear) {
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
