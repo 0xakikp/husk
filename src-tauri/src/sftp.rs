@@ -8,25 +8,37 @@ use std::sync::Mutex;
 use ssh2::Session;
 use tauri::State;
 
-/// Resolve SSH config alias to actual HostName.
-fn resolve_ssh_host(host: &str) -> String {
+/// Resolved SSH config: (HostName, Port).
+fn resolve_ssh_host(host: &str) -> (String, u16) {
     // Try ssh -G first (most reliable)
     let output = std::process::Command::new("ssh")
         .args(["-G", host])
         .output();
 
+    let mut hostname: Option<String> = None;
+    let mut port: Option<u16> = None;
+
     if let Ok(out) = output {
         if out.status.success() {
             for line in String::from_utf8_lossy(&out.stdout).lines() {
-                if line.to_lowercase().starts_with("hostname ") {
-                    if let Some(hostname) = line.split_whitespace().nth(1) {
-                        if hostname != host {
-                            return hostname.to_string();
+                let lower = line.to_lowercase();
+                if lower.starts_with("hostname ") {
+                    if let Some(h) = line.split_whitespace().nth(1) {
+                        if h != host {
+                            hostname = Some(h.to_string());
                         }
+                    }
+                } else if lower.starts_with("port ") {
+                    if let Some(p) = line.split_whitespace().nth(1) {
+                        port = p.parse().ok();
                     }
                 }
             }
         }
+    }
+
+    if hostname.is_some() && port.is_some() {
+        return (hostname.unwrap(), port.unwrap());
     }
 
     // Fallback: parse ~/.ssh/config manually
@@ -37,7 +49,7 @@ fn resolve_ssh_host(host: &str) -> String {
     let content = std::fs::read_to_string(&config_path).unwrap_or_default();
 
     let mut current_hosts: Vec<String> = Vec::new();
-    let mut host_map: HashMap<String, String> = HashMap::new();
+    let mut host_map: HashMap<String, (String, u16)> = HashMap::new();
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -53,10 +65,26 @@ fn resolve_ssh_host(host: &str) -> String {
         } else if !current_hosts.is_empty() {
             let lower = trimmed.to_lowercase();
             if lower.starts_with("hostname ") {
-                if let Some(hostname) = trimmed.split_whitespace().nth(1) {
-                    for h in &current_hosts {
-                        if !h.contains('*') {
-                            host_map.insert(h.clone(), hostname.to_string());
+                if let Some(h) = trimmed.split_whitespace().nth(1) {
+                    for ch in &current_hosts {
+                        if !ch.contains('*') {
+                            host_map
+                                .entry(ch.clone())
+                                .and_modify(|e| e.0 = h.to_string())
+                                .or_insert((h.to_string(), 22));
+                        }
+                    }
+                }
+            } else if lower.starts_with("port ") {
+                if let Some(p) = trimmed.split_whitespace().nth(1) {
+                    if let Ok(port_num) = p.parse::<u16>() {
+                        for ch in &current_hosts {
+                            if !ch.contains('*') {
+                                host_map
+                                    .entry(ch.clone())
+                                    .and_modify(|e| e.1 = port_num)
+                                    .or_insert((host.to_string(), port_num));
+                            }
                         }
                     }
                 }
@@ -64,10 +92,11 @@ fn resolve_ssh_host(host: &str) -> String {
         }
     }
 
-    host_map
-        .get(host)
-        .cloned()
-        .unwrap_or_else(|| host.to_string())
+    if let Some((h, p)) = host_map.get(host) {
+        return (h.clone(), *p);
+    }
+
+    (host.to_string(), port.unwrap_or(22))
 }
 
 /// Shared SFTP session manager.
@@ -84,7 +113,7 @@ impl SftpManager {
     }
 
     fn connect(&self, host: &str) -> Result<Session, String> {
-        let actual_host = resolve_ssh_host(host);
+        let (actual_host, port) = resolve_ssh_host(host);
 
         // Check cache first
         {
@@ -99,7 +128,7 @@ impl SftpManager {
         }
 
         // Blocking SSH connect
-        let tcp = TcpStream::connect(format!("{}:22", actual_host))
+        let tcp = TcpStream::connect(format!("{}:{}", actual_host, port))
             .map_err(|e| format!("TCP connect failed: {}", e))?;
         tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
             .ok();
