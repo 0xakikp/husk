@@ -54,7 +54,7 @@ import { DockerView } from "./docker/DockerView";
 import { KubernetesView } from "./kubernetes/KubernetesView";
 import { TerraformView } from "./terraform/TerraformView";
 import { RemotesView } from "./remotes/RemotesView";
-import { SftpView } from "./remotes/SftpView";
+
 import { useActiveSshHost } from "./remote/store";
 import { GithubIssuesDialog } from "./github-issues/GithubIssuesDialog";
 import { CiCdDialog } from "./ci-cd/CiCdDialog";
@@ -594,7 +594,7 @@ function App() {
   const [explorerWidth, setExplorerWidth] = useState(readSidebarWidth);
   const sidebarWidthWriteTimerRef = useRef(0);
   const [sidebarView, setSidebarView] = useState<SidebarViewId>(readSidebarView);
-  const [sftpHost, setSftpHost] = useState<string | null>(null);
+
 
   // Track window focus for long-running command notifications
   useEffect(() => {
@@ -1319,15 +1319,7 @@ function App() {
                   ) : sidebarView === "source-control" ? (
                     <SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />
                   ) : sidebarView === "remotes" ? (
-                    <RemotesView
-                      inline
-                      onSftp={(h) => {
-                        setSftpHost(h);
-                        setSidebarView("sftp");
-                      }}
-                    />
-                  ) : sidebarView === "sftp" ? (
-                    <SftpView host={sftpHost || ""} onClose={() => setSidebarView("remotes")} />
+                    <RemotesView inline />
                   ) : sidebarView === "workflows" ? (
                     <RunbooksDialog inline />
                   ) : sidebarView === "tools-hub" ? (

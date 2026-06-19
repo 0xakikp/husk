@@ -190,6 +190,27 @@ export function SftpView({ host, onClose }: SftpViewProps) {
 
       {/* Breadcrumbs */}
       <div className="flex items-center gap-1 px-3 py-1.5 text-[11px] border-b border-border/50 overflow-x-auto">
+        <button
+          type="button"
+          className="hover:text-foreground text-muted-foreground transition-colors mr-1"
+          onClick={() => load("/")}
+          title="Root"
+        >
+          /
+        </button>
+        {cwd !== "." && cwd !== "/" && (
+          <button
+            type="button"
+            className="hover:text-foreground text-muted-foreground transition-colors mr-1"
+            onClick={() => {
+              const parent = cwd.split("/").slice(0, -1).join("/") || ".";
+              load(parent);
+            }}
+            title="Parent"
+          >
+            ..
+          </button>
+        )}
         {breadcrumbs.map((crumb, i) => (
           <span key={i} className="flex items-center gap-1">
             {i > 0 && <span className="text-muted-foreground">/</span>}
