@@ -134,9 +134,9 @@ export function ConnectionDialog({
 
   return (
     <Modal title={existing ? "Edit Connection" : "New SSH Connection"} onClose={onClose} className="max-w-lg">
-      <div className="space-y-4">
+      <div className="space-y-5">
         {/* Name */}
-        <div>
+        <div className="space-y-1.5">
           <Label htmlFor="conn-name">Name</Label>
           <Input
             id="conn-name"
@@ -146,13 +146,13 @@ export function ConnectionDialog({
             className={errors.name ? "border-red-500" : ""}
           />
           {errors.name && (
-            <p className="text-xs text-red-500 mt-1">{errors.name}</p>
+            <p className="text-xs text-red-500">{errors.name}</p>
           )}
         </div>
 
         {/* Host + Port */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-2">
+          <div className="col-span-2 space-y-1.5">
             <Label htmlFor="conn-host">Host</Label>
             <Input
               id="conn-host"
@@ -162,10 +162,10 @@ export function ConnectionDialog({
               className={errors.host ? "border-red-500" : ""}
             />
             {errors.host && (
-              <p className="text-xs text-red-500 mt-1">{errors.host}</p>
+              <p className="text-xs text-red-500">{errors.host}</p>
             )}
           </div>
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="conn-port">Port</Label>
             <Input
               id="conn-port"
@@ -174,13 +174,13 @@ export function ConnectionDialog({
               className={errors.port ? "border-red-500" : ""}
             />
             {errors.port && (
-              <p className="text-xs text-red-500 mt-1">{errors.port}</p>
+              <p className="text-xs text-red-500">{errors.port}</p>
             )}
           </div>
         </div>
 
         {/* Username */}
-        <div>
+        <div className="space-y-1.5">
           <Label htmlFor="conn-user">Username</Label>
           <Input
             id="conn-user"
@@ -190,12 +190,12 @@ export function ConnectionDialog({
             className={errors.user ? "border-red-500" : ""}
           />
           {errors.user && (
-            <p className="text-xs text-red-500 mt-1">{errors.user}</p>
+            <p className="text-xs text-red-500">{errors.user}</p>
           )}
         </div>
 
         {/* Auth Type */}
-        <div>
+        <div className="space-y-1.5">
           <Label>Authentication</Label>
           <Select
             value={authType}
@@ -216,7 +216,7 @@ export function ConnectionDialog({
 
         {/* Password */}
         {authType === "password" && (
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="conn-password">Password</Label>
             <Input
               id="conn-password"
@@ -231,7 +231,7 @@ export function ConnectionDialog({
         {/* Private Key */}
         {authType === "key" && (
           <>
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="conn-key">Private Key</Label>
               <div className="flex gap-2">
                 <Input
@@ -246,10 +246,10 @@ export function ConnectionDialog({
                 </Button>
               </div>
               {errors.key && (
-                <p className="text-xs text-red-500 mt-1">{errors.key}</p>
+                <p className="text-xs text-red-500">{errors.key}</p>
               )}
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="conn-passphrase">Key Passphrase (optional)</Label>
               <Input
                 id="conn-passphrase"
@@ -262,7 +262,7 @@ export function ConnectionDialog({
         )}
 
         {/* Jump Host */}
-        <div>
+        <div className="space-y-1.5">
           <Label htmlFor="conn-jump">Jump Host / Bastion (optional)</Label>
           <Input
             id="conn-jump"
@@ -273,7 +273,7 @@ export function ConnectionDialog({
         </div>
 
         {/* Tags */}
-        <div>
+        <div className="space-y-1.5">
           <Label htmlFor="conn-tags">Tags (comma-separated)</Label>
           <Input
             id="conn-tags"
@@ -284,9 +284,9 @@ export function ConnectionDialog({
         </div>
 
         {/* Color */}
-        <div>
+        <div className="space-y-2">
           <Label>Color</Label>
-          <div className="flex flex-wrap gap-2 mt-1">
+          <div className="flex flex-wrap gap-2">
             {colors.map((c) => (
               <button
                 key={c}
@@ -304,7 +304,7 @@ export function ConnectionDialog({
         </div>
       </div>
 
-      <div className="flex justify-between mt-6">
+      <div className="flex justify-between mt-8 pt-4 border-t border-border">
         {existing ? (
           <Button variant="destructive" size="sm" onClick={handleDelete}>
             <HugeiconsIcon icon={Delete01Icon} size={16} className="mr-1" />
