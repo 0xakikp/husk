@@ -1166,7 +1166,6 @@ function App() {
     term.setActiveId(id);
     // Restore SFTP view if this tab has it open
     const tab = term.tabs.find((t) => t.id === id);
-    console.log("[selectTerm] tab.id=", id, "sftpOpen=", tab?.sftpOpen, "setting activeKind to", tab?.sftpOpen ? "sftp" : "term");
     setActiveKind(tab?.sftpOpen ? "sftp" : "term");
   };
 
@@ -1590,9 +1589,8 @@ function App() {
                 </div>
               )}
               {/* SFTP layers — one per tab, only active one visible */}
-              {term.tabs.map((tab) => {
-                console.log("[SFTP render] tab.id=", tab.id, "sftpOpen=", tab.sftpOpen, "activeId=", term.activeId, "activeKind=", activeKind, "visible=", tab.sftpOpen && tab.sftpHost && term.activeId === tab.id && activeKind === "sftp");
-                return tab.sftpOpen && tab.sftpHost ? (
+              {term.tabs.map((tab) =>
+                tab.sftpHost ? (
                   <div
                     key={tab.id}
                     className={cn(
@@ -1603,11 +1601,11 @@ function App() {
                     aria-hidden={term.activeId !== tab.id || activeKind !== "sftp"}
                   >
                     <ErrorBoundary>
-                      <SftpView host={tab.sftpHost} onClose={closeSftp} />
+                      <SftpView host={tab.sftpHost!} onClose={closeSftp} />
                     </ErrorBoundary>
                   </div>
-                ) : null;
-              })}
+                ) : null
+              )}
             </div>
           </div>
 

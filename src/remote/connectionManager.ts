@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useState, useEffect } from "react";
 
 const LS_KEY = "huskv2.ssh.connections";
 
@@ -129,25 +129,23 @@ export function deletePortForward(id: string): boolean {
 }
 
 export function useConnections(): SshConnection[] {
-  return useSyncExternalStore(
-    (fn) => {
-      subscribers.add(fn);
-      return () => subscribers.delete(fn);
-    },
-    () => [...connections],
-    () => [...connections],
-  );
+  const [snapshot, setSnapshot] = useState<SshConnection[]>(() => [...connections]);
+  useEffect(() => {
+    const fn = () => setSnapshot([...connections]);
+    subscribers.add(fn);
+    return () => { subscribers.delete(fn); };
+  }, []);
+  return snapshot;
 }
 
 export function usePortForwards(connectionId?: string): PortForward[] {
-  return useSyncExternalStore(
-    (fn) => {
-      subscribers.add(fn);
-      return () => subscribers.delete(fn);
-    },
-    () => getPortForwards(connectionId),
-    () => getPortForwards(connectionId),
-  );
+  const [snapshot, setSnapshot] = useState<PortForward[]>(() => getPortForwards(connectionId));
+  useEffect(() => {
+    const fn = () => setSnapshot(getPortForwards(connectionId));
+    subscribers.add(fn);
+    return () => { subscribers.delete(fn); };
+  }, [connectionId]);
+  return snapshot;
 }
 
 export function getConnectionById(id: string): SshConnection | undefined {
