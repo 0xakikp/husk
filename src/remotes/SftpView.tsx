@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
@@ -32,6 +32,8 @@ interface TransferProgress {
 }
 
 export function SftpView({ host, onClose }: SftpViewProps) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [cwd, setCwd] = useState(".");
   const [entries, setEntries] = useState<SftpEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -98,7 +100,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
       .catch((e) => {
         if (!mounted) return;
         toast({ title: `SFTP connect failed: ${e}`, variant: "error" });
-        onClose();
+        onCloseRef.current();
       });
 
     return () => {
@@ -107,7 +109,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
       sftpDisconnect(host).catch(() => {});
       markHostDisconnected(host);
     };
-  }, [host, load, onClose]);
+  }, [host, load]);
 
   const handleDownload = async (entry: SftpEntry) => {
     try {
@@ -255,7 +257,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
             onClick={() => {
               sftpDisconnect(host).catch(() => {});
               markHostDisconnected(host);
-              onClose();
+              onCloseRef.current();
             }}
             title="Disconnect"
           >

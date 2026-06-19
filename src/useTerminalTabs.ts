@@ -23,6 +23,9 @@ export type TermTab = {
   renamed?: boolean;
   /** User-assigned color for visual grouping. */
   color?: string;
+  /** Per-tab SFTP state */
+  sftpHost?: string;
+  sftpOpen?: boolean;
 };
 
 function makeTab(id: number, initialCwd?: string): TermTab {
@@ -39,7 +42,7 @@ function basename(p: string): string {
 
 const SESSION_KEY = "huskv2.session.v1";
 
-type SavedTab = { cwd?: string; title?: string; renamed?: boolean; color?: string };
+type SavedTab = { cwd?: string; title?: string; renamed?: boolean; color?: string; sftpHost?: string; sftpOpen?: boolean };
 type SavedSession = { tabs: SavedTab[]; activeIndex: number };
 
 function getFirstLeafCwd(p: Pane): string | undefined {
@@ -52,7 +55,7 @@ function getFirstLeafCwd(p: Pane): string | undefined {
 function saveSession(tabs: TermTab[], activeId: number) {
   const saved: SavedTab[] = [];
   for (const t of tabs) {
-    saved.push({ cwd: getFirstLeafCwd(t.root), title: t.renamed ? t.title : undefined, renamed: t.renamed, color: t.color });
+    saved.push({ cwd: getFirstLeafCwd(t.root), title: t.renamed ? t.title : undefined, renamed: t.renamed, color: t.color, sftpHost: t.sftpHost, sftpOpen: t.sftpOpen });
   }
   const activeIndex = tabs.findIndex((t) => t.id === activeId);
   try {
@@ -110,6 +113,10 @@ export function useTerminalTabs() {
           }
           if (t.color) {
             out[out.length - 1].color = t.color;
+          }
+          if (t.sftpHost) {
+            out[out.length - 1].sftpHost = t.sftpHost;
+            out[out.length - 1].sftpOpen = t.sftpOpen ?? false;
           }
           id++;
         }
@@ -292,5 +299,6 @@ export function useTerminalTabs() {
     ratioLeaf,
     renameTab,
     setTabColor,
+    updateTab,
   };
 }

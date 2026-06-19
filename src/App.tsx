@@ -949,7 +949,6 @@ function App() {
   const remoteHost = useActiveSshHost();
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
-  const [sftpHost, setSftpHost] = useState<string | null>(null);
   const term = useTerminalTabs();
   const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues" | "sftp">("term");
 
@@ -1067,8 +1066,8 @@ function App() {
       // Terminal tab commands
       { id: "new-tab", label: "New terminal tab", hint: "Ctrl/Cmd+T", run: () => { term.addTab(); setActiveKind("term"); } },
       { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+Shift+W", run: () => term.closeTab(term.activeId) },
-      { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind("term"); } } },
-      { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind("term"); } } },
+      { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind(n.sftpOpen ? "sftp" : "term"); } } },
+      { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind(p.sftpOpen ? "sftp" : "term"); } } },
     ],
     [prefs.aiEnabled, prefs.theme, term],
   );
@@ -1102,7 +1101,7 @@ function App() {
         const next = term.tabs[(current + 1) % term.tabs.length];
         if (next) {
           term.setActiveId(next.id);
-          setActiveKind("term");
+          setActiveKind(next.sftpOpen ? "sftp" : "term");
         }
       } else if (key === "tab" && e.shiftKey) {
         e.preventDefault();
@@ -1110,7 +1109,7 @@ function App() {
         const prev = term.tabs[(current - 1 + term.tabs.length) % term.tabs.length];
         if (prev) {
           term.setActiveId(prev.id);
-          setActiveKind("term");
+          setActiveKind(prev.sftpOpen ? "sftp" : "term");
         }
       } else if (key === "a" && e.shiftKey) {
         e.preventDefault();
@@ -1126,7 +1125,8 @@ function App() {
         if (target) {
           if (target.kind === "term") {
             term.setActiveId(target.id);
-            setActiveKind("term");
+            const tab = term.tabs.find((t) => t.id === target.id);
+            setActiveKind(tab?.sftpOpen ? "sftp" : "term");
           } else {
             setActiveFile(target.path);
             setActiveKind("file");
@@ -1162,26 +1162,30 @@ function App() {
     setOpenPanel(null);
     setActiveKind((k) => (k === "issues" ? "term" : k));
   };
-  const openSftp = (host: string) => {
-    setSftpHost(host);
-    setActiveKind("sftp");
-    setOpenPanel("sftp");
-  };
-  const closeSftp = () => {
-    setOpenPanel(null);
-    setActiveKind((k) => (k === "sftp" ? "term" : k));
+  const selectTerm = (id: number) => {
+    term.setActiveId(id);
+    // Restore SFTP view if this tab has it open
+    const tab = term.tabs.find((t) => t.id === id);
+    console.log("[selectTerm] tab.id=", id, "sftpOpen=", tab?.sftpOpen, "setting activeKind to", tab?.sftpOpen ? "sftp" : "term");
+    setActiveKind(tab?.sftpOpen ? "sftp" : "term");
   };
 
-  const openFile = (path: string, name: string) => {
+  const openSftp = useCallback((host: string) => {
+    term.updateTab(term.activeId, (t) => ({ ...t, sftpHost: host, sftpOpen: true }));
+    setActiveKind("sftp");
+  }, [term]);
+
+  const closeSftp = useCallback(() => {
+    term.updateTab(term.activeId, (t) => ({ ...t, sftpOpen: false }));
+    setActiveKind((k) => (k === "sftp" ? "term" : k));
+  }, [term]);
+
+  const openFile = useCallback((path: string, name: string) => {
     setOpenFiles((prev) => (prev.some((f) => f.path === path) ? prev : [...prev, { path, name, remoteHost }]));
     setActiveFile(path);
     setActiveKind("file");
-  };
+  }, [remoteHost]);
 
-  const selectTerm = (id: number) => {
-    term.setActiveId(id);
-    setActiveKind("term");
-  };
   const selectFile = (path: string) => {
     setActiveFile(path);
     setActiveKind("file");
@@ -1585,21 +1589,25 @@ function App() {
                   </ErrorBoundary>
                 </div>
               )}
-              {/* SFTP layer */}
-              {openPanel === "sftp" && sftpHost && (
-                <div
-                  className={cn(
-                    "absolute inset-0",
-                    activeKind !== "sftp" && "invisible pointer-events-none",
-                    prefs.neonBorderGlow && activeKind === "sftp" && "neon-glow",
-                  )}
-                  aria-hidden={activeKind !== "sftp"}
-                >
-                  <ErrorBoundary>
-                    <SftpView host={sftpHost} onClose={closeSftp} />
-                  </ErrorBoundary>
-                </div>
-              )}
+              {/* SFTP layers — one per tab, only active one visible */}
+              {term.tabs.map((tab) => {
+                console.log("[SFTP render] tab.id=", tab.id, "sftpOpen=", tab.sftpOpen, "activeId=", term.activeId, "activeKind=", activeKind, "visible=", tab.sftpOpen && tab.sftpHost && term.activeId === tab.id && activeKind === "sftp");
+                return tab.sftpOpen && tab.sftpHost ? (
+                  <div
+                    key={tab.id}
+                    className={cn(
+                      "absolute inset-0",
+                      (term.activeId !== tab.id || activeKind !== "sftp") && "invisible pointer-events-none",
+                      prefs.neonBorderGlow && term.activeId === tab.id && activeKind === "sftp" && "neon-glow",
+                    )}
+                    aria-hidden={term.activeId !== tab.id || activeKind !== "sftp"}
+                  >
+                    <ErrorBoundary>
+                      <SftpView host={tab.sftpHost} onClose={closeSftp} />
+                    </ErrorBoundary>
+                  </div>
+                ) : null;
+              })}
             </div>
           </div>
 
