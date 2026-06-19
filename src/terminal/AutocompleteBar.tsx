@@ -38,7 +38,7 @@ export function AutocompleteBar({
             className={cn(
               "flex items-center gap-0 px-2.5 py-1 text-left text-[12px] transition-colors",
               i === selectedIndex
-                ? "bg-primary text-primary-foreground"
+                ? "bg-[#4ade80] text-black"
                 : "text-foreground hover:bg-accent/50"
             )}
           >
