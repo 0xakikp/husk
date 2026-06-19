@@ -136,7 +136,7 @@ export function ConnectionDialog({
     <Modal
       title={existing ? "Edit Connection" : "New SSH Connection"}
       onClose={onClose}
-      className="max-w-lg border border-slate-200 dark:border-white/10 rounded-xl bg-white dark:bg-slate-900/95"
+      className="max-w-lg border border-slate-200 dark:border-white/10 rounded-xl bg-white dark:bg-[#0a0a0a]"
     >
       <div className="flex flex-col gap-4">
         {/* Name */}
@@ -149,7 +149,7 @@ export function ConnectionDialog({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Production Server"
-            className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.name ? "border-red-500" : ""}`}
+            className={`bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.name ? "border-red-500" : ""}`}
           />
           {errors.name && (
             <p className="text-xs text-red-500">{errors.name}</p>
@@ -167,7 +167,7 @@ export function ConnectionDialog({
               value={host}
               onChange={(e) => setHost(e.target.value)}
               placeholder="192.168.1.100 or server.com"
-              className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.host ? "border-red-500" : ""}`}
+              className={`bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.host ? "border-red-500" : ""}`}
             />
             {errors.host && (
               <p className="text-xs text-red-500">{errors.host}</p>
@@ -181,7 +181,7 @@ export function ConnectionDialog({
               id="conn-port"
               value={port}
               onChange={(e) => setPort(e.target.value)}
-              className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.port ? "border-red-500" : ""}`}
+              className={`bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.port ? "border-red-500" : ""}`}
             />
             {errors.port && (
               <p className="text-xs text-red-500">{errors.port}</p>
@@ -199,7 +199,7 @@ export function ConnectionDialog({
             value={user}
             onChange={(e) => setUser(e.target.value)}
             placeholder="root"
-            className={`bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.user ? "border-red-500" : ""}`}
+            className={`bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.user ? "border-red-500" : ""}`}
           />
           {errors.user && (
             <p className="text-xs text-red-500">{errors.user}</p>
@@ -215,7 +215,7 @@ export function ConnectionDialog({
               setAuthType(v)
             }
           >
-            <SelectTrigger className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all h-auto">
+            <SelectTrigger className="bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all h-auto">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -238,7 +238,7 @@ export function ConnectionDialog({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Optional - will prompt if empty"
-              className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+              className="bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
             />
           </div>
         )}
@@ -256,7 +256,7 @@ export function ConnectionDialog({
                   value={privateKeyPath}
                   onChange={(e) => setPrivateKeyPath(e.target.value)}
                   placeholder="~/.ssh/id_rsa"
-                  className={`flex-1 bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.key ? "border-red-500" : ""}`}
+                  className={`flex-1 bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all ${errors.key ? "border-red-500" : ""}`}
                 />
                 <Button
                   variant="outline"
@@ -280,7 +280,7 @@ export function ConnectionDialog({
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                className="bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
               />
             </div>
           </>
@@ -296,7 +296,7 @@ export function ConnectionDialog({
             value={jumpHost}
             onChange={(e) => setJumpHost(e.target.value)}
             placeholder="bastion.example.com"
-            className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+            className="bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
           />
         </div>
 
@@ -310,7 +310,7 @@ export function ConnectionDialog({
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="prod, aws, database"
-            className="bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+            className="bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/50 focus:border-blue-500 transition-all"
           />
         </div>
 
