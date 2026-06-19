@@ -2,6 +2,16 @@
 // that emits OSC 777 (`husk;<verb>;<args>`); the active terminal parses it and
 // dispatches here, and App registers a handler that drives the editor / preview
 // / notifications / diff.
+//
+// IMPORTANT: The `husk` command is a shell FUNCTION injected by Husk into
+// locally-spawned terminals (bash/zsh/fish). It does NOT exist on remote hosts
+// accessed via SSH, docker exec, kubectl exec, etc. — unless you manually add
+// the function to the remote shell's rc file (e.g. ~/.bashrc).
+//
+// For file transfers to remote hosts you don't own, use scp/rsync or Husk's
+// SFTP panel instead. The `husk cp` bridge is designed for hosts where SSH/SFTP
+// is unavailable (serial consoles, containers without SSH, bastion-jumped
+// hosts, etc.) — any connection with a PTY.
 
 export type BridgeCommand =
   | { kind: "open"; path: string }

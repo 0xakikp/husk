@@ -114,13 +114,20 @@ function husk
                 _husk_emit "cp;pull;$src;$dst"
             end
         case "help" "*"
-            echo "Husk — terminal ↔ GUI bridge commands"
+            echo "Husk — terminal ↔ GUI bridge commands (LOCAL ONLY)"
+            echo ""
+            echo "These commands work in terminals spawned by Husk. They do NOT work on"
+            echo "remote hosts accessed via SSH unless you add the husk function to the"
+            echo "remote shell's rc file (e.g. ~/.bashrc). For remote file transfers,"
+            echo "use scp/rsync or Husk's SFTP panel instead."
             echo ""
             echo "  husk open <path>         Open file in editor (images/HTML → preview pane)"
             echo "  husk preview <path|url>  Open path or URL in preview pane"
             echo "  husk notify \"message\"    Send a desktop notification via Husk"
             echo "  husk diff <l> <r>        Open both files in the editor"
-            echo "  husk cp <src> <dst>      Copy file between remote and local (auto direction)"
+            echo "  husk cp <src> <dst>      Copy file via terminal bridge (auto direction)"
+            echo "                           Works: local shells, docker exec, serial consoles"
+            echo "                           Doesn't work: SSH hosts (unless husk is installed)"
             echo "  husk help                Show this help"
     end
 end

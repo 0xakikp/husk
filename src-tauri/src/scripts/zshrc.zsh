@@ -269,13 +269,20 @@ husk() {
       ;;
     help|*)
       cat <<'EOF'
-Husk — terminal ↔ GUI bridge commands
+Husk — terminal ↔ GUI bridge commands (LOCAL ONLY)
+
+These commands work in terminals spawned by Husk. They do NOT work on
+remote hosts accessed via SSH unless you add the husk function to the
+remote shell's rc file (e.g. ~/.bashrc). For remote file transfers,
+use scp/rsync or Husk's SFTP panel instead.
 
   husk open <path>         Open file in editor (images/HTML → preview pane)
   husk preview <path|url>  Open path or URL in preview pane
   husk notify "message"    Send a desktop notification via Husk
   husk diff <l> <r>        Open both files in the editor
-  husk cp <src> <dst>      Copy file between remote and local (auto direction)
+  husk cp <src> <dst>      Copy file via terminal bridge (auto direction)
+                           Works: local shells, docker exec, serial consoles
+                           Doesn't work: SSH hosts (unless husk is installed)
   husk help                Show this help
 EOF
       ;;
