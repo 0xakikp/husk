@@ -97,6 +97,7 @@ export function TerminalView({
         onData: () => scheduleAutoRef.current(),
         onSplit: (dir) => onSplit?.(dir),
         onFocusDirection: (dir) => _onFocusDirection?.(dir),
+        onHistoryOpen: () => openHistory(),
         onKey: (e) => {
           if (e.type !== "keydown" || !autoStateRef.current.visible) return undefined;
           if (e.key === "Tab") {

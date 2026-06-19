@@ -64,6 +64,7 @@ export type TerminalCallbacks = {
   onKey?: (e: KeyboardEvent) => boolean | undefined;
   onSplit?: (dir: "row" | "col") => void;
   onFocusDirection?: (dir: "left" | "right" | "up" | "down") => void;
+  onHistoryOpen?: () => void;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -243,6 +244,7 @@ export async function createSession(
     }
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
       session.historyOpen = true;
+      if (session.active) session.callbacks.onHistoryOpen?.();
       return false;
     }
     if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c" && term.hasSelection()) {
