@@ -75,7 +75,7 @@ export function Modal({
               <span className="text-lg leading-none">×</span>
             </DialogPrimitive.Close>
           </div>
-          <div className="no-scrollbar overflow-y-auto p-8">{children}</div>
+          <div className="no-scrollbar overflow-y-auto p-6">{children}</div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

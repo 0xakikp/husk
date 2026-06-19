@@ -138,7 +138,7 @@ export function ConnectionDialog({
       onClose={onClose}
       className="max-w-lg border border-white/10 rounded-xl bg-[#0a0a0a]"
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 mb-6">
         {/* Name */}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="conn-name" className="text-gray-300 text-sm font-medium">
@@ -315,7 +315,7 @@ export function ConnectionDialog({
         </div>
 
         {/* Color */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 mb-6">
           <Label className="text-gray-300 text-sm font-medium">Color</Label>
           <div className="flex flex-wrap gap-2">
             {colors.map((c) => (
