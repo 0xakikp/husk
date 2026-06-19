@@ -94,6 +94,33 @@ export function TerminalView({
       setSessionActive(leafId, true);
       setSessionCallbacks(leafId, {
         onFocus: () => onFocus?.(),
+        onData: () => scheduleAutoRef.current(),
+        onSplit: (dir) => onSplit?.(dir),
+        onFocusDirection: (dir) => _onFocusDirection?.(dir),
+        onKey: (e) => {
+          if (e.type !== "keydown" || !autoStateRef.current.visible) return undefined;
+          if (e.key === "Tab") {
+            e.preventDefault();
+            acceptAutoRef.current();
+            return false;
+          }
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            navigateAutoRef.current(1);
+            return false;
+          }
+          if (e.key === "ArrowUp") {
+            e.preventDefault();
+            navigateAutoRef.current(-1);
+            return false;
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            dismissAutoRef.current();
+            return false;
+          }
+          return undefined;
+        },
       });
     } else {
       setSessionFocused(leafId, false);
@@ -104,17 +131,19 @@ export function TerminalView({
   // ── Autocomplete ──────────────────────────────────────────────────────────
   const {
     state: autoState,
-    scheduleCheck: _scheduleAutoCheck,
+    stateRef: autoStateRef,
+    scheduleCheck: scheduleAutoCheck,
     accept: acceptAuto,
     navigate: navigateAuto,
     dismiss: dismissAuto,
   } = useAutocomplete(handleRef);
-  void _scheduleAutoCheck; // scheduled by registry onData, not directly here
 
+  const scheduleAutoRef = useRef(scheduleAutoCheck);
   const acceptAutoRef = useRef(acceptAuto);
   const navigateAutoRef = useRef(navigateAuto);
   const dismissAutoRef = useRef(dismissAuto);
   useEffect(() => {
+    scheduleAutoRef.current = scheduleAutoCheck;
     acceptAutoRef.current = acceptAuto;
     navigateAutoRef.current = navigateAuto;
     dismissAutoRef.current = dismissAuto;

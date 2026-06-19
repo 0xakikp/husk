@@ -60,6 +60,10 @@ export type TerminalCallbacks = {
   onCwd?: (cwd: string) => void;
   onExit?: (code: number | null) => void;
   onFocus?: () => void;
+  onData?: () => void;
+  onKey?: (e: KeyboardEvent) => boolean | undefined;
+  onSplit?: (dir: "row" | "col") => void;
+  onFocusDirection?: (dir: "left" | "right" | "up" | "down") => void;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,6 +232,10 @@ export async function createSession(
 
   // ── Key Handler ───────────────────────────────────────────────────────────
   term.attachCustomKeyEventHandler((e) => {
+    // Let TerminalView handle autocomplete keys first
+    const handled = session.callbacks.onKey?.(e);
+    if (handled === false) return false;
+
     if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
       session.searchOpen = true;
       if (session.active) setActiveTerminalSearchOpener(() => { session.searchOpen = true; });
@@ -248,6 +256,26 @@ export async function createSession(
         if (t && session.ptyId != null) void invoke("pty_write", { id: session.ptyId, data: t });
       });
       return false;
+    }
+    // Cmd+D splits right, Cmd+Shift+D splits down. Meta-only (macOS) so we
+    // never clash with Ctrl+D (EOF) on Linux/Windows.
+    if (e.type === "keydown" && e.metaKey && e.key.toLowerCase() === "d") {
+      session.callbacks.onSplit?.(e.shiftKey ? "col" : "row");
+      return false;
+    }
+    // Cmd+Alt+Arrow navigates focus between panes (Hyprland-style)
+    if (e.type === "keydown" && e.metaKey && e.altKey) {
+      const dirMap: Record<string, "left" | "right" | "up" | "down" | undefined> = {
+        ArrowLeft: "left",
+        ArrowRight: "right",
+        ArrowUp: "up",
+        ArrowDown: "down",
+      };
+      const dir = dirMap[e.key];
+      if (dir) {
+        session.callbacks.onFocusDirection?.(dir);
+        return false;
+      }
     }
     return true;
   });
@@ -288,6 +316,8 @@ export async function createSession(
         window.clearTimeout(typingTimer);
         typingTimer = window.setTimeout(() => setTerminalTyping(false), 400);
       }
+      // Trigger autocomplete check
+      session.callbacks.onData?.();
     });
 
     // Resize handler
