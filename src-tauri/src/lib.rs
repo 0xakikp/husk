@@ -14,6 +14,7 @@ use jobs::JobsState;
 use mcp::McpState;
 use pty::PtyState;
 use secrets::SecretsState;
+use sftp::SftpManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -33,6 +34,7 @@ pub fn run() {
         .manage(McpState::default())
         .manage(SecretsState::default())
         .manage(JobsState::default())
+        .manage(SftpManager::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
