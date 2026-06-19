@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   sftpConnect,
   sftpDisconnect,
@@ -13,7 +14,7 @@ import {
 } from "../remote/sftpApi";
 import { cn } from "@/lib/utils";
 import { toast } from "../toast";
-import { getHomeDir, writeBinaryFile } from "../fs";
+import { getHomeDir } from "../fs";
 import { markHostConnected, markHostDisconnected } from "../remote/connectionStore";
 
 interface SftpViewProps {
@@ -43,7 +44,6 @@ export function SftpView({ host, onClose }: SftpViewProps) {
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [mkdirName, setMkdirName] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "grid" | "details">("list");
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
     async (path: string) => {
@@ -112,28 +112,47 @@ export function SftpView({ host, onClose }: SftpViewProps) {
   const handleDownload = async (entry: SftpEntry) => {
     try {
       const home = await getHomeDir();
-      const localPath = `${home}/Downloads/${entry.name}`;
+      // Show save dialog with default filename in Downloads
+      const localPath = await save({
+        defaultPath: `${home}/Downloads/${entry.name}`,
+      });
+      if (!localPath) {
+        setContextMenu(null);
+        return; // User cancelled
+      }
       await sftpDownload(host, entry.path, localPath);
-      toast({ title: `Downloaded ${entry.name}`, variant: "info" });
+      toast({
+        title: `Downloaded ${entry.name}`,
+        message: `Saved to ${localPath}`,
+        variant: "info",
+      });
     } catch (e) {
       toast({ title: String(e), variant: "error" });
     }
     setContextMenu(null);
   };
 
-  const handleUpload = async (files: FileList | null) => {
-    if (!files?.length) return;
+  const handleUpload = async () => {
     try {
       const home = await getHomeDir();
-      for (const file of Array.from(files)) {
-        const localPath = `${home}/.husk-tmp-upload-${file.name}`;
-        // Read file as array buffer and write to temp path
-        const arrayBuffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        await writeBinaryFile(localPath, Array.from(bytes));
-        await sftpUpload(host, localPath, `${cwd}/${file.name}`);
+      // Show open dialog to pick file(s)
+      const selected = await open({
+        multiple: true,
+        defaultPath: home,
+      });
+      if (!selected) return; // User cancelled
+
+      const files = Array.isArray(selected) ? selected : [selected];
+      for (const filePath of files) {
+        const fileName = filePath.split("/").pop() || filePath;
+        const remotePath = cwd === "/" ? `/${fileName}` : `${cwd}/${fileName}`;
+        await sftpUpload(host, filePath, remotePath);
       }
-      toast({ title: `Uploaded ${files.length} file(s)`, variant: "info" });
+      toast({
+        title: `Uploaded ${files.length} file(s)`,
+        message: `To ${cwd}`,
+        variant: "info",
+      });
       load(cwd);
     } catch (e) {
       toast({ title: String(e), variant: "error" });
@@ -193,7 +212,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
           <button
             type="button"
             className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleUpload}
             title="Upload"
           >
             ↑
@@ -555,14 +574,6 @@ export function SftpView({ host, onClose }: SftpViewProps) {
           </div>
         </div>
       )}
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(e) => handleUpload(e.target.files)}
-      />
     </div>
   );
 }
