@@ -7,6 +7,7 @@ import {
   ComputerTerminal02Icon,
   Cancel01Icon,
   PlusSignIcon,
+  PencilEdit01Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { addBookmark, useBookmarks, removeBookmark, type Bookmark } from "./store";
+import { addBookmark, useBookmarks, removeBookmark, updateBookmark, type Bookmark } from "./store";
 import { toast } from "../toast";
 
 export function BookmarksView({
@@ -33,11 +34,21 @@ export function BookmarksView({
   onOpenDirectory?: (path: string) => void;
 }) {
   const bookmarks = useBookmarks();
-  const [showAdd, setShowAdd] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [type, setType] = useState<"directory" | "file" | "command">("directory");
   const [label, setLabel] = useState("");
   const [path, setPath] = useState("");
   const [command, setCommand] = useState("");
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setLabel("");
+    setPath("");
+    setCommand("");
+    setType("directory");
+  };
 
   const handleAdd = () => {
     if (!label.trim()) return;
@@ -51,11 +62,33 @@ export function BookmarksView({
       command: type === "command" ? command.trim() : undefined,
     });
 
-    setShowAdd(false);
-    setLabel("");
-    setPath("");
-    setCommand("");
+    resetForm();
     toast({ title: "Bookmark added", variant: "success" });
+  };
+
+  const startEdit = (b: Bookmark) => {
+    setEditingId(b.id);
+    setType(b.type);
+    setLabel(b.label);
+    setPath(b.path || "");
+    setCommand(b.command || "");
+    setShowForm(true);
+  };
+
+  const handleUpdate = () => {
+    if (!editingId || !label.trim()) return;
+    if (type === "command" && !command.trim()) return;
+    if ((type === "directory" || type === "file") && !path.trim()) return;
+
+    updateBookmark(editingId, {
+      type,
+      label: label.trim(),
+      path: type !== "command" ? path.trim() : undefined,
+      command: type === "command" ? command.trim() : undefined,
+    });
+
+    resetForm();
+    toast({ title: "Bookmark updated", variant: "success" });
   };
 
   const handleRun = (b: Bookmark) => {
@@ -85,10 +118,10 @@ export function BookmarksView({
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Bookmarks
         </h3>
-        {!showAdd && (
+        {!showForm && (
           <button
             type="button"
-            onClick={() => setShowAdd(true)}
+            onClick={() => setShowForm(true)}
             className="rounded p-0.5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-colors"
             title="Add bookmark"
           >
@@ -97,7 +130,7 @@ export function BookmarksView({
         )}
       </div>
 
-      {bookmarks.length === 0 && !showAdd && (
+      {bookmarks.length === 0 && !showForm && (
         <p className="text-muted-foreground text-[11px] text-center py-4">
           No bookmarks. Click + to add directories, files, or commands.
         </p>
@@ -128,9 +161,21 @@ export function BookmarksView({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                startEdit(b);
+              }}
+              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+              title="Edit"
+            >
+              <HugeiconsIcon icon={PencilEdit01Icon} size={9} strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
                 removeBookmark(b.id);
               }}
               className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+              title="Delete"
             >
               <HugeiconsIcon icon={Cancel01Icon} size={9} strokeWidth={2} />
             </button>
@@ -138,8 +183,11 @@ export function BookmarksView({
         ))}
       </div>
 
-      {showAdd && (
+      {showForm && (
         <div className="flex flex-col gap-2 border-t border-border/50 pt-2 mt-2">
+          <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            {editingId ? "Edit Bookmark" : "New Bookmark"}
+          </h4>
           <Select value={type} onValueChange={(v) => setType(v as Bookmark["type"])}>
             <SelectTrigger className="h-7 text-[11px]">
               <SelectValue />
@@ -184,14 +232,18 @@ export function BookmarksView({
           )}
 
           <div className="flex gap-2">
-            <Button size="sm" className="text-[10px] h-6" onClick={handleAdd}>
-              Add
+            <Button
+              size="sm"
+              className="text-[10px] h-6"
+              onClick={editingId ? handleUpdate : handleAdd}
+            >
+              {editingId ? "Update" : "Add"}
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="text-[10px] h-6"
-              onClick={() => setShowAdd(false)}
+              onClick={resetForm}
             >
               Cancel
             </Button>

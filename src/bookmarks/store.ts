@@ -50,6 +50,17 @@ export function removeBookmark(id: string): boolean {
   return true;
 }
 
+export function updateBookmark(
+  id: string,
+  patch: Partial<Omit<Bookmark, "id" | "createdAt">>
+): boolean {
+  const b = bookmarks.find((b) => b.id === id);
+  if (!b) return false;
+  Object.assign(b, patch);
+  save();
+  return true;
+}
+
 export function useBookmarks(): Bookmark[] {
   const [snapshot, setSnapshot] = useState<Bookmark[]>(() => [...bookmarks]);
   useEffect(() => {
