@@ -130,16 +130,48 @@ type TabChipProps = {
   onDrop?: (e: React.DragEvent) => void;
   onDragEnd?: () => void;
   dragOver?: boolean;
+  onMouseDragStart?: () => void;
+  onMouseDragEnter?: () => void;
+  onMouseDragEnd?: () => void;
+  isMouseDragging?: boolean;
   children: React.ReactNode;
 };
 
-function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, children }: TabChipProps) {
+function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, onMouseDragStart, onMouseDragEnter, onMouseDragEnd, isMouseDragging, children }: TabChipProps) {
   const chipRef = useRef<HTMLDivElement>(null);
+  const mouseDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-  // Prevent button from interfering with drag
   const handleCloseClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onClose?.();
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    mouseDownRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (!mouseDownRef.current) return;
+    const dx = e.clientX - mouseDownRef.current.x;
+    const dy = e.clientY - mouseDownRef.current.y;
+    const dt = Date.now() - mouseDownRef.current.time;
+    // If moved more than 5px or held for >300ms, treat as drag start
+    if ((Math.abs(dx) > 5 || Math.abs(dy) > 5) && dt > 300) {
+      onMouseDragStart?.();
+    }
+    mouseDownRef.current = null;
+  };
+
+  const handleMouseEnter = () => {
+    if (isMouseDragging) {
+      onMouseDragEnter?.();
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (isMouseDragging) {
+      onMouseDragEnd?.();
+    }
   };
 
   return (
@@ -154,6 +186,10 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={cn(
         "group relative flex h-6 shrink items-center gap-1 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden border-l-2 select-none",
         onClose ? "pr-1" : "pr-2",
@@ -163,6 +199,7 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
         color,
         dragOver && "ring-1 ring-primary/50 bg-primary/5",
         draggable && "cursor-grab active:cursor-grabbing",
+        isMouseDragging && "opacity-50",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-2">
@@ -227,10 +264,10 @@ function TabBar({
   const tabBarRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
 
-  // Drag-and-drop state (use refs to survive re-renders during drag)
-  const dragRef = useRef<{ kind: "term" | "file"; index: number; path?: string } | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [dragOverFileIndex, setDragOverFileIndex] = useState<number | null>(null);
+  // Mouse-based drag state (more reliable than HTML5 DnD in Tauri/WebKit)
+  const [mouseDrag, setMouseDrag] = useState<{ kind: "term" | "file"; fromIndex: number } | null>(null);
+  const [mouseDragOverIndex, setMouseDragOverIndex] = useState<number | null>(null);
+  const [mouseDragOverFileIndex, setMouseDragOverFileIndex] = useState<number | null>(null);
 
   // Prevent default drag behavior on the tab bar container
   const handleDragOver = (e: React.DragEvent) => {
@@ -327,28 +364,40 @@ function TabBar({
               onDragStart={(e) => {
                 e.dataTransfer.setData("text/plain", `term:${index}`);
                 e.dataTransfer.effectAllowed = "move";
-                dragRef.current = { kind: "term", index };
               }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
-                setDragOverIndex(index);
+                setMouseDragOverIndex(index);
               }}
               onDrop={(e) => {
                 e.preventDefault();
                 const data = e.dataTransfer.getData("text/plain");
-                const fromIndex = data.startsWith("term:") ? parseInt(data.split(":")[1]) : dragRef.current?.index ?? -1;
+                const fromIndex = data.startsWith("term:") ? parseInt(data.split(":")[1]) : -1;
                 if (fromIndex >= 0 && fromIndex !== index) {
                   onMoveTerm(fromIndex, index);
                 }
-                dragRef.current = null;
-                setDragOverIndex(null);
+                setMouseDragOverIndex(null);
               }}
               onDragEnd={() => {
-                dragRef.current = null;
-                setDragOverIndex(null);
+                setMouseDragOverIndex(null);
               }}
-              dragOver={dragOverIndex === index}
+              dragOver={mouseDragOverIndex === index}
+              // Mouse-based drag fallback
+              onMouseDragStart={() => setMouseDrag({ kind: "term", fromIndex: index })}
+              onMouseDragEnter={() => {
+                if (mouseDrag?.kind === "term" && mouseDrag.fromIndex !== index) {
+                  setMouseDragOverIndex(index);
+                }
+              }}
+              onMouseDragEnd={() => {
+                if (mouseDrag?.kind === "term" && mouseDrag.fromIndex !== index && mouseDragOverIndex === index) {
+                  onMoveTerm(mouseDrag.fromIndex, index);
+                }
+                setMouseDrag(null);
+                setMouseDragOverIndex(null);
+              }}
+              isMouseDragging={mouseDrag?.kind === "term" && mouseDrag.fromIndex === index}
             >
               <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={2} className="shrink-0" />
               <span className="truncate">{t.title}</span>
@@ -366,29 +415,41 @@ function TabBar({
             onDragStart={(e) => {
               e.dataTransfer.setData("text/plain", `file:${f.path}`);
               e.dataTransfer.effectAllowed = "move";
-              dragRef.current = { kind: "file", index, path: f.path };
             }}
             onDragOver={(e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
-              setDragOverFileIndex(index);
+              setMouseDragOverFileIndex(index);
             }}
             onDrop={(e) => {
               e.preventDefault();
               const data = e.dataTransfer.getData("text/plain");
-              const fromPath = data.startsWith("file:") ? data.slice(5) : dragRef.current?.path;
-              const fromIndex = fromPath ? openFiles.findIndex((of) => of.path === fromPath) : dragRef.current?.index ?? -1;
+              const fromPath = data.startsWith("file:") ? data.slice(5) : null;
+              const fromIndex = fromPath ? openFiles.findIndex((of) => of.path === fromPath) : -1;
               if (fromIndex >= 0 && fromIndex !== index) {
                 onMoveFile(fromIndex, index);
               }
-              dragRef.current = null;
-              setDragOverFileIndex(null);
+              setMouseDragOverFileIndex(null);
             }}
             onDragEnd={() => {
-              dragRef.current = null;
-              setDragOverFileIndex(null);
+              setMouseDragOverFileIndex(null);
             }}
-            dragOver={dragOverFileIndex === index}
+            dragOver={mouseDragOverFileIndex === index}
+            // Mouse-based drag fallback
+            onMouseDragStart={() => setMouseDrag({ kind: "file", fromIndex: index })}
+            onMouseDragEnter={() => {
+              if (mouseDrag?.kind === "file" && mouseDrag.fromIndex !== index) {
+                setMouseDragOverFileIndex(index);
+              }
+            }}
+            onMouseDragEnd={() => {
+              if (mouseDrag?.kind === "file" && mouseDrag.fromIndex !== index && mouseDragOverFileIndex === index) {
+                onMoveFile(mouseDrag.fromIndex, index);
+              }
+              setMouseDrag(null);
+              setMouseDragOverFileIndex(null);
+            }}
+            isMouseDragging={mouseDrag?.kind === "file" && mouseDrag.fromIndex === index}
           >
             <img src={fileIconUrl(f.name)} className="size-3.5 shrink-0" alt="" />
             <span className="truncate">{f.name}</span>
