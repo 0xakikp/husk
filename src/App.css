@@ -1322,11 +1322,19 @@ button {
 
 /* ── Selection colors ── */
 ::selection {
-  background-color: var(--accent);
+  background-color: #22c55e;
   color: #ffffff;
 }
 ::-moz-selection {
-  background-color: var(--accent);
+  background-color: #22c55e;
+  color: #ffffff;
+}
+[data-theme="dark"] ::selection {
+  background-color: #22c55e;
+  color: #ffffff;
+}
+[data-theme="dark"] ::-moz-selection {
+  background-color: #22c55e;
   color: #ffffff;
 }
 
