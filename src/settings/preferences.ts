@@ -101,7 +101,7 @@ const DEFAULT: Prefs = {
 
   editorFontSize: 13,
   editorTabSize: 2,
-  editorWordWrap: "bounded",
+  editorWordWrap: "on",
   editorMinimap: false,
   editorCursorStyle: "line",
   editorCursorBlink: true,

@@ -40,7 +40,7 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
     fontFamily: fontStack(p.fontFamily),
     fontLigatures: p.editorLigatures,
     minimap: { enabled: p.editorMinimap },
-    wordWrap: p.editorWordWrap,
+    wordWrap: "bounded",
     wrappingStrategy: "advanced",
     scrollBeyondLastColumn: 0,
     lineNumbers: p.editorLineNumbers,
@@ -126,10 +126,6 @@ export function EditorArea({
       automaticLayout: true,
       fixedOverflowWidgets: true,
       padding: { top: 8, bottom: 8 },
-      // Force wrap regardless of saved preferences
-      wordWrap: "bounded",
-      wrappingStrategy: "advanced",
-      scrollBeyondLastColumn: 0,
     });
     editorRef.current = editor;
 
@@ -259,12 +255,7 @@ export function EditorArea({
     const editor = editorRef.current;
     if (!editor) return;
     monaco.editor.setTheme(monacoTheme(prefs));
-    editor.updateOptions({
-      ...editorOptions(prefs),
-      wordWrap: "bounded",
-      wrappingStrategy: "advanced",
-      scrollBeyondLastColumn: 0,
-    });
+    editor.updateOptions(editorOptions(prefs));
     editor.getModel()?.updateOptions({ tabSize: prefs.editorTabSize, insertSpaces: true });
   }, [prefs]);
 
