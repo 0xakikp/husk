@@ -37,6 +37,7 @@ dirs = "5"
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 shellexpand = "3"
 whoami = "2.1.2"
+sentry = "0.48.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

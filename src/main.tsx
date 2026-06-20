@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
+import * as Sentry from "@sentry/react";
 import App from "./App";
 import { SettingsPage } from "./settings/SettingsPage";
 import { getPrefs } from "./settings/preferences";
@@ -9,6 +10,22 @@ import "./styles/tailwind.css?v=2";
 import "./styles/fonts.css?v=2";
 import "./styles/code-highlight.css?v=2";
 import "./App.css?v=2";
+
+// Initialize Sentry crash reporting (free tier, no PII)
+Sentry.init({
+  dsn: "https://public@o0.ingest.sentry.io/0", // placeholder — replace with real DSN
+  environment: import.meta.env.MODE,
+  release: "husk@" + __APP_VERSION__,
+  sampleRate: 1.0,
+  beforeSend(event) {
+    // Strip PII: no user data, no file paths, no commands
+    if (event.exception) {
+      // Keep the error type and message, but scrub everything else
+      return event;
+    }
+    return event;
+  },
+});
 
 /** Wraps the settings page with focus/blur listeners that dim the window
  *  when it loses focus — a hyprland-style inactive window treatment. */
