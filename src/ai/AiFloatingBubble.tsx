@@ -1068,36 +1068,38 @@ function PendingEditItem({ edit }: { edit: PendingEdit }) {
 
   return (
     <div className="rounded border border-border/40 bg-card/50">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
-      >
-        <HugeiconsIcon icon={File01Icon} size={12} className="shrink-0 text-muted-foreground" />
-        <span className="truncate text-[11px] text-foreground">{edit.path.split("/").pop()}</span>
-        <span className="ml-auto text-[10px] text-muted-foreground">{expanded ? "▲" : "▼"}</span>
-      </button>
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-2 text-left flex-1 min-w-0"
+        >
+          <HugeiconsIcon icon={File01Icon} size={12} className="shrink-0 text-muted-foreground" />
+          <span className="truncate text-[11px] text-foreground">{edit.path.split("/").pop()}</span>
+          <span className="text-[10px] text-muted-foreground">{expanded ? "▲" : "▼"}</span>
+        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={accept}
+            className="rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground hover:bg-primary/90"
+          >
+            Apply
+          </button>
+          <button
+            type="button"
+            onClick={reject}
+            className="rounded px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
+          >
+            Reject
+          </button>
+        </div>
+      </div>
       {expanded && (
         <div className="px-2 pb-2">
           <div className="flex flex-col gap-1 text-[10px]">
             <div className="rounded bg-red-500/10 px-1.5 py-1 font-mono text-red-400 line-through whitespace-pre-wrap">{edit.search}</div>
             <div className="rounded bg-green-500/10 px-1.5 py-1 font-mono text-green-400 whitespace-pre-wrap">{edit.replace}</div>
-          </div>
-          <div className="mt-1.5 flex gap-1">
-            <button
-              type="button"
-              onClick={accept}
-              className="rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground hover:bg-primary/90"
-            >
-              Apply
-            </button>
-            <button
-              type="button"
-              onClick={reject}
-              className="rounded px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
-            >
-              Reject
-            </button>
           </div>
         </div>
       )}
