@@ -202,73 +202,98 @@ export function BookmarksView({
         ))}
       </div>
 
-      {showForm && (
-        <div className="flex flex-col gap-2 border-t border-border/50 pt-2 mt-2">
-          <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            {editingId ? "Edit Bookmark" : "New Bookmark"}
-          </h4>
-          <Select value={type} onValueChange={(v) => setType(v as Bookmark["type"])}>
-            <SelectTrigger className="h-7 text-[11px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="directory">Directory</SelectItem>
-              <SelectItem value="file">File</SelectItem>
-              <SelectItem value="command">Command</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div>
-            <Label className="text-[10px]">Label</Label>
-            <Input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g., Project Root"
-              className="h-7 text-[11px]"
-            />
-          </div>
-
-          {type !== "command" ? (
-            <div>
-              <Label className="text-[10px]">Path</Label>
-              <Input
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                placeholder={type === "directory" ? "/Users/akikp/huskv2" : "/Users/akikp/huskv2/README.md"}
-                className="h-7 text-[11px]"
-              />
-            </div>
-          ) : (
-            <div>
-              <Label className="text-[10px]">Command</Label>
-              <Input
-                value={command}
-                onChange={(e) => setCommand(e.target.value)}
-                placeholder="pnpm tauri dev"
-                className="h-7 text-[11px]"
-              />
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              className="text-[10px] h-6"
-              onClick={editingId ? handleUpdate : handleAdd}
+      {showForm &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-[2px] p-4"
+            onClick={() => resetForm()}
+          >
+            <div
+              className="w-full max-w-sm rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
             >
-              {editingId ? "Update" : "Add"}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-[10px] h-6"
-              onClick={resetForm}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
+              {/* Header */}
+              <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+                <span className="text-xs font-medium">
+                  {editingId ? "Edit Bookmark" : "New Bookmark"}
+                </span>
+                <button
+                  type="button"
+                  className="inline-flex size-6 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+                  onClick={() => resetForm()}
+                  aria-label="Close"
+                >
+                  <span className="text-lg leading-none">×</span>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-4 flex flex-col gap-3">
+                <Select value={type} onValueChange={(v) => setType(v as Bookmark["type"])}>
+                  <SelectTrigger className="h-8 text-[11px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="directory">Directory</SelectItem>
+                    <SelectItem value="file">File</SelectItem>
+                    <SelectItem value="command">Command</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[11px] text-foreground font-medium">Label</Label>
+                  <Input
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder="e.g., Project Root"
+                    className="h-8 text-[11px]"
+                  />
+                </div>
+
+                {type !== "command" ? (
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-[11px] text-foreground font-medium">Path</Label>
+                    <Input
+                      value={path}
+                      onChange={(e) => setPath(e.target.value)}
+                      placeholder={type === "directory" ? "/Users/akikp/huskv2" : "/Users/akikp/huskv2/README.md"}
+                      className="h-8 text-[11px]"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-[11px] text-foreground font-medium">Command</Label>
+                    <Input
+                      value={command}
+                      onChange={(e) => setCommand(e.target.value)}
+                      placeholder="pnpm tauri dev"
+                      className="h-8 text-[11px]"
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    className="text-[10px] h-7"
+                    onClick={editingId ? handleUpdate : handleAdd}
+                  >
+                    {editingId ? "Update" : "Add"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-[10px] h-7"
+                    onClick={resetForm}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* View popup — compact card via portal, matches Modal style */}
       {viewing &&
