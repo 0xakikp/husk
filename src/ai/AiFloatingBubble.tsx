@@ -636,7 +636,7 @@ export function AiFloatingBubble({
     <div
       ref={panelRef}
       className={cn(
-        "fixed z-50 flex flex-col overflow-hidden rounded-xl border ai-bubble-animated-border",
+        "fixed z-50 flex flex-col overflow-hidden rounded-xl border",
         dragOver ? "border-primary ring-1 ring-primary/30" : "border-border",
         isDark ? "shadow-2xl shadow-black/40" : "shadow-lg shadow-black/10"
       )}
