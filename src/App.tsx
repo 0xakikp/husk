@@ -61,6 +61,7 @@ import { CiCdDialog } from "./ci-cd/CiCdDialog";
 import { ClipboardDropdown } from "./clipboard/ClipboardDropdown";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
 import { DiffDialog } from "./diff/DiffDialog";
+import { CloudSyncDialog } from "./cloud-sync/CloudSyncDialog";
 import { pickWorkspaceFolder } from "./workspace/store";
 import { SourceControlPanel } from "./git/SourceControlPanel";
 import { GitHistoryDialog } from "./git/GitHistoryDialog";
@@ -678,6 +679,7 @@ function App() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffPaths, setDiffPaths] = useState<{ left: string; right: string } | null>(null);
+  const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
   const [gitHistoryOpen, setGitHistoryOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -1054,6 +1056,7 @@ function App() {
       { id: "github", label: "Open GitHub", run: () => setGithubOpen(true) },
       { id: "cicd", label: "Open CI / CD", run: () => setCicdOpen(true) },
       { id: "diff", label: "Open diff viewer", run: () => { setDiffPaths(null); setDiffOpen(true); } },
+      { id: "cloud-sync", label: "Cloud sync (export/import)", run: () => setCloudSyncOpen(true) },
       { id: "source-control", label: "Open source control", run: () => { cycleSidebarView("source-control"); } },
       { id: "git-history", label: "Open git history", run: () => setGitHistoryOpen(true) },
       { id: "shortcuts", label: "Keyboard shortcuts", run: () => setShortcutsOpen(true) },
@@ -1697,6 +1700,11 @@ function App() {
         <DialogLayer open={previewOpen}>
           {previewOpen && (
             <PreviewDialog initialPath={previewPath} onClose={() => setPreviewOpen(false)} />
+          )}
+        </DialogLayer>
+        <DialogLayer open={cloudSyncOpen}>
+          {cloudSyncOpen && (
+            <CloudSyncDialog open={cloudSyncOpen} onClose={() => setCloudSyncOpen(false)} />
           )}
         </DialogLayer>
         {!prefs.hasSeenWelcome ? <WelcomeDialog /> : null}
