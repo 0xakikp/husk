@@ -1,7 +1,6 @@
 const LS_KEYS = [
   "huskv2.connections",
   "huskv2.bookmarks",
-  "huskv2.snippets",
   "huskv2.sshConfig",
   "huskv2.settings",
 ];

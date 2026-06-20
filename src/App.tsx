@@ -46,7 +46,7 @@ import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
 import { WelcomeDialog } from "./welcome/WelcomeDialog";
 import { CommandPalette, type Command } from "./command-palette/CommandPalette";
-import { SnippetsDropdown } from "./snippets/SnippetsDropdown";
+
 import { ToolsHubDialog } from "./tools-hub/ToolsHubDialog";
 import { ToolsHubView } from "./tools-hub/ToolsHubView";
 import { JobsDialog } from "./jobs/JobsDialog";
@@ -1334,7 +1334,7 @@ function App() {
             <TotpBadge />
           </Button>
           <ClipboardDropdown />
-          <SnippetsDropdown />
+
           {prefs.aiEnabled && (
             <Button
               variant="ghost"

@@ -48,7 +48,7 @@ export function CloudSyncSection() {
         <h2 className="text-sm font-semibold">Cloud Sync</h2>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Export an encrypted blob of all your settings (SSH connections, bookmarks, snippets, preferences) and paste it on another device to sync.
+        Export an encrypted blob of all your settings (SSH connections, bookmarks, preferences) and paste it on another device to sync.
       </p>
 
       <div className="flex gap-2">

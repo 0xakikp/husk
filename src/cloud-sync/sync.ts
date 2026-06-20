@@ -3,7 +3,6 @@ export type CloudSyncData = {
   exportedAt: number;
   connections: unknown[];
   bookmarks: unknown[];
-  snippets: unknown[];
   settings: Record<string, unknown>;
   sshConfig: string;
 };
@@ -13,7 +12,6 @@ const CURRENT_VERSION = 1;
 export function exportSettings(): CloudSyncData {
   const connections = JSON.parse(localStorage.getItem("huskv2.connections") || "[]");
   const bookmarks = JSON.parse(localStorage.getItem("huskv2.bookmarks") || "[]");
-  const snippets = JSON.parse(localStorage.getItem("huskv2.snippets") || "[]");
   const settings = JSON.parse(localStorage.getItem("huskv2.preferences") || "{}");
   const sshConfig = localStorage.getItem("huskv2.sshConfig") || "";
 
@@ -22,7 +20,6 @@ export function exportSettings(): CloudSyncData {
     exportedAt: Date.now(),
     connections,
     bookmarks,
-    snippets,
     settings,
     sshConfig,
   };
@@ -50,13 +47,6 @@ export function importSettings(data: CloudSyncData): { success: boolean; importe
       result.imported.push(`${data.bookmarks.length} bookmarks`);
     }
   } catch (e) { result.errors.push(`Bookmarks: ${e}`); }
-
-  try {
-    if (data.snippets?.length) {
-      localStorage.setItem("huskv2.snippets", JSON.stringify(data.snippets));
-      result.imported.push(`${data.snippets.length} snippets`);
-    }
-  } catch (e) { result.errors.push(`Snippets: ${e}`); }
 
   try {
     if (Object.keys(data.settings || {}).length) {

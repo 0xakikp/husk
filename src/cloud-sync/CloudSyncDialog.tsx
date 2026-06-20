@@ -164,7 +164,6 @@ export function CloudSyncDialog({ open, onClose }: { open: boolean; onClose: () 
             <ul className="list-disc list-inside space-y-0.5">
               <li>SSH connections</li>
               <li>Bookmarks</li>
-              <li>Snippets</li>
               <li>Settings (theme, font, etc.)</li>
               <li>SSH config</li>
             </ul>

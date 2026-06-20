@@ -39,7 +39,6 @@ import {
   SparklesIcon,
   CloudIcon,
   PlusSignIcon,
-  SourceCodeIcon,
   PlayIcon,
   FolderCloudIcon,
   CommandIcon,
@@ -77,7 +76,6 @@ const ICON_MAP: Record<string, typeof Search01Icon> = {
   cicd: FolderCloudIcon,
   diff: FileDiffIcon,
   totp: SecurityCheckIcon,
-  snippets: SourceCodeIcon,
   clipboard: ClipboardIcon,
   "new-file": FileAddIcon,
   "new-terminal": ComputerTerminal02Icon,
@@ -94,7 +92,6 @@ const ICON_MAP: Record<string, typeof Search01Icon> = {
   "open-file": File01Icon,
   "new-tab": PlusSignIcon,
   "run-workflow": PlayIcon,
-  "open-snippets": SourceCodeIcon,
   "open-clipboard": ClipboardIcon,
   "open-totp": SecurityCheckIcon,
   "check-updates": DownloadCircle01Icon,
@@ -116,7 +113,7 @@ function getGroup(id: string, label: string): string {
   if (lower.includes("docker") || lower.includes("k8s") || lower.includes("kubernetes") || lower.includes("terraform") || lower.includes("remotes") || lower.includes("github") || lower.includes("cicd") || lower.includes("aws")) return "Tools";
   if (lower.includes("git") || lower.includes("diff")) return "Git";
   if (lower.includes("explorer") || lower.includes("sidebar") || lower.includes("folder") || lower.includes("file") || lower.includes("zoom")) return "View";
-  if (lower.includes("settings") || lower.includes("workflows") || lower.includes("authenticator") || lower.includes("integrations") || lower.includes("install") || lower.includes("jobs") || lower.includes("totp") || lower.includes("snippets") || lower.includes("clipboard") || lower.includes("terminal") || lower.includes("tab")) return "General";
+  if (lower.includes("settings") || lower.includes("workflows") || lower.includes("authenticator") || lower.includes("integrations") || lower.includes("install") || lower.includes("jobs") || lower.includes("totp") || lower.includes("clipboard") || lower.includes("terminal") || lower.includes("tab")) return "General";
   return "Other";
 }
 
