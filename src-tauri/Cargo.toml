@@ -38,6 +38,7 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 shellexpand = "3"
 whoami = "2.1.2"
 sentry = "0.48.2"
+reqwest = { version = "0.13.4", features = ["json"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

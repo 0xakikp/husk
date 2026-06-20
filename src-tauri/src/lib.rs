@@ -8,6 +8,7 @@ mod sftp;
 mod shell;
 mod shell_history;
 mod shell_init;
+mod tailscale;
 mod vitals;
 mod port_forward;
 
@@ -17,6 +18,7 @@ use pty::PtyState;
 use secrets::SecretsState;
 use sftp::SftpManager;
 use port_forward::PortForwardManager;
+use tailscale::TailscaleState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -38,6 +40,7 @@ pub fn run() {
         .manage(JobsState::default())
         .manage(SftpManager::default())
         .manage(PortForwardManager::new())
+        .manage(TailscaleState::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -92,7 +95,12 @@ pub fn run() {
             vitals::system_vitals,
             port_forward::port_forward_start,
             port_forward::port_forward_stop,
-            port_forward::port_forward_list
+            port_forward::port_forward_list,
+            tailscale::tailscale_list_devices,
+            tailscale::tailscale_test_connection,
+            tailscale::tailscale_set_prefs,
+            tailscale::tailscale_get_prefs,
+            tailscale::tailscale_generate_ssh_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

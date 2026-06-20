@@ -13,6 +13,7 @@ import {
   Search01Icon,
   CollectionsBookmarkIcon,
   FileEditIcon,
+  CloudIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,9 @@ import { addBookmark, useBookmarks, removeBookmark, updateBookmark, type Bookmar
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import { NotesView } from "../notes/NotesView";
+import { TailscalePanel } from "../tailscale/TailscalePanel";
+import { TailscaleSettingsDialog } from "../tailscale/TailscaleSettingsDialog";
+import type { TailscaleDevice } from "../tailscale/api";
 
 export function BookmarksView({
   inline,
@@ -29,15 +33,17 @@ export function BookmarksView({
   onTypeCommand,
   onOpenFile,
   onOpenDirectory,
+  onTailscaleConnect,
 }: {
   inline?: boolean;
   onRunCommand?: (cmd: string) => void;
   onTypeCommand?: (cmd: string) => void;
   onOpenFile?: (path: string) => void;
   onOpenDirectory?: (path: string) => void;
+  onTailscaleConnect?: (device: TailscaleDevice) => void;
 }) {
   const bookmarks = useBookmarks();
-  const [tab, setTab] = useState<"bookmarks" | "notes">("bookmarks");
+  const [tab, setTab] = useState<"bookmarks" | "notes" | "tailscale">("bookmarks");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Bookmark | null>(null);
@@ -48,6 +54,7 @@ export function BookmarksView({
   const [label, setLabel] = useState("");
   const [path, setPath] = useState("");
   const [command, setCommand] = useState("");
+  const [tailscaleSettingsOpen, setTailscaleSettingsOpen] = useState(false);
 
   const resetForm = () => {
     setShowForm(false);
@@ -173,9 +180,27 @@ export function BookmarksView({
           <HugeiconsIcon icon={FileEditIcon} size={10} />
           Notes
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("tailscale")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+            tab === "tailscale"
+              ? "bg-card text-foreground shadow-sm border border-border/50"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <HugeiconsIcon icon={CloudIcon} size={10} />
+          Tailscale
+        </button>
       </div>
 
-      {tab === "notes" ? (
+      {tab === "tailscale" ? (
+        <TailscalePanel
+          onConnect={(device) => onTailscaleConnect?.(device)}
+          onOpenSettings={() => setTailscaleSettingsOpen(true)}
+        />
+      ) : tab === "notes" ? (
         <NotesView inline={inline} onOpenFile={onOpenFile} />
       ) : (
         <>
@@ -406,6 +431,10 @@ export function BookmarksView({
           </div>,
           document.body
         )}
+
+      {tailscaleSettingsOpen && (
+        <TailscaleSettingsDialog onClose={() => setTailscaleSettingsOpen(false)} />
+      )}
 
       {/* View popup — compact card via portal, matches Modal style */}
       {viewing &&

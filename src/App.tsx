@@ -1609,6 +1609,12 @@ function App() {
                       onOpenDirectory={(path) => {
                         typeInActiveTerminal(`cd "${path}"`);
                       }}
+                      onTailscaleConnect={(device) => {
+                        // Type the Tailscale SSH command in the active terminal
+                        const sshUser = device.user || "root";
+                        const cmd = `ssh ${sshUser}@${device.ipv4}`;
+                        typeInActiveTerminal(cmd);
+                      }}
                     />
                   ) : null}
                 </div>
