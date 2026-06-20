@@ -34,7 +34,7 @@ function buildModel(cfg: ChatConfig) {
       const resolvedModel = model.replace(/^moonshotai\//, "");
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
-        console.log("[AI] buildModel →", { providerId: provider.id, rawModel: model, resolvedModel, baseURL: baseURL || provider.baseURL });
+
       }
       return createOpenAICompatible({
         name: provider.id,

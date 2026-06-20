@@ -195,7 +195,7 @@ export function useAiBubbleChat(tabId?: number) {
       const modelId = cfg.model || agent.model || provider.defaultModel;
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
-        console.log("[AI] sending →", { provider: provider.id, model: modelId, hasKey: !!apiKey, baseURL: cfg.baseURL || provider.baseURL });
+
       }
 
       try {
