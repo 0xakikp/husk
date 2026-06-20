@@ -134,8 +134,17 @@ type TabChipProps = {
 };
 
 function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, children }: TabChipProps) {
+  const chipRef = useRef<HTMLDivElement>(null);
+
+  // Prevent button from interfering with drag
+  const handleCloseClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClose?.();
+  };
+
   return (
     <div
+      ref={chipRef}
       data-active-tab={active ? "true" : undefined}
       onClick={onClick}
       onContextMenu={onContextMenu}
@@ -146,7 +155,7 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       className={cn(
-        "group relative flex h-6 shrink items-center gap-1.5 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden border-l-2 select-none",
+        "group relative flex h-6 shrink items-center gap-1 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden border-l-2 select-none",
         onClose ? "pr-1" : "pr-2",
         active ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
         animate && "animate-tab-slide-in",
@@ -156,21 +165,20 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
         draggable && "cursor-grab active:cursor-grabbing",
       )}
     >
-      <div className="flex min-w-0 items-center gap-1.5 pl-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-2">
         {children}
       </div>
       {onClose ? (
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           aria-label="Close tab"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+          onClick={handleCloseClick}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
         >
           <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
-        </button>
+        </div>
       ) : null}
     </div>
   );
@@ -218,8 +226,9 @@ function TabBar({
   const canClose = termTabs.length + openFiles.length > 1;
   const tabBarRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
-  const [draggingTerm, setDraggingTerm] = useState<number | null>(null);
-  const [draggingFile, setDraggingFile] = useState<string | null>(null);
+
+  // Drag-and-drop state (use refs to survive re-renders during drag)
+  const dragRef = useRef<{ kind: "term" | "file"; index: number; path?: string } | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [dragOverFileIndex, setDragOverFileIndex] = useState<number | null>(null);
 
@@ -318,7 +327,7 @@ function TabBar({
               onDragStart={(e) => {
                 e.dataTransfer.setData("text/plain", `term:${index}`);
                 e.dataTransfer.effectAllowed = "move";
-                setDraggingTerm(index);
+                dragRef.current = { kind: "term", index };
               }}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -328,15 +337,15 @@ function TabBar({
               onDrop={(e) => {
                 e.preventDefault();
                 const data = e.dataTransfer.getData("text/plain");
-                const fromIndex = data.startsWith("term:") ? parseInt(data.split(":")[1]) : draggingTerm;
-                if (fromIndex !== null && fromIndex !== index) {
+                const fromIndex = data.startsWith("term:") ? parseInt(data.split(":")[1]) : dragRef.current?.index ?? -1;
+                if (fromIndex >= 0 && fromIndex !== index) {
                   onMoveTerm(fromIndex, index);
                 }
-                setDraggingTerm(null);
+                dragRef.current = null;
                 setDragOverIndex(null);
               }}
               onDragEnd={() => {
-                setDraggingTerm(null);
+                dragRef.current = null;
                 setDragOverIndex(null);
               }}
               dragOver={dragOverIndex === index}
@@ -357,7 +366,7 @@ function TabBar({
             onDragStart={(e) => {
               e.dataTransfer.setData("text/plain", `file:${f.path}`);
               e.dataTransfer.effectAllowed = "move";
-              setDraggingFile(f.path);
+              dragRef.current = { kind: "file", index, path: f.path };
             }}
             onDragOver={(e) => {
               e.preventDefault();
@@ -367,16 +376,16 @@ function TabBar({
             onDrop={(e) => {
               e.preventDefault();
               const data = e.dataTransfer.getData("text/plain");
-              const fromPath = data.startsWith("file:") ? data.slice(5) : draggingFile;
-              const fromIndex = openFiles.findIndex((of) => of.path === fromPath);
-              if (fromIndex !== -1 && fromIndex !== index) {
+              const fromPath = data.startsWith("file:") ? data.slice(5) : dragRef.current?.path;
+              const fromIndex = fromPath ? openFiles.findIndex((of) => of.path === fromPath) : dragRef.current?.index ?? -1;
+              if (fromIndex >= 0 && fromIndex !== index) {
                 onMoveFile(fromIndex, index);
               }
-              setDraggingFile(null);
+              dragRef.current = null;
               setDragOverFileIndex(null);
             }}
             onDragEnd={() => {
-              setDraggingFile(null);
+              dragRef.current = null;
               setDragOverFileIndex(null);
             }}
             dragOver={dragOverFileIndex === index}
