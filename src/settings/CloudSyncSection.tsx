@@ -41,68 +41,71 @@ export function CloudSyncSection() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-5">
+      {/* Header */}
       <div className="flex items-center gap-2">
         <HugeiconsIcon icon={CloudUploadIcon} size={16} className="text-primary" />
         <h2 className="text-sm font-semibold">Cloud Sync</h2>
       </div>
 
-      <div className="flex flex-col gap-5">
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Export an encrypted blob of all your settings (SSH connections, bookmarks, preferences) and paste it on another device to sync.
-        </p>
+      {/* Description */}
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Export an encrypted blob of all your settings (SSH connections, bookmarks, preferences) and paste it on another device to sync.
+      </p>
 
-        <div className="flex flex-row gap-3">
-          <button
-            type="button"
-            onClick={() => setMode("export")}
-            className={`flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-md transition ${
-              mode === "export"
-                ? "bg-primary text-primary-foreground"
-                : "bg-white/5 text-gray-300 hover:text-white hover:bg-white/10"
-            }`}
-          >
-            <HugeiconsIcon icon={Upload02Icon} size={12} />
-            Export
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("import")}
-            className={`flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-md transition ${
-              mode === "import"
-                ? "bg-primary text-primary-foreground"
-                : "bg-white/5 text-gray-300 hover:text-white hover:bg-white/10"
-            }`}
-          >
-            <HugeiconsIcon icon={Download02Icon} size={12} />
-            Import
-          </button>
-        </div>
+      {/* Mode toggle */}
+      <div className="flex flex-row gap-3">
+        <button
+          type="button"
+          onClick={() => setMode("export")}
+          className={`flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-md transition ${
+            mode === "export"
+              ? "bg-primary text-primary-foreground"
+              : "bg-white/5 text-gray-300 hover:text-white hover:bg-white/10"
+          }`}
+        >
+          <HugeiconsIcon icon={Upload02Icon} size={12} />
+          Export
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("import")}
+          className={`flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-md transition ${
+            mode === "import"
+              ? "bg-primary text-primary-foreground"
+              : "bg-white/5 text-gray-300 hover:text-white hover:bg-white/10"
+          }`}
+        >
+          <HugeiconsIcon icon={Download02Icon} size={12} />
+          Import
+        </button>
+      </div>
 
-        <div className="flex flex-col gap-2">
+      {/* Form fields — all same width, flush left */}
+      <div className="flex flex-col gap-4 max-w-md">
+        {/* Passphrase */}
+        <div className="flex flex-col gap-1.5">
           <Label className="text-[11px] text-foreground font-medium">Passphrase</Label>
-          <div className="max-w-sm">
-            <Input
-              type="password"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              placeholder="Min 8 characters"
-              className="h-8 text-[11px]"
-            />
-          </div>
+          <Input
+            type="password"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            placeholder="Min 8 characters"
+            className="h-8 text-[11px]"
+          />
         </div>
 
         {mode === "export" ? (
-          <div className="flex flex-col gap-3">
+          <>
             <button
               type="button"
               onClick={handleExport}
-              className="self-start bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
+              className="w-fit bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
             >
               Generate Encrypted Blob
             </button>
             {blob && (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1.5">
                 <Label className="text-[11px] text-muted-foreground">Encrypted Blob (copy this)</Label>
                 <Textarea
                   value={blob}
@@ -116,10 +119,10 @@ export function CloudSyncSection() {
                 />
               </div>
             )}
-          </div>
+          </>
         ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2">
+          <>
+            <div className="flex flex-col gap-1.5">
               <Label className="text-[11px] text-muted-foreground">Encrypted Blob (paste here)</Label>
               <Textarea
                 value={blob}
@@ -131,11 +134,11 @@ export function CloudSyncSection() {
             <button
               type="button"
               onClick={handleImport}
-              className="self-start bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
+              className="w-fit bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
             >
               Import & Apply
             </button>
-          </div>
+          </>
         )}
       </div>
     </div>
