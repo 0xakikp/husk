@@ -11,6 +11,8 @@ import {
   ViewIcon,
   Copy01Icon,
   Search01Icon,
+  CollectionsBookmarkIcon,
+  FileEditIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { addBookmark, useBookmarks, removeBookmark, updateBookmark, type Bookmark } from "./store";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
+import { NotesView } from "../notes/NotesView";
 
 export function BookmarksView({
   inline,
@@ -34,6 +37,7 @@ export function BookmarksView({
   onOpenDirectory?: (path: string) => void;
 }) {
   const bookmarks = useBookmarks();
+  const [tab, setTab] = useState<"bookmarks" | "notes">("bookmarks");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Bookmark | null>(null);
@@ -141,128 +145,164 @@ export function BookmarksView({
 
   return (
     <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
-      {/* Header row: title + search icon + add icon, all inline */}
-      <div className="flex items-center gap-1 mb-2">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex-1 truncate">
+      {/* Tab toggle */}
+      <div className="flex rounded-lg border border-border/50 bg-muted/30 p-0.5 mb-2">
+        <button
+          type="button"
+          onClick={() => setTab("bookmarks")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+            tab === "bookmarks"
+              ? "bg-card text-foreground shadow-sm border border-border/50"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <HugeiconsIcon icon={CollectionsBookmarkIcon} size={10} />
           Bookmarks
-        </h3>
-        {bookmarks.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setSearchActive(true)}
-            className={cn(
-              "inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors",
-              searchActive && "border-border/70 text-foreground"
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("notes")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+            tab === "notes"
+              ? "bg-card text-foreground shadow-sm border border-border/50"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <HugeiconsIcon icon={FileEditIcon} size={10} />
+          Notes
+        </button>
+      </div>
+
+      {tab === "notes" ? (
+        <NotesView inline={inline} />
+      ) : (
+        <>
+          {/* Header row: title + search icon + add icon, all inline */}
+          <div className="flex items-center gap-1 mb-2">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex-1 truncate">
+              Bookmarks
+            </h3>
+            {bookmarks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSearchActive(true)}
+                className={cn(
+                  "inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors",
+                  searchActive && "border-border/70 text-foreground"
+                )}
+                title="Filter bookmarks"
+              >
+                <HugeiconsIcon icon={Search01Icon} size={10} />
+              </button>
             )}
-            title="Filter bookmarks"
-          >
-            <HugeiconsIcon icon={Search01Icon} size={10} />
-          </button>
-        )}
-        {!showForm && (
-          <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
-            title="Add bookmark"
-          >
-            <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
-          </button>
-        )}
-      </div>
-
-      {/* Search input — inline, replaces the icon when active */}
-      {searchActive && bookmarks.length > 0 && (
-        <div className="relative mb-2">
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={9}
-            className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onBlur={() => {
-              if (!search) setSearchActive(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setSearch("");
-                setSearchActive(false);
-              }
-            }}
-            placeholder=""
-            className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-1.5 text-[10px] text-foreground outline-none focus:border-border/70"
-            autoFocus
-          />
-        </div>
-      )}
-
-      {filtered.length === 0 && !showForm && (
-        <p className="text-muted-foreground text-[11px] text-center py-4">
-          {search ? "No matches." : "No bookmarks. Click + to add."}
-        </p>
-      )}
-
-      <div className="flex flex-col gap-1 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {filtered.map((b) => (
-          <div
-            key={b.id}
-            className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 transition-colors hover:border-border/40 cursor-pointer"
-            onClick={() => handleRun(b)}
-            title={b.path || b.command}
-          >
-            <HugeiconsIcon
-              icon={getIcon(b)}
-              size={12}
-              className="text-muted-foreground shrink-0"
-            />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-[11px] font-medium text-foreground">
-                {b.label}
-              </span>
-              <span className="truncate text-[9px] text-muted-foreground">
-                {b.path || b.command}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewing(b);
-              }}
-              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
-              title="View"
-            >
-              <HugeiconsIcon icon={ViewIcon} size={9} strokeWidth={2} />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                startEdit(b);
-              }}
-              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
-              title="Edit"
-            >
-              <HugeiconsIcon icon={PencilEdit01Icon} size={9} strokeWidth={2} />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeBookmark(b.id);
-              }}
-              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
-              title="Delete"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={9} strokeWidth={2} />
-            </button>
+            {!showForm && (
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
+                title="Add bookmark"
+              >
+                <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
+              </button>
+            )}
           </div>
-        ))}
-      </div>
+
+          {/* Search input — inline, replaces the icon when active */}
+          {searchActive && bookmarks.length > 0 && (
+            <div className="relative mb-2">
+              <HugeiconsIcon
+                icon={Search01Icon}
+                size={9}
+                className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onBlur={() => {
+                  if (!search) setSearchActive(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearch("");
+                    setSearchActive(false);
+                  }
+                }}
+                placeholder=""
+                className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-1.5 text-[10px] text-foreground outline-none focus:border-border/70"
+                autoFocus
+              />
+            </div>
+          )}
+
+          {filtered.length === 0 && !showForm && (
+            <p className="text-muted-foreground text-[11px] text-center py-4">
+              {search ? "No matches." : "No bookmarks. Click + to add."}
+            </p>
+          )}
+
+          <div className="flex flex-col gap-1 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {filtered.map((b) => (
+              <div
+                key={b.id}
+                className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 transition-colors hover:border-border/40 cursor-pointer"
+                onClick={() => handleRun(b)}
+                title={b.path || b.command}
+              >
+                <HugeiconsIcon
+                  icon={getIcon(b)}
+                  size={12}
+                  className="text-muted-foreground shrink-0"
+                />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[11px] font-medium text-foreground">
+                    {b.label}
+                  </span>
+                  <span className="truncate text-[9px] text-muted-foreground">
+                    {b.path || b.command}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setViewing(b);
+                  }}
+                  className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+                  title="View"
+                >
+                  <HugeiconsIcon icon={ViewIcon} size={9} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEdit(b);
+                  }}
+                  className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+                  title="Edit"
+                >
+                  <HugeiconsIcon icon={PencilEdit01Icon} size={9} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeBookmark(b.id);
+                  }}
+                  className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+                  title="Delete"
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} size={9} strokeWidth={2} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {showForm &&
         createPortal(
