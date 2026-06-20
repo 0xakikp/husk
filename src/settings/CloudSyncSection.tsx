@@ -45,7 +45,7 @@ export function CloudSyncSection() {
       {/* Header */}
       <div className="flex items-center gap-2">
         <HugeiconsIcon icon={CloudUploadIcon} size={16} className="text-primary" />
-        <h2 className="text-sm font-semibold">Cloud Sync</h2>
+        <h2 className="text-sm font-semibold text-primary">Cloud Sync</h2>
       </div>
 
       {/* Description */}
