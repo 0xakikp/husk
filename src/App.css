@@ -570,7 +570,11 @@ button {
 }
 
 .enode.active {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent) !important;
+  color: var(--accent) !important;
+}
+
+.efile.efile-modified {
   color: var(--accent);
 }
 
@@ -1322,20 +1326,19 @@ button {
 
 /* ── Selection colors ── */
 ::selection {
-  background-color: #22c55e;
-  color: #ffffff;
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
 }
 ::-moz-selection {
-  background-color: #22c55e;
-  color: #ffffff;
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
 }
-[data-theme="dark"] ::selection {
-  background-color: #22c55e;
-  color: #ffffff;
-}
-[data-theme="dark"] ::-moz-selection {
-  background-color: #22c55e;
-  color: #ffffff;
+.enode::selection,
+.enode::-moz-selection,
+.enode *::selection,
+.enode *::-moz-selection {
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
 }
 
 .resize-handle {
