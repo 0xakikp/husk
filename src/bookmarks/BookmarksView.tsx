@@ -52,12 +52,24 @@ export function BookmarksView({
     setType("directory");
   };
 
+  const fuzzyMatch = (text: string, query: string): boolean => {
+    const t = text.toLowerCase();
+    const q = query.toLowerCase().replace(/\s+/g, "");
+    let i = 0;
+    for (const char of q) {
+      i = t.indexOf(char, i);
+      if (i === -1) return false;
+      i++;
+    }
+    return true;
+  };
+
   const filtered = search.trim()
     ? bookmarks.filter(
         (b) =>
-          b.label.toLowerCase().includes(search.toLowerCase()) ||
-          (b.path || "").toLowerCase().includes(search.toLowerCase()) ||
-          (b.command || "").toLowerCase().includes(search.toLowerCase())
+          fuzzyMatch(b.label, search) ||
+          fuzzyMatch(b.path || "", search) ||
+          fuzzyMatch(b.command || "", search)
       )
     : bookmarks;
 
