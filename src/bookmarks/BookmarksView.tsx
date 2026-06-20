@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { addBookmark, useBookmarks, removeBookmark, updateBookmark, type Bookmark } from "./store";
 import { toast } from "../toast";
+import { createPortal } from "react-dom";
 
 export function BookmarksView({
   inline,
@@ -269,95 +270,97 @@ export function BookmarksView({
         </div>
       )}
 
-      {/* View popup — centered modal overlay */}
-      {viewing && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={() => setViewing(null)}
-        >
+      {/* View popup — centered modal overlay via portal */}
+      {viewing &&
+        createPortal(
           <div
-            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setViewing(null)}
           >
-            <div className="flex items-center gap-2 mb-3">
-              <HugeiconsIcon
-                icon={getIcon(viewing)}
-                size={14}
-                className="text-muted-foreground"
-              />
-              <h4 className="text-sm font-semibold">{viewing.label}</h4>
-            </div>
+            <div
+              className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <HugeiconsIcon
+                  icon={getIcon(viewing)}
+                  size={14}
+                  className="text-muted-foreground"
+                />
+                <h4 className="text-sm font-semibold">{viewing.label}</h4>
+              </div>
 
-            <div className="rounded-md bg-muted/30 border border-border/30 p-2 mb-3">
-              <code className="text-[11px] font-mono break-all text-foreground">
-                {viewing.path || viewing.command}
-              </code>
-            </div>
+              <div className="rounded-md bg-muted/30 border border-border/30 p-2 mb-3">
+                <code className="text-[11px] font-mono break-all text-foreground">
+                  {viewing.path || viewing.command}
+                </code>
+              </div>
 
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                className="text-[10px] h-7 gap-1"
-                onClick={() => {
-                  const text = viewing.path || viewing.command || "";
-                  navigator.clipboard.writeText(text);
-                  toast({ title: "Copied to clipboard", variant: "success" });
-                }}
-              >
-                <HugeiconsIcon icon={Copy01Icon} size={10} />
-                Copy
-              </Button>
-              {viewing.type === "command" && onTypeCommand && (
+              <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="text-[10px] h-7"
+                  className="text-[10px] h-7 gap-1"
                   onClick={() => {
-                    onTypeCommand(viewing.command || "");
-                    setViewing(null);
+                    const text = viewing.path || viewing.command || "";
+                    navigator.clipboard.writeText(text);
+                    toast({ title: "Copied to clipboard", variant: "success" });
                   }}
                 >
-                  Type in terminal
+                  <HugeiconsIcon icon={Copy01Icon} size={10} />
+                  Copy
                 </Button>
-              )}
-              {viewing.type === "directory" && onOpenDirectory && (
+                {viewing.type === "command" && onTypeCommand && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-[10px] h-7"
+                    onClick={() => {
+                      onTypeCommand(viewing.command || "");
+                      setViewing(null);
+                    }}
+                  >
+                    Type in terminal
+                  </Button>
+                )}
+                {viewing.type === "directory" && onOpenDirectory && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-[10px] h-7"
+                    onClick={() => {
+                      onOpenDirectory(viewing.path || "");
+                      setViewing(null);
+                    }}
+                  >
+                    cd to directory
+                  </Button>
+                )}
+                {viewing.type === "file" && onOpenFile && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-[10px] h-7"
+                    onClick={() => {
+                      onOpenFile(viewing.path || "");
+                      setViewing(null);
+                    }}
+                  >
+                    Open file
+                  </Button>
+                )}
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="text-[10px] h-7"
-                  onClick={() => {
-                    onOpenDirectory(viewing.path || "");
-                    setViewing(null);
-                  }}
+                  variant="ghost"
+                  className="text-[10px] h-7 ml-auto"
+                  onClick={() => setViewing(null)}
                 >
-                  cd to directory
+                  Close
                 </Button>
-              )}
-              {viewing.type === "file" && onOpenFile && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-[10px] h-7"
-                  onClick={() => {
-                    onOpenFile(viewing.path || "");
-                    setViewing(null);
-                  }}
-                >
-                  Open file
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-[10px] h-7 ml-auto"
-                onClick={() => setViewing(null)}
-              >
-                Close
-              </Button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
