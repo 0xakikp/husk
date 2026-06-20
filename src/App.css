@@ -2724,7 +2724,6 @@ button {
 .ai-bubble-animated-border {
   position: relative;
   border: none !important;
-  overflow: hidden;
 }
 .ai-bubble-animated-border::before {
   content: "";
