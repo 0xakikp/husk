@@ -69,13 +69,24 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       const mainRect = main.getBoundingClientRect();
       const threshold = mainRect.top + 80; // 80 px below top of <main>
       let current: SectionId = "about";
+      let lastVisible: SectionId | null = null;
       for (const s of SECTIONS) {
         const elId = s.id === "cloudSync" ? "cloud-sync" : `settings-section-${s.id}`;
         const el = document.getElementById(elId);
         if (!el) continue;
-        if (el.getBoundingClientRect().top <= threshold) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top <= threshold) {
           current = s.id;
         }
+        // If element is visible in viewport (even partially), track it as last visible
+        if (rect.bottom > mainRect.top && rect.top < mainRect.bottom) {
+          lastVisible = s.id;
+        }
+      }
+      // If we're near the bottom and last visible section is cloudSync, force it active
+      const nearBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 100;
+      if (nearBottom && lastVisible === "cloudSync") {
+        current = "cloudSync";
       }
       setActiveSection(current);
     };
@@ -102,7 +113,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background text-foreground select-none">
       <div className="flex h-8 shrink-0 items-center justify-between bg-background px-3">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SECTIONS.map((s) => {
             const active = activeSection === s.id;
             return (
@@ -111,7 +122,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 type="button"
                 onClick={() => scrollToSection(s.id)}
                 className={cn(
-                  "relative h-6 rounded-md px-2.5 text-[11.5px] transition-colors",
+                  "relative h-6 rounded-md px-2.5 text-[11.5px] transition-colors shrink-0",
                   active
                     ? "text-foreground font-medium"
                     : "text-muted-foreground hover:text-foreground",

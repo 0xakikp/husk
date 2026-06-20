@@ -79,8 +79,8 @@ export function CloudSyncSection() {
           </button>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-[11px]">Passphrase</Label>
+        <div className="flex flex-col gap-1.5 max-w-md">
+          <Label className="text-[11px] whitespace-nowrap">Passphrase</Label>
           <Input
             type="password"
             value={passphrase}
