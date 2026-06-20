@@ -119,7 +119,9 @@ export function RemotesView({
     if (conn.jumpHost) {
       cmd += ` -J ${shq(conn.jumpHost)}`;
     }
-    cmd += ` ${shq(`${conn.user}@${conn.host}`)}`;
+    // Build target: user@host if user exists, otherwise just host
+    const target = conn.user ? `${conn.user}@${conn.host}` : conn.host;
+    cmd += ` ${shq(target)}`;
 
     if (runInActiveTerminal(cmd)) {
       toast({ title: `ssh ${conn.name}`, variant: "info" });
