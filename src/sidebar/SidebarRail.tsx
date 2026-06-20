@@ -7,7 +7,7 @@ import {
   PlayListIcon,
   PuzzleIcon,
   CommandIcon,
-  StarIcon,
+  Bookmark02Icon,
 } from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -61,7 +61,7 @@ export function SidebarRail({
     { kind: "view", id: "source-control", label: "Source Control", icon: FolderGitTwoIcon, badge: changedCount },
     { kind: "view", id: "remotes", label: "Remotes", icon: DatabaseIcon },
     { kind: "view", id: "workflows", label: "Workflows", icon: PlayListIcon },
-    { kind: "view", id: "bookmarks", label: "Bookmarks", icon: StarIcon },
+    { kind: "view", id: "bookmarks", label: "Bookmarks", icon: Bookmark02Icon },
     { kind: "view", id: "tools-hub", label: "Integrations", icon: PuzzleIcon },
     { kind: "action", id: "command-palette", label: "Command Palette", icon: CommandIcon, onTrigger: onCommandPalette },
   ];
