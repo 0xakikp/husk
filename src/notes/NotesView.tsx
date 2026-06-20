@@ -20,6 +20,8 @@ import {
   deleteNote,
   ensureNotesDirectory,
   isNoteFile,
+  getLastViewedNote,
+  setLastViewedNote,
   type FileNode,
 } from "./store";
 import { toast } from "../toast";
@@ -40,6 +42,22 @@ export function NotesView({
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+
+  /* ── Helpers ─────────────────────────────────────────────────────── */
+
+  function getParentPaths(filePath: string, rootDir: string): string[] {
+    const parents: string[] = [];
+    let current = filePath;
+    while (current !== rootDir && current.length > rootDir.length) {
+      const lastSlash = current.lastIndexOf("/");
+      if (lastSlash === -1) break;
+      current = current.substring(0, lastSlash);
+      if (current !== rootDir) {
+        parents.unshift(current);
+      }
+    }
+    return parents;
+  }
   const [createType, setCreateType] = useState<"file" | "folder">("file");
   const [createName, setCreateName] = useState("");
   const [createDir, setCreateDir] = useState("");
@@ -52,6 +70,22 @@ export function NotesView({
     notesDirRef.current = dir;
     const nodes = await loadNotesTree(dir);
     setTree(nodes);
+    
+    // Auto-expand to last viewed note
+    const lastViewed = getLastViewedNote();
+    if (lastViewed) {
+      const parentPaths = getParentPaths(lastViewed, dir);
+      if (parentPaths.length > 0) {
+        setExpanded((prev) => {
+          const next = new Set(prev);
+          for (const p of parentPaths) {
+            next.add(p);
+          }
+          return next;
+        });
+      }
+    }
+    
     setLoading(false);
   }, []);
 
@@ -72,6 +106,7 @@ export function NotesView({
   };
 
   const handleOpenNote = async (path: string) => {
+    setLastViewedNote(path);
     if (onOpenFile) {
       const name = path.split("/").pop() || path;
       onOpenFile(path, name);

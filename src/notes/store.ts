@@ -26,6 +26,30 @@ export async function setNotesDirectory(dir: string) {
   setPrefs({ notesDirectory: dir });
 }
 
+/* ── Last viewed note ─────────────────────────────────────────────── */
+
+const LAST_NOTE_KEY = "huskv2.notes.lastViewed";
+
+export function getLastViewedNote(): string | null {
+  try {
+    return localStorage.getItem(LAST_NOTE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setLastViewedNote(path: string | null) {
+  try {
+    if (path) {
+      localStorage.setItem(LAST_NOTE_KEY, path);
+    } else {
+      localStorage.removeItem(LAST_NOTE_KEY);
+    }
+  } catch {
+    // storage unavailable
+  }
+}
+
 export async function ensureNotesDirectory(): Promise<string> {
   const dir = await getNotesDirectory();
   
