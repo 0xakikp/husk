@@ -160,15 +160,15 @@ export function BookmarksView({
         <div className="relative mb-2">
           <HugeiconsIcon
             icon={Search01Icon}
-            size={10}
-            className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+            size={9}
+            className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..."
-            className="w-full h-7 rounded-md border border-border/40 bg-muted/30 pl-7 pr-2 text-[11px] text-foreground placeholder:text-muted-foreground outline-none focus:border-border/70"
+            placeholder="Filter..."
+            className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-1.5 text-[10px] text-foreground placeholder:text-muted-foreground outline-none focus:border-border/70"
           />
         </div>
       )}
