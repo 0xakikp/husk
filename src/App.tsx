@@ -14,7 +14,7 @@ import {
   Search01Icon,
   LayoutThreeColumnIcon,
   MessageMultiple02Icon,
-  SquareLockPasswordIcon,
+  Timer01Icon,
   Moon02Icon,
   Sun03Icon,
   Settings01Icon,
@@ -1331,7 +1331,7 @@ function App() {
               title="Authenticator (2FA)"
               onClick={() => setTotpOpen(true)}
             >
-              <HugeiconsIcon icon={SquareLockPasswordIcon} size={14} strokeWidth={1.75} />
+              <HugeiconsIcon icon={Timer01Icon} size={14} strokeWidth={1.75} />
               <TotpBadge />
             </Button>
             <ClipboardDropdown />
