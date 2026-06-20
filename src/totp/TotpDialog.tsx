@@ -490,7 +490,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
         </div>
       </div>
 
-      <div className="modal-body">
+      <div className="modal-body" style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
         {/* Search */}
         <div className="relative">
           <HugeiconsIcon
@@ -596,7 +596,8 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
         <>
           <div className="fixed inset-0 z-40" onClick={onClose} />
           <div
-            className="fixed top-10 right-2 z-50 w-[320px] max-h-[calc(100vh-56px)] flex flex-col bg-card border border-border rounded-xl shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden animate-dialog-enter"
+            className="fixed top-10 right-2 z-50 flex flex-col bg-card border border-border rounded-xl shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden animate-dialog-enter"
+            style={{ width: '320px', maxHeight: 'calc(100vh - 56px)' }}
             role="dialog"
             aria-label="Authenticator"
             onClick={(e) => e.stopPropagation()}
