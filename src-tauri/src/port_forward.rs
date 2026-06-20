@@ -3,8 +3,10 @@ use std::sync::{Arc, Mutex};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::str::FromStr;
 use std::thread;
-use std::io::{Read, Write};
+use std::io::Read;
+use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortForwardConfig {
@@ -31,9 +33,8 @@ pub struct PortForwardStatus {
 }
 
 struct ForwardHandle {
-    #[allow(dead_code)]
     config: PortForwardConfig,
-    abort: std::sync::mpsc::Sender<()>,
+    abort: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
@@ -58,18 +59,18 @@ pub fn port_forward_start(
     {
         let mut forwards = state.forwards.lock().unwrap();
         if let Some(existing) = forwards.remove(&config.id) {
-            let _ = existing.abort.send(());
+            existing.abort.store(true, Ordering::Relaxed);
         }
     }
 
-    let (abort_tx, abort_rx) = std::sync::mpsc::channel::<()>();
-
+    let abort = Arc::new(AtomicBool::new(false));
     let config_clone = config.clone();
     let forwards = state.forwards.clone();
     let id = config.id.clone();
+    let abort_clone = abort.clone();
 
     thread::spawn(move || {
-        let result = run_forward(config_clone, abort_rx);
+        let result = run_forward(config_clone, abort_clone);
         let mut forwards = forwards.lock().unwrap();
         forwards.remove(&id);
         if let Err(e) = result {
@@ -83,7 +84,7 @@ pub fn port_forward_start(
             config.id.clone(),
             ForwardHandle {
                 config: config.clone(),
-                abort: abort_tx,
+                abort: abort.clone(),
             },
         );
     }
@@ -102,7 +103,7 @@ pub fn port_forward_stop(
 ) -> Result<PortForwardStatus, String> {
     let mut forwards = state.forwards.lock().unwrap();
     if let Some(handle) = forwards.remove(&id) {
-        let _ = handle.abort.send(());
+        handle.abort.store(true, Ordering::Relaxed);
         Ok(PortForwardStatus {
             id,
             active: false,
@@ -130,7 +131,7 @@ pub fn port_forward_list(
 
 fn run_forward(
     config: PortForwardConfig,
-    abort: std::sync::mpsc::Receiver<()>,
+    abort: Arc<AtomicBool>,
 ) -> Result<(), String> {
     match config.forward_type.as_str() {
         "local" => run_local_forward(config, abort),
@@ -140,9 +141,32 @@ fn run_forward(
     }
 }
 
+fn build_ssh_args(config: &PortForwardConfig) -> Vec<String> {
+    let mut args = vec![
+        "-o".to_string(), "BatchMode=no".to_string(),
+        "-o".to_string(), "ServerAliveInterval=30".to_string(),
+        "-o".to_string(), "ServerAliveCountMax=3".to_string(),
+        "-o".to_string(), "StrictHostKeyChecking=accept-new".to_string(),
+        "-p".to_string(), config.port.to_string(),
+    ];
+
+    if let Some(key_path) = &config.private_key_path {
+        args.push("-i".to_string());
+        args.push(key_path.clone());
+    }
+
+    if !config.user.is_empty() {
+        args.push(format!("{}@{}", config.user, config.host));
+    } else {
+        args.push(config.host.clone());
+    }
+
+    args
+}
+
 fn run_local_forward(
     config: PortForwardConfig,
-    abort: std::sync::mpsc::Receiver<()>,
+    abort: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let local_addr = SocketAddr::from_str(&format!("127.0.0.1:{}", config.local_port))
         .map_err(|e| format!("Invalid local address: {}", e))?;
@@ -156,24 +180,24 @@ fn run_local_forward(
     let remote_port = config.remote_port.unwrap_or(0);
 
     loop {
-        // Check for abort
-        if abort.try_recv().is_ok() {
+        if abort.load(Ordering::Relaxed) {
             return Ok(());
         }
 
         match listener.accept() {
             Ok((local_stream, _)) => {
-                let remote_host = remote_host.clone();
+                let mut ssh_args = build_ssh_args(&config);
+                ssh_args.push("-L".to_string());
+                ssh_args.push(format!(
+                    "{}:{}:{}",
+                    config.local_port, remote_host, remote_port
+                ));
+                ssh_args.push("-N".to_string()); // No command execution
+                let abort_clone = abort.clone();
+
                 thread::spawn(move || {
-                    let _ = handle_local_forward_connection(
-                        local_stream,
-                        remote_host,
-                        remote_port,
-                    );
+                    let _ = handle_ssh_forward_connection(local_stream, ssh_args, abort_clone);
                 });
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(std::time::Duration::from_millis(100));
             }
             Err(e) => {
                 eprintln!("Local forward accept error: {}", e);
@@ -182,192 +206,126 @@ fn run_local_forward(
     }
 }
 
-fn handle_local_forward_connection(
+fn handle_ssh_forward_connection(
     mut local_stream: TcpStream,
-    remote_host: String,
-    remote_port: u16,
+    ssh_args: Vec<String>,
+    abort: Arc<AtomicBool>,
 ) -> Result<(), String> {
-    // For simplified implementation, connect directly to remote destination
-    // Full SSH tunneling would require complete russh client with auth
-    let mut remote_stream = TcpStream::connect(format!("{}:{}", remote_host, remote_port))
-        .map_err(|e| format!("Failed to connect to remote destination: {}", e))?;
+    // Spawn SSH process with port forwarding
+    let mut cmd = Command::new("ssh");
+    cmd.args(&ssh_args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 
-    // Bidirectional copy
-    let mut local_clone = local_stream.try_clone()
-        .map_err(|e| e.to_string())?;
-    let mut remote_clone = remote_stream.try_clone()
-        .map_err(|e| e.to_string())?;
+    let mut child = cmd.spawn()
+        .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
 
-    let local_to_remote = thread::spawn(move || {
-        let mut buf = [0u8; 8192];
-        loop {
-            match local_clone.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    if remote_stream.write_all(&buf[..n]).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    });
-
-    let mut buf = [0u8; 8192];
+    // Wait for abort or connection close
     loop {
-        match remote_clone.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                if local_stream.write_all(&buf[..n]).is_err() {
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
-    }
-
-    let _ = local_to_remote.join();
-    Ok(())
-}
-
-fn run_remote_forward(
-    _config: PortForwardConfig,
-    _abort: std::sync::mpsc::Receiver<()>,
-) -> Result<(), String> {
-    // Remote forwarding requires SSH server to open a port on the remote side
-    Err("Remote forwarding not yet implemented".to_string())
-}
-
-fn run_dynamic_forward(
-    config: PortForwardConfig,
-    abort: std::sync::mpsc::Receiver<()>,
-) -> Result<(), String> {
-    let local_addr = SocketAddr::from_str(&format!("127.0.0.1:{}", config.local_port))
-        .map_err(|e| format!("Invalid local address: {}", e))?;
-
-    let listener = TcpListener::bind(local_addr)
-        .map_err(|e| format!("Failed to bind local port: {}", e))?;
-    listener.set_nonblocking(true)
-        .map_err(|e| format!("Failed to set nonblocking: {}", e))?;
-
-    loop {
-        // Check for abort
-        if abort.try_recv().is_ok() {
+        if abort.load(Ordering::Relaxed) {
+            let _ = child.kill();
             return Ok(());
         }
 
-        match listener.accept() {
-            Ok((local_stream, _)) => {
-                thread::spawn(move || {
-                    let _ = handle_socks5_connection(local_stream);
-                });
+        // Check if connection is still alive
+        let mut buf = [0u8; 1];
+        match local_stream.read(&mut buf) {
+            Ok(0) => {
+                let _ = child.kill();
+                return Ok(());
+            }
+            Ok(_) => {
+                // Data available, but we're just monitoring
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 thread::sleep(std::time::Duration::from_millis(100));
             }
-            Err(e) => {
-                eprintln!("SOCKS5 accept error: {}", e);
+            Err(_) => {
+                let _ = child.kill();
+                return Ok(());
             }
         }
     }
 }
 
-fn handle_socks5_connection(
-    mut local_stream: TcpStream,
+fn run_remote_forward(
+    config: PortForwardConfig,
+    abort: Arc<AtomicBool>,
 ) -> Result<(), String> {
-    // Read SOCKS5 greeting
-    let mut buf = [0u8; 2];
-    local_stream.read_exact(&mut buf).map_err(|e| e.to_string())?;
-    let nmethods = buf[1] as usize;
-    let mut methods = vec![0u8; nmethods];
-    local_stream.read_exact(&mut methods).map_err(|e| e.to_string())?;
+    let remote_host = config.remote_host.clone().unwrap_or_else(|| "localhost".to_string());
+    let remote_port = config.remote_port.unwrap_or(0);
 
-    // Send response - accept no auth (0x00)
-    local_stream.write_all(&[0x05, 0x00]).map_err(|e| e.to_string())?;
+    let mut ssh_args = build_ssh_args(&config);
+    ssh_args.push("-R".to_string());
+    ssh_args.push(format!("{}:{}:{}", config.local_port, remote_host, remote_port));
+    ssh_args.push("-N".to_string());
 
-    // Read request
-    let mut req = [0u8; 4];
-    local_stream.read_exact(&mut req).map_err(|e| e.to_string())?;
+    let mut cmd = Command::new("ssh");
+    cmd.args(&ssh_args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 
-    let cmd = req[1];
-    let atyp = req[3];
+    let mut child = cmd.spawn()
+        .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
 
-    if cmd != 0x01 {
-        // CONNECT only
-        local_stream.write_all(&[0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).ok();
-        return Err("SOCKS5 command not supported".to_string());
-    }
+    // Wait for abort
+    while !abort.load(Ordering::Relaxed) {
+        thread::sleep(std::time::Duration::from_millis(500));
 
-    let target_addr = match atyp {
-        0x01 => {
-            // IPv4
-            let mut ip = [0u8; 4];
-            local_stream.read_exact(&mut ip).map_err(|e| e.to_string())?;
-            let mut port = [0u8; 2];
-            local_stream.read_exact(&mut port).map_err(|e| e.to_string())?;
-            let port = u16::from_be_bytes(port);
-            format!("{}.{}.{}.{}:{}", ip[0], ip[1], ip[2], ip[3], port)
-        }
-        0x03 => {
-            // Domain
-            let mut len = [0u8; 1];
-            local_stream.read_exact(&mut len).map_err(|e| e.to_string())?;
-            let mut domain = vec![0u8; len[0] as usize];
-            local_stream.read_exact(&mut domain).map_err(|e| e.to_string())?;
-            let mut port = [0u8; 2];
-            local_stream.read_exact(&mut port).map_err(|e| e.to_string())?;
-            let port = u16::from_be_bytes(port);
-            format!("{}:{}", String::from_utf8_lossy(&domain), port)
-        }
-        _ => {
-            local_stream.write_all(&[0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).ok();
-            return Err("SOCKS5 address type not supported".to_string());
-        }
-    };
-
-    // Connect to target directly (simplified - no SSH tunnel yet)
-    match TcpStream::connect(&target_addr) {
-        Ok(mut remote_stream) => {
-            // Send success response
-            local_stream.write_all(&[0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0, 0]).ok();
-
-            let mut local_clone = local_stream.try_clone().unwrap();
-            let mut remote_clone = remote_stream.try_clone().unwrap();
-
-            let local_to_remote = thread::spawn(move || {
-                let mut buf = [0u8; 8192];
-                loop {
-                    match local_clone.read(&mut buf) {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            if remote_stream.write_all(&buf[..n]).is_err() {
-                                break;
-                            }
-                        }
-                        Err(_) => break,
-                    }
+        // Check if child exited
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return Err(format!("SSH remote forward exited with code: {:?}", status.code()));
                 }
-            });
-
-            let mut buf = [0u8; 8192];
-            loop {
-                match remote_clone.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if local_stream.write_all(&buf[..n]).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
+                return Ok(());
             }
-
-            let _ = local_to_remote.join();
-        }
-        Err(_) => {
-            local_stream.write_all(&[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).ok();
+            Ok(None) => continue,
+            Err(e) => return Err(format!("Failed to check SSH status: {}", e)),
         }
     }
 
+    let _ = child.kill();
+    Ok(())
+}
+
+fn run_dynamic_forward(
+    config: PortForwardConfig,
+    abort: Arc<AtomicBool>,
+) -> Result<(), String> {
+    let mut ssh_args = build_ssh_args(&config);
+    ssh_args.push("-D".to_string());
+    ssh_args.push(format!("127.0.0.1:{}", config.local_port));
+    ssh_args.push("-N".to_string());
+
+    let mut cmd = Command::new("ssh");
+    cmd.args(&ssh_args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let mut child = cmd.spawn()
+        .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
+
+    // Wait for abort
+    while !abort.load(Ordering::Relaxed) {
+        thread::sleep(std::time::Duration::from_millis(500));
+
+        // Check if child exited
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return Err(format!("SSH dynamic forward exited with code: {:?}", status.code()));
+                }
+                return Ok(());
+            }
+            Ok(None) => continue,
+            Err(e) => return Err(format!("Failed to check SSH status: {}", e)),
+        }
+    }
+
+    let _ = child.kill();
     Ok(())
 }
