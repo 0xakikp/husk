@@ -8,6 +8,8 @@ import {
   Cancel01Icon,
   PlusSignIcon,
   PencilEdit01Icon,
+  ViewIcon,
+  Copy01Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +40,7 @@ export function BookmarksView({
   const bookmarks = useBookmarks();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<Bookmark | null>(null);
   const [type, setType] = useState<"directory" | "file" | "command">("directory");
   const [label, setLabel] = useState("");
   const [path, setPath] = useState("");
@@ -165,6 +168,17 @@ export function BookmarksView({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                setViewing(b);
+              }}
+              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+              title="View"
+            >
+              <HugeiconsIcon icon={ViewIcon} size={9} strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
                 startEdit(b);
               }}
               className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
@@ -251,6 +265,96 @@ export function BookmarksView({
             >
               Cancel
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* View popup */}
+      {viewing && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setViewing(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <HugeiconsIcon
+                icon={getIcon(viewing)}
+                size={14}
+                className="text-muted-foreground"
+              />
+              <h4 className="text-sm font-semibold">{viewing.label}</h4>
+            </div>
+
+            <div className="rounded-md bg-muted/30 border border-border/30 p-2 mb-3">
+              <code className="text-[11px] font-mono break-all text-foreground">
+                {viewing.path || viewing.command}
+              </code>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="text-[10px] h-7 gap-1"
+                onClick={() => {
+                  const text = viewing.path || viewing.command || "";
+                  navigator.clipboard.writeText(text);
+                  toast({ title: "Copied to clipboard", variant: "success" });
+                }}
+              >
+                <HugeiconsIcon icon={Copy01Icon} size={10} />
+                Copy
+              </Button>
+              {viewing.type === "command" && onTypeCommand && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-[10px] h-7"
+                  onClick={() => {
+                    onTypeCommand(viewing.command || "");
+                    setViewing(null);
+                  }}
+                >
+                  Type in terminal
+                </Button>
+              )}
+              {viewing.type === "directory" && onOpenDirectory && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-[10px] h-7"
+                  onClick={() => {
+                    onOpenDirectory(viewing.path || "");
+                    setViewing(null);
+                  }}
+                >
+                  cd to directory
+                </Button>
+              )}
+              {viewing.type === "file" && onOpenFile && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-[10px] h-7"
+                  onClick={() => {
+                    onOpenFile(viewing.path || "");
+                    setViewing(null);
+                  }}
+                >
+                  Open file
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-[10px] h-7 ml-auto"
+                onClick={() => setViewing(null)}
+              >
+                Close
+              </Button>
+            </div>
           </div>
         </div>
       )}
