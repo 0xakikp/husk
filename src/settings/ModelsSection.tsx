@@ -9,7 +9,6 @@ import {
   ViewOffIcon,
   Delete02Icon,
   PencilEdit01Icon,
-  Cancel01Icon,
   ShieldKeyIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -240,7 +239,7 @@ export function ModelsSection() {
               <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 {cat.label}
               </span>
-              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-2 gap-2">
                 {catProviders.map((p) => (
                   <ProviderKeyCard key={p.id} provider={p as Provider} />
                 ))}
@@ -351,7 +350,7 @@ function ModelDropdown({
 
 function ProviderLogo({
   provider,
-  size = 16,
+  size = 14,
 }: {
   provider: Provider;
   size?: number;
@@ -362,14 +361,14 @@ function ProviderLogo({
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center rounded-lg",
-        size <= 14 ? "size-5" : "size-6",
+        "inline-flex items-center justify-center rounded-md",
+        size <= 14 ? "size-4" : "size-5",
         colors.bg,
         colors.text,
       )}
     >
-      {Logo ? <Logo className={size <= 14 ? "size-3" : "size-3.5"} /> : (
-        <span className="text-[8px] font-bold">{provider.label.charAt(0).toUpperCase()}</span>
+      {Logo ? <Logo className={size <= 14 ? "size-2.5" : "size-3"} /> : (
+        <span className="text-[7px] font-bold">{provider.label.charAt(0).toUpperCase()}</span>
       )}
     </span>
   );
@@ -408,23 +407,20 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
   return (
     <div
       className={cn(
-        "group relative flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border bg-card/50 px-3.5 py-3 transition-all",
-        "hover:border-border/60 hover:shadow-sm",
-        hasKey ? cn("border-l-2", colors.border) : "border-border/40",
+        "group relative flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-lg border bg-card/30 px-3 py-2 transition-all",
+        "hover:border-border/60",
+        hasKey ? cn("border-l-[3px]", colors.border) : "border-border/30",
       )}
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <ProviderLogo provider={provider} />
-          <div className="flex flex-col">
-            <span className="text-[12.5px] font-medium text-foreground">{provider.label}</span>
-            <span className="text-[10px] text-muted-foreground">{provider.kind}</span>
-          </div>
+          <span className="text-[12px] font-medium text-foreground">{provider.label}</span>
         </div>
         {hasKey && !editing ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500">
-            <HugeiconsIcon icon={CheckmarkCircle02Icon} size={10} />
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-500">
+            <HugeiconsIcon icon={CheckmarkCircle02Icon} size={9} />
             Configured
           </span>
         ) : null}
@@ -432,7 +428,7 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
 
       {/* Body */}
       {editing ? (
-        <div className="flex min-w-0 flex-col gap-2 overflow-hidden pt-1">
+        <div className="flex min-w-0 flex-col gap-1.5 overflow-hidden">
           <div className="relative">
             <Input
               ref={inputRef}
@@ -440,7 +436,7 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder={`${provider.label} API key`}
-              className="h-8 pr-9 text-[12px]"
+              className="h-7 pr-8 text-[11px]"
               onKeyDown={(e) => {
                 if (e.key === "Enter") save();
                 if (e.key === "Escape") {
@@ -456,33 +452,32 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
             >
               <HugeiconsIcon
                 icon={revealed ? ViewOffIcon : ViewIcon}
-                size={14}
+                size={12}
               />
             </button>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Button size="sm" className="h-7 text-[11px]" onClick={save}>
-              <HugeiconsIcon icon={ShieldKeyIcon} size={12} className="mr-1" />
+          <div className="flex items-center gap-1">
+            <Button size="sm" className="h-6 px-2 text-[10px]" onClick={save}>
+              <HugeiconsIcon icon={ShieldKeyIcon} size={10} className="mr-1" />
               Save
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-[11px]"
+              className="h-6 px-2 text-[10px]"
               onClick={() => {
                 setEditing(false);
                 setDraft("");
               }}
             >
-              <HugeiconsIcon icon={Cancel01Icon} size={12} className="mr-1" />
               Cancel
             </Button>
           </div>
         </div>
       ) : hasKey ? (
-        <div className="flex items-center justify-between gap-2 pt-0.5">
-          <div className="group/key relative flex items-center gap-1.5">
-            <span className="font-mono text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between gap-2">
+          <div className="group/key relative flex items-center gap-1">
+            <span className="font-mono text-[10px] text-muted-foreground">
               {maskKey(apiKey)}
             </span>
             <button
@@ -492,11 +487,11 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
             >
               <HugeiconsIcon
                 icon={revealed ? ViewOffIcon : ViewIcon}
-                size={12}
+                size={10}
               />
             </button>
             {revealed && (
-              <span className="font-mono text-[11px] text-foreground">
+              <span className="font-mono text-[10px] text-foreground">
                 {apiKey}
               </span>
             )}
@@ -505,31 +500,31 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-[11px]"
+              className="h-6 px-1.5 text-[10px]"
               onClick={startEdit}
             >
-              <HugeiconsIcon icon={PencilEdit01Icon} size={12} className="mr-1" />
+              <HugeiconsIcon icon={PencilEdit01Icon} size={10} className="mr-0.5" />
               Edit
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+              className="h-6 px-1.5 text-[10px] text-destructive hover:text-destructive"
               onClick={clear}
             >
-              <HugeiconsIcon icon={Delete02Icon} size={12} className="mr-1" />
+              <HugeiconsIcon icon={Delete02Icon} size={10} className="mr-0.5" />
               Clear
             </Button>
           </div>
         </div>
       ) : (
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="h-7 w-fit gap-1.5 text-[11px]"
+          className="h-6 w-fit gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
           onClick={() => setEditing(true)}
         >
-          <HugeiconsIcon icon={Key01Icon} size={12} />
+          <HugeiconsIcon icon={Key01Icon} size={10} />
           Add key
         </Button>
       )}
