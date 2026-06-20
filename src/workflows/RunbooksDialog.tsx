@@ -45,7 +45,8 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
   );
 
   return (
-    <Modal title="Workflows" onClose={onClose} inline={inline} headerActions={mode.kind === "list" ? listHeaderActions : undefined}>
+    <>
+      <Modal title="Workflows" onClose={onClose} inline={inline} headerActions={mode.kind === "list" ? listHeaderActions : undefined}>
         {mode.kind === "list" ? (
           <RunbookList
             workflows={workflows}
@@ -54,7 +55,23 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
             onDelete={(id) => setWorkflows((prev) => prev.filter((w) => w.id !== id))}
             onRun={startRun}
           />
-        ) : mode.kind === "edit" ? (
+        ) : mode.kind === "run" ? (
+          <RunbookRunner wf={mode.wf} onCancel={() => setMode({ kind: "list" })} onRun={run} />
+        ) : (
+          /* placeholder when editor is shown as popup */
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <p className="text-[12px] text-muted-foreground">Opening editor…</p>
+          </div>
+        )}
+      </Modal>
+
+      {/* Editor always as centered popup for full real estate */}
+      {mode.kind === "edit" && (
+        <Modal
+          title={mode.wf ? "Edit Workflow" : "New Workflow"}
+          onClose={() => setMode({ kind: "list" })}
+          inline={false}
+        >
           <RunbookEditor
             initial={mode.wf}
             onCancel={() => setMode({ kind: "list" })}
@@ -69,10 +86,9 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
               setMode({ kind: "list" });
             }}
           />
-        ) : (
-          <RunbookRunner wf={mode.wf} onCancel={() => setMode({ kind: "list" })} onRun={run} />
-        )}
-    </Modal>
+        </Modal>
+      )}
+    </>
   );
 }
 
