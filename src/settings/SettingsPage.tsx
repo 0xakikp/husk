@@ -9,8 +9,9 @@ import { AboutSection } from "./AboutSection";
 import { ModelsSection } from "./ModelsSection";
 import { McpSection } from "./McpSection";
 import { ToolsSection } from "./ToolsSection";
+import { CloudSyncSection } from "./CloudSyncSection";
 
-type SectionId = "about" | "general" | "appearance" | "models" | "mcp" | "tools";
+type SectionId = "about" | "general" | "appearance" | "models" | "mcp" | "tools" | "cloudSync";
 
 const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   { id: "about", label: "Manifest", keywords: ["about", "version", "build", "license"] },
@@ -38,6 +39,11 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
     id: "tools",
     label: "Tools",
     keywords: ["tool", "cli", "install", "recommended"],
+  },
+  {
+    id: "cloudSync",
+    label: "Cloud Sync",
+    keywords: ["sync", "backup", "export", "import", "transfer", "device"],
   },
 ];
 
@@ -197,6 +203,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 <SectionDivider />
                 <div id="settings-section-tools" className="scroll-mt-6">
                   <ToolsSection />
+                </div>
+              </>
+            ) : null}
+            {show("cloudSync") ? (
+              <>
+                <SectionDivider />
+                <div id="settings-section-cloudSync" className="scroll-mt-6">
+                  <CloudSyncSection />
                 </div>
               </>
             ) : null}
