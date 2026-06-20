@@ -176,7 +176,7 @@ export function BookmarksView({
       </div>
 
       {tab === "notes" ? (
-        <NotesView inline={inline} />
+        <NotesView inline={inline} onOpenFile={onOpenFile} />
       ) : (
         <>
           {/* Header row: title + search icon + add icon, all inline */}

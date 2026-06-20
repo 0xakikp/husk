@@ -9,7 +9,6 @@ import {
   FileEditIcon,
   File01Icon,
 } from "@hugeicons/core-free-icons";
-import { createPortal } from "react-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,8 +23,15 @@ import {
   type FileNode,
 } from "./store";
 import { toast } from "../toast";
+import { createPortal } from "react-dom";
 
-export function NotesView({ inline }: { inline?: boolean }) {
+export function NotesView({ 
+  inline,
+  onOpenFile,
+}: { 
+  inline?: boolean;
+  onOpenFile?: (path: string, name: string) => void;
+}) {
   const [tree, setTree] = useState<FileNode[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -66,9 +72,15 @@ export function NotesView({ inline }: { inline?: boolean }) {
   };
 
   const handleOpenNote = async (path: string) => {
-    const content = await readNote(path);
-    setEditingFile(path);
-    setEditContent(content);
+    if (onOpenFile) {
+      const name = path.split("/").pop() || path;
+      onOpenFile(path, name);
+    } else {
+      // Fallback: read and show in a simple modal if no editor available
+      const content = await readNote(path);
+      setEditingFile(path);
+      setEditContent(content);
+    }
   };
 
   const handleSaveNote = async () => {
