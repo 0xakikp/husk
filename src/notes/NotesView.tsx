@@ -8,6 +8,8 @@ import {
   Search01Icon,
   FileEditIcon,
   File01Icon,
+  FolderOpenIcon,
+  FileCodeIcon,
 } from "@hugeicons/core-free-icons";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -57,6 +59,16 @@ export function NotesView({
       }
     }
     return parents;
+  }
+  function getFileIcon(name: string, isOpen?: boolean) {
+    if (isOpen) return FolderOpenIcon;
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    switch (ext) {
+      case 'md': return FileCodeIcon;
+      case 'txt': return File01Icon;
+      case 'mdx': return FileCodeIcon;
+      default: return File01Icon;
+    }
   }
   const [createType, setCreateType] = useState<"file" | "folder">("file");
   const [createName, setCreateName] = useState("");
@@ -222,7 +234,7 @@ export function NotesView({
           ) : (
             <span className="inline-flex size-4 items-center justify-center">
               <HugeiconsIcon
-                icon={File01Icon}
+                icon={getFileIcon(node.name)}
                 size={10}
                 className="text-muted-foreground"
               />
@@ -239,7 +251,7 @@ export function NotesView({
               }
             }}
             className={cn(
-              "flex min-w-0 flex-1 text-left text-[11px]",
+              "flex min-w-0 flex-1 items-center gap-1 text-left text-[11px]",
               node.isDirectory
                 ? "font-medium text-foreground"
                 : isNoteFile(node.name)
@@ -247,6 +259,13 @@ export function NotesView({
                   : "text-muted-foreground"
             )}
           >
+            {node.isDirectory && (
+              <HugeiconsIcon
+                icon={getFileIcon(node.name, isExpanded)}
+                size={10}
+                className="text-muted-foreground shrink-0"
+              />
+            )}
             <span className="truncate">{node.name}</span>
           </button>
 
