@@ -397,6 +397,30 @@ export function GeneralSection() {
               />
             </SettingRow>
           )}
+          <SettingRow
+            className="rounded border border-border/40 bg-muted/20 py-2"
+            title="Notes directory"
+            description="Where your notes are stored. Leave empty to use ~/.husk/notes/"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={p.notesDirectory}
+                onChange={(e) => setPrefs({ notesDirectory: e.target.value })}
+                placeholder="~/.husk/notes"
+                className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary"
+              />
+              {p.notesDirectory && (
+                <button
+                  type="button"
+                  onClick={() => setPrefs({ notesDirectory: "" })}
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </SettingRow>
         </div>
       </div>
     </div>

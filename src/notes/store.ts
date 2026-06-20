@@ -1,5 +1,6 @@
 import { readDir, readFile, writeFile, createDir, deletePath, homeDir } from "../fs";
 import { toast } from "../toast";
+import { getPrefs } from "../settings/preferences";
 
 export type FileNode = {
   name: string;
@@ -9,25 +10,24 @@ export type FileNode = {
   expanded?: boolean;
 };
 
-const NOTES_DIR_KEY = "huskv2.notes.directory";
 const DEFAULT_NOTES_DIR = ".husk/notes";
 
-export function getNotesDirectory(): string {
-  return localStorage.getItem(NOTES_DIR_KEY) || "";
-}
-
-export function setNotesDirectory(dir: string) {
-  localStorage.setItem(NOTES_DIR_KEY, dir);
-}
-
-export async function getDefaultNotesPath(): Promise<string> {
+export async function getNotesDirectory(): Promise<string> {
+  const prefs = getPrefs();
+  if (prefs.notesDirectory) {
+    return prefs.notesDirectory;
+  }
   const home = await homeDir();
   return `${home}/${DEFAULT_NOTES_DIR}`;
 }
 
+export async function setNotesDirectory(dir: string) {
+  const { setPrefs } = await import("../settings/preferences");
+  setPrefs({ notesDirectory: dir });
+}
+
 export async function ensureNotesDirectory(): Promise<string> {
-  const customDir = getNotesDirectory();
-  const dir = customDir || (await getDefaultNotesPath());
+  const dir = await getNotesDirectory();
   
   try {
     await createDir(dir);

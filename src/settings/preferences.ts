@@ -82,6 +82,9 @@ export type Prefs = {
   aiMiniBgOpacity: number;
   aiMiniBgBlur: number;
   aiMiniBgDim: number;
+
+  // Notes
+  notesDirectory: string;
 };
 
 const DEFAULT: Prefs = {
@@ -144,6 +147,8 @@ const DEFAULT: Prefs = {
   aiMiniBgOpacity: 100,
   aiMiniBgBlur: 0,
   aiMiniBgDim: 50,
+
+  notesDirectory: "",
 };
 const LS_KEY = "huskv2.prefs.v2";
 
