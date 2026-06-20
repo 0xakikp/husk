@@ -42,6 +42,9 @@ export function defineHuskTheme(wallpaperOpacity = 0): void {
     rules: [],
     colors: {
       "editor.background": bg,
+      "editor.selectionBackground": "#264f7880",
+      "editor.selectionForeground": "#ffffff",
+      "editor.inactiveSelectionBackground": "#264f7840",
       "editorGutter.background": bg,
       "editorLineNumber.background": bg,
       "editorLineNumber.foreground": "#888888",
@@ -55,6 +58,17 @@ export function defineHuskTheme(wallpaperOpacity = 0): void {
       "editorHoverWidget.background": "#0a0a0a",
       "editorOverviewRuler.background": bg,
       "scrollbarSlider.background": "#1f1f1f80",
+    },
+  });
+
+  monaco.editor.defineTheme("husk-light", {
+    base: "vs",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.selectionBackground": "#add6ff",
+      "editor.selectionForeground": "#000000",
+      "editor.inactiveSelectionBackground": "#add6ff50",
     },
   });
 }
