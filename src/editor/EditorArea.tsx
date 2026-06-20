@@ -121,6 +121,7 @@ export function EditorArea({
     const editor = monaco.editor.create(hostRef.current, {
       theme: monacoTheme(p),
       automaticLayout: true,
+      fixedOverflowWidgets: true,
       ...editorOptions(p),
     });
     editorRef.current = editor;
