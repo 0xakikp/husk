@@ -490,9 +490,9 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
         </div>
       </div>
 
-      <div className="modal-body" style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+      <div className="modal-body" style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', padding: '10px' }}>
         {/* Search */}
-        <div className="relative">
+        <div className="relative w-full">
           <HugeiconsIcon
             icon={Search01Icon}
             size={12}
@@ -504,6 +504,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search accounts…"
             className="h-7 w-full rounded-md border border-muted-foreground/25 bg-background py-0 pr-7 pl-7 text-xs text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-primary"
+            style={{ boxSizing: 'border-box' }}
           />
           {search && (
             <button
