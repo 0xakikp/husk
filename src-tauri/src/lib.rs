@@ -9,12 +9,14 @@ mod shell;
 mod shell_history;
 mod shell_init;
 mod vitals;
+mod port_forward;
 
 use jobs::JobsState;
 use mcp::McpState;
 use pty::PtyState;
 use secrets::SecretsState;
 use sftp::SftpManager;
+use port_forward::PortForwardManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -35,6 +37,7 @@ pub fn run() {
         .manage(SecretsState::default())
         .manage(JobsState::default())
         .manage(SftpManager::default())
+        .manage(PortForwardManager::new())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -86,7 +89,10 @@ pub fn run() {
             jobs::shell_bg_remove,
             jobs::shell_bg_list,
             shell_history::pty_shell_history,
-            vitals::system_vitals
+            vitals::system_vitals,
+            port_forward::port_forward_start,
+            port_forward::port_forward_stop,
+            port_forward::port_forward_list
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

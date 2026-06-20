@@ -1,26 +1,8 @@
 # Husk
 
-A terminal-centric IDE with built-in AI, a code editor, and deep shell integration. Husk brings your terminal, editor, and AI assistant into a single, cohesive workspace — no context switching required.
+> A terminal-centric IDE with built-in AI, a code editor, and deep shell integration. Husk brings your terminal, editor, and AI assistant into a single, cohesive workspace — no context switching required.
 
 Built with [Tauri](https://tauri.app/), [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), and [Monaco Editor](https://microsoft.github.io/monaco-editor/).
-
----
-
-## Table of Contents
-
-- [What is Husk?](#what-is-husk)
-- [Features](#features)
-- [Screenshots](#screenshots)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Development](#development)
-  - [Building](#building)
-- [Keyboard Shortcuts](#keyboard-shortcuts)
-- [AI Providers](#ai-providers)
-- [Terminal Shell Integration](#terminal-shell-integration)
-- [Contributing](#contributing)
-- [License](#license)
 
 ---
 

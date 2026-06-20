@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   addPortForward,
   updatePortForward,
   deletePortForward,
   getPortForwards,
+  getConnectionById,
   type PortForward,
 } from "../remote/connectionManager";
 import { Modal } from "../components/Modal";
@@ -20,6 +22,7 @@ import {
 import { Switch } from "../components/ui/switch";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Add01Icon, Delete01Icon } from "@hugeicons/core-free-icons";
+import { toast } from "../toast";
 
 interface PortForwardDialogProps {
   connectionId: string;
@@ -63,14 +66,52 @@ export function PortForwardDialog({
     setRemotePort("");
   };
 
-  const toggleForward = (id: string) => {
+  const toggleForward = async (id: string) => {
     const pf = forwards.find((f) => f.id === id);
     if (!pf) return;
 
-    // TODO: Start/stop actual tunnel via Rust
-    const updated = updatePortForward(id, { active: !pf.active });
-    if (updated) {
-      setForwards(forwards.map((f) => (f.id === id ? updated : f)));
+    const conn = getConnectionById(connectionId);
+    if (!conn) return;
+
+    if (pf.active) {
+      // Stop the tunnel
+      try {
+        await invoke("port_forward_stop", { id: pf.id });
+        const updated = updatePortForward(id, { active: false });
+        if (updated) {
+          setForwards(forwards.map((f) => (f.id === id ? updated : f)));
+        }
+      } catch (e) {
+        toast({ title: "Failed to stop tunnel: " + String(e), variant: "error" });
+      }
+    } else {
+      // Start the tunnel
+      try {
+        await invoke("port_forward_start", {
+          config: {
+            id: pf.id,
+            connectionId: pf.connectionId,
+            host: conn.host,
+            port: conn.port,
+            user: conn.user,
+            authType: conn.authType,
+            password: conn.password,
+            privateKeyPath: conn.privateKeyPath,
+            passphrase: conn.passphrase,
+            forwardType: pf.type,
+            localPort: pf.localPort,
+            remoteHost: pf.remoteHost,
+            remotePort: pf.remotePort,
+          },
+        });
+        const updated = updatePortForward(id, { active: true });
+        if (updated) {
+          setForwards(forwards.map((f) => (f.id === id ? updated : f)));
+        }
+        toast({ title: "Tunnel started: " + getDescription(pf), variant: "success" });
+      } catch (e) {
+        toast({ title: "Failed to start tunnel: " + String(e), variant: "error" });
+      }
     }
   };
 
