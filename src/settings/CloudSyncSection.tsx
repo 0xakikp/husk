@@ -41,7 +41,7 @@ export function CloudSyncSection() {
   };
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       {/* Header */}
       <div className="flex items-center gap-2">
         <HugeiconsIcon icon={CloudUploadIcon} size={16} className="text-primary" />
@@ -82,9 +82,9 @@ export function CloudSyncSection() {
       </div>
 
       {/* Form fields — all same width, flush left */}
-      <div className="flex flex-col gap-4 max-w-md">
+      <div className="flex flex-col gap-3 max-w-md">
         {/* Passphrase */}
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1">
           <Label className="text-[11px] text-foreground font-medium">Passphrase</Label>
           <Input
             type="password"
@@ -100,12 +100,12 @@ export function CloudSyncSection() {
             <button
               type="button"
               onClick={handleExport}
-              className="w-fit bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
+              className="self-start bg-white/10 hover:bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-md transition"
             >
               Generate Encrypted Blob
             </button>
             {blob && (
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 <Label className="text-[11px] text-muted-foreground">Encrypted Blob (copy this)</Label>
                 <Textarea
                   value={blob}
@@ -122,7 +122,7 @@ export function CloudSyncSection() {
           </>
         ) : (
           <>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <Label className="text-[11px] text-muted-foreground">Encrypted Blob (paste here)</Label>
               <Textarea
                 value={blob}
@@ -134,7 +134,7 @@ export function CloudSyncSection() {
             <button
               type="button"
               onClick={handleImport}
-              className="w-fit bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
+              className="self-start bg-white/10 hover:bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-md transition"
             >
               Import & Apply
             </button>
