@@ -181,7 +181,14 @@ export function TerminalView({
 
   // ── History ───────────────────────────────────────────────────────────────
   const selectHistory = (command: string) => {
-    handleRef.current?.write(command);
+    // Type the command at the prompt WITHOUT executing it (user must press Enter)
+    const typer = handleRef.current?.typeText;
+    if (typer) {
+      typer(command);
+    } else {
+      // Fallback: write with newline stripped (won't auto-execute)
+      handleRef.current?.write(command.replace(/\n$/, ""));
+    }
     setHistoryOpen(false);
     handleRef.current?.focus();
   };

@@ -39,6 +39,7 @@ import type { FitAddon as FitAddonType } from "@xterm/addon-fit";
 
 export type TerminalHandle = {
   write: (data: string) => void;
+  typeText: (text: string) => void;
   focus: () => void;
   getBuffer: (maxLines?: number) => string;
   getSelection: () => string | null;
@@ -581,6 +582,14 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
   return {
     write: (data: string) => {
       if (session.ptyId != null) void invoke("pty_write", { id: session.ptyId, data });
+    },
+    typeText: (text: string) => {
+      // Type text character by character without sending newline (user must press Enter)
+      if (session.ptyId != null) {
+        // Strip any trailing newline/carriage return to prevent auto-execution
+        const cleaned = text.replace(/[\r\n]+$/, "");
+        void invoke("pty_write", { id: session.ptyId, data: cleaned });
+      }
     },
     focus: () => session.term.focus(),
     getBuffer: (maxLines = 200): string => {
