@@ -1436,7 +1436,7 @@ function App() {
                     <TerraformView inline />
                   ) : sidebarView === "docker" ? (
                     <DockerView inline />
-                  ) : sidebarView === "bookmarks" ? (
+                  ) : sidebarView === "vault" ? (
                     <BookmarksView
                       inline
                       onTypeCommand={(cmd) => {

@@ -145,7 +145,7 @@ export function BookmarksView({
 
   return (
     <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
-      {/* Tab toggle */}
+      {/* Vault tab toggle */}
       <div className="flex rounded-lg border border-border/50 bg-muted/30 p-0.5 mb-2">
         <button
           type="button"

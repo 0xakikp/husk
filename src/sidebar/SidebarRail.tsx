@@ -16,6 +16,7 @@ export type SidebarViewId =
   | "source-control"
   | "remotes"
   | "workflows"
+  | "vault"
   | "tools-hub"
   | "kubernetes"
   | "ci-cd"
@@ -61,7 +62,7 @@ export function SidebarRail({
     { kind: "view", id: "source-control", label: "Source Control", icon: FolderGitTwoIcon, badge: changedCount },
     { kind: "view", id: "remotes", label: "Remotes", icon: DatabaseIcon },
     { kind: "view", id: "workflows", label: "Workflows", icon: WorkflowCircle01Icon },
-    { kind: "view", id: "bookmarks", label: "Bookmarks", icon: CollectionsBookmarkIcon },
+    { kind: "view", id: "vault", label: "Vault", icon: CollectionsBookmarkIcon },
     { kind: "view", id: "tools-hub", label: "Integrations", icon: PuzzleIcon },
     { kind: "action", id: "command-palette", label: "Command Palette", icon: CommandIcon, onTrigger: onCommandPalette },
   ];
