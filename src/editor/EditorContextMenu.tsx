@@ -24,9 +24,9 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
 
   const handleContextMenu = useCallback(
     (e: MouseEvent) => {
-      // Only show if right-clicking inside the editor
+      // Only show if right-clicking inside the editor host area
       const target = e.target as HTMLElement;
-      if (!target.closest(".monaco-editor")) return;
+      if (!target.closest(".editor-host") && !target.closest(".monaco-editor")) return;
 
       e.preventDefault();
       const hasSelection = editor
