@@ -44,8 +44,8 @@ function QrModal({ account, onClose }: { account: TotpAccount; onClose: () => vo
     void generateQrDataUrl(account).then(setUrl);
   }, [account]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-6" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-[2px]" onClick={onClose}>
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 shadow-[0_24px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
         <p className="text-sm font-medium">
           {account.issuer ? `${account.issuer} · ` : ""}
           {account.label}
@@ -596,7 +596,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
         <>
           <div className="fixed inset-0 z-40" onClick={onClose} />
           <div
-            className="fixed top-10 right-2 z-50 w-[320px] max-h-[calc(100vh-56px)] flex flex-col bg-card/90 border border-border-2 rounded-xl shadow-2xl overflow-hidden animate-dialog-enter backdrop-blur-md"
+            className="fixed top-10 right-2 z-50 w-[320px] max-h-[calc(100vh-56px)] flex flex-col bg-card border border-border rounded-xl shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden animate-dialog-enter"
             role="dialog"
             aria-label="Authenticator"
             onClick={(e) => e.stopPropagation()}

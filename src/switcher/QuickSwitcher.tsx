@@ -119,9 +119,9 @@ export function QuickSwitcher({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={onClose}>
       {/* dim backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" />
       <div
-        className="relative z-10 flex max-h-[80vh] w-full max-w-[700px] flex-col rounded-xl border border-border/60 bg-background/90 p-5 shadow-2xl"
+        className="relative z-10 flex max-h-[80vh] w-full max-w-[700px] flex-col rounded-xl border border-border bg-card p-5 shadow-[0_24px_70px_rgba(0,0,0,0.7)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 text-center text-sm text-muted-foreground">

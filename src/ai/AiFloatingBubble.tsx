@@ -853,8 +853,8 @@ export function AiFloatingBubble({
 
       {/* Rename modal */}
       {editingTitle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40" onClick={() => setEditingTitle(null)}>
-          <div className="max-w-[min(16rem,100%)] rounded-lg border border-border bg-popover p-3 shadow-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-[2px]" onClick={() => setEditingTitle(null)}>
+          <div className="max-w-[min(16rem,100%)] rounded-xl border border-border bg-card p-4 shadow-[0_24px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 text-[12px] font-medium text-foreground">Rename session</div>
             <input
               ref={editTitleRef}
