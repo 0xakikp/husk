@@ -151,7 +151,7 @@ export function BookmarksView({
           type="button"
           onClick={() => setTab("bookmarks")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
             tab === "bookmarks"
               ? "bg-card shadow-sm border border-border/50"
               : "text-muted-foreground hover:text-foreground"
@@ -165,7 +165,7 @@ export function BookmarksView({
           type="button"
           onClick={() => setTab("notes")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
             tab === "notes"
               ? "bg-card shadow-sm border border-border/50"
               : "text-muted-foreground hover:text-foreground"
