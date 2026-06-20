@@ -14,13 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
 import { addBookmark, useBookmarks, removeBookmark, updateBookmark, type Bookmark } from "./store";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
@@ -229,16 +223,26 @@ export function BookmarksView({
 
               {/* Body */}
               <div className="p-4 flex flex-col gap-3">
-                <Select value={type} onValueChange={(v) => setType(v as Bookmark["type"])}>
-                  <SelectTrigger className="h-8 text-[11px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="directory">Directory</SelectItem>
-                    <SelectItem value="file">File</SelectItem>
-                    <SelectItem value="command">Command</SelectItem>
-                  </SelectContent>
-                </Select>
+                {/* Type selector — segmented buttons for visibility */}
+                <div className="flex rounded-lg border border-border/50 bg-muted/30 p-0.5">
+                  {(["directory", "file", "command"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setType(t)}
+                      className={cn(
+                        "flex-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+                        type === t
+                          ? "bg-card text-foreground shadow-sm border border-border/50"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {t === "directory" && "Directory"}
+                      {t === "file" && "File"}
+                      {t === "command" && "Command"}
+                    </button>
+                  ))}
+                </div>
 
                 <div className="flex flex-col gap-1">
                   <Label className="text-[11px] text-foreground font-medium">Label</Label>
