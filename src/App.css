@@ -1320,6 +1320,16 @@ button {
   box-sizing: border-box;
 }
 
+/* ── Selection colors ── */
+::selection {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+::-moz-selection {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
 .resize-handle {
   position: relative;
   width: 1px;

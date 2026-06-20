@@ -60,17 +60,6 @@ export function defineHuskTheme(wallpaperOpacity = 0): void {
       "scrollbarSlider.background": "#1f1f1f80",
     },
   });
-
-  monaco.editor.defineTheme("husk-light", {
-    base: "vs",
-    inherit: true,
-    rules: [],
-    colors: {
-      "editor.selectionBackground": "#add6ff",
-      "editor.selectionForeground": "#000000",
-      "editor.inactiveSelectionBackground": "#add6ff50",
-    },
-  });
 }
 
 defineHuskTheme(0);

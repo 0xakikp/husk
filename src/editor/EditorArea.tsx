@@ -30,8 +30,7 @@ const monacoTheme = (p: Prefs) => {
     defineHuskTheme(p.editorWallpaperOpacity);
     return "husk-black";
   }
-  defineHuskTheme();
-  return "husk-light";
+  return "vs";
 };
 
 /** Editor options driven by preferences (theme handled separately). */
