@@ -48,9 +48,8 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
 ];
 
 function scrollToSection(id: SectionId) {
-  document
-    .getElementById(`settings-section-${id}`)
-    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const elId = id === "cloudSync" ? "cloud-sync" : `settings-section-${id}`;
+  document.getElementById(elId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export function SettingsPage({ onClose }: { onClose: () => void }) {
@@ -71,7 +70,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       const threshold = mainRect.top + 80; // 80 px below top of <main>
       let current: SectionId = "about";
       for (const s of SECTIONS) {
-        const el = document.getElementById(`settings-section-${s.id}`);
+        const elId = s.id === "cloudSync" ? "cloud-sync" : `settings-section-${s.id}`;
+        const el = document.getElementById(elId);
         if (!el) continue;
         if (el.getBoundingClientRect().top <= threshold) {
           current = s.id;
@@ -209,7 +209,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             {show("cloudSync") ? (
               <>
                 <SectionDivider />
-                <div id="settings-section-cloudSync" className="scroll-mt-6">
+                <div id="cloud-sync" className="scroll-mt-6">
                   <CloudSyncSection />
                 </div>
               </>

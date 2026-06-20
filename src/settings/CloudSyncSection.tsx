@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,33 +46,40 @@ export function CloudSyncSection() {
         <HugeiconsIcon icon={CloudUploadIcon} size={16} className="text-primary" />
         <h2 className="text-sm font-semibold">Cloud Sync</h2>
       </div>
-      <p className="text-[11px] text-muted-foreground">
-        Export an encrypted blob of all your settings (SSH connections, bookmarks, preferences) and paste it on another device to sync.
-      </p>
 
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          variant={mode === "export" ? "default" : "outline"}
-          className="text-[11px] h-7 gap-1"
-          onClick={() => setMode("export")}
-        >
-          <HugeiconsIcon icon={Upload02Icon} size={12} />
-          Export
-        </Button>
-        <Button
-          size="sm"
-          variant={mode === "import" ? "default" : "outline"}
-          className="text-[11px] h-7 gap-1"
-          onClick={() => setMode("import")}
-        >
-          <HugeiconsIcon icon={Download02Icon} size={12} />
-          Import
-        </Button>
-      </div>
+      <div className="space-y-5">
+        <p className="text-[11px] text-muted-foreground">
+          Export an encrypted blob of all your settings (SSH connections, bookmarks, preferences) and paste it on another device to sync.
+        </p>
 
-      <div className="space-y-3">
-        <div>
+        <div className="flex flex-row gap-4">
+          <button
+            type="button"
+            onClick={() => setMode("export")}
+            className={`flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-md transition ${
+              mode === "export"
+                ? "bg-primary text-primary-foreground"
+                : "bg-white/5 text-gray-300 hover:text-white hover:bg-white/10"
+            }`}
+          >
+            <HugeiconsIcon icon={Upload02Icon} size={12} />
+            Export
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("import")}
+            className={`flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-md transition ${
+              mode === "import"
+                ? "bg-primary text-primary-foreground"
+                : "bg-white/5 text-gray-300 hover:text-white hover:bg-white/10"
+            }`}
+          >
+            <HugeiconsIcon icon={Download02Icon} size={12} />
+            Import
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
           <Label className="text-[11px]">Passphrase</Label>
           <Input
             type="password"
@@ -85,12 +91,16 @@ export function CloudSyncSection() {
         </div>
 
         {mode === "export" ? (
-          <>
-            <Button size="sm" className="text-[11px] h-7" onClick={handleExport}>
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={handleExport}
+              className="mt-2 bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
+            >
               Generate Encrypted Blob
-            </Button>
+            </button>
             {blob && (
-              <div>
+              <div className="flex flex-col gap-1.5">
                 <Label className="text-[11px]">Encrypted Blob (copy this)</Label>
                 <Textarea
                   value={blob}
@@ -104,10 +114,10 @@ export function CloudSyncSection() {
                 />
               </div>
             )}
-          </>
+          </div>
         ) : (
-          <>
-            <div>
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1.5">
               <Label className="text-[11px]">Encrypted Blob (paste here)</Label>
               <Textarea
                 value={blob}
@@ -116,10 +126,14 @@ export function CloudSyncSection() {
                 className="text-[10px] font-mono h-24"
               />
             </div>
-            <Button size="sm" className="text-[11px] h-7" onClick={handleImport}>
-              Import &amp; Apply
-            </Button>
-          </>
+            <button
+              type="button"
+              onClick={handleImport}
+              className="mt-2 bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
+            >
+              Import & Apply
+            </button>
+          </div>
         )}
       </div>
     </div>
