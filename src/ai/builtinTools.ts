@@ -98,14 +98,43 @@ export function buildBuiltinTools(): Record<string, Tool> {
       }),
       execute: async ({ path, search, replace }) => {
         try {
-          const content = await readFile(path);
+          const content = await readFile(path).catch(() => null);
+          if (content === null) {
+            return `Error: file not found: ${path}`;
+          }
           if (!content.includes(search)) {
             return `Error: search text not found in ${path}. The file may have changed.`;
           }
           addPendingEdit({ path, search, replace });
-          return `Edit proposed for ${path}. User will review before applying.`;
+          return `Edit proposed for ${path}. Review and accept in the AI panel.`;
         } catch (e) {
           return `Error proposing edit: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      },
+    }),
+
+    revertPendingEdit: tool({
+      description: "Revert/cancel a pending edit for a file. Use this when the user asks to undo a change that was queued but not yet applied.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path of the pending edit to cancel" },
+        },
+        required: ["path"],
+      }),
+      execute: async ({ path }) => {
+        try {
+          const { getPendingEdits, removePendingEdit } = await import("./pendingEdits");
+          const edits = getPendingEdits().filter((e) => e.path === path);
+          if (edits.length === 0) {
+            return `No pending edits found for ${path}.`;
+          }
+          for (const edit of edits) {
+            removePendingEdit(edit.id);
+          }
+          return `Reverted ${edits.length} pending edit(s) for ${path}. The original content is preserved.`;
+        } catch (e) {
+          return `Error reverting: ${e instanceof Error ? e.message : String(e)}`;
         }
       },
     }),

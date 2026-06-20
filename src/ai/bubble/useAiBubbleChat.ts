@@ -172,7 +172,7 @@ export function useAiBubbleChat(tabId?: number) {
       const ctx = includeContext ? readActiveTerminal() : "";
       const base = agent.systemPrompt;
 
-      let system = base + "\n\nYou have access to file tools: readFile, writeFile, listFiles, applyEdit. Use them to explore the codebase, read files for context, and make surgical edits. When writing files, always write the complete file content. When editing, use applyEdit for small changes.";
+      let system = base + "\n\nYou have access to file tools: readFile, writeFile, listFiles, applyEdit, revertPendingEdit. Use them to explore the codebase, read files for context, and make surgical edits. When writing files, always write the complete file content. When editing, use applyEdit for small changes. If the user asks to revert/undo a change you just proposed, use revertPendingEdit to cancel it.";
 
       // Auto-context: current file and selection
       const currentFile = getEditorFile();
