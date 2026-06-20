@@ -20,6 +20,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { registerBubbleToggle, registerBubbleOpen, subscribeBubbleSwitch } from "./bubbleStore";
 import { toast } from "@/toast";
+import { onFileChanged } from "../editor/EditorArea";
 import { getProvider } from "./providers";
 import { useKey, loadConfig } from "./store";
 import { readActiveTerminal, runInActiveTerminal } from "./terminalContext";
@@ -1055,6 +1056,7 @@ function PendingEditItem({ edit }: { edit: PendingEdit }) {
         return;
       }
       await writeFile(edit.path, content.replace(edit.search, edit.replace));
+      onFileChanged(edit.path);
       removePendingEdit(edit.id);
       toast({ title: `Applied edit to ${edit.path.split("/").pop()}`, variant: "success", duration: 2000 });
     } catch (e) {

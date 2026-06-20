@@ -8,6 +8,22 @@ import { fontStack } from "../styles/fonts";
 import { registerEditorApplyEdit, registerEditorGetSelection, registerEditorFile } from "@/ai/editorStore";
 import { markSaved, markModified, markNew, clearState } from "./dirtyStore";
 
+/* ── External file change notifications ───────────────────────────── */
+
+type FileChangeListener = (path: string) => void;
+const fileChangeListeners = new Set<FileChangeListener>();
+
+export function onFileChanged(path: string) {
+  for (const fn of fileChangeListeners) {
+    try { fn(path); } catch { /* ignore */ }
+  }
+}
+
+export function watchFileChanges(fn: FileChangeListener): () => void {
+  fileChangeListeners.add(fn);
+  return () => fileChangeListeners.delete(fn);
+}
+
 const monacoTheme = (p: Prefs) => {
   if (p.theme === "dark") {
     defineHuskTheme(p.editorWallpaperOpacity);
@@ -243,6 +259,26 @@ export function EditorArea({
   }, [prefs.vimMode]);
 
 
+
+  // Watch for external file changes and reload the model
+  useEffect(() => {
+    const unsub = watchFileChanges((changedPath) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const model = editor.getModel();
+      if (!model || model.uri.fsPath !== changedPath) return;
+      // File changed externally — reload from disk
+      void readFile(changedPath).then((content) => {
+        if (editorRef.current !== editor) return;
+        const current = model.getValue();
+        if (current === content) return;
+        // Update model without adding to undo stack
+        model.setValue(content);
+        markSaved(changedPath, model.getAlternativeVersionId());
+      });
+    });
+    return unsub;
+  }, []);
 
   // Load + show the active file (one model per path, reused if already open).
   useEffect(() => {
