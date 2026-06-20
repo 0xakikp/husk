@@ -269,14 +269,14 @@ export function BookmarksView({
         </div>
       )}
 
-      {/* View popup */}
+      {/* View popup — centered modal overlay */}
       {viewing && (
         <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           onClick={() => setViewing(null)}
         >
           <div
-            className="w-full max-w-sm rounded-lg border border-border bg-card p-4 shadow-lg"
+            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
