@@ -50,8 +50,8 @@ const DEFAULT_H = 520;
 /** Static bubble position: bottom-right, well above the status bar */
 function getBubblePos(): { x: number; y: number } {
   return {
-    x: window.innerWidth - BUBBLE_SIZE - PAD,
-    y: window.innerHeight - BUBBLE_SIZE - PAD - 56, // 56px = status bar + extra breathing room
+    x: window.innerWidth - BUBBLE_SIZE - PAD - 80, // 80px left of default right edge
+    y: window.innerHeight - BUBBLE_SIZE - PAD - 56 - 60, // 60px above default bottom edge
   };
 }
 
