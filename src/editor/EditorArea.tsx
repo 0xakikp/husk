@@ -122,6 +122,7 @@ export function EditorArea({
       theme: monacoTheme(p),
       automaticLayout: true,
       fixedOverflowWidgets: true,
+      padding: { top: 8, bottom: 8 },
       ...editorOptions(p),
     });
     editorRef.current = editor;

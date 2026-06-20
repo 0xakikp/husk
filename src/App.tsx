@@ -1716,7 +1716,7 @@ function App() {
                       prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active",
                     )}
                     style={{
-                      margin: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+                      margin: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
                     }}
                   >
                     <EditorArea files={openFiles} activePath={activeFile} />
