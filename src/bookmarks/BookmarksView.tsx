@@ -10,6 +10,7 @@ import {
   PencilEdit01Icon,
   ViewIcon,
   Copy01Icon,
+  Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ export function BookmarksView({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Bookmark | null>(null);
+  const [search, setSearch] = useState("");
   const [type, setType] = useState<"directory" | "file" | "command">("directory");
   const [label, setLabel] = useState("");
   const [path, setPath] = useState("");
@@ -49,6 +51,15 @@ export function BookmarksView({
     setCommand("");
     setType("directory");
   };
+
+  const filtered = search.trim()
+    ? bookmarks.filter(
+        (b) =>
+          b.label.toLowerCase().includes(search.toLowerCase()) ||
+          (b.path || "").toLowerCase().includes(search.toLowerCase()) ||
+          (b.command || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : bookmarks;
 
   const handleAdd = () => {
     if (!label.trim()) return;
@@ -132,14 +143,32 @@ export function BookmarksView({
         )}
       </div>
 
-      {bookmarks.length === 0 && !showForm && (
+      {/* Search */}
+      {bookmarks.length > 0 && (
+        <div className="relative mb-2">
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={10}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search bookmarks..."
+            className="w-full h-7 rounded-md border border-border/40 bg-muted/30 pl-7 pr-2 text-[11px] text-foreground placeholder:text-muted-foreground outline-none focus:border-border/70"
+          />
+        </div>
+      )}
+
+      {filtered.length === 0 && !showForm && (
         <p className="text-muted-foreground text-[11px] text-center py-4">
-          No bookmarks. Click + to add directories, files, or commands.
+          {search ? "No matches." : "No bookmarks. Click + to add."}
         </p>
       )}
 
       <div className="flex flex-col gap-1 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {bookmarks.map((b) => (
+        {filtered.map((b) => (
           <div
             key={b.id}
             className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 transition-colors hover:border-border/40 cursor-pointer"
