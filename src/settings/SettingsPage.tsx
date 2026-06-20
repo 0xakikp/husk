@@ -125,7 +125,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 className={cn(
                   "relative h-6 rounded-md px-2.5 text-[11.5px] transition-colors shrink-0",
                   active
-                    ? "text-foreground font-medium"
+                    ? "text-primary font-medium"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
