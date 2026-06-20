@@ -275,6 +275,16 @@ export function useTerminalTabs() {
   const setTabColor = (id: number, color: string | undefined) =>
     updateTab(id, (t) => ({ ...t, color }));
 
+  const moveTab = (fromIndex: number, toIndex: number) => {
+    setTabs((prev) => {
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) return prev;
+      const next = [...prev];
+      const [removed] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, removed);
+      return next;
+    });
+  };
+
   // Auto-title the active tab from the active terminal's cwd (husk v1), unless
   // it was manually renamed.
   const cwd = useActiveTerminalCwd();
@@ -300,5 +310,6 @@ export function useTerminalTabs() {
     renameTab,
     setTabColor,
     updateTab,
+    moveTab,
   };
 }

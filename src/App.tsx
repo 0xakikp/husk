@@ -124,15 +124,26 @@ type TabChipProps = {
   onDoubleClick?: () => void;
   animate?: boolean;
   color?: string;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
+  dragOver?: boolean;
   children: React.ReactNode;
 };
 
-function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, children }: TabChipProps) {
+function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, children }: TabChipProps) {
   return (
     <div
       data-active-tab={active ? "true" : undefined}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       className={cn(
         "group relative flex h-6 shrink items-center gap-1.5 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden border-l-2",
         onClose ? "pr-1" : "pr-2",
@@ -140,6 +151,8 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
         animate && "animate-tab-slide-in",
         color || "border-l-transparent",
         color,
+        dragOver && "ring-1 ring-primary/50",
+        draggable && "cursor-grab active:cursor-grabbing",
       )}
     >
       <button type="button" onClick={onClick} className="flex min-w-0 items-center gap-1.5 pl-2">
@@ -173,6 +186,8 @@ function TabBar({
   onNewTerm,
   onRenameTerm,
   onSetTabColor,
+  onMoveTerm,
+  onMoveFile,
   settingsOpen,
   onSelectSettings,
   onCloseSettings,
@@ -188,6 +203,8 @@ function TabBar({
   onNewTerm: () => void;
   onRenameTerm: (id: number, title: string) => void;
   onSetTabColor: (id: number, color: string | undefined) => void;
+  onMoveTerm: (fromIndex: number, toIndex: number) => void;
+  onMoveFile: (fromIndex: number, toIndex: number) => void;
   settingsOpen: boolean;
   onSelectSettings: () => void;
   onCloseSettings: () => void;
@@ -200,6 +217,10 @@ function TabBar({
   const canClose = termTabs.length + openFiles.length > 1;
   const tabBarRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
+  const [draggingTerm, setDraggingTerm] = useState<number | null>(null);
+  const [draggingFile, setDraggingFile] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [dragOverFileIndex, setDragOverFileIndex] = useState<number | null>(null);
 
   // Update sliding indicator position when active tab changes
   useEffect(() => {
@@ -249,7 +270,7 @@ function TabBar({
       className="relative min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       <div className="flex w-full min-w-0 items-center gap-0.5" ref={tabBarRef}>
-        {termTabs.map((t) =>
+        {termTabs.map((t, index) =>
           editingId === t.id ? (
             <div
               key={`t${t.id}`}
@@ -287,19 +308,58 @@ function TabBar({
               onDoubleClick={() => beginRename(t.id, t.title)}
               animate={animationsEnabled}
               color={t.color}
+              draggable
+              onDragStart={() => setDraggingTerm(index)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverIndex(index);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (draggingTerm !== null && draggingTerm !== index) {
+                  onMoveTerm(draggingTerm, index);
+                }
+                setDraggingTerm(null);
+                setDragOverIndex(null);
+              }}
+              onDragEnd={() => {
+                setDraggingTerm(null);
+                setDragOverIndex(null);
+              }}
+              dragOver={dragOverIndex === index}
             >
               <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={2} className="shrink-0" />
               <span className="truncate">{t.title}</span>
             </TabChip>
           ),
         )}
-        {openFiles.map((f) => (
+        {openFiles.map((f, index) => (
           <TabChip
             key={`f${f.path}`}
             active={active.kind === "file" && active.path === f.path}
             onClick={() => onSelectFile(f.path)}
             onClose={() => onCloseFile(f.path)}
             animate={animationsEnabled}
+            draggable
+            onDragStart={() => setDraggingFile(f.path)}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOverFileIndex(index);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const fromIndex = openFiles.findIndex((of) => of.path === draggingFile);
+              if (fromIndex !== -1 && fromIndex !== index) {
+                onMoveFile(fromIndex, index);
+              }
+              setDraggingFile(null);
+              setDragOverFileIndex(null);
+            }}
+            onDragEnd={() => {
+              setDraggingFile(null);
+              setDragOverFileIndex(null);
+            }}
+            dragOver={dragOverFileIndex === index}
           >
             <img src={fileIconUrl(f.name)} className="size-3.5 shrink-0" alt="" />
             <span className="truncate">{f.name}</span>
@@ -1208,6 +1268,14 @@ function App() {
     }
   };
 
+  const moveFile = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= openFiles.length || toIndex >= openFiles.length) return;
+    const next = [...openFiles];
+    const [removed] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, removed);
+    setOpenFiles(next);
+  };
+
   const active: ActiveTab =
     activeKind === "settings"
       ? { kind: "settings" }
@@ -1311,6 +1379,8 @@ function App() {
               onNewTerm={term.addTab}
               onRenameTerm={term.renameTab}
               onSetTabColor={term.setTabColor}
+              onMoveTerm={term.moveTab}
+              onMoveFile={moveFile}
               settingsOpen={settingsOpen}
               onSelectSettings={() => setActiveKind("settings")}
               onCloseSettings={closeSettings}
