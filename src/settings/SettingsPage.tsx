@@ -12,7 +12,7 @@ import { ToolsSection } from "./ToolsSection";
 import { CloudSyncSection } from "./CloudSyncSection";
 import { CrashReportingSection } from "./CrashReportingSection";
 
-type SectionId = "about" | "general" | "appearance" | "models" | "mcp" | "tools" | "cloudSync" | "crash";
+type SectionId = "about" | "general" | "appearance" | "models" | "mcp" | "tools" | "cloudSync";
 
 const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   { id: "about", label: "Manifest", keywords: ["about", "version", "build", "license"] },
@@ -45,11 +45,6 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
     id: "cloudSync",
     label: "Cloud Sync",
     keywords: ["sync", "backup", "export", "import", "transfer", "device"],
-  },
-  {
-    id: "crash",
-    label: "Privacy",
-    keywords: ["crash", "reporting", "sentry", "privacy", "telemetry", "error"],
   },
 ];
 
