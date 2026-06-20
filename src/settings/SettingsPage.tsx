@@ -112,7 +112,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background text-foreground select-none">
-      <div className="flex h-8 shrink-0 items-center justify-between bg-background px-3">
+      <div className="flex h-8 shrink-0 items-center gap-2 bg-background px-3">
         <div className="flex items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SECTIONS.map((s) => {
             const active = activeSection === s.id;
@@ -136,8 +136,9 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             );
           })}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative w-44">
+        <div className="flex-1" />
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative w-36">
             <HugeiconsIcon
               icon={Search01Icon}
               size={14}
@@ -145,7 +146,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              placeholder="Find setting…"
+              placeholder="Find…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-7 rounded-full border-border/40 bg-muted/40 py-0 pl-8 pr-3 text-[11.5px]"
