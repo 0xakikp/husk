@@ -270,88 +270,95 @@ export function BookmarksView({
         </div>
       )}
 
-      {/* View popup — compact card via portal */}
+      {/* View popup — compact card via portal, matches Modal style */}
       {viewing &&
         createPortal(
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-[2px] p-4"
             onClick={() => setViewing(null)}
           >
             <div
-              className="w-full max-w-xs rounded-lg border border-border/50 bg-card/95 p-3 shadow-xl"
+              className="w-full max-w-xs rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center gap-1.5 mb-2">
-                <HugeiconsIcon
-                  icon={getIcon(viewing)}
-                  size={12}
-                  className="text-muted-foreground"
-                />
-                <h4 className="text-xs font-semibold">{viewing.label}</h4>
-              </div>
-
-              <div className="rounded bg-muted/40 border border-border/30 p-1.5 mb-2">
-                <code className="text-[10px] font-mono break-all text-foreground">
-                  {viewing.path || viewing.command}
-                </code>
-              </div>
-
-              <div className="flex items-center gap-1.5">
+              {/* Header */}
+              <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+                <div className="flex items-center gap-1.5">
+                  <HugeiconsIcon
+                    icon={getIcon(viewing)}
+                    size={12}
+                    className="text-muted-foreground"
+                  />
+                  <span className="text-xs font-medium">{viewing.label}</span>
+                </div>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
-                  onClick={() => {
-                    const text = viewing.path || viewing.command || "";
-                    navigator.clipboard.writeText(text);
-                    toast({ title: "Copied", variant: "success" });
-                  }}
-                >
-                  <HugeiconsIcon icon={Copy01Icon} size={9} />
-                  Copy
-                </button>
-                {viewing.type === "command" && onTypeCommand && (
-                  <button
-                    type="button"
-                    className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
-                    onClick={() => {
-                      onTypeCommand(viewing.command || "");
-                      setViewing(null);
-                    }}
-                  >
-                    Type
-                  </button>
-                )}
-                {viewing.type === "directory" && onOpenDirectory && (
-                  <button
-                    type="button"
-                    className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
-                    onClick={() => {
-                      onOpenDirectory(viewing.path || "");
-                      setViewing(null);
-                    }}
-                  >
-                    cd
-                  </button>
-                )}
-                {viewing.type === "file" && onOpenFile && (
-                  <button
-                    type="button"
-                    className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
-                    onClick={() => {
-                      onOpenFile(viewing.path || "");
-                      setViewing(null);
-                    }}
-                  >
-                    Open
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="inline-flex items-center text-[10px] px-2 py-1 rounded text-muted-foreground hover:text-foreground hover:bg-white/5 transition ml-auto"
+                  className="inline-flex size-6 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
                   onClick={() => setViewing(null)}
+                  aria-label="Close"
                 >
-                  Close
+                  <span className="text-lg leading-none">×</span>
                 </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-4 flex flex-col gap-3">
+                <div className="rounded-md bg-muted/40 border border-border/30 p-2">
+                  <code className="text-[10px] font-mono break-all text-foreground">
+                    {viewing.path || viewing.command}
+                  </code>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
+                    onClick={() => {
+                      const text = viewing.path || viewing.command || "";
+                      navigator.clipboard.writeText(text);
+                      toast({ title: "Copied", variant: "success" });
+                    }}
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} size={9} />
+                    Copy
+                  </button>
+                  {viewing.type === "command" && onTypeCommand && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
+                      onClick={() => {
+                        onTypeCommand(viewing.command || "");
+                        setViewing(null);
+                      }}
+                    >
+                      Type
+                    </button>
+                  )}
+                  {viewing.type === "directory" && onOpenDirectory && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
+                      onClick={() => {
+                        onOpenDirectory(viewing.path || "");
+                        setViewing(null);
+                      }}
+                    >
+                      cd
+                    </button>
+                  )}
+                  {viewing.type === "file" && onOpenFile && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
+                      onClick={() => {
+                        onOpenFile(viewing.path || "");
+                        setViewing(null);
+                      }}
+                    >
+                      Open
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>,
