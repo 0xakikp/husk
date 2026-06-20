@@ -13,7 +13,7 @@ import "./App.css?v=2";
 
 // Initialize Sentry crash reporting (free tier, no PII)
 Sentry.init({
-  dsn: "https://public@o0.ingest.sentry.io/0", // placeholder — replace with real DSN
+  dsn: "https://0db29941cc9d5b5e72f11f40773f76e9@o4511596996067328.ingest.de.sentry.io/4511597291765840",
   environment: import.meta.env.MODE,
   release: "husk@" + __APP_VERSION__,
   sampleRate: 1.0,

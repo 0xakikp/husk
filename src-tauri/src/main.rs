@@ -4,12 +4,7 @@
 use sentry::ClientInitGuard;
 
 fn init_sentry() -> Option<ClientInitGuard> {
-    // Placeholder DSN — replace with real one from sentry.io
-    let dsn = "https://public@o0.ingest.sentry.io/0";
-    if dsn.contains("@o0.ingest") {
-        // Not configured yet — skip
-        return None;
-    }
+    let dsn = "https://4f0f3f635fe76c93a1f870b365b5aba5@o4511596996067328.ingest.de.sentry.io/4511597298647120";
     Some(sentry::init((
         dsn,
         sentry::ClientOptions {
