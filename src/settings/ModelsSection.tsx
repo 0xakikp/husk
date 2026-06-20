@@ -408,11 +408,10 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
   return (
     <div
       className={cn(
-        "group relative flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-lg border bg-muted/20 px-3 py-2 transition-all",
-        "hover:border-border/60",
+        "group relative flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-xl border p-4 transition-colors",
         hasKey
-          ? "border-emerald-500/30 ring-1 ring-inset ring-emerald-500/10"
-          : "border-border/40",
+          ? "border-emerald-500/20 bg-emerald-500/[0.03]"
+          : "border-border/60 bg-card/40",
       )}
     >
       {/* Header */}
