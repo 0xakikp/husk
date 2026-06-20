@@ -250,10 +250,12 @@ export function ModelsSection() {
       </div>
 
       {/* ── Local models ─────────────────────────────────────────────── */}
-      <LocalModelBlock
-        config={config}
-        onUpdate={updateConfig}
-      />
+      <div className="pt-2">
+        <LocalModelBlock
+          config={config}
+          onUpdate={updateConfig}
+        />
+      </div>
     </div>
   );
 }
