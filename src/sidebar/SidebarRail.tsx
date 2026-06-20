@@ -22,6 +22,7 @@ export type SidebarViewId =
   | "ci-cd"
   | "terraform"
   | "docker"
+  | "tailscale"
   | "sftp"
   | "bookmarks";
 

@@ -3,6 +3,7 @@ import {
   ContainerIcon,
   Database01Icon,
   Rocket01Icon,
+  CloudIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SidebarViewId } from "../sidebar/SidebarRail";
@@ -42,6 +43,13 @@ const TOOLS: ToolCard[] = [
     name: "Terraform",
     description: "View workspaces, state, and resources",
     icon: Database01Icon,
+    status: "ready",
+  },
+  {
+    id: "tailscale",
+    name: "Tailscale",
+    description: "List tailnet devices and connect via SSH",
+    icon: CloudIcon,
     status: "ready",
   },
 ];

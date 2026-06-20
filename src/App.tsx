@@ -53,6 +53,7 @@ import { JobsDialog } from "./jobs/JobsDialog";
 import { DockerView } from "./docker/DockerView";
 import { KubernetesView } from "./kubernetes/KubernetesView";
 import { TerraformView } from "./terraform/TerraformView";
+import { TailscaleView } from "./tailscale/TailscaleView";
 import { RemotesView } from "./remotes/RemotesView";
 import { SftpView } from "./remotes/SftpView";
 import { useActiveSshHost } from "./remote/store";
@@ -1596,6 +1597,15 @@ function App() {
                     <TerraformView inline />
                   ) : sidebarView === "docker" ? (
                     <DockerView inline />
+                  ) : sidebarView === "tailscale" ? (
+                    <TailscaleView
+                      inline
+                      onConnect={(device) => {
+                        const sshUser = device.user || "root";
+                        const cmd = `ssh ${sshUser}@${device.ipv4}`;
+                        typeInActiveTerminal(cmd);
+                      }}
+                    />
                   ) : sidebarView === "vault" ? (
                     <BookmarksView
                       inline
@@ -1608,12 +1618,6 @@ function App() {
                       }}
                       onOpenDirectory={(path) => {
                         typeInActiveTerminal(`cd "${path}"`);
-                      }}
-                      onTailscaleConnect={(device) => {
-                        // Type the Tailscale SSH command in the active terminal
-                        const sshUser = device.user || "root";
-                        const cmd = `ssh ${sshUser}@${device.ipv4}`;
-                        typeInActiveTerminal(cmd);
                       }}
                     />
                   ) : null}
