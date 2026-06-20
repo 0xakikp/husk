@@ -141,72 +141,73 @@ export function BookmarksView({
 
   return (
     <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+      {/* Header row: title + search icon + add icon, all inline */}
+      <div className="flex items-center gap-1 mb-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex-1 truncate">
           Bookmarks
         </h3>
+        {bookmarks.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSearchActive(true)}
+            className={cn(
+              "inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors",
+              searchActive && "border-border/70 text-foreground"
+            )}
+            title="Filter bookmarks"
+          >
+            <HugeiconsIcon icon={Search01Icon} size={10} />
+          </button>
+        )}
         {!showForm && (
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="rounded p-0.5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
             title="Add bookmark"
           >
-            <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={2} />
+            <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
           </button>
         )}
       </div>
 
-      {/* Search — collapsible: icon only, expands on click */}
-      {bookmarks.length > 0 && (
+      {/* Search input — inline, replaces the icon when active */}
+      {searchActive && bookmarks.length > 0 && (
         <div className="relative mb-2">
-          {!searchActive ? (
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={9}
+            className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onBlur={() => {
+              if (!search) setSearchActive(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearch("");
+                setSearchActive(false);
+              }
+            }}
+            placeholder=""
+            className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-6 text-[10px] text-foreground outline-none focus:border-border/70"
+            autoFocus
+          />
+          {search && (
             <button
               type="button"
-              onClick={() => setSearchActive(true)}
-              className="flex w-full h-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 px-2 text-muted-foreground hover:text-foreground transition-colors"
-              title="Filter bookmarks"
+              onClick={() => {
+                setSearch("");
+                setSearchActive(false);
+              }}
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
             >
-              <HugeiconsIcon icon={Search01Icon} size={10} />
+              <HugeiconsIcon icon={Cancel01Icon} size={8} />
             </button>
-          ) : (
-            <div className="relative">
-              <HugeiconsIcon
-                icon={Search01Icon}
-                size={9}
-                className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onBlur={() => {
-                  if (!search) setSearchActive(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setSearch("");
-                    setSearchActive(false);
-                  }
-                }}
-                placeholder=""
-                className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-6 text-[10px] text-foreground placeholder:text-muted-foreground outline-none focus:border-border/70"
-                autoFocus
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearch("");
-                    setSearchActive(false);
-                  }}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                >
-                  <HugeiconsIcon icon={Cancel01Icon} size={8} />
-                </button>
-              )}
-            </div>
           )}
         </div>
       )}
