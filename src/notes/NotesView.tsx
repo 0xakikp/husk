@@ -7,10 +7,8 @@ import {
   Delete02Icon,
   Search01Icon,
   FileEditIcon,
-  File01Icon,
-  FolderOpenIcon,
-  FileCodeIcon,
 } from "@hugeicons/core-free-icons";
+import { fileIconUrl, folderIconUrl } from "../explorer/iconResolver";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,25 +57,6 @@ export function NotesView({
       }
     }
     return parents;
-  }
-  function getFileIcon(name: string, isOpen?: boolean) {
-    if (isOpen) return FolderOpenIcon;
-    const ext = name.split('.').pop()?.toLowerCase() ?? '';
-    switch (ext) {
-      case 'md': return FileCodeIcon;
-      case 'txt': return File01Icon;
-      case 'mdx': return FileCodeIcon;
-      default: return File01Icon;
-    }
-  }
-  function getFileIconColor(name: string) {
-    const ext = name.split('.').pop()?.toLowerCase() ?? '';
-    switch (ext) {
-      case 'md': return 'text-blue-400/80';
-      case 'txt': return 'text-gray-400/80';
-      case 'mdx': return 'text-purple-400/80';
-      default: return 'text-muted-foreground';
-    }
   }
   const [createType, setCreateType] = useState<"file" | "folder">("file");
   const [createName, setCreateName] = useState("");
@@ -232,7 +211,7 @@ export function NotesView({
             <button
               type="button"
               onClick={() => toggleExpanded(node.path)}
-              className="inline-flex size-4 items-center justify-center rounded text-amber-400/80 hover:text-amber-400"
+              className="inline-flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
             >
               <HugeiconsIcon
                 icon={ArrowDown01Icon}
@@ -242,10 +221,11 @@ export function NotesView({
             </button>
           ) : (
             <span className="inline-flex size-4 items-center justify-center">
-              <HugeiconsIcon
-                icon={getFileIcon(node.name)}
-                size={10}
-                className={getFileIconColor(node.name)}
+              <img
+                src={fileIconUrl(node.name)}
+                alt=""
+                className="size-3.5 object-contain"
+                draggable={false}
               />
             </span>
           )}
@@ -269,10 +249,11 @@ export function NotesView({
             )}
           >
             {node.isDirectory && (
-              <HugeiconsIcon
-                icon={getFileIcon(node.name, isExpanded)}
-                size={10}
-                className={isExpanded ? "text-amber-400/80" : "text-amber-500/70"}
+              <img
+                src={folderIconUrl(node.name, !!isExpanded)}
+                alt=""
+                className="size-3.5 object-contain shrink-0"
+                draggable={false}
               />
             )}
             <span className="truncate">{node.name}</span>
