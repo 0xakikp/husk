@@ -7,6 +7,7 @@ import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
 import { registerEditorApplyEdit, registerEditorGetSelection, registerEditorFile } from "@/ai/editorStore";
 import { markSaved, markModified, markNew, clearState } from "./dirtyStore";
+import { EditorContextMenu } from "./EditorContextMenu";
 
 /* ── External file change notifications ───────────────────────────── */
 
@@ -351,6 +352,7 @@ export function EditorArea({
     <div className="editor-area">
       <div className="editor-host" ref={hostRef} />
       <div className="editor-vim-status" ref={statusRef} style={{ display: prefs.vimMode ? "block" : "none" }} />
+      <EditorContextMenu editor={editorRef.current} />
     </div>
   );
 }
