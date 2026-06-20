@@ -137,6 +137,7 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
   return (
     <div
       data-active-tab={active ? "true" : undefined}
+      onClick={onClick}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
       draggable={draggable}
@@ -145,19 +146,19 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       className={cn(
-        "group relative flex h-6 shrink items-center gap-1.5 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden border-l-2",
+        "group relative flex h-6 shrink items-center gap-1.5 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden border-l-2 select-none",
         onClose ? "pr-1" : "pr-2",
         active ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
         animate && "animate-tab-slide-in",
         color || "border-l-transparent",
         color,
-        dragOver && "ring-1 ring-primary/50",
+        dragOver && "ring-1 ring-primary/50 bg-primary/5",
         draggable && "cursor-grab active:cursor-grabbing",
       )}
     >
-      <button type="button" onClick={onClick} className="flex min-w-0 items-center gap-1.5 pl-2">
+      <div className="flex min-w-0 items-center gap-1.5 pl-2">
         {children}
-      </button>
+      </div>
       {onClose ? (
         <button
           type="button"
@@ -222,6 +223,11 @@ function TabBar({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [dragOverFileIndex, setDragOverFileIndex] = useState<number | null>(null);
 
+  // Prevent default drag behavior on the tab bar container
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   // Update sliding indicator position when active tab changes
   useEffect(() => {
     const bar = tabBarRef.current;
@@ -269,7 +275,7 @@ function TabBar({
       data-tauri-drag-region
       className="relative min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <div className="flex w-full min-w-0 items-center gap-0.5" ref={tabBarRef}>
+      <div className="flex w-full min-w-0 items-center gap-0.5" ref={tabBarRef} onDragOver={handleDragOver}>
         {termTabs.map((t, index) =>
           editingId === t.id ? (
             <div
@@ -309,15 +315,22 @@ function TabBar({
               animate={animationsEnabled}
               color={t.color}
               draggable
-              onDragStart={() => setDraggingTerm(index)}
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", `term:${index}`);
+                e.dataTransfer.effectAllowed = "move";
+                setDraggingTerm(index);
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
                 setDragOverIndex(index);
               }}
               onDrop={(e) => {
                 e.preventDefault();
-                if (draggingTerm !== null && draggingTerm !== index) {
-                  onMoveTerm(draggingTerm, index);
+                const data = e.dataTransfer.getData("text/plain");
+                const fromIndex = data.startsWith("term:") ? parseInt(data.split(":")[1]) : draggingTerm;
+                if (fromIndex !== null && fromIndex !== index) {
+                  onMoveTerm(fromIndex, index);
                 }
                 setDraggingTerm(null);
                 setDragOverIndex(null);
@@ -341,14 +354,21 @@ function TabBar({
             onClose={() => onCloseFile(f.path)}
             animate={animationsEnabled}
             draggable
-            onDragStart={() => setDraggingFile(f.path)}
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/plain", `file:${f.path}`);
+              e.dataTransfer.effectAllowed = "move";
+              setDraggingFile(f.path);
+            }}
             onDragOver={(e) => {
               e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
               setDragOverFileIndex(index);
             }}
             onDrop={(e) => {
               e.preventDefault();
-              const fromIndex = openFiles.findIndex((of) => of.path === draggingFile);
+              const data = e.dataTransfer.getData("text/plain");
+              const fromPath = data.startsWith("file:") ? data.slice(5) : draggingFile;
+              const fromIndex = openFiles.findIndex((of) => of.path === fromPath);
               if (fromIndex !== -1 && fromIndex !== index) {
                 onMoveFile(fromIndex, index);
               }
