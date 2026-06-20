@@ -97,7 +97,7 @@ export function SidebarRail({
                     "focus-visible:ring-1 focus-visible:ring-[#11c700]/40 focus-visible:ring-offset-0",
                     "disabled:cursor-not-allowed disabled:opacity-40",
                     isActive
-                      ? "bg-[#11c700]/15 text-[#11c700]"
+                      ? "bg-primary/15 text-primary"
                       : isActionActive
                         ? "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.08]"
                         : isAction
@@ -109,7 +109,7 @@ export function SidebarRail({
                     icon={slot.icon}
                     size={17}
                     strokeWidth={isActive || isActionActive ? 2 : 1.75}
-                    color={isActive ? "#11c700" : undefined}
+                    color={isActive ? "var(--accent)" : undefined}
                     className="transition-[stroke-width] duration-150"
                   />
                   {showBadge ? (
