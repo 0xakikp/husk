@@ -47,12 +47,12 @@ export function CloudSyncSection() {
         <h2 className="text-sm font-semibold">Cloud Sync</h2>
       </div>
 
-      <div className="space-y-5">
-        <p className="text-[11px] text-muted-foreground">
+      <div className="flex flex-col gap-5">
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
           Export an encrypted blob of all your settings (SSH connections, bookmarks, preferences) and paste it on another device to sync.
         </p>
 
-        <div className="flex flex-row gap-4">
+        <div className="flex flex-row gap-3">
           <button
             type="button"
             onClick={() => setMode("export")}
@@ -79,29 +79,31 @@ export function CloudSyncSection() {
           </button>
         </div>
 
-        <div className="flex flex-col gap-1.5 max-w-md">
-          <Label className="text-[11px] whitespace-nowrap">Passphrase</Label>
-          <Input
-            type="password"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Min 8 characters"
-            className="h-8 text-[11px]"
-          />
+        <div className="flex flex-col gap-2">
+          <Label className="text-[11px] text-foreground font-medium">Passphrase</Label>
+          <div className="max-w-sm">
+            <Input
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder="Min 8 characters"
+              className="h-8 text-[11px]"
+            />
+          </div>
         </div>
 
         {mode === "export" ? (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             <button
               type="button"
               onClick={handleExport}
-              className="mt-2 bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
+              className="self-start bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
             >
               Generate Encrypted Blob
             </button>
             {blob && (
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-[11px]">Encrypted Blob (copy this)</Label>
+              <div className="flex flex-col gap-2">
+                <Label className="text-[11px] text-muted-foreground">Encrypted Blob (copy this)</Label>
                 <Textarea
                   value={blob}
                   readOnly
@@ -116,9 +118,9 @@ export function CloudSyncSection() {
             )}
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-[11px]">Encrypted Blob (paste here)</Label>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
+              <Label className="text-[11px] text-muted-foreground">Encrypted Blob (paste here)</Label>
               <Textarea
                 value={blob}
                 onChange={(e) => setBlob(e.target.value)}
@@ -129,7 +131,7 @@ export function CloudSyncSection() {
             <button
               type="button"
               onClick={handleImport}
-              className="mt-2 bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
+              className="self-start bg-white/10 hover:bg-white/20 text-white text-[11px] px-4 py-2 rounded-lg transition"
             >
               Import & Apply
             </button>
