@@ -1705,6 +1705,10 @@ function App() {
                   activeKind !== "file" && "invisible pointer-events-none",
                   prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
                 )}
+                style={{
+                  padding: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
+                  paddingRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '24px',
+                }}
                 aria-hidden={activeKind !== "file"}
               >
                 {/* Editor layer */}
@@ -1716,10 +1720,6 @@ function App() {
                       prefs.panelShadows && "panel-shadow",
                       prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active",
                     )}
-                    style={{
-                      margin: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
-                      marginRight: prefs.panelGaps <= 0 ? '16px' : undefined,
-                    }}
                   >
                     <EditorArea files={openFiles} activePath={activeFile} />
                   </div>
