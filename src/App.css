@@ -2746,6 +2746,11 @@ button {
   z-index: 1;
   pointer-events: none;
 }
+/* Ensure bubble content sits above the background overlay */
+.ai-bubble-animated-border > * {
+  position: relative;
+  z-index: 2;
+}
 @keyframes ai-border-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
