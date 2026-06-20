@@ -1,0 +1,203 @@
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Folder01Icon,
+  File01Icon,
+  ComputerTerminal02Icon,
+  Cancel01Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { addBookmark, useBookmarks, removeBookmark, type Bookmark } from "./store";
+import { toast } from "../toast";
+
+export function BookmarksView({
+  inline,
+  onRunCommand,
+  onOpenFile,
+  onOpenDirectory,
+}: {
+  inline?: boolean;
+  onRunCommand?: (cmd: string) => void;
+  onOpenFile?: (path: string) => void;
+  onOpenDirectory?: (path: string) => void;
+}) {
+  const bookmarks = useBookmarks();
+  const [showAdd, setShowAdd] = useState(false);
+  const [type, setType] = useState<"directory" | "file" | "command">("directory");
+  const [label, setLabel] = useState("");
+  const [path, setPath] = useState("");
+  const [command, setCommand] = useState("");
+
+  const handleAdd = () => {
+    if (!label.trim()) return;
+    if (type === "command" && !command.trim()) return;
+    if ((type === "directory" || type === "file") && !path.trim()) return;
+
+    addBookmark({
+      type,
+      label: label.trim(),
+      path: type !== "command" ? path.trim() : undefined,
+      command: type === "command" ? command.trim() : undefined,
+    });
+
+    setShowAdd(false);
+    setLabel("");
+    setPath("");
+    setCommand("");
+    toast({ title: "Bookmark added", variant: "success" });
+  };
+
+  const handleRun = (b: Bookmark) => {
+    if (b.type === "command" && b.command && onRunCommand) {
+      onRunCommand(b.command);
+    } else if (b.type === "file" && b.path && onOpenFile) {
+      onOpenFile(b.path);
+    } else if (b.type === "directory" && b.path && onOpenDirectory) {
+      onOpenDirectory(b.path);
+    }
+  };
+
+  const getIcon = (b: Bookmark) => {
+    switch (b.type) {
+      case "directory":
+        return Folder01Icon;
+      case "file":
+        return File01Icon;
+      case "command":
+        return ComputerTerminal02Icon;
+    }
+  };
+
+  return (
+    <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Bookmarks
+        </h3>
+        {!showAdd && (
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="rounded p-0.5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-colors"
+            title="Add bookmark"
+          >
+            <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+
+      {bookmarks.length === 0 && !showAdd && (
+        <p className="text-muted-foreground text-[11px] text-center py-4">
+          No bookmarks. Click + to add directories, files, or commands.
+        </p>
+      )}
+
+      <div className="flex flex-col gap-1 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {bookmarks.map((b) => (
+          <div
+            key={b.id}
+            className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 transition-colors hover:border-border/40 cursor-pointer"
+            onClick={() => handleRun(b)}
+            title={b.path || b.command}
+          >
+            <HugeiconsIcon
+              icon={getIcon(b)}
+              size={12}
+              className="text-muted-foreground shrink-0"
+            />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-[11px] font-medium text-foreground">
+                {b.label}
+              </span>
+              <span className="truncate text-[9px] text-muted-foreground">
+                {b.path || b.command}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                removeBookmark(b.id);
+              }}
+              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={9} strokeWidth={2} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {showAdd && (
+        <div className="flex flex-col gap-2 border-t border-border/50 pt-2 mt-2">
+          <Select value={type} onValueChange={(v) => setType(v as Bookmark["type"])}>
+            <SelectTrigger className="h-7 text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="directory">Directory</SelectItem>
+              <SelectItem value="file">File</SelectItem>
+              <SelectItem value="command">Command</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div>
+            <Label className="text-[10px]">Label</Label>
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="e.g., Project Root"
+              className="h-7 text-[11px]"
+            />
+          </div>
+
+          {type !== "command" ? (
+            <div>
+              <Label className="text-[10px]">Path</Label>
+              <Input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                placeholder={type === "directory" ? "/Users/akikp/huskv2" : "/Users/akikp/huskv2/README.md"}
+                className="h-7 text-[11px]"
+              />
+            </div>
+          ) : (
+            <div>
+              <Label className="text-[10px]">Command</Label>
+              <Input
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                placeholder="pnpm tauri dev"
+                className="h-7 text-[11px]"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button size="sm" className="text-[10px] h-6" onClick={handleAdd}>
+              Add
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-[10px] h-6"
+              onClick={() => setShowAdd(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

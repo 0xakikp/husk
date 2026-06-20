@@ -7,6 +7,7 @@ import {
   PlayListIcon,
   PuzzleIcon,
   CommandIcon,
+  StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -20,7 +21,8 @@ export type SidebarViewId =
   | "ci-cd"
   | "terraform"
   | "docker"
-  | "sftp";
+  | "sftp"
+  | "bookmarks";
 
 const RAIL_TOOLTIP_CLASS =
   "border border-border/60 bg-zinc-950 text-zinc-100 shadow-lg shadow-black/30 dark:bg-zinc-950 dark:text-zinc-100";
@@ -59,6 +61,7 @@ export function SidebarRail({
     { kind: "view", id: "source-control", label: "Source Control", icon: FolderGitTwoIcon, badge: changedCount },
     { kind: "view", id: "remotes", label: "Remotes", icon: DatabaseIcon },
     { kind: "view", id: "workflows", label: "Workflows", icon: PlayListIcon },
+    { kind: "view", id: "bookmarks", label: "Bookmarks", icon: StarIcon },
     { kind: "view", id: "tools-hub", label: "Integrations", icon: PuzzleIcon },
     { kind: "action", id: "command-palette", label: "Command Palette", icon: CommandIcon, onTrigger: onCommandPalette },
   ];

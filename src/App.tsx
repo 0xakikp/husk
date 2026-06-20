@@ -76,6 +76,7 @@ import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focu
 import { invoke } from "@tauri-apps/api/core";
 import { PreviewDialog } from "./preview/PreviewDialog";
 import { SidebarRail, type SidebarViewId } from "./sidebar/SidebarRail";
+import { BookmarksView } from "./bookmarks/BookmarksView";
 import { fileIconUrl } from "./explorer/iconResolver";
 import { PathBar } from "./header/PathBar";
 import type { TermTab } from "./useTerminalTabs";
@@ -583,7 +584,7 @@ function readSidebarView(): SidebarViewId {
     const stored = window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY);
     const valid: SidebarViewId[] = [
       "explorer", "source-control", "remotes", "sftp", "workflows", "tools-hub",
-      "kubernetes", "ci-cd", "terraform", "docker",
+      "kubernetes", "ci-cd", "terraform", "docker", "bookmarks",
     ];
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
   } catch (e) { console.error("Failed to read sidebar view", e); }
@@ -1430,6 +1431,20 @@ function App() {
                     <TerraformView inline />
                   ) : sidebarView === "docker" ? (
                     <DockerView inline />
+                  ) : sidebarView === "bookmarks" ? (
+                    <BookmarksView
+                      inline
+                      onRunCommand={(cmd) => {
+                        runInActiveTerminal(cmd + "\n");
+                      }}
+                      onOpenFile={(path) => {
+                        const name = path.split("/").pop() || path;
+                        openFile(path, name);
+                      }}
+                      onOpenDirectory={(path) => {
+                        runInActiveTerminal(`cd "${path}"\n`);
+                      }}
+                    />
                   ) : null}
                 </div>
                 <SidebarRail
