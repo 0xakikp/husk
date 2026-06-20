@@ -70,6 +70,15 @@ export function NotesView({
       default: return File01Icon;
     }
   }
+  function getFileIconColor(name: string) {
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    switch (ext) {
+      case 'md': return 'text-blue-400/80';
+      case 'txt': return 'text-gray-400/80';
+      case 'mdx': return 'text-purple-400/80';
+      default: return 'text-muted-foreground';
+    }
+  }
   const [createType, setCreateType] = useState<"file" | "folder">("file");
   const [createName, setCreateName] = useState("");
   const [createDir, setCreateDir] = useState("");
@@ -223,7 +232,7 @@ export function NotesView({
             <button
               type="button"
               onClick={() => toggleExpanded(node.path)}
-              className="inline-flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              className="inline-flex size-4 items-center justify-center rounded text-amber-400/80 hover:text-amber-400"
             >
               <HugeiconsIcon
                 icon={ArrowDown01Icon}
@@ -236,7 +245,7 @@ export function NotesView({
               <HugeiconsIcon
                 icon={getFileIcon(node.name)}
                 size={10}
-                className="text-muted-foreground"
+                className={getFileIconColor(node.name)}
               />
             </span>
           )}
@@ -263,7 +272,7 @@ export function NotesView({
               <HugeiconsIcon
                 icon={getFileIcon(node.name, isExpanded)}
                 size={10}
-                className="text-muted-foreground shrink-0"
+                className={isExpanded ? "text-amber-400/80" : "text-amber-500/70"}
               />
             )}
             <span className="truncate">{node.name}</span>
