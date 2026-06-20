@@ -385,7 +385,6 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
   const [revealed, setRevealed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasKey = !!apiKey;
-  const colors = PROVIDER_COLORS[provider.id] ?? PROVIDER_COLORS.local;
 
   const save = () => {
     const v = draft.trim();
@@ -409,9 +408,9 @@ function ProviderKeyCard({ provider }: { provider: Provider }) {
   return (
     <div
       className={cn(
-        "group relative flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-lg border bg-card/30 px-3 py-2 transition-all",
+        "group relative flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-lg border border-border/40 bg-muted/20 px-3 py-2 transition-all",
         "hover:border-border/60",
-        hasKey ? cn("border-l-[3px]", colors.border) : "border-border/30",
+        hasKey && "ring-1 ring-inset ring-emerald-500/20",
       )}
     >
       {/* Header */}
@@ -572,7 +571,7 @@ function LocalModelBlock({
         </span>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-2.5 overflow-hidden rounded-xl border border-border/40 bg-card/50 px-3.5 py-3">
+      <div className="flex min-w-0 flex-col gap-2.5 overflow-hidden rounded-lg border border-border/40 bg-muted/20 px-3 py-2.5">
         <div className="flex flex-col gap-1">
           <span className="text-[11px] font-medium text-muted-foreground">Base URL</span>
           <Input
