@@ -164,10 +164,10 @@ export function BookmarksView({
             <button
               type="button"
               onClick={() => setSearchActive(true)}
-              className="flex w-full h-6 items-center gap-1.5 rounded-md border border-border/40 bg-muted/30 px-2 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              className="flex w-full h-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 px-2 text-muted-foreground hover:text-foreground transition-colors"
+              title="Filter bookmarks"
             >
-              <HugeiconsIcon icon={Search01Icon} size={9} />
-              <span className="truncate">Filter bookmarks...</span>
+              <HugeiconsIcon icon={Search01Icon} size={10} />
             </button>
           ) : (
             <div className="relative">
