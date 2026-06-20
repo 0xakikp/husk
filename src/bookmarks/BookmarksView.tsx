@@ -270,92 +270,88 @@ export function BookmarksView({
         </div>
       )}
 
-      {/* View popup — centered modal overlay via portal */}
+      {/* View popup — compact card via portal */}
       {viewing &&
         createPortal(
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
             onClick={() => setViewing(null)}
           >
             <div
-              className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
+              className="w-full max-w-xs rounded-lg border border-border/50 bg-card/95 p-3 shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-1.5 mb-2">
                 <HugeiconsIcon
                   icon={getIcon(viewing)}
-                  size={14}
+                  size={12}
                   className="text-muted-foreground"
                 />
-                <h4 className="text-sm font-semibold">{viewing.label}</h4>
+                <h4 className="text-xs font-semibold">{viewing.label}</h4>
               </div>
 
-              <div className="rounded-md bg-muted/30 border border-border/30 p-2 mb-3">
-                <code className="text-[11px] font-mono break-all text-foreground">
+              <div className="rounded bg-muted/40 border border-border/30 p-1.5 mb-2">
+                <code className="text-[10px] font-mono break-all text-foreground">
                   {viewing.path || viewing.command}
                 </code>
               </div>
 
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="text-[10px] h-7 gap-1"
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
                   onClick={() => {
                     const text = viewing.path || viewing.command || "";
                     navigator.clipboard.writeText(text);
-                    toast({ title: "Copied to clipboard", variant: "success" });
+                    toast({ title: "Copied", variant: "success" });
                   }}
                 >
-                  <HugeiconsIcon icon={Copy01Icon} size={10} />
+                  <HugeiconsIcon icon={Copy01Icon} size={9} />
                   Copy
-                </Button>
+                </button>
                 {viewing.type === "command" && onTypeCommand && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-[10px] h-7"
+                  <button
+                    type="button"
+                    className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
                     onClick={() => {
                       onTypeCommand(viewing.command || "");
                       setViewing(null);
                     }}
                   >
-                    Type in terminal
-                  </Button>
+                    Type
+                  </button>
                 )}
                 {viewing.type === "directory" && onOpenDirectory && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-[10px] h-7"
+                  <button
+                    type="button"
+                    className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
                     onClick={() => {
                       onOpenDirectory(viewing.path || "");
                       setViewing(null);
                     }}
                   >
-                    cd to directory
-                  </Button>
+                    cd
+                  </button>
                 )}
                 {viewing.type === "file" && onOpenFile && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-[10px] h-7"
+                  <button
+                    type="button"
+                    className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
                     onClick={() => {
                       onOpenFile(viewing.path || "");
                       setViewing(null);
                     }}
                   >
-                    Open file
-                  </Button>
+                    Open
+                  </button>
                 )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-[10px] h-7 ml-auto"
+                <button
+                  type="button"
+                  className="inline-flex items-center text-[10px] px-2 py-1 rounded text-muted-foreground hover:text-foreground hover:bg-white/5 transition ml-auto"
                   onClick={() => setViewing(null)}
                 >
                   Close
-                </Button>
+                </button>
               </div>
             </div>
           </div>,
