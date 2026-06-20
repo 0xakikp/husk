@@ -1326,18 +1326,26 @@ button {
 
 /* ── Selection colors ── */
 ::selection {
-  background-color: var(--accent) !important;
+  background-color: #22c55e !important;
   color: #ffffff !important;
 }
 ::-moz-selection {
-  background-color: var(--accent) !important;
+  background-color: #22c55e !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] ::selection {
+  background-color: #22c55e !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] ::-moz-selection {
+  background-color: #22c55e !important;
   color: #ffffff !important;
 }
 .enode::selection,
 .enode::-moz-selection,
 .enode *::selection,
 .enode *::-moz-selection {
-  background-color: var(--accent) !important;
+  background-color: #22c55e !important;
   color: #ffffff !important;
 }
 
