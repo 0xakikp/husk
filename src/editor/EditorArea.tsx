@@ -126,6 +126,14 @@ export function EditorArea({
     });
     editorRef.current = editor;
 
+    // Force layout recalculation on container resize
+    const resizeObserver = new ResizeObserver(() => {
+      editor.layout();
+    });
+    if (hostRef.current) {
+      resizeObserver.observe(hostRef.current);
+    }
+
     // Cmd/Ctrl+S saves the active file.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       const path = activePathRef.current;
@@ -228,6 +236,7 @@ export function EditorArea({
     });
 
     return () => {
+      resizeObserver.disconnect();
       unsub();
       unsubSel();
       unsubFile();
