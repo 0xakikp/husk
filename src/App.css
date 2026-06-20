@@ -2720,6 +2720,30 @@ button {
   object-fit: contain;
 }
 
+/* ── AI Bubble animated accent border ── */
+.ai-bubble-animated-border {
+  position: relative;
+  border: none !important;
+}
+.ai-bubble-animated-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from 0deg, var(--accent), color-mix(in srgb, var(--accent) 50%, transparent), var(--accent));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ai-border-rotate 3s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes ai-border-rotate {
+  0% { background: conic-gradient(from 0deg, var(--accent), color-mix(in srgb, var(--accent) 50%, transparent), var(--accent)); }
+  100% { background: conic-gradient(from 360deg, var(--accent), color-mix(in srgb, var(--accent) 50%, transparent), var(--accent)); }
+}
+
 /* ── AI Bubble header streaming shimmer ── */
 .header-streaming {
   position: relative;
