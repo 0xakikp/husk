@@ -110,7 +110,6 @@ export function EditorArea({
 }) {
   const prefs = usePrefs();
   const hostRef = useRef<HTMLDivElement>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const activePathRef = useRef<string | null>(activePath);
   const filesRef = useRef(files);
@@ -134,11 +133,10 @@ export function EditorArea({
     });
     editorRef.current = editor;
 
-    // Force layout recalculation on any container or window resize
+    // Force layout recalculation on container or window resize
     const relayout = () => editor.layout();
     const resizeObserver = new ResizeObserver(relayout);
-    if (hostRef.current) resizeObserver.observe(hostRef.current);
-    if (wrapperRef.current) resizeObserver.observe(wrapperRef.current);
+    resizeObserver.observe(hostRef.current);
     window.addEventListener("resize", relayout);
 
     // Cmd/Ctrl+S saves the active file.
@@ -373,9 +371,7 @@ export function EditorArea({
 
   return (
     <div className="editor-area">
-      <div ref={wrapperRef} style={{ paddingRight: 24, width: '100%', height: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
-        <div className="editor-host" ref={hostRef} />
-      </div>
+      <div className="editor-host" ref={hostRef} />
       <div className="editor-vim-status" ref={statusRef} style={{ display: prefs.vimMode ? "block" : "none" }} />
       <EditorContextMenu editor={editorRef.current} />
     </div>
