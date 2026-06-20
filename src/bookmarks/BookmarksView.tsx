@@ -155,7 +155,7 @@ export function BookmarksView({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search bookmarks..."
+            placeholder="Search..."
             className="w-full h-7 rounded-md border border-border/40 bg-muted/30 pl-7 pr-2 text-[11px] text-foreground placeholder:text-muted-foreground outline-none focus:border-border/70"
           />
         </div>
