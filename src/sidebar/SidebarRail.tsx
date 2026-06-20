@@ -71,8 +71,8 @@ export function SidebarRail({
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        style={{ height: 40 }}
-        className="flex shrink-0 items-center justify-around bg-background px-1.5"
+        style={{ height: 52 }}
+        className="flex shrink-0 items-start justify-around bg-background px-1.5 pt-1"
       >
         {slots.map((slot) => {
           const isActive = slot.kind === "view" && slot.id === view;
@@ -81,57 +81,65 @@ export function SidebarRail({
           const isDisabled = isAction && slot.disabled === true;
           const showBadge = slot.kind === "view" && !!slot.badge && slot.badge > 0;
           return (
-            <Tooltip key={slot.id}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={slot.label}
-                  aria-pressed={isActive || isActionActive || undefined}
-                  disabled={isDisabled}
-                  onClick={() => {
-                    if (slot.kind === "view") onSelectView(slot.id);
-                    else slot.onTrigger();
-                  }}
-                  className={cn(
-                    "group relative inline-flex size-8 cursor-pointer items-center justify-center rounded-md outline-none transition-[background-color,color] duration-150",
-                    "focus-visible:ring-1 focus-visible:ring-[#11c700]/40 focus-visible:ring-offset-0",
-                    "disabled:cursor-not-allowed disabled:opacity-40",
-                    isActive
-                      ? "bg-primary/15 text-primary"
-                      : isActionActive
-                        ? "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.08]"
-                        : isAction
-                          ? "bg-transparent text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-                          : "bg-transparent text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground",
-                  )}
+            <div key={slot.id} className="flex flex-col items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={slot.label}
+                    aria-pressed={isActive || isActionActive || undefined}
+                    disabled={isDisabled}
+                    onClick={() => {
+                      if (slot.kind === "view") onSelectView(slot.id);
+                      else slot.onTrigger();
+                    }}
+                    className={cn(
+                      "group relative inline-flex size-8 cursor-pointer items-center justify-center rounded-md outline-none transition-[background-color,color] duration-150",
+                      "focus-visible:ring-1 focus-visible:ring-[#11c700]/40 focus-visible:ring-offset-0",
+                      "disabled:cursor-not-allowed disabled:opacity-40",
+                      isActive
+                        ? "bg-primary/15 text-primary"
+                        : isActionActive
+                          ? "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.08]"
+                          : isAction
+                            ? "bg-transparent text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+                            : "bg-transparent text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground",
+                    )}
+                  >
+                    <HugeiconsIcon
+                      icon={slot.icon}
+                      size={17}
+                      strokeWidth={isActive || isActionActive ? 2 : 1.75}
+                      color={isActive ? "var(--accent)" : undefined}
+                      className="transition-[stroke-width] duration-150"
+                    />
+                    {showBadge ? (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute -right-1 -top-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full border px-1 text-[8.5px] font-semibold leading-none tabular-nums",
+                          "border-border/70 bg-card text-muted-foreground/95 ring-2 ring-card",
+                        )}
+                      >
+                        {slot.badge! > 99 ? "99+" : slot.badge}
+                      </span>
+                    ) : null}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  sideOffset={8}
+                  className={cn(RAIL_TOOLTIP_CLASS, "text-[10.5px]")}
                 >
-                  <HugeiconsIcon
-                    icon={slot.icon}
-                    size={17}
-                    strokeWidth={isActive || isActionActive ? 2 : 1.75}
-                    color={isActive ? "var(--accent)" : undefined}
-                    className="transition-[stroke-width] duration-150"
-                  />
-                  {showBadge ? (
-                    <span
-                      className={cn(
-                        "pointer-events-none absolute -right-1 -top-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full border px-1 text-[8.5px] font-semibold leading-none tabular-nums",
-                        "border-border/70 bg-card text-muted-foreground/95 ring-2 ring-card",
-                      )}
-                    >
-                      {slot.badge! > 99 ? "99+" : slot.badge}
-                    </span>
-                  ) : null}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="top"
-                sideOffset={8}
-                className={cn(RAIL_TOOLTIP_CLASS, "text-[10.5px]")}
-              >
+                  {slot.label}
+                </TooltipContent>
+              </Tooltip>
+              <span className={cn(
+                "text-[9px] leading-none font-medium select-none",
+                isActive ? "text-primary" : "text-muted-foreground"
+              )}>
                 {slot.label}
-              </TooltipContent>
-            </Tooltip>
+              </span>
+            </div>
           );
         })}
       </div>
