@@ -6,26 +6,29 @@ import { SettingsPage } from "./settings/SettingsPage";
 import { getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getSentryEnabled } from "./settings/CrashReportingSection";
 import "./styles/tailwind.css?v=2";
 import "./styles/fonts.css?v=2";
 import "./styles/code-highlight.css?v=2";
 import "./App.css?v=2";
 
-// Initialize Sentry crash reporting (free tier, no PII)
-Sentry.init({
-  dsn: "https://0db29941cc9d5b5e72f11f40773f76e9@o4511596996067328.ingest.de.sentry.io/4511597291765840",
-  environment: import.meta.env.MODE,
-  release: "husk@" + __APP_VERSION__,
-  sampleRate: 1.0,
-  beforeSend(event) {
-    // Strip PII: no user data, no file paths, no commands
-    if (event.exception) {
-      // Keep the error type and message, but scrub everything else
+// Initialize Sentry crash reporting only if user hasn't opted out
+if (getSentryEnabled()) {
+  Sentry.init({
+    dsn: "https://0db29941cc9d5b5e72f11f40773f76e9@o4511596996067328.ingest.de.sentry.io/4511597291765840",
+    environment: import.meta.env.MODE,
+    release: "husk@" + __APP_VERSION__,
+    sampleRate: 1.0,
+    beforeSend(event) {
+      // Strip PII: no user data, no file paths, no commands
+      if (event.exception) {
+        // Keep the error type and message, but scrub everything else
+        return event;
+      }
       return event;
-    }
-    return event;
-  },
-});
+    },
+  });
+}
 
 /** Wraps the settings page with focus/blur listeners that dim the window
  *  when it loses focus — a hyprland-style inactive window treatment. */

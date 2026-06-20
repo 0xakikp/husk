@@ -10,6 +10,7 @@ import { ModelsSection } from "./ModelsSection";
 import { McpSection } from "./McpSection";
 import { ToolsSection } from "./ToolsSection";
 import { CloudSyncSection } from "./CloudSyncSection";
+import { CrashReportingSection } from "./CrashReportingSection";
 
 type SectionId = "about" | "general" | "appearance" | "models" | "mcp" | "tools" | "cloudSync";
 
@@ -177,6 +178,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
               <div id="settings-section-about" className="scroll-mt-6">
                 <AboutSection />
               </div>
+            ) : null}
+            {show("about") ? (
+              <>
+                <SectionDivider />
+                <div id="settings-section-crash" className="scroll-mt-6">
+                  <CrashReportingSection />
+                </div>
+              </>
             ) : null}
             {show("general") ? (
               <>
