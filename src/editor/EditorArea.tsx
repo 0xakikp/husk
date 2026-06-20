@@ -121,11 +121,15 @@ export function EditorArea({
     if (!hostRef.current) return;
     const p = getPrefs();
     const editor = monaco.editor.create(hostRef.current, {
+      ...editorOptions(p),
       theme: monacoTheme(p),
       automaticLayout: true,
       fixedOverflowWidgets: true,
       padding: { top: 8, bottom: 8 },
-      ...editorOptions(p),
+      // Force wrap regardless of saved preferences
+      wordWrap: "bounded",
+      wrappingStrategy: "advanced",
+      scrollBeyondLastColumn: 0,
     });
     editorRef.current = editor;
 
@@ -256,7 +260,12 @@ export function EditorArea({
     const editor = editorRef.current;
     if (!editor) return;
     monaco.editor.setTheme(monacoTheme(prefs));
-    editor.updateOptions(editorOptions(prefs));
+    editor.updateOptions({
+      ...editorOptions(prefs),
+      wordWrap: "bounded",
+      wrappingStrategy: "advanced",
+      scrollBeyondLastColumn: 0,
+    });
     editor.getModel()?.updateOptions({ tabSize: prefs.editorTabSize, insertSpaces: true });
   }, [prefs]);
 
