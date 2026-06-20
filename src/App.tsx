@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { TerminalStack } from "./TerminalStack";
 import { TerminalBottomBar } from "./terminal/TerminalBottomBar";
-import { runInActiveTerminal } from "./ai/terminalContext";
+import { runInActiveTerminal, typeInActiveTerminal } from "./ai/terminalContext";
 import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -1437,15 +1437,15 @@ function App() {
                   ) : sidebarView === "bookmarks" ? (
                     <BookmarksView
                       inline
-                      onRunCommand={(cmd) => {
-                        runInActiveTerminal(cmd + "\n");
+                      onTypeCommand={(cmd) => {
+                        typeInActiveTerminal(cmd);
                       }}
                       onOpenFile={(path) => {
                         const name = path.split("/").pop() || path;
                         openFile(path, name);
                       }}
                       onOpenDirectory={(path) => {
-                        runInActiveTerminal(`cd "${path}"\n`);
+                        typeInActiveTerminal(`cd "${path}"`);
                       }}
                     />
                   ) : null}

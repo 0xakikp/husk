@@ -25,11 +25,13 @@ import { toast } from "../toast";
 export function BookmarksView({
   inline,
   onRunCommand,
+  onTypeCommand,
   onOpenFile,
   onOpenDirectory,
 }: {
   inline?: boolean;
   onRunCommand?: (cmd: string) => void;
+  onTypeCommand?: (cmd: string) => void;
   onOpenFile?: (path: string) => void;
   onOpenDirectory?: (path: string) => void;
 }) {
@@ -92,8 +94,10 @@ export function BookmarksView({
   };
 
   const handleRun = (b: Bookmark) => {
-    if (b.type === "command" && b.command && onRunCommand) {
-      onRunCommand(b.command);
+    if (b.type === "command" && b.command && onTypeCommand) {
+      onTypeCommand(b.command); // type only, don't run
+    } else if (b.type === "command" && b.command && onRunCommand) {
+      onRunCommand(b.command); // fallback for old callers
     } else if (b.type === "file" && b.path && onOpenFile) {
       onOpenFile(b.path);
     } else if (b.type === "directory" && b.path && onOpenDirectory) {
