@@ -41,6 +41,8 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
     fontLigatures: p.editorLigatures,
     minimap: { enabled: p.editorMinimap },
     wordWrap: p.editorWordWrap,
+    wrappingStrategy: "advanced",
+    scrollBeyondLastColumn: 0,
     lineNumbers: p.editorLineNumbers,
     cursorStyle: p.editorCursorStyle,
     cursorBlinking: p.editorCursorBlink ? "blink" : "solid",
@@ -52,7 +54,7 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
     scrollBeyondLastLine: false,
     scrollbar: {
       vertical: "auto",
-      horizontal: "auto",
+      horizontal: "hidden",
       useShadows: false,
       verticalHasArrows: false,
       horizontalHasArrows: false,
