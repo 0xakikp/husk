@@ -40,7 +40,7 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
     fontFamily: fontStack(p.fontFamily),
     fontLigatures: p.editorLigatures,
     minimap: { enabled: p.editorMinimap },
-    wordWrap: "bounded",
+    wordWrap: "on",
     wrappingStrategy: "advanced",
     scrollBeyondLastColumn: 0,
     lineNumbers: p.editorLineNumbers,
@@ -331,14 +331,22 @@ export function EditorArea({
                 // Container still too small, retry later
                 setTimeout(() => {
                   if (editorRef.current === editor && !cancelled) {
-                    editor.layout();
+                    const host2 = hostRef.current;
+                    if (host2) {
+                      const r2 = host2.getBoundingClientRect();
+                      editor.layout({ width: r2.width, height: r2.height });
+                    } else {
+                      editor.layout();
+                    }
                     editor.focus();
                   }
                 }, 200);
                 return;
               }
+              editor.layout({ width: rect.width, height: rect.height });
+            } else {
+              editor.layout();
             }
-            editor.layout();
             editor.focus();
           }
         }, 100);
