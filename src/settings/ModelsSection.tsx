@@ -350,9 +350,9 @@ function LocalModelBlock({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
-        <Label>Local — LM Studio / OpenAI-compatible</Label>
+        <Label>Self-hosted AI</Label>
         <span className="text-[10.5px] leading-relaxed text-muted-foreground">
-          Run any model on your machine. Enable the server in LM Studio → Developer tab, or use any OpenAI-compatible endpoint.
+          Connect to a model running on your own machine or network. Works with LM Studio, Ollama, or any OpenAI-compatible API server.
         </span>
       </div>
 
