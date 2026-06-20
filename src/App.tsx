@@ -1322,46 +1322,48 @@ function App() {
           {/* Right: search + actions */}
           <SearchInline />
 
-          <ThemeToggle />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Authenticator (2FA)"
-            onClick={() => setTotpOpen(true)}
-          >
-            <HugeiconsIcon icon={SquareLockPasswordIcon} size={14} strokeWidth={1.75} />
-            <TotpBadge />
-          </Button>
-          <ClipboardDropdown />
+          <div className="flex items-center gap-0.5">
+            <ThemeToggle />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              title="Authenticator (2FA)"
+              onClick={() => setTotpOpen(true)}
+            >
+              <HugeiconsIcon icon={SquareLockPasswordIcon} size={14} strokeWidth={1.75} />
+              <TotpBadge />
+            </Button>
+            <ClipboardDropdown />
 
-          {prefs.aiEnabled && (
+            {prefs.aiEnabled && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+                title="Toggle AI chat (Ctrl+Shift+L)"
+                onClick={() => toggleBubble()}
+              >
+                <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
               className={cn(
-                "size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+                "size-6 shrink-0 rounded-md",
+                activeKind === "settings"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
-              title="Toggle AI chat (Ctrl+Shift+L)"
-              onClick={() => toggleBubble()}
+              title="Settings"
+              onClick={openSettings}
             >
-              <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
+              <HugeiconsIcon icon={Settings01Icon} size={15} strokeWidth={1.75} />
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "size-6 shrink-0 rounded-md",
-              activeKind === "settings"
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
-            )}
-            title="Settings"
-            onClick={openSettings}
-          >
-            <HugeiconsIcon icon={Settings01Icon} size={15} strokeWidth={1.75} />
-          </Button>
+          </div>
 
           {USE_CUSTOM_WINDOW_CONTROLS && (
             <>
