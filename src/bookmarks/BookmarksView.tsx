@@ -194,21 +194,9 @@ export function BookmarksView({
               }
             }}
             placeholder=""
-            className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-6 text-[10px] text-foreground outline-none focus:border-border/70"
+            className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-1.5 text-[10px] text-foreground outline-none focus:border-border/70"
             autoFocus
           />
-          {search && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch("");
-                setSearchActive(false);
-              }}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={8} />
-            </button>
-          )}
         </div>
       )}
 
