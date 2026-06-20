@@ -361,7 +361,9 @@ export function EditorArea({
 
   return (
     <div className="editor-area">
-      <div className="editor-host" ref={hostRef} />
+      <div style={{ paddingRight: 24, width: '100%', height: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
+        <div className="editor-host" ref={hostRef} />
+      </div>
       <div className="editor-vim-status" ref={statusRef} style={{ display: prefs.vimMode ? "block" : "none" }} />
       <EditorContextMenu editor={editorRef.current} />
     </div>

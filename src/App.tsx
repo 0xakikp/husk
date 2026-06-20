@@ -1663,9 +1663,10 @@ function App() {
               prefs.activePanelGlow && activeKind === "term" && "active-panel-glow active",
             )}
             style={{
-              margin: prefs.panelGaps > 0
-                ? `var(--panel-gaps) var(--panel-gaps) var(--panel-gaps) 0`
-                : undefined,
+              marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
+              marginBottom: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+              marginLeft: prefs.panelGaps > 0 ? '0' : undefined,
+              marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
             }}
           >
             <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -1717,6 +1718,7 @@ function App() {
                     )}
                     style={{
                       margin: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
+                      marginRight: prefs.panelGaps <= 0 ? '16px' : undefined,
                     }}
                   >
                     <EditorArea files={openFiles} activePath={activeFile} />
