@@ -148,7 +148,7 @@ export function buildTerminalTheme(
       foreground: "#1a1a1a",
       cursor: accent,
       cursorAccent: "#ffffff",
-      selectionBackground: "rgba(45, 50, 60, 0.12)",
+      selectionBackground: "rgba(0, 120, 255, 0.25)",
       selectionForeground: "#000000",
       ...ansi,
     };
