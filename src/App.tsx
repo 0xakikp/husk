@@ -1707,7 +1707,6 @@ function App() {
                 )}
                 style={{
                   padding: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
-                  paddingRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '24px',
                 }}
                 aria-hidden={activeKind !== "file"}
               >
