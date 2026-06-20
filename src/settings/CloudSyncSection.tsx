@@ -49,9 +49,14 @@ export function CloudSyncSection() {
       </div>
 
       {/* Description */}
-      <p className="text-[11px] text-muted-foreground leading-relaxed">
-        Export an encrypted blob of all your settings (SSH connections, bookmarks, preferences) and paste it on another device to sync.
-      </p>
+      <div className="flex flex-col gap-1">
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Export an encrypted blob of all your settings (SSH connections, bookmarks, preferences) and paste it on another device to sync.
+        </p>
+        <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+          How it works: your data is encrypted locally with your passphrase — nothing leaves your device unencrypted. Copy the blob, paste it on another machine, enter the same passphrase, and import.
+        </p>
+      </div>
 
       {/* Mode toggle */}
       <div className="flex flex-row gap-3">
@@ -100,7 +105,7 @@ export function CloudSyncSection() {
             <button
               type="button"
               onClick={handleExport}
-              className="self-start bg-white/10 hover:bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-md transition"
+              className="self-start bg-white/10 hover:bg-white/20 text-white text-[11px] pl-0 pr-3 py-1.5 rounded-md transition"
             >
               Generate Encrypted Blob
             </button>
