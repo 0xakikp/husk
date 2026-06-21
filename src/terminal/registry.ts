@@ -209,7 +209,8 @@ export async function createSession(
       const buf = term.buffer.active;
       setPromptPosition({ row: buf.cursorY + buf.viewportY, col: buf.cursorX });
     }
-    if (data.startsWith("A")) setPromptPosition(null);
+    // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
+    // frameworks emit it after B, which clears the position we just set.
     if (!session.active) return true;
     if (data.startsWith("D")) {
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
