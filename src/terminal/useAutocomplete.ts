@@ -51,9 +51,7 @@ export function useAutocomplete(
     const term = handle?.getTerm();
     if (!term || !term.element) return null;
     const buf = term.buffer.active;
-    const screenEl = term.element.querySelector(".xterm-screen") as HTMLElement | null;
-    if (!screenEl) return null;
-
+    const screenEl = (term.element.querySelector(".xterm-screen") as HTMLElement | null) ?? term.element;
     const rect = screenEl.getBoundingClientRect();
     const style = window.getComputedStyle(screenEl);
     const padL = parseFloat(style.paddingLeft) || 0;
