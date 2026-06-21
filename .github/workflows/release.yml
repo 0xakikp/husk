@@ -1,40 +1,88 @@
-name: Build and Release
+name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  workflow_dispatch:
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
+  release:
+    permissions:
+      contents: write
+    runs-on: macos-14
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 20
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v3
         with:
-          version: '9'
+          version: 9
 
-      - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
 
-      - name: Install dependencies
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
         run: pnpm install
 
       - name: Build Tauri app
-        run: pnpm tauri build
-
-      - name: Upload DMG to release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            src-tauri/target/release/bundle/dmg/*.dmg
+        uses: tauri-apps/tauri-action@action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NODE_OPTIONS: --max-old-space-size=8192
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Husk ${{ github.ref_name }}"
+          releaseBody: |
+            See the assets to download this version.
+
+            ## Install
+            - **macOS**: Download the `.dmg` for fresh install, or let the in-app updater handle it automatically.
+
+            The app will automatically check for updates on launch. You can also check manually via **Settings → About → Check for Updates**.
+          releaseDraft: false
+          prerelease: false
+          args: "--target aarch64-apple-darwin"
+
+      - name: Upload updater artifacts (fallback)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
+          # Look for latest.json in common locations
+          LATEST_JSON=""
+          for path in "$BUNDLE_DIR/latest.json" "src-tauri/target/release/bundle/latest.json" "src-tauri/target/universal-apple-darwin/release/bundle/latest.json"; do
+            if [ -f "$path" ]; then
+              LATEST_JSON="$path"
+              break
+            fi
+          done
+          if [ -n "$LATEST_JSON" ]; then
+            echo "Uploading latest.json from $LATEST_JSON"
+            gh release upload "${{ github.ref_name }}" "$LATEST_JSON" --clobber --repo "${{ github.repository }}"
+          else
+            echo "latest.json not found"
+          fi
+          # Upload any .sig files
+          for sig in "$BUNDLE_DIR"/*.sig "$BUNDLE_DIR"/macos/*.sig; do
+            if [ -f "$sig" ]; then
+              echo "Uploading signature: $sig"
+              gh release upload "${{ github.ref_name }}" "$sig" --clobber --repo "${{ github.repository }}"
+            fi
+          done
