@@ -70,63 +70,50 @@ export function useAutocomplete(
   const check = useCallback(() => {
     const handle = handleRef.current;
     const term = handle?.getTerm();
-    if (!term) {
-      console.log('[husk:autocomplete] no term');
-      return;
-    }
+    if (!term) return;
 
     const buf = term.buffer.active;
     const prompt = getPromptPosition();
-    console.log('[husk:autocomplete] prompt=', prompt, 'cursorY=', buf.cursorY, 'viewportY=', buf.viewportY, 'cursorX=', buf.cursorX);
 
     if (!prompt) {
-      console.log('[husk:autocomplete] no prompt pos');
       setState((s) => ({ ...s, visible: false }));
       return;
     }
 
     const curRow = buf.cursorY + buf.viewportY;
     if (curRow !== prompt.row) {
-      console.log('[husk:autocomplete] row mismatch', curRow, '!==', prompt.row);
       setState((s) => ({ ...s, visible: false }));
       return;
     }
 
     const line = buf.getLine(buf.cursorY)?.translateToString(true) ?? "";
     const input = line.slice(prompt.col).trimStart();
-    console.log('[husk:autocomplete] line="', line, '" input="', input, '"');
 
     if (!input || input.length < 1) {
-      console.log('[husk:autocomplete] empty input');
       setState((s) => ({ ...s, visible: false }));
       return;
     }
 
     // Only show autocomplete when cursor is at end of input
     if (buf.cursorX < prompt.col + input.length) {
-      console.log('[husk:autocomplete] cursor not at end', buf.cursorX, '<', prompt.col + input.length);
       setState((s) => ({ ...s, visible: false }));
       return;
     }
 
     const lowerInput = input.toLowerCase();
-    console.log('[husk:autocomplete] history count=', historyRef.current.length);
     const matches = historyRef.current
       .filter((cmd) => {
         const lowerCmd = cmd.toLowerCase();
         return lowerCmd.startsWith(lowerInput) && cmd !== input;
       })
       .slice(0, 5);
-    console.log('[husk:autocomplete] matches=', matches);
 
     if (matches.length === 0) {
-      console.log('[husk:autocomplete] no matches');
       setState((s) => ({ ...s, visible: false }));
       return;
     }
 
     const position = calculatePosition();
-    console.log('[husk:autocomplete] showing', matches.length, 'suggestions');
     setState({
       visible: true,
       suggestions: matches.map((cmd) => ({
