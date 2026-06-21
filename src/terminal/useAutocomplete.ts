@@ -75,6 +75,10 @@ export function useAutocomplete(
     const buf = term.buffer.active;
     const prompt = getPromptPosition();
 
+    // DEBUG: write status to terminal so we can see it in release builds
+    const debugStatus = `prompt=${prompt ? `${prompt.row},${prompt.col}` : 'null'} cursor=${buf.cursorY + buf.viewportY},${buf.cursorX} history=${historyRef.current.length}`;
+    term.write(`\r\n\x1b[90m[ac:${debugStatus}]\x1b[0m\r\n`);
+
     if (!prompt) {
       setState((s) => ({ ...s, visible: false }));
       return;
