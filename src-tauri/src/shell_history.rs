@@ -13,9 +13,7 @@ pub struct HistoryEntry {
 }
 
 fn resolve_home() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
+    dirs::home_dir()
 }
 
 fn resolve_histfile(home_dir: Option<&str>) -> Option<PathBuf> {
