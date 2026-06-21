@@ -6,10 +6,11 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   release:
-    permissions:
-      contents: write
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
