@@ -207,7 +207,7 @@ export function FileExplorer({
               }
             }}
             placeholder="Filter files…"
-            className="h-6 w-full rounded border border-[var(--border)] bg-[var(--bg-input)] px-2 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+            className="h-6 w-full rounded border border-[var(--border)] bg-[var(--bg-input)] px-2 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)] box-border"
           />
         </div>
       ) : null}

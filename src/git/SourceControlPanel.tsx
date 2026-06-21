@@ -207,7 +207,7 @@ export function SourceControlPanel({
               onChange={(e) => setMsg(e.target.value)}
               placeholder="Commit message"
               rows={2}
-              className="w-full resize-none rounded-md bg-muted/30 px-2.5 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-1 focus:ring-primary/30"
+              className="w-full resize-none rounded-md bg-muted/30 px-2.5 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-1 focus:ring-primary/30 box-border"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
