@@ -79,12 +79,10 @@ export function useAutocomplete(
       return;
     }
 
+    // Use current cursor row as source of truth — stored prompt.row can
+    // be stale if async prompt output (git status etc.) scrolls after B.
     const curRow = buf.cursorY + buf.viewportY;
-    if (curRow !== prompt.row) {
-      console.log("[check] row mismatch: curRow=", curRow, "promptRow=", prompt.row, "viewY=", buf.viewportY, "curY=", buf.cursorY);
-      setState((s) => ({ ...s, visible: false }));
-      return;
-    }
+    prompt.row = curRow;
 
     const line = buf.getLine(buf.cursorY)?.translateToString(true) ?? "";
     const input = line.slice(prompt.col).trimStart();
