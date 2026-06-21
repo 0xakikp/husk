@@ -20,7 +20,7 @@ fn home_dir() -> Option<PathBuf> {
     }
     #[cfg(not(windows))]
     {
-        std::env::var_os("HOME").map(Into::into)
+        dirs::home_dir()
     }
 }
 
