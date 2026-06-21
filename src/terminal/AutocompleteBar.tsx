@@ -26,8 +26,8 @@ export function AutocompleteBar({
 
   return (
     <div
-      className="absolute z-50 min-w-[200px] max-w-[400px] overflow-hidden rounded-lg border border-border/60 bg-popover shadow-lg"
-      style={{ left: position.x, top: position.y + 4 }}
+      className="z-50 min-w-[200px] max-w-[400px] overflow-hidden rounded-lg border border-border/60 bg-popover shadow-lg"
+      style={{ position: "fixed", left: position.x, top: position.y + 4 }}
     >
       <div className="flex flex-col py-1">
         {suggestions.map((s, i) => (

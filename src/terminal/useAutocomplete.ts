@@ -61,8 +61,8 @@ export function useAutocomplete(
     const cellH = rect.height / term.rows;
     if (!Number.isFinite(cellW) || !Number.isFinite(cellH) || cellW <= 0 || cellH <= 0) return null;
 
-    const x = buf.cursorX * cellW + padL;
-    const y = (buf.cursorY + 1) * cellH;
+    const x = rect.left + buf.cursorX * cellW + padL;
+    const y = rect.top + (buf.cursorY + 1) * cellH;
     return { x, y };
   }, [handleRef]);
 
