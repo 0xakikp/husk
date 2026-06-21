@@ -207,7 +207,9 @@ export async function createSession(
   term.parser.registerOscHandler(133, (data) => {
     if (data.startsWith("B")) {
       const buf = term.buffer.active;
-      setPromptPosition({ row: buf.cursorY + buf.viewportY, col: buf.cursorX });
+      const pos = { row: buf.cursorY + buf.viewportY, col: buf.cursorX };
+      setPromptPosition(pos);
+      console.log("[OSC 133 B]", pos, "active:", session.active, "ptyId:", id);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.

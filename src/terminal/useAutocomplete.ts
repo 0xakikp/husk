@@ -81,6 +81,7 @@ export function useAutocomplete(
 
     const curRow = buf.cursorY + buf.viewportY;
     if (curRow !== prompt.row) {
+      console.log("[check] row mismatch: curRow=", curRow, "promptRow=", prompt.row, "viewY=", buf.viewportY, "curY=", buf.cursorY);
       setState((s) => ({ ...s, visible: false }));
       return;
     }
@@ -117,10 +118,12 @@ export function useAutocomplete(
       .slice(0, 5);
 
     if (matches.length === 0) {
+      console.log("[check] no matches for input:", input, "history:", historyRef.current.length);
       setState((s) => ({ ...s, visible: false }));
       return;
     }
 
+    console.log("[check] showing", matches.length, "suggestions for:", input);
     const position = calculatePosition();
     setState({
       visible: true,
