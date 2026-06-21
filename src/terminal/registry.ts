@@ -205,6 +205,11 @@ export async function createSession(
   });
 
   term.parser.registerOscHandler(133, (data) => {
+    if (data.startsWith("B")) {
+      const buf = term.buffer.active;
+      setPromptPosition({ row: buf.cursorY + buf.viewportY, col: buf.cursorX });
+    }
+    if (data.startsWith("A")) setPromptPosition(null);
     if (!session.active) return true;
     if (data.startsWith("D")) {
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
@@ -212,11 +217,6 @@ export async function createSession(
       clearCurrentCommand();
     }
     if (data.startsWith("C")) markCommandStart();
-    if (data.startsWith("B")) {
-      const buf = term.buffer.active;
-      setPromptPosition({ row: buf.cursorY + buf.viewportY, col: buf.cursorX });
-    }
-    if (data.startsWith("A")) setPromptPosition(null);
     return true;
   });
 
