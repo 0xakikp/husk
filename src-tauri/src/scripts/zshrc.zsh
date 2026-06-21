@@ -191,7 +191,6 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then
       PS1=$'%{\e]133;B\e\\%}'"$PS1"
     fi
-    printf '\e]133;A\e\\'
   }
 
   _husk_preexec() {

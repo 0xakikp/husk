@@ -208,13 +208,8 @@ export async function createSession(
     if (data.startsWith("B")) {
       const buf = term.buffer.active;
       setPromptPosition({ row: buf.cursorY + buf.viewportY, col: buf.cursorX });
-      // DEBUG: echo marker to terminal so we can see it in release builds
-      term.write("\r\n\x1b[33m[osc133:B]\x1b[0m\r\n");
     }
-    if (data.startsWith("A")) {
-      setPromptPosition(null);
-      term.write("\r\n\x1b[33m[osc133:A]\x1b[0m\r\n");
-    }
+    if (data.startsWith("A")) setPromptPosition(null);
     if (!session.active) return true;
     if (data.startsWith("D")) {
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
