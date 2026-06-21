@@ -29,6 +29,7 @@ export function useAutocomplete(
   const stateRef = useRef(state);
   stateRef.current = state;
   const checkTimerRef = useRef<number>(0);
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     getShellHistory(500)
@@ -88,9 +89,18 @@ export function useAutocomplete(
     const input = line.slice(prompt.col).trimStart();
 
     if (!input || input.length < 1) {
+      // PTY echo may not have arrived yet — retry once
+      if (retryCountRef.current < 1) {
+        retryCountRef.current += 1;
+        checkTimerRef.current = window.setTimeout(check, 100);
+        return;
+      }
+      retryCountRef.current = 0;
       setState((s) => ({ ...s, visible: false }));
       return;
     }
+
+    retryCountRef.current = 0;
 
     // Only show autocomplete when cursor is at end of input
     if (buf.cursorX < prompt.col + input.length) {
@@ -126,7 +136,8 @@ export function useAutocomplete(
 
   const scheduleCheck = useCallback(() => {
     clearTimeout(checkTimerRef.current);
-    checkTimerRef.current = window.setTimeout(check, 50);
+    retryCountRef.current = 0;
+    checkTimerRef.current = window.setTimeout(check, 150);
   }, [check]);
 
   const accept = useCallback(
