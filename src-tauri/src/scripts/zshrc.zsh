@@ -188,8 +188,10 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     printf '\e]133;D;%s\e\\' "$_husk_ret"
     printf '\e]7;file://%s%s\e\\' "${HOST}" "$(_husk_urlencode "$PWD")"
     # Re-inject prompt-end marker in case a framework rebuilt PS1 (p10k, starship).
+    # B MUST be appended AFTER PS1 so the cursor is at the input position when
+    # the OSC handler fires — prepending captures (0,0) before prompt rendering.
     if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then
-      PS1=$'%{\e]133;B\e\\%}'"$PS1"
+      PS1="$PS1"$'%{\e]133;B\e\\%}'
     fi
   }
 
