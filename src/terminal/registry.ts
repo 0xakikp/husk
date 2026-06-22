@@ -209,7 +209,7 @@ export async function createSession(
       const buf = term.buffer.active;
       const pos = { row: buf.cursorY + buf.viewportY, col: buf.cursorX };
       setPromptPosition(pos);
-      invoke("debug_log", { line: `[OSC 133 B] pos=${pos.row},${pos.col} active=${session.active}` }).catch(() => {});
+      console.log("[OSC 133 B]", pos, "active:", session.active, "leafId:", leafId);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.

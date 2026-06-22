@@ -58,7 +58,6 @@ pub fn run() {
             fs::create_dir,
             fs::rename_path,
             fs::delete_path,
-            fs::debug_log,
             remote::ssh_read_dir,
             remote::ssh_read_file,
             remote::ssh_write_file,

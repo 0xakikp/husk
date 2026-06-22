@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { getShellHistory } from "../shellHistory";
 import { getPromptPosition } from "../ai/terminalContext";
 import type { TerminalHandle } from "./registry";
@@ -70,20 +69,12 @@ export function useAutocomplete(
   const check = useCallback(() => {
     const handle = handleRef.current;
     const term = handle?.getTerm();
-    if (!term) {
-      invoke("debug_log", { line: "[check] bail: no term" }).catch(() => {});
-      return;
-    }
+    if (!term) return;
 
     const buf = term.buffer.active;
     const prompt = getPromptPosition();
 
-    invoke("debug_log", {
-      line: `[check] prompt=${prompt ? `${prompt.row},${prompt.col}` : "null"} cursor=${buf.cursorY + buf.viewportY},${buf.cursorX} hist=${historyRef.current.length}`,
-    }).catch(() => {});
-
     if (!prompt) {
-      invoke("debug_log", { line: "[check] bail: no promptPosition" }).catch(() => {});
       setState((s) => ({ ...s, visible: false }));
       return;
     }
@@ -94,17 +85,18 @@ export function useAutocomplete(
     prompt.row = curRow;
 
     const line = buf.getLine(buf.cursorY)?.translateToString(true) ?? "";
-    const input = line.slice(prompt.col).trimStart();
+    // Only consider text from prompt column to cursor position — the
+    // buffer line may have residual characters from previous output
+    // or prompt framework artifacts beyond the cursor.
+    const input = line.slice(prompt.col, buf.cursorX).trimStart();
 
     if (!input || input.length < 1) {
       // PTY echo may not have arrived yet — retry once
       if (retryCountRef.current < 1) {
-        invoke("debug_log", { line: `[check] retry: input empty, retryCount=${retryCountRef.current}` }).catch(() => {});
         retryCountRef.current += 1;
         checkTimerRef.current = window.setTimeout(check, 100);
         return;
       }
-      invoke("debug_log", { line: "[check] bail: empty input after retry" }).catch(() => {});
       retryCountRef.current = 0;
       setState((s) => ({ ...s, visible: false }));
       return;
@@ -114,7 +106,6 @@ export function useAutocomplete(
 
     // Only show autocomplete when cursor is at end of input
     if (buf.cursorX < prompt.col + input.length) {
-      invoke("debug_log", { line: `[check] bail: cursor behind input (cursorX=${buf.cursorX} < prompt.col+inputLen=${prompt.col}+${input.length}=${prompt.col + input.length})` }).catch(() => {});
       setState((s) => ({ ...s, visible: false }));
       return;
     }
@@ -128,15 +119,11 @@ export function useAutocomplete(
       .slice(0, 5);
 
     if (matches.length === 0) {
-      invoke("debug_log", { line: `[check] no matches for input:'${input}'` }).catch(() => {});
       setState((s) => ({ ...s, visible: false }));
       return;
     }
 
     const position = calculatePosition();
-    invoke("debug_log", {
-      line: `[check] show: ${matches.length} matches, position=${position ? `${position.x},${position.y}` : "null"}`,
-    }).catch(() => {});
     setState({
       visible: true,
       suggestions: matches.map((cmd) => ({
