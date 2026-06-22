@@ -114,6 +114,7 @@ export function useAutocomplete(
 
     // Only show autocomplete when cursor is at end of input
     if (buf.cursorX < prompt.col + input.length) {
+      invoke("debug_log", { line: `[check] bail: cursor behind input (cursorX=${buf.cursorX} < prompt.col+inputLen=${prompt.col}+${input.length}=${prompt.col + input.length})` }).catch(() => {});
       setState((s) => ({ ...s, visible: false }));
       return;
     }
