@@ -465,6 +465,18 @@ button {
   color: #fff;
 }
 
+.term-hist-item mark {
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.term-hist-item.active mark {
+  background: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
 .term-hist-empty {
   padding: 12px;
   color: var(--text-muted);
