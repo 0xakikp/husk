@@ -128,3 +128,15 @@ pub fn delete_path(path: String) -> Result<(), String> {
         fs::remove_file(p).map_err(|e| e.to_string())
     }
 }
+
+/// Append a line to /tmp/husk-autocomplete.log for debug diagnostics.
+#[tauri::command]
+pub fn debug_log(line: String) -> Result<(), String> {
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/husk-autocomplete.log")
+        .map_err(|e| e.to_string())?;
+    writeln!(f, "{}", line).map_err(|e| e.to_string())
+}
