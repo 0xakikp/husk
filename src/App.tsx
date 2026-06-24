@@ -1431,7 +1431,12 @@ function App() {
   }, [term]);
 
   const openFile = useCallback((path: string, name: string) => {
-    setOpenFiles((prev) => (prev.some((f) => f.path === path) ? prev : [...prev, { path, name, remoteHost }]));
+    setOpenFiles((prev) => {
+      if (prev.some((f) => f.path === path)) return prev;
+      // Preserve pinned state if file was previously open
+      const existing = prev.find((f) => f.path === path);
+      return [...prev, { path, name, remoteHost, pinned: existing?.pinned ?? false }];
+    });
     setActiveFile(path);
     setActiveKind("file");
   }, [remoteHost]);
