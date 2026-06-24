@@ -592,10 +592,15 @@ function TabBar({
                         role="menuitem"
                         className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
                         onClick={() => {
+                          console.log("Pin/Unpin clicked for file:", menu.path);
+                          console.log("Current openFiles:", openFiles);
                           const file = openFiles.find((f) => f.path === menu.path);
+                          console.log("Found file:", file);
                           if (file?.pinned) {
+                            console.log("Unpinning file");
                             onUnpinFile(menu.path!);
                           } else {
+                            console.log("Pinning file");
                             onPinFile(menu.path!);
                           }
                           setMenu(null);
@@ -1462,6 +1467,8 @@ function App() {
       return next;
     });
   };
+  // Debug log
+  console.log("pinFile function defined");
 
   const unpinFile = (path: string) => {
     setOpenFiles((prev) => {
