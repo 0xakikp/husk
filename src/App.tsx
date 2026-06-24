@@ -1457,8 +1457,8 @@ function App() {
       const file = prev.find((f) => f.path === path);
       if (!file || file.pinned) return prev;
       const next = prev.filter((f) => f.path !== path);
-      const pinnedCount = next.filter((f) => f.pinned).length;
-      next.splice(pinnedCount, 0, { ...file, pinned: true });
+      // Insert pinned file at the START of the openFiles array (leftmost position)
+      next.splice(0, 0, { ...file, pinned: true });
       return next;
     });
   };
