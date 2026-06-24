@@ -334,6 +334,67 @@ function TabBar({
       className="relative min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       <div className="flex w-full min-w-0 items-center gap-0.5" ref={tabBarRef} onDragOver={handleDragOver}>
+        {/* Pinned file tabs — rendered first so they appear at the far left */}
+        {openFiles.filter((f) => f.pinned).map((f) => {
+          const originalIndex = openFiles.findIndex((of) => of.path === f.path);
+          return (
+            <TabChip
+              key={`f${f.path}`}
+              active={active.kind === "file" && active.path === f.path}
+              onClick={() => onSelectFile(f.path)}
+              onClose={undefined}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, kind: "file", id: originalIndex, path: f.path });
+              }}
+              animate={animationsEnabled}
+              pinned={true}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", `file:${f.path}`);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setMouseDragOverFileIndex(originalIndex);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const data = e.dataTransfer.getData("text/plain");
+                const fromPath = data.startsWith("file:") ? data.slice(5) : null;
+                const fromIndex = fromPath ? openFiles.findIndex((of) => of.path === fromPath) : -1;
+                if (fromIndex >= 0 && fromIndex !== originalIndex) {
+                  onMoveFile(fromIndex, originalIndex);
+                }
+                setMouseDragOverFileIndex(null);
+              }}
+              onDragEnd={() => {
+                setMouseDragOverFileIndex(null);
+              }}
+              dragOver={mouseDragOverFileIndex === originalIndex}
+              // Mouse-based drag fallback
+              onMouseDragStart={() => setMouseDrag({ kind: "file", fromIndex: originalIndex })}
+              onMouseDragEnter={() => {
+                if (mouseDrag?.kind === "file" && mouseDrag.fromIndex !== originalIndex) {
+                  setMouseDragOverFileIndex(originalIndex);
+                }
+              }}
+              onMouseDragEnd={() => {
+                if (mouseDrag?.kind === "file" && mouseDrag.fromIndex !== originalIndex && mouseDragOverFileIndex === originalIndex) {
+                  onMoveFile(mouseDrag.fromIndex, originalIndex);
+                }
+                setMouseDrag(null);
+                setMouseDragOverFileIndex(null);
+              }}
+              isMouseDragging={mouseDrag?.kind === "file" && mouseDrag.fromIndex === originalIndex}
+            >
+              <img src={fileIconUrl(f.name)} className="size-3.5 shrink-0" alt="" />
+              <span className="truncate">{f.name}</span>
+            </TabChip>
+          );
+        })}
+        {/* Terminal tabs */}
         {termTabs.map((t, index) =>
           editingId === t.id ? (
             <div
@@ -417,62 +478,66 @@ function TabBar({
             </TabChip>
           ),
         )}
-        {openFiles.map((f, index) => (
-          <TabChip
-            key={`f${f.path}`}
-            active={active.kind === "file" && active.path === f.path}
-            onClick={() => onSelectFile(f.path)}
-            onClose={f.pinned ? undefined : () => onCloseFile(f.path)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setMenu({ x: e.clientX, y: e.clientY, kind: "file", id: index, path: f.path });
-            }}
-            animate={animationsEnabled}
-            pinned={f.pinned}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/plain", `file:${f.path}`);
-              e.dataTransfer.effectAllowed = "move";
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              setMouseDragOverFileIndex(index);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              const data = e.dataTransfer.getData("text/plain");
-              const fromPath = data.startsWith("file:") ? data.slice(5) : null;
-              const fromIndex = fromPath ? openFiles.findIndex((of) => of.path === fromPath) : -1;
-              if (fromIndex >= 0 && fromIndex !== index) {
-                onMoveFile(fromIndex, index);
-              }
-              setMouseDragOverFileIndex(null);
-            }}
-            onDragEnd={() => {
-              setMouseDragOverFileIndex(null);
-            }}
-            dragOver={mouseDragOverFileIndex === index}
-            // Mouse-based drag fallback
-            onMouseDragStart={() => setMouseDrag({ kind: "file", fromIndex: index })}
-            onMouseDragEnter={() => {
-              if (mouseDrag?.kind === "file" && mouseDrag.fromIndex !== index) {
-                setMouseDragOverFileIndex(index);
-              }
-            }}
-            onMouseDragEnd={() => {
-              if (mouseDrag?.kind === "file" && mouseDrag.fromIndex !== index && mouseDragOverFileIndex === index) {
-                onMoveFile(mouseDrag.fromIndex, index);
-              }
-              setMouseDrag(null);
-              setMouseDragOverFileIndex(null);
-            }}
-            isMouseDragging={mouseDrag?.kind === "file" && mouseDrag.fromIndex === index}
-          >
-            <img src={fileIconUrl(f.name)} className="size-3.5 shrink-0" alt="" />
-            <span className="truncate">{f.name}</span>
-          </TabChip>
-        ))}
+        {/* Unpinned file tabs */}
+        {openFiles.filter((f) => !f.pinned).map((f) => {
+          const originalIndex = openFiles.findIndex((of) => of.path === f.path);
+          return (
+            <TabChip
+              key={`f${f.path}`}
+              active={active.kind === "file" && active.path === f.path}
+              onClick={() => onSelectFile(f.path)}
+              onClose={() => onCloseFile(f.path)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, kind: "file", id: originalIndex, path: f.path });
+              }}
+              animate={animationsEnabled}
+              pinned={false}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", `file:${f.path}`);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setMouseDragOverFileIndex(originalIndex);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const data = e.dataTransfer.getData("text/plain");
+                const fromPath = data.startsWith("file:") ? data.slice(5) : null;
+                const fromIndex = fromPath ? openFiles.findIndex((of) => of.path === fromPath) : -1;
+                if (fromIndex >= 0 && fromIndex !== originalIndex) {
+                  onMoveFile(fromIndex, originalIndex);
+                }
+                setMouseDragOverFileIndex(null);
+              }}
+              onDragEnd={() => {
+                setMouseDragOverFileIndex(null);
+              }}
+              dragOver={mouseDragOverFileIndex === originalIndex}
+              // Mouse-based drag fallback
+              onMouseDragStart={() => setMouseDrag({ kind: "file", fromIndex: originalIndex })}
+              onMouseDragEnter={() => {
+                if (mouseDrag?.kind === "file" && mouseDrag.fromIndex !== originalIndex) {
+                  setMouseDragOverFileIndex(originalIndex);
+                }
+              }}
+              onMouseDragEnd={() => {
+                if (mouseDrag?.kind === "file" && mouseDrag.fromIndex !== originalIndex && mouseDragOverFileIndex === originalIndex) {
+                  onMoveFile(mouseDrag.fromIndex, originalIndex);
+                }
+                setMouseDrag(null);
+                setMouseDragOverFileIndex(null);
+              }}
+              isMouseDragging={mouseDrag?.kind === "file" && mouseDrag.fromIndex === originalIndex}
+            >
+              <img src={fileIconUrl(f.name)} className="size-3.5 shrink-0" alt="" />
+              <span className="truncate">{f.name}</span>
+            </TabChip>
+          );
+        })}
         {settingsOpen ? (
           <TabChip
             active={active.kind === "settings"}
