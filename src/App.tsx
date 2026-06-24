@@ -1458,17 +1458,23 @@ function App() {
   };
 
   const pinFile = (path: string) => {
+    console.log("pinFile called with path:", path);
     setOpenFiles((prev) => {
+      console.log("pinFile setOpenFiles callback, prev:", prev);
       const file = prev.find((f) => f.path === path);
-      if (!file || file.pinned) return prev;
+      console.log("pinFile found file:", file);
+      if (!file || file.pinned) {
+        console.log("pinFile early return - file:", file, "file.pinned:", file?.pinned);
+        return prev;
+      }
       const next = prev.filter((f) => f.path !== path);
       const pinnedCount = next.filter((f) => f.pinned).length;
+      console.log("pinFile pinnedCount:", pinnedCount, "inserting at index:", pinnedCount);
       next.splice(pinnedCount, 0, { ...file, pinned: true });
+      console.log("pinFile returning next:", next);
       return next;
     });
   };
-  // Debug log
-  console.log("pinFile function defined");
 
   const unpinFile = (path: string) => {
     setOpenFiles((prev) => {
