@@ -141,6 +141,7 @@ type TabChipProps = {
 };
 
 function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, pinned, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, onMouseDragStart, onMouseDragEnter, onMouseDragEnd, isMouseDragging, children }: TabChipProps) {
+  console.log("TabChip render - pinned:", pinned, "children:", children);
   const chipRef = useRef<HTMLDivElement>(null);
   const mouseDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
