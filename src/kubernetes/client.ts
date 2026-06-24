@@ -18,11 +18,11 @@ type ShellOutput = {
   truncated: boolean;
 };
 
-async function shell(cmd: string): Promise<string> {
+async function shell(cmd: string, timeoutSecs = 15): Promise<string> {
   const out = await invoke<ShellOutput>("shell_run_command", {
     command: cmd,
     cwd: null,
-    timeout_secs: 15,
+    timeout_secs: timeoutSecs,
   });
   if (out.exit_code !== 0) throw new Error(out.stderr || `exit ${out.exit_code ?? "?"}`);
   return out.stdout;
@@ -49,7 +49,8 @@ export async function listContexts(): Promise<string[]> {
 export const useContext = (ctx: string) => shell(`kubectl config use-context ${shq(ctx)}`);
 
 export async function listPods(): Promise<K8sPod[]> {
-  const s = await shell("kubectl get pods -A --no-headers");
+  // Shorter timeout: listing all pods across all namespaces can hang on large clusters
+  const s = await shell("kubectl get pods -A --no-headers", 8);
   return s
     .trim()
     .split("\n")

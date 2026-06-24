@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   checkKubectl,
   currentContext,
@@ -23,24 +23,42 @@ export function KubernetesView({ onClose, inline }: { onClose?: () => void; inli
   const [contexts, setContexts] = useState<string[]>([]);
   const [pods, setPods] = useState<K8sPod[]>([]);
   const [loading, setLoading] = useState(false);
+  const cancelledRef = useRef(false);
 
   const refresh = useCallback(async () => {
+    cancelledRef.current = false;
     setLoading(true);
     try {
-      const ok = await checkKubectl();
+      // Run independent checks in parallel
+      const [ok, currentCtx, allCtxs] = await Promise.all([
+        checkKubectl(),
+        currentContext().catch(() => ""),
+        listContexts().catch(() => [] as string[]),
+      ]);
+
+      if (cancelledRef.current) return;
       setAvailable(ok);
       if (ok) {
-        setCtx(await currentContext());
-        setContexts(await listContexts());
-        setPods(await listPods().catch(() => []));
+        setCtx(currentCtx);
+        setContexts(allCtxs);
+        // Pods query can be slow on large clusters — run separately with shorter timeout
+        const podList = await listPods().catch(() => [] as K8sPod[]);
+        if (!cancelledRef.current) {
+          setPods(podList);
+        }
       }
     } finally {
-      setLoading(false);
+      if (!cancelledRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void refresh();
+    return () => {
+      cancelledRef.current = true;
+    };
   }, [refresh]);
 
   const switchCtx = async (c: string) => {
@@ -71,7 +89,17 @@ export function KubernetesView({ onClose, inline }: { onClose?: () => void; inli
 
   return (
     <Modal title="Kubernetes" onClose={onClose} inline={inline} headerActions={headerActions}>
-      {available === false ? (
+      {loading && available === null ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 animate-pulse">
+            <HugeiconsIcon icon={Database01Icon} size={20} className="text-primary" />
+          </div>
+          <p className="text-[12px] font-medium text-foreground">Analyzing cluster…</p>
+          <p className="max-w-[180px] text-[11px] text-muted-foreground">
+            Checking kubectl and loading contexts.
+          </p>
+        </div>
+      ) : available === false ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
             <HugeiconsIcon icon={Database01Icon} size={20} className="text-primary" />
