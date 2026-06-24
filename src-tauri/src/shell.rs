@@ -11,6 +11,16 @@ use serde::Serialize;
 
 const MAX_OUT: usize = 256 * 1024;
 
+/// Reject commands that contain shell metacharacters used for injection.
+/// This is defense-in-depth; the real protection is Command::arg().
+fn validate_command(command: &str) -> Result<&str, String> {
+    // Block backtick command substitution and $() which could execute arbitrary code
+    if command.contains('`') || command.contains("$(") {
+        return Err("Command substitution not allowed in one-shot commands".to_string());
+    }
+    Ok(command)
+}
+
 #[derive(Serialize)]
 pub struct ShellOutput {
     stdout: String,
@@ -26,6 +36,7 @@ pub fn shell_run_command(
     cwd: Option<String>,
     timeout_secs: Option<u64>,
 ) -> Result<ShellOutput, String> {
+    validate_command(&command)?;
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(20));
     let (tx, rx) = mpsc::channel();
 

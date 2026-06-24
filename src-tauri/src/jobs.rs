@@ -16,6 +16,15 @@ use shared_child::SharedChild;
 
 const RING_CAP: usize = 4 * 1024 * 1024;
 
+/// Reject commands that contain shell metacharacters used for injection.
+/// Defense-in-depth; the real protection is Command::arg().
+fn validate_command(command: &str) -> Result<&str, String> {
+    if command.contains('`') || command.contains("$(") {
+        return Err("Command substitution not allowed in background jobs".to_string());
+    }
+    Ok(command)
+}
+
 /// Byte ring buffer with monotonic offsets, so callers can tail it: each push
 /// advances `next_offset` even when old bytes are dropped to stay under `cap`.
 struct BoundedRingBuffer {
@@ -160,6 +169,7 @@ fn build_command(command: &str) -> Command {
 
 fn spawn(command: String, cwd: Option<String>) -> Result<Arc<BackgroundProc>, String> {
     let trimmed = command.trim().to_string();
+    validate_command(&trimmed)?;
     if trimmed.is_empty() {
         return Err("empty command".into());
     }

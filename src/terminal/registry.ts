@@ -91,6 +91,7 @@ type Session = {
   unlisteners: UnlistenFn[];
   resizeTimer: number;
   maxWaitTimer: number;
+  typingTimer: number;
   lastCols: number;
   lastRows: number;
   resizeObserver: ResizeObserver | null;
@@ -180,6 +181,7 @@ export async function createSession(
     unlisteners: [],
     resizeTimer: 0,
     maxWaitTimer: 0,
+    typingTimer: 0,
     lastCols: -1,
     lastRows: -1,
     resizeObserver: null,
@@ -190,7 +192,6 @@ export async function createSession(
     historyOpen: false,
     menuOpen: false,
   };
-
   sessions.set(leafId, session);
 
   // ── OSC Handlers ──────────────────────────────────────────────────────────
@@ -356,15 +357,15 @@ export async function createSession(
     );
 
     // Data handler
-    let typingTimer = 0;
+    session.typingTimer = 0;
     term.onData((data: string) => {
       const out = interceptTerminalInput(data);
       if (out === null) return;
       void invoke("pty_write", { id, data: out });
       if (session.active) {
         setTerminalTyping(true);
-        window.clearTimeout(typingTimer);
-        typingTimer = window.setTimeout(() => setTerminalTyping(false), 400);
+        window.clearTimeout(session.typingTimer);
+        session.typingTimer = window.setTimeout(() => setTerminalTyping(false), 400);
       }
       // Trigger autocomplete check
       session.callbacks.onData?.();
@@ -650,6 +651,7 @@ export function disposeSession(leafId: number): void {
     session.resizeObserver = null;
   }
   window.clearTimeout(session.resizeTimer);
+  window.clearTimeout(session.typingTimer);
   window.clearInterval(session.maxWaitTimer);
 
   for (const un of session.unlisteners) un();

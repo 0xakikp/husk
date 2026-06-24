@@ -589,9 +589,11 @@ function SearchInline() {
   // Wire typed query directly into the active terminal's scrollback search.
   useEffect(() => {
     if (!expanded || !q) return;
-    import("./ai/terminalContext").then((m) => {
-      m.searchActiveTerminal(q);
-    });
+    import("./ai/terminalContext")
+      .then((m) => {
+        m.searchActiveTerminal(q);
+      })
+      .catch(() => {});
   }, [q, expanded]);
 
   return (
@@ -618,9 +620,11 @@ function SearchInline() {
                 setQ("");
                 setOpen(false);
               } else if (e.key === "Enter") {
-                import("./ai/terminalContext").then((m) => {
-                  m.searchActiveTerminal(q);
-                });
+                import("./ai/terminalContext")
+                  .then((m) => {
+                    m.searchActiveTerminal(q);
+                  })
+                  .catch(() => {});
               }
             }}
           />
@@ -657,17 +661,23 @@ function SearchInline() {
 
 function WindowControls() {
   const minimize = () => {
-    import("@tauri-apps/api/window").then((m) => m.getCurrentWindow().minimize());
+    import("@tauri-apps/api/window")
+      .then((m) => m.getCurrentWindow().minimize())
+      .catch(() => {});
   };
   const maximize = () => {
-    import("@tauri-apps/api/window").then(async (m) => {
-      const w = m.getCurrentWindow();
-      const maximized = await w.isMaximized();
-      if (maximized) w.unmaximize(); else w.maximize();
-    });
+    import("@tauri-apps/api/window")
+      .then(async (m) => {
+        const w = m.getCurrentWindow();
+        const maximized = await w.isMaximized();
+        if (maximized) w.unmaximize(); else w.maximize();
+      })
+      .catch(() => {});
   };
   const close = () => {
-    import("@tauri-apps/api/window").then((m) => m.getCurrentWindow().close());
+    import("@tauri-apps/api/window")
+      .then((m) => m.getCurrentWindow().close())
+      .catch(() => {});
   };
 
   return (
@@ -1196,7 +1206,7 @@ function App() {
             { id: "ai-rebuild-index", label: "AI: Rebuild codebase index", run: () => {
               import("./ai/codebaseSearch").then(({ buildCodebaseIndex }) => {
                 import("./workspace/store").then(({ getWorkspaceRoot }) => {
-                  const root = getWorkspaceRoot() || "/Users/akikp";
+                  const root = getWorkspaceRoot() || "/";
                   buildCodebaseIndex(root).then(() => {
                     toast({ title: "Codebase index rebuilt", variant: "success", duration: 2000 });
                   }).catch((e: Error) => {

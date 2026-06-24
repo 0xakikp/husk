@@ -15,8 +15,11 @@ static SYSTEM: Mutex<Option<System>> = Mutex::new(None);
 
 #[tauri::command]
 pub fn system_vitals() -> Vitals {
-    let mut lock = SYSTEM.lock().unwrap();
-    let sys = lock.get_or_insert_with(System::new_all);
+    let mut sys = match SYSTEM.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let sys = sys.get_or_insert_with(System::new_all);
     sys.refresh_cpu_usage();
     sys.refresh_memory();
 

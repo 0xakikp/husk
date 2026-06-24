@@ -153,7 +153,7 @@ export function buildBuiltinTools(): Record<string, Tool> {
         try {
           const idx = getCodebaseIndex();
           if (!idx || idx.size === 0) {
-            const root = getWorkspaceRoot() || "/Users/akikp";
+            const root = getWorkspaceRoot() || "/";
             await buildCodebaseIndex(root);
           }
           const results = searchCodebase(query, limit);

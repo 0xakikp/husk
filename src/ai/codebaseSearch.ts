@@ -107,36 +107,43 @@ export async function buildCodebaseIndex(root: string): Promise<void> {
       return;
     }
 
-    for (const item of items) {
-      const fullPath = dir + "/" + item.name;
-      const relPath = fullPath.slice(root.length + 1);
+    // Process in batches to avoid blocking the UI thread
+    const batchSize = 50;
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      for (const item of batch) {
+        const fullPath = dir + "/" + item.name;
+        const relPath = fullPath.slice(root.length + 1);
 
-      if (ignorePatterns.some((p) => p.test(relPath) || p.test(item.name))) {
-        continue;
-      }
+        if (ignorePatterns.some((p) => p.test(relPath) || p.test(item.name))) {
+          continue;
+        }
 
-      if (item.is_dir) {
-        await scan(fullPath);
-      } else {
-        const ext = item.name.slice(item.name.lastIndexOf(".")).toLowerCase();
-        if (!textExtensions.includes(ext)) continue;
+        if (item.is_dir) {
+          await scan(fullPath);
+        } else {
+          const ext = item.name.slice(item.name.lastIndexOf(".")).toLowerCase();
+          if (!textExtensions.includes(ext)) continue;
 
-        try {
-          const content = await readFile(fullPath);
-          if (content.length > 500_000) continue; // Skip huge files
+          try {
+            const content = await readFile(fullPath);
+            if (content.length > 500_000) continue; // Skip huge files
 
-          const lines = content.split("\n");
-          entries.set(relPath, {
-            path: relPath,
-            content,
-            lines,
-            size: content.length,
-            mtime: Date.now(),
-          });
-        } catch {
-          // Skip unreadable files
+            const lines = content.split("\n");
+            entries.set(relPath, {
+              path: relPath,
+              content,
+              lines,
+              size: content.length,
+              mtime: Date.now(),
+            });
+          } catch {
+            // Skip unreadable files
+          }
         }
       }
+      // Yield to the event loop every batch
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
   }
 

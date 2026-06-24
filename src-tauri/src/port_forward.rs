@@ -8,6 +8,24 @@ use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// Lock a mutex, recovering from poison if a previous thread panicked.
+/// This prevents cascading panics when one thread dies while holding a lock.
+fn lock_forwards(
+    m: &Mutex<HashMap<String, ForwardHandle>>,
+) -> std::sync::MutexGuard<HashMap<String, ForwardHandle>> {
+    match m.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            let guard = poisoned.into_inner();
+            eprintln!(
+                "PortForwardManager mutex was poisoned, recovered {} entries",
+                guard.len()
+            );
+            guard
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortForwardConfig {
     pub id: String,
@@ -57,7 +75,7 @@ pub fn port_forward_start(
 ) -> Result<PortForwardStatus, String> {
     // Stop existing forward with same ID if any
     {
-        let mut forwards = state.forwards.lock().unwrap();
+        let mut forwards = lock_forwards(&state.forwards);
         if let Some(existing) = forwards.remove(&config.id) {
             existing.abort.store(true, Ordering::Relaxed);
         }
@@ -71,7 +89,7 @@ pub fn port_forward_start(
 
     thread::spawn(move || {
         let result = run_forward(config_clone, abort_clone);
-        let mut forwards = forwards.lock().unwrap();
+        let mut forwards = lock_forwards(&forwards);
         forwards.remove(&id);
         if let Err(e) = result {
             eprintln!("Port forward {} error: {}", id, e);
@@ -79,7 +97,7 @@ pub fn port_forward_start(
     });
 
     {
-        let mut forwards = state.forwards.lock().unwrap();
+        let mut forwards = lock_forwards(&state.forwards);
         forwards.insert(
             config.id.clone(),
             ForwardHandle {
@@ -101,7 +119,7 @@ pub fn port_forward_stop(
     state: tauri::State<'_, PortForwardManager>,
     id: String,
 ) -> Result<PortForwardStatus, String> {
-    let mut forwards = state.forwards.lock().unwrap();
+    let mut forwards = lock_forwards(&state.forwards);
     if let Some(handle) = forwards.remove(&id) {
         handle.abort.store(true, Ordering::Relaxed);
         Ok(PortForwardStatus {
@@ -115,10 +133,8 @@ pub fn port_forward_stop(
 }
 
 #[tauri::command]
-pub fn port_forward_list(
-    state: tauri::State<'_, PortForwardManager>,
-) -> Vec<PortForwardStatus> {
-    let forwards = state.forwards.lock().unwrap();
+pub fn port_forward_list(state: tauri::State<'_, PortForwardManager>) -> Vec<PortForwardStatus> {
+    let forwards = lock_forwards(&state.forwards);
     forwards
         .values()
         .map(|h| PortForwardStatus {
