@@ -5,7 +5,7 @@ import { readFile, writeFile } from "../fs";
 import { sshReadFile, sshWriteFile } from "../remote/remoteFs";
 import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
-import { registerEditorApplyEdit, registerEditorGetSelection, registerEditorFile } from "@/ai/editorStore";
+import { registerEditorApplyEdit, registerEditorGetSelection, registerEditorFile, registerEditorCloseFind } from "@/ai/editorStore";
 import { markSaved, markModified, markNew, clearState } from "./dirtyStore";
 import { EditorContextMenu } from "./EditorContextMenu";
 
@@ -216,6 +216,13 @@ export function EditorArea({
       return editor.getModel()?.uri.path ?? null;
     });
 
+    const unsubCloseFind = registerEditorCloseFind(() => {
+      const findController = editor.getContribution("editor.contrib.findController") as
+        | { closeFindWidget(): void }
+        | null;
+      findController?.closeFindWidget();
+    });
+
     // ── Editor context menu: Ask AI ───────────────────────────────────────
     editor.addAction({
       id: "husk-ask-ai",
@@ -242,6 +249,7 @@ export function EditorArea({
       unsub();
       unsubSel();
       unsubFile();
+      unsubCloseFind();
       dirtyDisposables.forEach((d) => d.dispose());
       vimRef.current?.dispose();
       vimRef.current = null;

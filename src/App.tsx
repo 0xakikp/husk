@@ -26,7 +26,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { AiFloatingBubble } from "./ai/AiFloatingBubble";
 import { openBubble, toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
-import { getEditorSelection, getEditorFile } from "./ai/editorStore";
+import { getEditorSelection, getEditorFile, closeEditorFindWidget } from "./ai/editorStore";
 import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
@@ -1105,6 +1105,13 @@ function App() {
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const term = useTerminalTabs();
   const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues" | "sftp">("term");
+
+  // Close Monaco find widget when leaving the file editor tab
+  useEffect(() => {
+    if (activeKind !== "file") {
+      closeEditorFindWidget();
+    }
+  }, [activeKind]);
 
   const commands: Command[] = useMemo(
     () => [

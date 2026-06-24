@@ -37,7 +37,7 @@ export function BookmarksView({
   onOpenDirectory?: (path: string) => void;
 }) {
   const bookmarks = useBookmarks();
-  const [tab, setTab] = useState<"bookmarks" | "notes">("bookmarks");
+  const [tab, setTab] = useState<"bookmarks" | "notes">("notes");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Bookmark | null>(null);
@@ -149,20 +149,6 @@ export function BookmarksView({
       <div className="flex rounded-lg border border-border/50 bg-muted/30 p-0.5 mb-2">
         <button
           type="button"
-          onClick={() => setTab("bookmarks")}
-          className={cn(
-            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-            tab === "bookmarks"
-              ? "bg-card shadow-sm border border-border/50"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          style={tab === "bookmarks" ? { color: "var(--accent)" } : undefined}
-        >
-          <HugeiconsIcon icon={CollectionsBookmarkIcon} size={10} />
-          Bookmarks
-        </button>
-        <button
-          type="button"
           onClick={() => setTab("notes")}
           className={cn(
             "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
@@ -174,6 +160,20 @@ export function BookmarksView({
         >
           <HugeiconsIcon icon={FileEditIcon} size={10} />
           Notes
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("bookmarks")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+            tab === "bookmarks"
+              ? "bg-card shadow-sm border border-border/50"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          style={tab === "bookmarks" ? { color: "var(--accent)" } : undefined}
+        >
+          <HugeiconsIcon icon={CollectionsBookmarkIcon} size={10} />
+          Bookmarks
         </button>
       </div>
 

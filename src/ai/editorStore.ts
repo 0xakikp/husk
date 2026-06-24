@@ -49,3 +49,20 @@ export function registerEditorFile(fn: GetFileFn): () => void {
 export function getEditorFile(): string | null {
   return getFileFn?.() ?? null;
 }
+
+// ── Close find widget ────────────────────────────────────────────────────────
+
+type CloseFindFn = () => void;
+
+let closeFindFn: CloseFindFn | null = null;
+
+export function registerEditorCloseFind(fn: CloseFindFn): () => void {
+  closeFindFn = fn;
+  return () => {
+    if (closeFindFn === fn) closeFindFn = null;
+  };
+}
+
+export function closeEditorFindWidget(): void {
+  closeFindFn?.();
+}
