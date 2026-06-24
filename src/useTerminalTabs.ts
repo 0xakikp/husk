@@ -26,6 +26,8 @@ export type TermTab = {
   /** Per-tab SFTP state */
   sftpHost?: string;
   sftpOpen?: boolean;
+  /** Pinned tabs stay at the left and can't be closed without unpinning. */
+  pinned?: boolean;
 };
 
 function makeTab(id: number, initialCwd?: string): TermTab {
@@ -42,7 +44,7 @@ function basename(p: string): string {
 
 const SESSION_KEY = "huskv2.session.v1";
 
-type SavedTab = { cwd?: string; title?: string; renamed?: boolean; color?: string; sftpHost?: string; sftpOpen?: boolean };
+type SavedTab = { cwd?: string; title?: string; renamed?: boolean; color?: string; sftpHost?: string; sftpOpen?: boolean; pinned?: boolean };
 type SavedSession = { tabs: SavedTab[]; activeIndex: number };
 
 function getFirstLeafCwd(p: Pane): string | undefined {
@@ -55,7 +57,7 @@ function getFirstLeafCwd(p: Pane): string | undefined {
 function saveSession(tabs: TermTab[], activeId: number) {
   const saved: SavedTab[] = [];
   for (const t of tabs) {
-    saved.push({ cwd: getFirstLeafCwd(t.root), title: t.renamed ? t.title : undefined, renamed: t.renamed, color: t.color, sftpHost: t.sftpHost, sftpOpen: t.sftpOpen });
+    saved.push({ cwd: getFirstLeafCwd(t.root), title: t.renamed ? t.title : undefined, renamed: t.renamed, color: t.color, sftpHost: t.sftpHost, sftpOpen: t.sftpOpen, pinned: t.pinned });
   }
   const activeIndex = tabs.findIndex((t) => t.id === activeId);
   try {
@@ -117,6 +119,9 @@ export function useTerminalTabs() {
           if (t.sftpHost) {
             out[out.length - 1].sftpHost = t.sftpHost;
             out[out.length - 1].sftpOpen = t.sftpOpen ?? false;
+          }
+          if (t.pinned) {
+            out[out.length - 1].pinned = true;
           }
           id++;
         }
@@ -280,7 +285,39 @@ export function useTerminalTabs() {
       if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) return prev;
       const next = [...prev];
       const [removed] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, removed);
+      // Prevent moving a pinned tab after an unpinned tab
+      const pinnedCount = next.filter((t) => t.pinned).length;
+      if (removed.pinned && toIndex > pinnedCount) {
+        next.splice(pinnedCount, 0, removed);
+      } else if (!removed.pinned && toIndex < pinnedCount) {
+        next.splice(pinnedCount, 0, removed);
+      } else {
+        next.splice(toIndex, 0, removed);
+      }
+      return next;
+    });
+  };
+
+  const pinTab = (id: number) => {
+    setTabs((prev) => {
+      const tab = prev.find((t) => t.id === id);
+      if (!tab || tab.pinned) return prev;
+      const next = prev.filter((t) => t.id !== id);
+      // Insert pinned tab at the beginning of pinned section
+      const pinnedCount = next.filter((t) => t.pinned).length;
+      next.splice(pinnedCount, 0, { ...tab, pinned: true });
+      return next;
+    });
+  };
+
+  const unpinTab = (id: number) => {
+    setTabs((prev) => {
+      const tab = prev.find((t) => t.id === id);
+      if (!tab || !tab.pinned) return prev;
+      const next = prev.filter((t) => t.id !== id);
+      // Insert unpinned tab after all pinned tabs
+      const pinnedCount = next.filter((t) => t.pinned).length;
+      next.splice(pinnedCount, 0, { ...tab, pinned: false });
       return next;
     });
   };
@@ -311,5 +348,7 @@ export function useTerminalTabs() {
     setTabColor,
     updateTab,
     moveTab,
+    pinTab,
+    unpinTab,
   };
 }

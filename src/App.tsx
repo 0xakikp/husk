@@ -23,6 +23,7 @@ import {
   ComputerTerminal02Icon,
   PencilEdit02Icon,
   SparklesIcon,
+  PinIcon,
 } from "@hugeicons/core-free-icons";
 import { AiFloatingBubble } from "./ai/AiFloatingBubble";
 import { openBubble, toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
@@ -125,6 +126,7 @@ type TabChipProps = {
   onDoubleClick?: () => void;
   animate?: boolean;
   color?: string;
+  pinned?: boolean;
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
@@ -138,7 +140,7 @@ type TabChipProps = {
   children: React.ReactNode;
 };
 
-function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, onMouseDragStart, onMouseDragEnter, onMouseDragEnd, isMouseDragging, children }: TabChipProps) {
+function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, pinned, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, onMouseDragStart, onMouseDragEnter, onMouseDragEnd, isMouseDragging, children }: TabChipProps) {
   const chipRef = useRef<HTMLDivElement>(null);
   const mouseDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
@@ -204,6 +206,7 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-2">
+        {pinned && <HugeiconsIcon icon={PinIcon} size={9} className="shrink-0 opacity-60" />}
         {children}
       </div>
       {onClose ? (
@@ -233,6 +236,10 @@ function TabBar({
   onNewTerm,
   onRenameTerm,
   onSetTabColor,
+  onPinTerm,
+  onUnpinTerm,
+  onPinFile,
+  onUnpinFile,
   onMoveTerm,
   onMoveFile,
   settingsOpen,
@@ -250,6 +257,10 @@ function TabBar({
   onNewTerm: () => void;
   onRenameTerm: (id: number, title: string) => void;
   onSetTabColor: (id: number, color: string | undefined) => void;
+  onPinTerm: (id: number) => void;
+  onUnpinTerm: (id: number) => void;
+  onPinFile: (path: string) => void;
+  onUnpinFile: (path: string) => void;
   onMoveTerm: (fromIndex: number, toIndex: number) => void;
   onMoveFile: (fromIndex: number, toIndex: number) => void;
   settingsOpen: boolean;
@@ -258,7 +269,7 @@ function TabBar({
   animationsEnabled?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; kind: "term"; id: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; kind: "term" | "file"; id: number; path?: string } | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
   const canClose = termTabs.length + openFiles.length > 1;
@@ -353,7 +364,7 @@ function TabBar({
               key={`t${t.id}`}
               active={active.kind === "term" && active.id === t.id}
               onClick={() => onSelectTerm(t.id)}
-              onClose={canClose ? () => onCloseTerm(t.id) : undefined}
+              onClose={t.pinned ? undefined : canClose ? () => onCloseTerm(t.id) : undefined}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setMenu({ x: e.clientX, y: e.clientY, kind: "term", id: t.id });
@@ -361,6 +372,7 @@ function TabBar({
               onDoubleClick={() => beginRename(t.id, t.title)}
               animate={animationsEnabled}
               color={t.color}
+              pinned={t.pinned}
               draggable
               onDragStart={(e) => {
                 e.dataTransfer.setData("text/plain", `term:${index}`);
@@ -410,8 +422,13 @@ function TabBar({
             key={`f${f.path}`}
             active={active.kind === "file" && active.path === f.path}
             onClick={() => onSelectFile(f.path)}
-            onClose={() => onCloseFile(f.path)}
+            onClose={f.pinned ? undefined : () => onCloseFile(f.path)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu({ x: e.clientX, y: e.clientY, kind: "file", id: index, path: f.path });
+            }}
             animate={animationsEnabled}
+            pinned={f.pinned}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.setData("text/plain", `file:${f.path}`);
@@ -508,6 +525,25 @@ function TabBar({
                         type="button"
                         role="menuitem"
                         className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        onClick={() => {
+                          const tab = termTabs.find((t) => t.id === menu.id);
+                          if (tab?.pinned) {
+                            onUnpinTerm(menu.id);
+                          } else {
+                            onPinTerm(menu.id);
+                          }
+                          setMenu(null);
+                        }}
+                      >
+                        <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={1.75} />
+                        <span className="flex-1 text-left">
+                          {termTabs.find((t) => t.id === menu.id)?.pinned ? "Unpin" : "Pin"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
                         onClick={() => beginRename(menu.id, termTabs.find((t) => t.id === menu.id)?.title ?? "")}
                       >
                         <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.75} />
@@ -549,16 +585,54 @@ function TabBar({
                         </div>
                       </div>
                     </>
-                  ) : null}
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        onClick={() => {
+                          const file = openFiles.find((f) => f.path === menu.path);
+                          if (file?.pinned) {
+                            onUnpinFile(menu.path!);
+                          } else {
+                            onPinFile(menu.path!);
+                          }
+                          setMenu(null);
+                        }}
+                      >
+                        <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={1.75} />
+                        <span className="flex-1 text-left">
+                          {openFiles.find((f) => f.path === menu.path)?.pinned ? "Unpin" : "Pin"}
+                        </span>
+                      </button>
+                    </>
+                  )}
                   {canClose ? (
                     <button
                       type="button"
                       role="menuitem"
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent",
+                        (menu.kind === "term" && termTabs.find((t) => t.id === menu.id)?.pinned) ||
+                        (menu.kind === "file" && openFiles.find((f) => f.path === menu.path)?.pinned)
+                          ? "text-muted-foreground cursor-not-allowed"
+                          : "text-destructive"
+                      )}
                       onClick={() => {
-                        if (menu.kind === "term") onCloseTerm(menu.id);
+                        if (menu.kind === "term") {
+                          const tab = termTabs.find((t) => t.id === menu.id);
+                          if (!tab?.pinned) onCloseTerm(menu.id);
+                        } else if (menu.kind === "file") {
+                          const file = openFiles.find((f) => f.path === menu.path);
+                          if (!file?.pinned) onCloseFile(menu.path!);
+                        }
                         setMenu(null);
                       }}
+                      disabled={
+                        (menu.kind === "term" && termTabs.find((t) => t.id === menu.id)?.pinned) ||
+                        (menu.kind === "file" && openFiles.find((f) => f.path === menu.path)?.pinned)
+                      }
                     >
                       <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
                       <span className="flex-1 text-left">Close</span>
@@ -1363,6 +1437,8 @@ function App() {
   };
 
   const closeFile = (path: string) => {
+    const file = openFiles.find((f) => f.path === path);
+    if (file?.pinned) return; // Cannot close pinned files
     const idx = openFiles.findIndex((f) => f.path === path);
     const next = openFiles.filter((f) => f.path !== path);
     setOpenFiles(next);
@@ -1376,11 +1452,40 @@ function App() {
     }
   };
 
+  const pinFile = (path: string) => {
+    setOpenFiles((prev) => {
+      const file = prev.find((f) => f.path === path);
+      if (!file || file.pinned) return prev;
+      const next = prev.filter((f) => f.path !== path);
+      const pinnedCount = next.filter((f) => f.pinned).length;
+      next.splice(pinnedCount, 0, { ...file, pinned: true });
+      return next;
+    });
+  };
+
+  const unpinFile = (path: string) => {
+    setOpenFiles((prev) => {
+      const file = prev.find((f) => f.path === path);
+      if (!file || !file.pinned) return prev;
+      const next = prev.filter((f) => f.path !== path);
+      const pinnedCount = next.filter((f) => f.pinned).length;
+      next.splice(pinnedCount, 0, { ...file, pinned: false });
+      return next;
+    });
+  };
+
   const moveFile = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= openFiles.length || toIndex >= openFiles.length) return;
     const next = [...openFiles];
     const [removed] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, removed);
+    const pinnedCount = next.filter((f) => f.pinned).length;
+    if (removed.pinned && toIndex > pinnedCount) {
+      next.splice(pinnedCount, 0, removed);
+    } else if (!removed.pinned && toIndex < pinnedCount) {
+      next.splice(pinnedCount, 0, removed);
+    } else {
+      next.splice(toIndex, 0, removed);
+    }
     setOpenFiles(next);
   };
 
@@ -1487,6 +1592,10 @@ function App() {
               onNewTerm={term.addTab}
               onRenameTerm={term.renameTab}
               onSetTabColor={term.setTabColor}
+              onPinTerm={term.pinTab}
+              onUnpinTerm={term.unpinTab}
+              onPinFile={pinFile}
+              onUnpinFile={unpinFile}
               onMoveTerm={term.moveTab}
               onMoveFile={moveFile}
               settingsOpen={settingsOpen}

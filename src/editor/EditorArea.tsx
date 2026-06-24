@@ -65,7 +65,7 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
   };
 }
 
-export type OpenFile = { path: string; name: string; remoteHost?: string | null };
+export type OpenFile = { path: string; name: string; remoteHost?: string | null; pinned?: boolean };
 
 function languageFor(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
