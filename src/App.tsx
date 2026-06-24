@@ -141,7 +141,6 @@ type TabChipProps = {
 };
 
 function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, pinned, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, onMouseDragStart, onMouseDragEnter, onMouseDragEnd, isMouseDragging, children }: TabChipProps) {
-  console.log("TabChip render - pinned:", pinned, "children:", children);
   const chipRef = useRef<HTMLDivElement>(null);
   const mouseDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
@@ -593,15 +592,10 @@ function TabBar({
                         role="menuitem"
                         className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
                         onClick={() => {
-                          console.log("Pin/Unpin clicked for file:", menu.path);
-                          console.log("Current openFiles:", openFiles);
                           const file = openFiles.find((f) => f.path === menu.path);
-                          console.log("Found file:", file);
                           if (file?.pinned) {
-                            console.log("Unpinning file");
                             onUnpinFile(menu.path!);
                           } else {
-                            console.log("Pinning file");
                             onPinFile(menu.path!);
                           }
                           setMenu(null);
@@ -1434,9 +1428,7 @@ function App() {
   const openFile = useCallback((path: string, name: string) => {
     setOpenFiles((prev) => {
       if (prev.some((f) => f.path === path)) return prev;
-      // Preserve pinned state if file was previously open
-      const existing = prev.find((f) => f.path === path);
-      return [...prev, { path, name, remoteHost, pinned: existing?.pinned ?? false }];
+      return [...prev, { path, name, remoteHost, pinned: false }];
     });
     setActiveFile(path);
     setActiveKind("file");
@@ -1464,20 +1456,12 @@ function App() {
   };
 
   const pinFile = (path: string) => {
-    console.log("pinFile called with path:", path);
     setOpenFiles((prev) => {
-      console.log("pinFile setOpenFiles callback, prev:", prev);
       const file = prev.find((f) => f.path === path);
-      console.log("pinFile found file:", file);
-      if (!file || file.pinned) {
-        console.log("pinFile early return - file:", file, "file.pinned:", file?.pinned);
-        return prev;
-      }
+      if (!file || file.pinned) return prev;
       const next = prev.filter((f) => f.path !== path);
       const pinnedCount = next.filter((f) => f.pinned).length;
-      console.log("pinFile pinnedCount:", pinnedCount, "inserting at index:", pinnedCount);
       next.splice(pinnedCount, 0, { ...file, pinned: true });
-      console.log("pinFile returning next:", next);
       return next;
     });
   };
