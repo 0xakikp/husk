@@ -11,6 +11,13 @@ import {
   HomeIcon,
   ArrowRight01Icon,
   Delete01Icon,
+  Globe02Icon,
+  ShieldUserIcon,
+  BatteryChargingIcon,
+  BatteryFullIcon,
+  BatteryLowIcon,
+  BatteryMediumIcon,
+  CodeIcon,
 } from "@hugeicons/core-free-icons";
 import { VitalStrip } from "./vitals/VitalStrip";
 import { useSystemVitals } from "./vitals/useSystemVitals";
@@ -27,6 +34,7 @@ import { bgList, type BgJob } from "../jobs/client";
 import { toast } from "../toast";
 import { usePrefs } from "../settings/preferences";
 import { getWorkspaceRoot } from "../workspace/store";
+import { getActiveSshHost, subscribeSshHost } from "../remote/store";
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -67,6 +75,55 @@ function useOnline() {
   return v;
 }
 
+function useSshHost() {
+  const [host, setHost] = useState(getActiveSshHost);
+  useEffect(() => subscribeSshHost(() => setHost(getActiveSshHost())), []);
+  return host;
+}
+
+function useBattery() {
+  const [battery, setBattery] = useState<{ level: number; charging: boolean } | null>(null);
+  useEffect(() => {
+    const nav = navigator as Navigator & { getBattery?: () => Promise<{ level: number; charging: boolean; addEventListener: (e: string, fn: () => void) => void; removeEventListener: (e: string, fn: () => void) => void }> };
+    if (!nav.getBattery) return;
+    let bat: { level: number; charging: boolean; addEventListener: (e: string, fn: () => void) => void; removeEventListener: (e: string, fn: () => void) => void } | null = null;
+    const update = () => {
+      if (bat) setBattery({ level: bat.level, charging: bat.charging });
+    };
+    nav.getBattery().then((b) => {
+      bat = b;
+      update();
+      b.addEventListener("levelchange", update);
+      b.addEventListener("chargingchange", update);
+    });
+    return () => {
+      if (bat) {
+        bat.removeEventListener("levelchange", update);
+        bat.removeEventListener("chargingchange", update);
+      }
+    };
+  }, []);
+  return battery;
+}
+
+function useEnvIndicators() {
+  const [env, setEnv] = useState<{ python?: string; node?: string }>({});
+  useEffect(() => {
+    const check = () => {
+      const cwd = getActiveTerminalCwd();
+      if (!cwd) return;
+      // We can't directly read files, but we can check common env vars
+      // For now, this is a placeholder — real implementation would need
+      // backend command to detect venv/nvm
+      setEnv({});
+    };
+    const unsub = subscribeTerminalState(check);
+    check();
+    return unsub;
+  }, []);
+  return env;
+}
+
 /* ── Component ─────────────────────────────────────────── */
 
 export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (text: string) => void }) {
@@ -84,6 +141,9 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
   const typing = useTyping();
   const online = useOnline();
   const vitals = useSystemVitals();
+  const sshHost = useSshHost();
+  const battery = useBattery();
+  const envIndicators = useEnvIndicators();
 
   /* Live clock */
   useEffect(() => {
@@ -290,16 +350,46 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
           {!isActive && dirName && dirName !== wsName && (
             <>
               <HugeiconsIcon icon={ArrowRight01Icon} size={9} strokeWidth={1.5} className="text-muted-foreground/40" />
-              <span className="truncate max-w-[60px]">{dirName}</span>
+              <span className="truncate max-w-[60px]" title={cwd}>{dirName}</span>
             </>
           )}
         </div>
       )}
 
-      {/* Git branch — active state only */}
-      <div className={`transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}`}>
+      {/* SSH connection badge — always visible when connected */}
+      {sshHost && (
+        <div className="inline-flex shrink-0 items-center gap-1 rounded-md bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-600 dark:text-sky-400">
+          <HugeiconsIcon icon={Globe02Icon} size={10} strokeWidth={1.5} />
+          <span className="truncate max-w-[100px] font-medium">{sshHost}</span>
+        </div>
+      )}
+
+      {/* Root/sudo indicator */}
+      {cwd === "/root" && (
+        <div className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600 dark:text-amber-400">
+          <HugeiconsIcon icon={ShieldUserIcon} size={10} strokeWidth={1.5} />
+          <span className="font-medium">root</span>
+        </div>
+      )}
+
+      {/* Env indicators (Python venv, Node version) */}
+      {envIndicators.python && (
+        <div className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600 dark:text-blue-400">
+          <HugeiconsIcon icon={CodeIcon} size={10} strokeWidth={1.5} />
+          <span className="font-medium">{envIndicators.python}</span>
+        </div>
+      )}
+      {envIndicators.node && (
+        <div className="inline-flex shrink-0 items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600 dark:text-green-400">
+          <HugeiconsIcon icon={CodeIcon} size={10} strokeWidth={1.5} />
+          <span className="font-medium">{envIndicators.node}</span>
+        </div>
+      )}
+
+      {/* Git branch — always visible, dimmed in idle state */}
+      <div className={`transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-60"}`}>
         {branch && (
-          <div className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/20 px-2 py-0.5 text-[11px] text-muted-foreground">
+          <div className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ${isActive ? "bg-muted/20 text-muted-foreground" : "bg-transparent text-muted-foreground/60"}`}>
             <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className="text-muted-foreground/60">
               <path d="M6 1v9.5M6 3.5a2 2 0 1 1-2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               <circle cx="6" cy="9.5" r="1" fill="currentColor" />
@@ -427,6 +517,35 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
               {vitals.load_1.toFixed(2)}
             </span>
           )}
+        </div>
+      )}
+
+      {/* Battery indicator */}
+      {battery && (
+        <div className="hidden sm:inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground font-mono">
+          <HugeiconsIcon
+            icon={
+              battery.charging
+                ? BatteryChargingIcon
+                : battery.level > 0.75
+                  ? BatteryFullIcon
+                  : battery.level > 0.3
+                    ? BatteryMediumIcon
+                    : BatteryLowIcon
+            }
+            size={10}
+            strokeWidth={1.75}
+            className={
+              battery.level < 0.2
+                ? "text-red-400"
+                : battery.level < 0.4
+                  ? "text-amber-400"
+                  : "text-emerald-400"
+            }
+          />
+          <span className={battery.level < 0.2 ? "text-red-400" : ""}>
+            {Math.round(battery.level * 100)}%
+          </span>
         </div>
       )}
 
