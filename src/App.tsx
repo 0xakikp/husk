@@ -966,6 +966,7 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [aiSessionsOpen, setAiSessionsOpen] = useState(false);
+  const aiSessionsButtonRef = useRef<HTMLButtonElement>(null);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [explainCtx, setExplainCtx] = useState<{ command: string; output: string; exitCode: number | null } | null>(null);
@@ -1622,6 +1623,7 @@ function App() {
             {prefs.aiEnabled && (
               <div className="relative">
                 <Button
+                  ref={aiSessionsButtonRef}
                   onClick={() => setAiSessionsOpen((v) => !v)}
                   title="AI Sessions"
                   variant="ghost"
@@ -1639,6 +1641,7 @@ function App() {
                   open={aiSessionsOpen}
                   onClose={() => setAiSessionsOpen(false)}
                   onSelectSession={(id) => requestBubbleSwitch(id)}
+                  anchorRef={aiSessionsButtonRef}
                 />
               </div>
             )}

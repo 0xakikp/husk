@@ -50,18 +50,33 @@ export function AiSessionsPanel({
   open,
   onClose,
   onSelectSession,
+  anchorRef,
 }: {
   open: boolean;
   onClose: () => void;
   onSelectSession: (id: string) => void;
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     if (open) setSessions(loadBubbleSessions());
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    // Position panel relative to the anchor button (left-aligned, below the button)
+    if (anchorRef?.current) {
+      const rect = anchorRef.current.getBoundingClientRect();
+      setPosition({ top: rect.bottom + 4, left: rect.left });
+    } else {
+      // Fallback: left side of viewport if no anchor
+      setPosition({ top: 40, left: 16 });
+    }
+  }, [open, anchorRef]);
 
   useEffect(() => {
     if (!open) return;
@@ -96,7 +111,7 @@ export function AiSessionsPanel({
     }
   }, []);
 
-  if (!open) return null;
+  if (!open || !position) return null;
 
   return createPortal(
     <div
@@ -105,7 +120,7 @@ export function AiSessionsPanel({
         "fixed z-50 flex flex-col gap-1 rounded-lg border border-border/60 bg-popover p-2 shadow-xl",
         "w-72 max-h-80 overflow-hidden"
       )}
-      style={{ top: 40, right: 16 }}
+      style={{ top: position.top, left: position.left }}
     >
       <div className="flex items-center justify-between px-1">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
