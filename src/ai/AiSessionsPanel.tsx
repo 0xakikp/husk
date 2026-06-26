@@ -81,13 +81,16 @@ export function AiSessionsPanel({
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Don't close if clicking the anchor button (let the button toggle handle it)
+      if (anchorRef?.current && anchorRef.current.contains(target)) return;
+      if (panelRef.current && !panelRef.current.contains(target)) {
         onClose();
       }
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
-  }, [open, onClose]);
+  }, [open, onClose, anchorRef]);
 
   const handleDelete = useCallback((s: Session, e: React.MouseEvent) => {
     e.stopPropagation();
