@@ -1624,7 +1624,10 @@ function App() {
               <div className="relative">
                 <Button
                   ref={aiSessionsButtonRef}
-                  onClick={() => setAiSessionsOpen((v) => !v)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAiSessionsOpen((v) => !v);
+                  }}
                   title="AI Sessions"
                   variant="ghost"
                   size="icon"
