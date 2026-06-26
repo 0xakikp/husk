@@ -54,6 +54,7 @@ export function TerminalView({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLElement | null>(null);
+  const mouseDownOnOverlayRef = useRef(false);
 
   // ── Create session on mount (registry handles terminal + PTY) ────────────
   useEffect(() => {
@@ -220,11 +221,25 @@ export function TerminalView({
   };
 
   // ── Click-to-position cursor ──────────────────────────────────────────────
+  const handleTerminalMouseDown = (e: React.MouseEvent) => {
+    // Track if mousedown started on an overlay — if so, skip click-to-position
+    const target = e.target as HTMLElement;
+    mouseDownOnOverlayRef.current = !target.closest(".terminal-host");
+  };
+
   const handleTerminalClick = (e: React.MouseEvent) => {
     const handle = handleRef.current;
     if (!handle) return;
     if (isCommandRunning()) return;
     if (handle.hasSelection()) return;
+
+    // Skip if the click started on an overlay (autocomplete, search, history, menu)
+    // This prevents cursor movement when clicking just to dismiss an overlay
+    if (mouseDownOnOverlayRef.current) return;
+
+    // Only activate on direct terminal screen clicks
+    const target = e.target as HTMLElement;
+    if (!target.closest(".terminal-host")) return;
 
     const term = handle.getTerm();
     if (!term) return;
@@ -353,7 +368,8 @@ export function TerminalView({
     <div
       ref={hostRef}
       className="terminal-host-wrap"
-      onMouseDown={() => {
+      onMouseDown={(e) => {
+        handleTerminalMouseDown(e);
         onFocus?.();
         handleRef.current?.focus();
         dismissAuto();
