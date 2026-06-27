@@ -142,10 +142,16 @@ if [ -z "$__HUSK_HOOKS_LOADED" ]; then
   _husk_precmd
 fi
 
-# Fuzzy history search (Ctrl+R), file finder (Ctrl+T), cd navigator (Alt+C)
+# Fuzzy file finder (Ctrl+T) and cd navigator (Alt+C) via fzf.
+# Ctrl+R is handled by Husk's GUI history panel — shell fzf for history
+# is disabled to avoid a glitchy TUI inside xterm.js.
 if command -v fzf >/dev/null 2>&1 && [ -f "${BASH_SOURCE[0]:-}" ]; then
   _husk_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  [ -f "$_husk_script_dir/fzf-key-bindings.bash" ] && source "$_husk_script_dir/fzf-key-bindings.bash"
+  if [ -f "$_husk_script_dir/fzf-key-bindings.bash" ]; then
+    # Disable fzf's Ctrl+R so Husk's GUI panel takes over exclusively
+    FZF_CTRL_R_COMMAND=""
+    source "$_husk_script_dir/fzf-key-bindings.bash"
+  fi
   unset _husk_script_dir
 fi
 

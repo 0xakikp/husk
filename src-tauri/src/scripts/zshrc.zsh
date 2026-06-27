@@ -155,8 +155,12 @@ if (( ! $+functions[_zsh_highlight] )) && [[ -f "${0:A:h}/zsh-syntax-highlightin
   source "${0:A:h}/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
 fi
 
-# Fuzzy history search (Ctrl+R), file finder (Ctrl+T), cd navigator (Alt+C)
+# Fuzzy file finder (Ctrl+T) and cd navigator (Alt+C) via fzf.
+# Ctrl+R is handled by Husk's GUI history panel — shell fzf for history
+# is disabled to avoid a glitchy TUI inside xterm.js.
 if (( $+commands[fzf] )) && [[ -f "${0:A:h}/fzf-key-bindings.zsh" ]]; then
+  # Disable fzf's Ctrl+R so Husk's GUI panel takes over exclusively
+  FZF_CTRL_R_COMMAND=""
   source "${0:A:h}/fzf-key-bindings.zsh"
 fi
 

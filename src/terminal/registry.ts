@@ -303,50 +303,31 @@ export async function createSession(
   }
   session.ptyId = id;
 
-    // Buffer for scanning husk commands in PTY output (remote hosts without integration)
-    let outputBuffer = "";
+    // Best-effort husk command scanning in PTY output (remote hosts without integration)
     const HUSK_CMD_RE = /husk\s+(cp|open|preview|notify|diff)\s+(.+?)(?:\r?\n|$)/;
-    const HUSK_NOT_FOUND_RE = /Command 'husk' not found[^\n]*\n?/g;
 
     session.unlisteners.push(
       await listen<number[]>(`pty://data/${id}`, (e) => {
         const data = new Uint8Array(e.payload);
         const text = new TextDecoder().decode(data);
-        outputBuffer += text;
 
-        // Scan for husk commands in buffered output
+        // Write to terminal immediately — xterm.js handles ANSI sequences
+        // and progress bars correctly when fed in real-time
+        term.write(text);
+
+        // Scan for husk commands in the incoming text (not buffered)
+        // This is best-effort: husk commands typically emit on their own line
         let match: RegExpMatchArray | null;
-        while ((match = outputBuffer.match(HUSK_CMD_RE)) !== null) {
+        const scanText = text;
+        while ((match = scanText.match(HUSK_CMD_RE)) !== null) {
           const [, verb, rest] = match;
           const payload = `husk;${verb};${rest.trim()}`;
           const cmd = parseBridgeOsc(payload);
           if (cmd && session.active) {
             dispatchBridge(cmd);
           }
-          // Remove the matched command from buffer
-          const idx = match.index ?? 0;
-          outputBuffer = outputBuffer.slice(0, idx) + outputBuffer.slice(idx + match[0].length);
-        }
-
-        // Remove "command not found" errors from buffer
-        outputBuffer = outputBuffer.replace(HUSK_NOT_FOUND_RE, "");
-
-        // Write remaining buffer content to terminal
-        if (outputBuffer.length > 4096) {
-          // Flush if buffer gets too large (no husk command found)
-          term.write(new TextEncoder().encode(outputBuffer));
-          outputBuffer = "";
-        } else if (outputBuffer.includes("\n") || outputBuffer.includes("\r")) {
-          // Flush on line boundaries
-          const lastNL = Math.max(outputBuffer.lastIndexOf("\n"), outputBuffer.lastIndexOf("\r"));
-          if (lastNL >= 0) {
-            term.write(new TextEncoder().encode(outputBuffer.slice(0, lastNL + 1)));
-            outputBuffer = outputBuffer.slice(lastNL + 1);
-          }
-        } else if (outputBuffer.length > 0 && !outputBuffer.match(/husk\s+(cp|open|preview|notify|diff)/)) {
-          // No partial husk command — flush immediately (echo/typing)
-          term.write(new TextEncoder().encode(outputBuffer));
-          outputBuffer = "";
+          // Only process first match per chunk to avoid loops
+          break;
         }
       }),
     );
