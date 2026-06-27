@@ -531,6 +531,27 @@ button {
   word-break: break-all;
 }
 
+/* ── Structured command display: name + args ── */
+.term-hist-cmd-name {
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+.term-hist-cmd-args {
+  color: #cbd5e1;
+}
+
+/* Command type colors */
+.cmd-ssh    { color: #22d3ee; }   /* cyan */
+.cmd-git    { color: #fbbf24; }   /* amber */
+.cmd-k8s    { color: #a78bfa; }   /* purple */
+.cmd-fs     { color: #94a3b8; }   /* slate */
+.cmd-pkg    { color: #f472b6; }   /* pink */
+.cmd-dev    { color: #34d399; }   /* emerald */
+.cmd-net    { color: #60a5fa; }   /* blue */
+.cmd-sys    { color: #f87171; }   /* red */
+.cmd-generic{ color: #e2e8f0; }   /* light slate */
+
 /* ── Match highlight: bold + underline, never a solid block ── */
 .term-hist-item mark {
   background: transparent;
