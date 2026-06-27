@@ -253,6 +253,12 @@ export async function createSession(
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
       e.preventDefault();
       e.stopPropagation();
+      // Send Ctrl+C to PTY to cancel any running fzf/shell process,
+      // then open our GUI panel. This prevents fzf from opening alongside
+      // our panel when the shell has fzf bound to Ctrl+R.
+      if (session.ptyId != null) {
+        void invoke("pty_write", { id: session.ptyId, data: "\x03" });
+      }
       session.historyOpen = true;
       if (session.active) session.callbacks.onHistoryOpen?.();
       return false;
