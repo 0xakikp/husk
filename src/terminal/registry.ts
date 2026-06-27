@@ -253,11 +253,12 @@ export async function createSession(
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
       e.preventDefault();
       e.stopPropagation();
-      // Send Ctrl+C to PTY to cancel any running fzf/shell process,
-      // then open our GUI panel. This prevents fzf from opening alongside
-      // our panel when the shell has fzf bound to Ctrl+R.
+      // Aggressively clear any fzf/shell UI that may be running:
+      // 1. Ctrl+C to cancel any running process
+      // 2. Escape to exit any menu
+      // 3. Ctrl+L to clear screen (wipes fzf canvas output)
       if (session.ptyId != null) {
-        void invoke("pty_write", { id: session.ptyId, data: "\x03" });
+        void invoke("pty_write", { id: session.ptyId, data: "\x03\x1b\x0c" });
       }
       session.historyOpen = true;
       if (session.active) session.callbacks.onHistoryOpen?.();
