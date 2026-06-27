@@ -155,6 +155,12 @@ if command -v fzf >/dev/null 2>&1 && [ -f "${BASH_SOURCE[0]:-}" ]; then
   unset _husk_script_dir
 fi
 
+# Defensive: if the user's ~/.bashrc (sourced above) re-bound Ctrl+R to fzf,
+# strip it here so Husk's GUI panel always wins.
+if type -t fzf-history-widget &>/dev/null; then
+  bind -r '\C-r' 2>/dev/null || true
+fi
+
 # ---------------------------------------------------------------------------
 # Husk GUI bridge command (bash)
 # ---------------------------------------------------------------------------

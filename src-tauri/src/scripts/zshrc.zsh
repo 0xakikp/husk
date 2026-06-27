@@ -164,6 +164,13 @@ if (( $+commands[fzf] )) && [[ -f "${0:A:h}/fzf-key-bindings.zsh" ]]; then
   source "${0:A:h}/fzf-key-bindings.zsh"
 fi
 
+# Defensive: if the user's ~/.zshrc (sourced above) re-bound Ctrl+R to fzf,
+# strip it here so Husk's GUI panel always wins. This handles oh-my-zsh,
+# prezto, or manual fzf --zsh integrations that run after our hook.
+if (( $+widgets[fzf-history-widget] )); then
+  bindkey -r '^R'
+fi
+
 # Re-source guard within a single shell (e.g. user runs `source ~/.zshrc`).
 # This is NOT exported, so each nested zsh installs its own hooks — desired,
 # since every interactive shell needs its own prompt integration.
