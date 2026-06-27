@@ -468,7 +468,8 @@ button {
   border: none;
   border-bottom: 1px solid var(--border);
   outline: none;
-  color: #e5e5e5;
+  /* Bright white for maximum readability */
+  color: #ffffff;
   font-family: inherit;
   font-size: inherit;
   padding: 6px 10px;
@@ -497,7 +498,8 @@ button {
   border: none;
   /* Each item has its own solid bg so terminal never shows through gaps */
   background: #000000;
-  color: #e5e5e5;
+  /* Bright white text for maximum readability against black bg */
+  color: #ffffff;
   font-size: inherit;
   line-height: 1.5;
   padding: 3px 10px 3px 8px;
@@ -532,7 +534,8 @@ button {
   background: transparent;
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: var(--accent);
+  /* Bright green underline for high contrast against black */
+  text-decoration-color: #11c700;
   text-decoration-thickness: 2px;
   text-underline-offset: 2px;
   padding: 0;
@@ -540,7 +543,7 @@ button {
 }
 
 .term-hist-item.active mark {
-  text-decoration-color: var(--accent);
+  text-decoration-color: #11c700;
 }
 
 /* ── Badges: minimal text, no pill background ── */
