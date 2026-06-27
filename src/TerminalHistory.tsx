@@ -106,7 +106,10 @@ function computeScore(
   // Prefix match (best) — command starts with query
   if (lowerCmd.startsWith(lowerQ)) {
     const indices = Array.from({ length: lowerQ.length }, (_, i) => i);
-    return { score: cmd.length, indices }; // shorter command = better
+    // Penalize bare commands (e.g. just "ssh" with no args) — they're less useful
+    const isBareCommand = cmd.trim().length === lowerQ.length;
+    const barePenalty = isBareCommand ? 500 : 0;
+    return { score: cmd.length + barePenalty, indices }; // shorter command = better, but bare commands penalized
   }
 
   // Word-boundary match — each query char starts a word
