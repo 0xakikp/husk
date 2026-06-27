@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getPrefs } from "./settings/preferences";
+import { fontStack } from "./styles/fonts";
 
 /**
  * Ordered-character fuzzy match: every character of `query` must appear in
@@ -158,6 +160,11 @@ export function TerminalHistoryPanel({
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Use user's chosen terminal font + size so the panel feels native
+  const prefs = getPrefs();
+  const fontFamily = fontStack(prefs.fontFamily);
+  const fontSize = prefs.terminalFontSize;
+
   const scored = useMemo(() => {
     const q = query.trim();
     // When query is empty, show most recent entries (already sorted by recency)
@@ -236,7 +243,11 @@ export function TerminalHistoryPanel({
   };
 
   return (
-    <div className="term-hist" ref={panelRef}>
+    <div
+      className="term-hist"
+      ref={panelRef}
+      style={{ fontFamily, fontSize: `${fontSize}px` }}
+    >
       <div className="term-hist-header">
         <span className="term-hist-title">History</span>
         <span className="term-hist-hint">Ctrl+R</span>
@@ -271,15 +282,7 @@ export function TerminalHistoryPanel({
         ) : (
           scored.map(({ command, matchIndices, score }, i) => {
             const matchType =
-              score === 0 && !query.trim()
-                ? "recent"
-                : score < 100
-                  ? "prefix"
-                  : score < 200
-                    ? "word"
-                    : score < 1000
-                      ? "exact"
-                      : "fuzzy";
+              score < 100 ? "prefix" : score < 200 ? "word" : score < 1000 ? "exact" : "fuzzy";
             return (
               <button
                 key={`${i}-${command}`}
@@ -294,13 +297,7 @@ export function TerminalHistoryPanel({
                 </span>
                 {matchType !== "exact" && (
                   <span className={`term-hist-match-badge ${matchType}`}>
-                    {matchType === "recent"
-                      ? "recent"
-                      : matchType === "prefix"
-                        ? "prefix"
-                        : matchType === "word"
-                          ? "word"
-                          : "fuzzy"}
+                    {matchType === "prefix" ? "prefix" : matchType === "word" ? "word" : "fuzzy"}
                   </span>
                 )}
               </button>
