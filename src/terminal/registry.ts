@@ -245,12 +245,14 @@ export async function createSession(
 
     if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
       e.preventDefault();
+      e.stopPropagation();
       session.searchOpen = true;
       if (session.active) setActiveTerminalSearchOpener(() => { session.searchOpen = true; });
       return false;
     }
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
       e.preventDefault();
+      e.stopPropagation();
       session.historyOpen = true;
       if (session.active) session.callbacks.onHistoryOpen?.();
       return false;

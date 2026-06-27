@@ -249,7 +249,10 @@ export function TerminalHistoryPanel({
       style={{ fontFamily, fontSize: `${fontSize}px` }}
     >
       <div className="term-hist-header">
-        <span className="term-hist-title">History</span>
+        <span className="term-hist-title">
+          <span style={{ color: 'var(--accent)', marginRight: 4 }}>❯</span>
+          History
+        </span>
         <span className="term-hist-hint">Ctrl+R</span>
       </div>
       <input
