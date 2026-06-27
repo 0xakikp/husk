@@ -170,7 +170,7 @@ export function TerminalHistoryPanel({
     // When query is empty, show most recent entries (already sorted by recency)
     if (!q) {
       return entries
-        .slice(0, 50)
+        .slice(0, 20)
         .map((c, i) => ({ command: c, matchIndices: [] as number[], score: 0, recencyIndex: i }));
     }
 
@@ -201,7 +201,7 @@ export function TerminalHistoryPanel({
       if (a.score !== b.score) return a.score - b.score;
       return a.recencyIndex - b.recencyIndex;
     });
-    return results.slice(0, 50);
+    return results.slice(0, 20);
   }, [entries, query]);
 
   useEffect(() => {
@@ -308,7 +308,7 @@ export function TerminalHistoryPanel({
       <div className="term-hist-footer">
         <span>
           {scored.length > 0
-            ? `${scored.length} result${scored.length === 1 ? "" : "s"}`
+            ? `${scored.length}${entries.length > 20 ? "+" : ""} result${scored.length === 1 ? "" : "s"}`
             : query.trim()
               ? "0 results"
               : ""}
