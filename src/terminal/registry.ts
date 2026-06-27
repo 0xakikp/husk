@@ -244,11 +244,13 @@ export async function createSession(
     if (handled === false) return false;
 
     if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
       session.searchOpen = true;
       if (session.active) setActiveTerminalSearchOpener(() => { session.searchOpen = true; });
       return false;
     }
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
+      e.preventDefault();
       session.historyOpen = true;
       if (session.active) session.callbacks.onHistoryOpen?.();
       return false;
