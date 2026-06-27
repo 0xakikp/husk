@@ -167,7 +167,16 @@ fi
 # Defensive: if the user's ~/.zshrc (sourced above) re-bound Ctrl+R to fzf,
 # strip it here so Husk's GUI panel always wins. This handles oh-my-zsh,
 # prezto, or manual fzf --zsh integrations that run after our hook.
-if (( $+widgets[fzf-history-widget] )); then
+# We check multiple possible widget names that fzf might use.
+for widget in fzf-history-widget fzf-history fzf-history-search __fzf_history; do
+  if (( $+widgets[$widget] )); then
+    bindkey -r '^R'
+    break
+  fi
+done
+# Also unconditionally remove any ^R binding that might call fzf,
+# regardless of widget name (catches custom fzf integrations).
+if [[ "$(bindkey '^R' 2>/dev/null)" == *fzf* ]]; then
   bindkey -r '^R'
 fi
 

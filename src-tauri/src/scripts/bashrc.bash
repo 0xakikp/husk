@@ -157,7 +157,15 @@ fi
 
 # Defensive: if the user's ~/.bashrc (sourced above) re-bound Ctrl+R to fzf,
 # strip it here so Husk's GUI panel always wins.
-if type -t fzf-history-widget &>/dev/null; then
+# Check multiple possible function names that fzf might use.
+for func in fzf-history-widget fzf-history fzf-history-search __fzf_history; do
+  if type -t "$func" &>/dev/null; then
+    bind -r '\C-r' 2>/dev/null || true
+    break
+  fi
+done
+# Also unconditionally remove any \C-r binding that might call fzf.
+if bind -s '\C-r' 2>/dev/null | grep -qi fzf; then
   bind -r '\C-r' 2>/dev/null || true
 fi
 
