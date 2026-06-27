@@ -425,6 +425,7 @@ button {
 
 .term-hist {
   position: absolute;
+  top: 8px;
   bottom: 40px;
   left: 8px;
   right: 8px;
@@ -437,7 +438,6 @@ button {
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   overflow: hidden;
-  max-height: 55%;
 }
 
 .term-hist-header {
