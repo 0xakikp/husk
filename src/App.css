@@ -431,9 +431,8 @@ button {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  /* Force solid background — never let terminal bleed through */
-  background-color: #000000;
+  /* Solid black background — terminal must never bleed through */
+  background: #000000 !important;
   border: 1px solid var(--border-2);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
@@ -447,6 +446,7 @@ button {
   justify-content: space-between;
   padding: 5px 10px 4px;
   border-bottom: 1px solid var(--border);
+  background: #000000;
 }
 
 .term-hist-title {
@@ -464,11 +464,11 @@ button {
 }
 
 .term-hist-input {
-  background: transparent;
+  background: #000000;
   border: none;
   border-bottom: 1px solid var(--border);
   outline: none;
-  color: var(--text);
+  color: #e5e5e5;
   font-family: inherit;
   font-size: inherit;
   padding: 6px 10px;
@@ -495,12 +495,12 @@ button {
   gap: 8px;
   text-align: left;
   border: none;
-  background: none;
-  /* Force bright text — ensure visibility against solid black bg */
-  color: #d4d4d4;
+  /* Each item has its own solid bg so terminal never shows through gaps */
+  background: #000000;
+  color: #e5e5e5;
   font-size: inherit;
   line-height: 1.5;
-  padding: 2px 10px 2px 8px;
+  padding: 3px 10px 3px 8px;
   margin: 0 4px;
   border-radius: 3px;
   border-left: 2px solid transparent;
@@ -512,12 +512,12 @@ button {
 }
 
 .term-hist-item:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+  background: #0a0a0a;
 }
 
 .term-hist-item.active {
   border-left-color: var(--accent);
-  background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+  background: #0a0a0a;
 }
 
 .term-hist-command {
@@ -571,6 +571,7 @@ button {
   color: var(--text-muted);
   font-size: inherit;
   opacity: 0.7;
+  background: #000000;
 }
 
 .term-hist-footer {
@@ -582,6 +583,7 @@ button {
   font-size: 10px;
   color: var(--text-muted);
   opacity: 0.5;
+  background: #000000;
 }
 
 
