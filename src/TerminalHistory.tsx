@@ -51,27 +51,9 @@ function highlightText(text: string, matches: number[]): React.ReactNode[] {
   return parts;
 }
 
-/** Command type → CSS class for the command name */
-function commandTypeClass(cmd: string): string {
-  const first = cmd.trim().split(/\s+/)[0]?.toLowerCase() || "";
-  if (first.startsWith("ssh")) return "cmd-ssh";
-  if (first.startsWith("git")) return "cmd-git";
-  if (first.startsWith("docker") || first.startsWith("kubectl") || first.startsWith("helm")) return "cmd-k8s";
-  if (first.startsWith("cd") || first.startsWith("ls") || first.startsWith("pwd") || first.startsWith("mkdir")) return "cmd-fs";
-  if (first.startsWith("npm") || first.startsWith("pnpm") || first.startsWith("yarn")) return "cmd-pkg";
-  if (first.startsWith("cargo") || first.startsWith("go") || first.startsWith("python") || first.startsWith("node")) return "cmd-dev";
-  if (first.startsWith("curl") || first.startsWith("wget")) return "cmd-net";
-  if (first.startsWith("sudo") || first.startsWith("systemctl")) return "cmd-sys";
-  return "cmd-generic";
-}
 
-/** Split command into [name, rest] for structured display */
-function splitCommand(cmd: string): { name: string; rest: string } {
-  const trimmed = cmd.trim();
-  const spaceIdx = trimmed.indexOf(" ");
-  if (spaceIdx === -1) return { name: trimmed, rest: "" };
-  return { name: trimmed.slice(0, spaceIdx), rest: trimmed.slice(spaceIdx) };
-}
+
+
 
 interface ScoredEntry {
   command: string;
@@ -326,20 +308,9 @@ export function TerminalHistoryPanel({
                 title={command} /* full text on hover */
               >
                 <span className="term-hist-command">
-                  {(() => {
-                    const { name, rest } = splitCommand(command);
-                    const typeClass = commandTypeClass(command);
-                    return (
-                      <>
-                        <span className={`term-hist-cmd-name ${typeClass}`}>{name}</span>
-                        {rest && (
-                          <span className="term-hist-cmd-args">
-                            {matchIndices.length > 0 ? highlightText(rest, matchIndices.filter(i => i >= name.length).map(i => i - name.length)) : rest}
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
+                  {matchIndices.length > 0
+                    ? highlightText(command, matchIndices)
+                    : command}
                 </span>
                 {matchType !== "exact" && (
                   <span className={`term-hist-match-badge ${matchType}`}>

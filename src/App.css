@@ -437,7 +437,10 @@ button {
   border: 1px solid var(--border-2);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  overflow: hidden;
+  /* Allow panel to expand for long commands */
+  overflow: visible;
+  /* Ensure panel is always wide enough to read commands */
+  min-width: 400px;
 }
 
 .term-hist-header {
@@ -483,17 +486,18 @@ button {
 
 .term-hist-list {
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  overflow-x: auto;
+  display: block;
   padding: 2px 0;
   min-height: 60px;
+  /* Ensure list content is at least as wide as the panel */
+  min-width: 100%;
 }
 
 /* ── History item: minimal row, selection via left border ── */
 .term-hist-item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  display: block;
+  width: 100%;
   text-align: left;
   border: none;
   /* Each item has its own solid bg so terminal never shows through gaps */
@@ -503,14 +507,14 @@ button {
   font-size: inherit;
   line-height: 1.5;
   padding: 3px 10px 3px 8px;
-  margin: 0 4px;
-  border-radius: 3px;
+  margin: 0;
+  border-radius: 0;
   border-left: 2px solid transparent;
   cursor: pointer;
-  /* Allow long commands to wrap instead of being cut off */
+  /* Always show full command — wrap at word boundaries when possible */
   white-space: pre-wrap;
-  word-break: break-all;
-  overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: normal;
   transition: border-color 0.04s ease, background 0.04s ease;
 }
 
@@ -524,33 +528,12 @@ button {
 }
 
 .term-hist-command {
-  flex: 1;
-  min-width: 0;
-  /* Let long commands wrap; matched chars still get mark styling */
+  display: inline;
+  /* Always show full command text */
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
-
-/* ── Structured command display: name + args ── */
-.term-hist-cmd-name {
-  font-weight: 700;
-  margin-right: 2px;
-}
-
-.term-hist-cmd-args {
-  color: #cbd5e1;
-}
-
-/* Command type colors */
-.cmd-ssh    { color: #22d3ee; }   /* cyan */
-.cmd-git    { color: #fbbf24; }   /* amber */
-.cmd-k8s    { color: #a78bfa; }   /* purple */
-.cmd-fs     { color: #94a3b8; }   /* slate */
-.cmd-pkg    { color: #f472b6; }   /* pink */
-.cmd-dev    { color: #34d399; }   /* emerald */
-.cmd-net    { color: #60a5fa; }   /* blue */
-.cmd-sys    { color: #f87171; }   /* red */
-.cmd-generic{ color: #e2e8f0; }   /* light slate */
 
 /* ── Match highlight: bold + underline, never a solid block ── */
 .term-hist-item mark {
@@ -571,10 +554,11 @@ button {
 
 /* ── Badges: minimal text, no pill background ── */
 .term-hist-match-badge {
+  display: inline;
   font-size: 9px;
   letter-spacing: 0.3px;
   opacity: 0.55;
-  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 .term-hist-match-badge.prefix {
