@@ -239,6 +239,11 @@ export async function createSession(
 
   // ── Key Handler ───────────────────────────────────────────────────────────
   term.attachCustomKeyEventHandler((e) => {
+    // DEBUG: log all key events to see if handler is being called
+    if (e.type === "keydown") {
+      console.log("[HUSK KEY]", e.key, "ctrl:", e.ctrlKey, "meta:", e.metaKey, "active:", session.active, "leafId:", leafId);
+    }
+    
     // Let TerminalView handle autocomplete keys first
     const handled = session.callbacks.onKey?.(e);
     if (handled === false) return false;
@@ -251,6 +256,7 @@ export async function createSession(
       return false;
     }
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
+      console.log("[HUSK] Ctrl+R intercepted, preventing fzf");
       e.preventDefault();
       e.stopPropagation();
       // Aggressively clear any fzf/shell UI that may be running:
