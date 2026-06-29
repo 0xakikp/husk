@@ -18,7 +18,8 @@ export type BridgeCommand =
   | { kind: "preview"; path: string }
   | { kind: "notify"; message: string }
   | { kind: "diff"; left: string; right: string }
-  | { kind: "cp"; direction: "pull" | "push"; source: string; dest: string };
+  | { kind: "cp"; direction: "pull" | "push"; source: string; dest: string }
+  | { kind: "remote"; isRemote: boolean };
 
 let handler: ((cmd: BridgeCommand) => void) | null = null;
 
@@ -56,6 +57,8 @@ export function parseBridgeOsc(data: string): BridgeCommand | null {
       if (direction !== "pull" && direction !== "push") return null;
       return { kind: "cp", direction, source: parts[1], dest: parts.slice(2).join(";") };
     }
+    case "remote":
+      return { kind: "remote", isRemote: rest === "1" };
     default:
       return null;
   }

@@ -156,35 +156,49 @@ if (( ! $+functions[_zsh_highlight] )) && [[ -f "${0:A:h}/zsh-syntax-highlightin
 fi
 
 # Fuzzy file finder (Ctrl+T) and cd navigator (Alt+C) via fzf.
-# Ctrl+R is handled by Husk's GUI history panel — shell fzf for history
-# is disabled to avoid a glitchy TUI inside xterm.js.
+# Ctrl+R is handled by Husk's GUI history panel for LOCAL shells only.
+# When running inside an SSH session, we leave Ctrl+R alone so the remote
+# shell's native history search (fzf or bash/zsh reverse-i-search) works.
 if (( $+commands[fzf] )) && [[ -f "${0:A:h}/fzf-key-bindings.zsh" ]]; then
-  # Disable fzf's Ctrl+R so Husk's GUI panel takes over exclusively
+  # Disable fzf's Ctrl+R so Husk's GUI panel takes over exclusively (local only)
   FZF_CTRL_R_COMMAND=""
   source "${0:A:h}/fzf-key-bindings.zsh"
 fi
 
-# Defensive: if the user's ~/.zshrc (sourced above) re-bound Ctrl+R to fzf,
-# strip it here so Husk's GUI panel always wins. This handles oh-my-zsh,
-# prezto, or manual fzf --zsh integrations that run after our hook.
-# We check multiple possible widget names that fzf might use.
-for widget in fzf-history-widget fzf-history fzf-history-search __fzf_history; do
-  if (( $+widgets[$widget] )); then
-    bindkey -r '^R'
-    break
+# Detect whether this interactive shell is running on a remote host via SSH.
+# We emit an OSC 777 sequence so the Husk host can decide whether to intercept
+# Ctrl+R or let the remote shell handle it.
+_husk_detect_remote() {
+  if [[ -n "$SSH_CONNECTION" || -n "$SSH_CLIENT" || -n "$SSH_TTY" ]]; then
+    printf '\e]777;husk;remote;1\e\\'
+    return 0
   fi
-done
-# Also unconditionally remove any ^R binding that might call fzf,
-# regardless of widget name (catches custom fzf integrations).
-if [[ "$(bindkey '^R' 2>/dev/null)" == *fzf* ]]; then
-  bindkey -r '^R'
-fi
+  printf '\e]777;husk;remote;0\e\\'
+  return 1
+}
 
-# Nuclear option: unconditionally remove ALL ^R bindings to ensure
-# Husk's GUI panel is the only handler for Ctrl+R. This prevents any
-# shell plugin (fzf, zsh-autosuggestions, etc.) from intercepting Ctrl+R.
-# The key event will be handled by Husk's xterm.js handler exclusively.
-bindkey -r '^R' 2>/dev/null || true
+# Defensive: if the user's ~/.zshrc (sourced above) re-bound Ctrl+R to fzf,
+# strip it here so Husk's GUI panel always wins — but ONLY for local shells.
+# For remote shells we leave ^R alone so the remote shell handles it.
+if ! _husk_detect_remote; then
+  for widget in fzf-history-widget fzf-history fzf-history-search __fzf_history; do
+    if (( $+widgets[$widget] )); then
+      bindkey -r '^R'
+      break
+    fi
+  done
+  # Also unconditionally remove any ^R binding that might call fzf,
+  # regardless of widget name (catches custom fzf integrations).
+  if [[ "$(bindkey '^R' 2>/dev/null)" == *fzf* ]]; then
+    bindkey -r '^R'
+  fi
+
+  # Nuclear option: unconditionally remove ALL ^R bindings to ensure
+  # Husk's GUI panel is the only handler for Ctrl+R. This prevents any
+  # shell plugin (fzf, zsh-autosuggestions, etc.) from intercepting Ctrl+R.
+  # The key event will be handled by Husk's xterm.js handler exclusively.
+  bindkey -r '^R' 2>/dev/null || true
+fi
 
 # Re-source guard within a single shell (e.g. user runs `source ~/.zshrc`).
 # This is NOT exported, so each nested zsh installs its own hooks — desired,
@@ -213,6 +227,9 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     local _husk_ret=$?
     printf '\e]133;D;%s\e\\' "$_husk_ret"
     printf '\e]7;file://%s%s\e\\' "${HOST}" "$(_husk_urlencode "$PWD")"
+    # Re-emit remote status on every prompt so the host always has current state
+    # (e.g. after ssh'ing out of or back into a machine).
+    _husk_detect_remote >/dev/null
     # Re-inject prompt-end marker in case a framework rebuilt PS1 (p10k, starship).
     # B MUST be appended AFTER PS1 so the cursor is at the input position when
     # the OSC handler fires — prepending captures (0,0) before prompt rendering.

@@ -101,6 +101,7 @@ type Session = {
   searchQuery: string;
   historyOpen: boolean;
   menuOpen: boolean;
+  isRemoteShell: boolean;
 };
 
 const sessions = new Map<number, Session>();
@@ -191,6 +192,7 @@ export async function createSession(
     searchQuery: "",
     historyOpen: false,
     menuOpen: false,
+    isRemoteShell: false,
   };
   sessions.set(leafId, session);
 
@@ -233,7 +235,12 @@ export async function createSession(
 
   term.parser.registerOscHandler(777, (data) => {
     const cmd = parseBridgeOsc(data);
-    if (cmd) dispatchBridge(cmd);
+    if (!cmd) return true;
+    if (cmd.kind === "remote") {
+      session.isRemoteShell = cmd.isRemote;
+      return true;
+    }
+    dispatchBridge(cmd);
     return true;
   });
 
@@ -251,6 +258,11 @@ export async function createSession(
       return false;
     }
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
+      // In SSH sessions, let the remote shell handle Ctrl+R (fzf / reverse-i-search).
+      if (session.isRemoteShell) {
+        console.log("[HUSK] Ctrl+R passed through to remote shell");
+        return true;
+      }
       console.log("[HUSK] Ctrl+R intercepted, preventing fzf");
       e.preventDefault();
       e.stopPropagation();
