@@ -1650,7 +1650,6 @@ function App() {
                   open={aiSessionsOpen}
                   onClose={() => setAiSessionsOpen(false)}
                   onSelectSession={(id) => requestBubbleSwitch(id)}
-                  anchorRef={aiSessionsButtonRef}
                 />
               </div>
             )}
