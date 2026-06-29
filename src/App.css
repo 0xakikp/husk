@@ -707,7 +707,7 @@ button {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #22c55e;
+  color: var(--accent, #22c55e);
 }
 
 .husk-popover-close {
@@ -740,11 +740,12 @@ button {
   color: #f0f0f0;
   font: inherit;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .husk-popover-input:focus {
-  border-color: #22c55e;
+  border-color: var(--accent, #22c55e);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #22c55e) 20%, transparent);
 }
 
 .husk-popover-input::placeholder {
@@ -780,7 +781,7 @@ button {
 
 .husk-popover-item:hover,
 .husk-popover-item.active {
-  background: rgba(34, 197, 94, 0.12);
+  background: color-mix(in srgb, var(--accent, #22c55e) 14%, transparent);
   color: #ffffff;
 }
 
