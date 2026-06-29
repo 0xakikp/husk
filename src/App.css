@@ -437,8 +437,8 @@ button {
   border: 1px solid var(--border-2);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  /* Allow panel to expand for long commands */
-  overflow: visible;
+  /* Panel fills terminal width; list scrolls horizontally for long commands */
+  overflow: hidden;
   /* Ensure panel is always wide enough to read commands */
   min-width: 400px;
 }
@@ -532,8 +532,8 @@ button {
 
 .term-hist-item.active {
   border-left: 3px solid var(--accent);
-  background: #0f2a0f;
-  color: #ffffff;
+  background: #0a1a0a;
+  color: #e5e5e5;
   border-bottom-color: transparent;
 }
 
