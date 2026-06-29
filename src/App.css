@@ -496,39 +496,45 @@ button {
 
 /* ── History item: minimal row, selection via left border ── */
 .term-hist-item {
-  display: block;
+  display: flex;
   width: 100%;
   text-align: left;
   border: none;
   /* Each item has its own solid bg so terminal never shows through gaps */
   background: #000000;
-  /* slate-300 for unmatched text so IPs, paths, flags remain clearly visible */
-  color: #cbd5e1;
+  /* High-contrast off-white for readability on black bg */
+  color: #e5e5e5;
+  text-shadow: 0 0 0 transparent;
   font-size: inherit;
   line-height: 1.5;
-  padding: 3px 10px 3px 8px;
-  margin: 0;
+  padding: 6px 12px 6px 10px;
+  margin: 0 0 1px 0;
   border-radius: 0;
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
   cursor: pointer;
   /* Always show full command — wrap at word boundaries when possible */
-  white-space: pre-wrap;
+  white-space: normal;
   overflow-wrap: break-word;
   word-break: normal;
   transition: border-color 0.04s ease, background 0.04s ease;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .term-hist-item:hover {
-  background: #0a0a0a;
+  background: #141414;
 }
 
 .term-hist-item.active {
-  border-left-color: var(--accent);
-  background: #0a0a0a;
+  border-left: 3px solid var(--accent);
+  background: #1a2a1a;
+  box-shadow: inset 0 0 0 1px rgba(17, 199, 0, 0.12);
 }
 
 .term-hist-command {
-  display: inline;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   /* Always show full command text */
   white-space: pre-wrap;
   overflow-wrap: break-word;
