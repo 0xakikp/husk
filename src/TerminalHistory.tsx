@@ -255,90 +255,100 @@ export function TerminalHistoryPanel({
   };
 
   return (
-    <div
-      className="term-hist"
-      ref={panelRef}
-      style={{ fontFamily, fontSize: `${fontSize}px` }}
-    >
-      <div className="term-hist-header">
-        <span className="term-hist-title">
-          <span style={{ color: 'var(--accent)', marginRight: 4 }}>❯</span>
-          History
-        </span>
-        <span className="term-hist-hint">Ctrl+R</span>
-      </div>
-      <input
-        autoFocus
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        className="term-hist-input"
-        value={query}
-        placeholder={loading ? "Loading history…" : "Search history…"}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown" || (e.ctrlKey && e.key.toLowerCase() === "r")) {
-            e.preventDefault();
-            setIndex((i) => Math.min(Math.max(scored.length - 1, 0), i + 1));
-          } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key.toLowerCase() === "p")) {
-            e.preventDefault();
-            setIndex((i) => Math.max(0, i - 1));
-          } else if (e.key === "Enter") {
-            e.preventDefault();
-            choose(index);
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            onClose();
-          }
+    <>
+      <div
+        className="term-hist-backdrop"
+        onClick={onClose}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          onClose();
         }}
       />
-      <div className="term-hist-list" ref={listRef}>
-        {scored.length === 0 ? (
-          <div className="term-hist-empty">
-            {loading ? "Loading history…" : query.trim() ? "No matching history" : "No history entries"}
-          </div>
-        ) : (
-          scored.map(({ command, matchIndices, score }, i) => {
-            const matchType =
-              score < 100 ? "prefix" : score < 200 ? "word" : score < 1000 ? "exact" : "fuzzy";
-            const hasQuery = query.trim().length > 0;
-            return (
-              <button
-                key={`${i}-${command}`}
-                type="button"
-                className={`term-hist-item${i === index ? " active" : ""}${!hasQuery && i % 2 === 1 ? " alt" : ""}${matchType === "prefix" ? " prefix-match" : matchType === "word" ? " word-match" : ""}`}
-                onMouseEnter={() => setIndex(i)}
-                onClick={() => choose(i)}
-                title={command} /* full text on hover */
-              >
-                <span className="term-hist-command">
-                  {matchIndices.length > 0
-                    ? highlightText(command, matchIndices)
-                    : command}
-                </span>
-                {hasQuery && matchType !== "exact" && (
-                  <span className={`term-hist-match-badge ${matchType}`}>
-                    {matchType === "prefix" ? "prefix" : matchType === "word" ? "word" : "fuzzy"}
+      <div
+        className="term-hist"
+        ref={panelRef}
+        style={{ fontFamily, fontSize: `${fontSize}px` }}
+      >
+        <div className="term-hist-header">
+          <span className="term-hist-title">
+            <span style={{ color: 'var(--accent)', marginRight: 4 }}>❯</span>
+            History
+          </span>
+          <span className="term-hist-hint">Ctrl+R</span>
+        </div>
+        <input
+          autoFocus
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          className="term-hist-input"
+          value={query}
+          placeholder={loading ? "Loading history…" : "Search history…"}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" || (e.ctrlKey && e.key.toLowerCase() === "r")) {
+              e.preventDefault();
+              setIndex((i) => Math.min(Math.max(scored.length - 1, 0), i + 1));
+            } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key.toLowerCase() === "p")) {
+              e.preventDefault();
+              setIndex((i) => Math.max(0, i - 1));
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              choose(index);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
+          }}
+        />
+        <div className="term-hist-list" ref={listRef}>
+          {scored.length === 0 ? (
+            <div className="term-hist-empty">
+              {loading ? "Loading history…" : query.trim() ? "No matching history" : "No history entries"}
+            </div>
+          ) : (
+            scored.map(({ command, matchIndices, score }, i) => {
+              const matchType =
+                score < 100 ? "prefix" : score < 200 ? "word" : score < 1000 ? "exact" : "fuzzy";
+              const hasQuery = query.trim().length > 0;
+              return (
+                <button
+                  key={`${i}-${command}`}
+                  type="button"
+                  className={`term-hist-item${i === index ? " active" : ""}${!hasQuery && i % 2 === 1 ? " alt" : ""}${matchType === "prefix" ? " prefix-match" : matchType === "word" ? " word-match" : ""}`}
+                  onMouseEnter={() => setIndex(i)}
+                  onClick={() => choose(i)}
+                  title={command} /* full text on hover */
+                >
+                  <span className="term-hist-command">
+                    {matchIndices.length > 0
+                      ? highlightText(command, matchIndices)
+                      : command}
                   </span>
-                )}
-              </button>
-            );
-          })
-        )}
+                  {hasQuery && matchType !== "exact" && (
+                    <span className={`term-hist-match-badge ${matchType}`}>
+                      {matchType === "prefix" ? "prefix" : matchType === "word" ? "word" : "fuzzy"}
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+        <div className="term-hist-footer">
+          <span>
+            {scored.length > 0
+              ? `${scored.length}${entries.length > 20 ? "+" : ""} result${scored.length === 1 ? "" : "s"}`
+              : query.trim()
+                ? "0 results"
+                : ""}
+          </span>
+          {scored.length > 0 && index >= 0 && (
+            <span>{`${index + 1} / ${scored.length}`}</span>
+          )}
+        </div>
       </div>
-      <div className="term-hist-footer">
-        <span>
-          {scored.length > 0
-            ? `${scored.length}${entries.length > 20 ? "+" : ""} result${scored.length === 1 ? "" : "s"}`
-            : query.trim()
-              ? "0 results"
-              : ""}
-        </span>
-        {scored.length > 0 && index >= 0 && (
-          <span>{`${index + 1} / ${scored.length}`}</span>
-        )}
-      </div>
-    </div>
+    </>
   );
 }

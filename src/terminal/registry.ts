@@ -263,17 +263,13 @@ export async function createSession(
         console.log("[HUSK] Ctrl+R passed through to remote shell");
         return true;
       }
-      console.log("[HUSK] Ctrl+R intercepted, preventing fzf");
+      console.log("[HUSK] Ctrl+R intercepted, opening Husk history panel");
       e.preventDefault();
       e.stopPropagation();
-      // Aggressively clear any fzf/shell UI that may be running:
-      // 1. Ctrl+C to cancel any running process
-      // 2. Escape to exit any menu
-      // 3. Ctrl+G (fzf cancel)
-      // 4. Ctrl+L to clear screen (wipes fzf canvas output)
-      // 5. Extra Ctrl+C + reset sequence to ensure fzf is fully killed
+      // Cancel any running process (Ctrl+C) and fzf menu (Ctrl+G) without
+      // clearing the screen — we want the terminal content to stay visible.
       if (session.ptyId != null) {
-        void invoke("pty_write", { id: session.ptyId, data: "\x03\x1b\x07\x0c\x03\x1b\x07\x0c" });
+        void invoke("pty_write", { id: session.ptyId, data: "\x03\x07" });
       }
       session.historyOpen = true;
       if (session.active) session.callbacks.onHistoryOpen?.();

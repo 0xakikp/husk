@@ -415,6 +415,14 @@ button {
    Terminal History Panel (Ctrl+R) — styled to match Husk's design tokens
    ═══════════════════════════════════════════════════════════════════════ */
 
+.term-hist-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+
 .term-hist {
   position: absolute;
   top: 10px;
