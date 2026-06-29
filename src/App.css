@@ -525,6 +525,11 @@ button {
   background: #1a1a1a;
 }
 
+/* Alternating row tint when no query — creates visual rhythm */
+.term-hist-item.alt {
+  background: #080808;
+}
+
 .term-hist-item.active {
   border-left: 3px solid var(--accent);
   background: #0f2a0f;

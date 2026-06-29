@@ -298,11 +298,12 @@ export function TerminalHistoryPanel({
           scored.map(({ command, matchIndices, score }, i) => {
             const matchType =
               score < 100 ? "prefix" : score < 200 ? "word" : score < 1000 ? "exact" : "fuzzy";
+            const hasQuery = query.trim().length > 0;
             return (
               <button
                 key={`${i}-${command}`}
                 type="button"
-                className={`term-hist-item${i === index ? " active" : ""}`}
+                className={`term-hist-item${i === index ? " active" : ""}${!hasQuery && i % 2 === 1 ? " alt" : ""}`}
                 onMouseEnter={() => setIndex(i)}
                 onClick={() => choose(i)}
                 title={command} /* full text on hover */
@@ -312,7 +313,7 @@ export function TerminalHistoryPanel({
                     ? highlightText(command, matchIndices)
                     : command}
                 </span>
-                {matchType !== "exact" && (
+                {hasQuery && matchType !== "exact" && (
                   <span className={`term-hist-match-badge ${matchType}`}>
                     {matchType === "prefix" ? "prefix" : matchType === "word" ? "word" : "fuzzy"}
                   </span>
