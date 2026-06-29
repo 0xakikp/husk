@@ -60,8 +60,9 @@ import { SftpView } from "./remotes/SftpView";
 import { useActiveSshHost } from "./remote/store";
 import { GithubIssuesDialog } from "./github-issues/GithubIssuesDialog";
 import { CiCdDialog } from "./ci-cd/CiCdDialog";
-import { ClipboardDropdown } from "./clipboard/ClipboardDropdown";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
+import { ClipboardPanel } from "./clipboard/ClipboardPanel";
+import { ClipboardIcon } from "@hugeicons/core-free-icons";
 import { DiffDialog } from "./diff/DiffDialog";
 import { CloudSyncDialog } from "./cloud-sync/CloudSyncDialog";
 import { pickWorkspaceFolder } from "./workspace/store";
@@ -968,6 +969,7 @@ function App() {
   const [aiSessionsOpen, setAiSessionsOpen] = useState(false);
   const aiSessionsButtonRef = useRef<HTMLButtonElement>(null);
   const [jobsOpen, setJobsOpen] = useState(false);
+  const [clipboardOpen, setClipboardOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [explainCtx, setExplainCtx] = useState<{ command: string; output: string; exitCode: number | null } | null>(null);
   const [pendingAiQuery, setPendingAiQuery] = useState<string | undefined>(undefined);
@@ -1274,6 +1276,7 @@ function App() {
       { id: "tools", label: "Open integrations", run: () => { cycleSidebarView("tools-hub"); } },
       { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
       { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
+      { id: "open-clipboard", label: "Open clipboard history", hint: "Ctrl/Cmd+Shift+V", run: () => setClipboardOpen(true) },
       ...(prefs.aiEnabled
         ? [
             { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
@@ -1426,6 +1429,9 @@ function App() {
       } else if (key === "a" && e.shiftKey) {
         e.preventDefault();
         openBubble();
+      } else if (key === "v" && e.shiftKey) {
+        e.preventDefault();
+        setClipboardOpen(true);
       } else if (/^Digit[1-9]$/.test(e.code)) {
         e.preventDefault();
         const idx = parseInt(e.code.replace("Digit", ""), 10) - 1;
@@ -1695,7 +1701,15 @@ function App() {
               <HugeiconsIcon icon={Timer01Icon} size={14} strokeWidth={1.75} />
               <TotpBadge />
             </Button>
-            <ClipboardDropdown />
+            <button
+          type="button"
+          aria-label="Clipboard history"
+          title="Clipboard history"
+          onClick={() => setClipboardOpen(true)}
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <HugeiconsIcon icon={ClipboardIcon} size={16} strokeWidth={1.75} />
+        </button>
 
             {prefs.aiEnabled && (
               <Button
@@ -2083,6 +2097,9 @@ function App() {
         {!prefs.hasSeenWelcome ? <WelcomeDialog /> : null}
         {paletteOpen && (
           <CommandPalette open commands={commands} onClose={() => setPaletteOpen(false)} />
+        )}
+        {clipboardOpen && (
+          <ClipboardPanel onClose={() => setClipboardOpen(false)} />
         )}
         <DialogLayer open={switcherOpen}>
           {switcherOpen && (

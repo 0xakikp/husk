@@ -43,15 +43,15 @@ export function ClipboardDropdown() {
               Nothing captured yet. Copy something and it'll show up here.
             </p>
           ) : (
-            history.map((t, i) => (
+            history.map((it) => (
               <button
-                key={`${i}-${t.slice(0, 12)}`}
+                key={it.id}
                 type="button"
                 title="Copy"
-                onClick={() => copy(t)}
+                onClick={() => copy(it.text)}
                 className="block w-full truncate rounded px-2 py-1.5 text-left font-mono text-[11.5px] text-foreground transition-colors hover:bg-muted"
               >
-                {t.length > 140 ? `${t.slice(0, 140)}…` : t}
+                {it.text.length > 140 ? `${it.text.slice(0, 140)}…` : it.text}
               </button>
             ))
           )}

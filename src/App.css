@@ -624,7 +624,53 @@ button {
   flex-shrink: 0;
 }
 
-/* titlebar AI toggle */
+.term-hist-footer-action {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.term-hist-footer-action:hover {
+  color: #ff5f5f;
+}
+
+.term-hist-delete {
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  padding: 3px;
+  border-radius: 4px;
+  color: #555;
+  transition: opacity 0.1s ease, color 0.1s ease, background 0.1s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.term-hist-item:hover .term-hist-delete,
+.term-hist-item.active .term-hist-delete {
+  opacity: 1;
+}
+
+.term-hist-delete:hover {
+  color: #ff5f5f;
+  background: rgba(255, 95, 95, 0.12);
+}
+
+.term-hist-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: #555;
+  font-size: 0.95em;
+}
+
 .titlebar-spacer {
   flex: 1 1 auto;
 }

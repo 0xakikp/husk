@@ -31,15 +31,15 @@ export function ClipboardManager({ onClose }: { onClose: () => void }) {
             </p>
           ) : (
             <div className="rb-list">
-              {history.map((t, i) => (
+              {history.map((it) => (
                 <button
-                  key={`${i}-${t.slice(0, 12)}`}
+                  key={it.id}
                   type="button"
                   className="clip-item"
                   title="Copy"
-                  onClick={() => copy(t)}
+                  onClick={() => copy(it.text)}
                 >
-                  {t.length > 140 ? `${t.slice(0, 140)}…` : t}
+                  {it.text.length > 140 ? `${it.text.slice(0, 140)}…` : it.text}
                 </button>
               ))}
             </div>
