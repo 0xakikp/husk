@@ -425,11 +425,11 @@ button {
 
 .term-hist {
   position: absolute;
-  top: 8px;
-  bottom: 40px;
-  left: 8px;
-  right: 8px;
-  z-index: 10;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
   display: flex;
   flex-direction: column;
   /* Solid black background — terminal must never bleed through */

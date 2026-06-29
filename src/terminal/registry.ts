@@ -257,8 +257,9 @@ export async function createSession(
       // 1. Ctrl+C to cancel any running process
       // 2. Escape to exit any menu
       // 3. Ctrl+L to clear screen (wipes fzf canvas output)
+      // 4. Extra Ctrl+C + reset sequence to ensure fzf is fully killed
       if (session.ptyId != null) {
-        void invoke("pty_write", { id: session.ptyId, data: "\x03\x1b\x0c" });
+        void invoke("pty_write", { id: session.ptyId, data: "\x03\x1b\x0c\x03\x1b\x0c" });
       }
       session.historyOpen = true;
       if (session.active) session.callbacks.onHistoryOpen?.();

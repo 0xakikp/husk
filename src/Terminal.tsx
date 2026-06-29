@@ -195,6 +195,8 @@ export function TerminalView({
   };
 
   const openHistory = () => {
+    // Clear terminal screen to wipe any fzf/shell UI before showing our panel
+    handleRef.current?.clear();
     setHistoryOpen(true);
     setHistoryLoading(true);
     void getShellHistory()
