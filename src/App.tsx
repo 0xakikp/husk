@@ -967,7 +967,7 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [aiSessionsOpen, setAiSessionsOpen] = useState(false);
-  const aiSessionsButtonRef = useRef<HTMLButtonElement>(null);
+  const aiSessionsButtonRef = useRef<HTMLDivElement>(null);
   const clipboardButtonRef = useRef<HTMLButtonElement>(null);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [clipboardOpen, setClipboardOpen] = useState(false);
@@ -1628,9 +1628,8 @@ function App() {
               <HugeiconsIcon icon={LayoutThreeColumnIcon} size={16} strokeWidth={1.75} />
             </Button>
             {prefs.aiEnabled && (
-              <div className="relative">
+              <div className="relative" ref={aiSessionsButtonRef}>
                 <Button
-                  ref={aiSessionsButtonRef}
                   onClick={(e) => {
                     e.stopPropagation();
                     setAiSessionsOpen((v) => !v);

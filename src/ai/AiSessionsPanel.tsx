@@ -60,7 +60,7 @@ export function AiSessionsPanel({
   const [sessions, setSessions] = useState<Session[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
   const prefs = getPrefs();
   const fontFamily = fontStack(prefs.fontFamily);
@@ -73,9 +73,9 @@ export function AiSessionsPanel({
     if (!open) return;
     if (anchorRef?.current) {
       const rect = anchorRef.current.getBoundingClientRect();
-      setPosition({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+      setPosition({ top: rect.bottom + 6, left: rect.left });
     } else {
-      setPosition({ top: 40, right: 16 });
+      setPosition({ top: 40, left: 16 });
     }
   }, [open, anchorRef]);
 
@@ -126,7 +126,7 @@ export function AiSessionsPanel({
     <div
       ref={panelRef}
       className="husk-popover"
-      style={{ fontFamily, top: position.top, right: position.right }}
+      style={{ fontFamily, top: position.top, left: position.left }}
     >
       <div className="husk-popover-header">
         <span className="husk-popover-title">
