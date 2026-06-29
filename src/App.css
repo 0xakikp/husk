@@ -500,19 +500,19 @@ button {
   width: 100%;
   text-align: left;
   border: none;
-  /* Each item has its own solid bg so terminal never shows through gaps */
   background: #000000;
-  /* High-contrast off-white for readability on black bg */
-  color: #f0f0f0;
+  /* Pure white for maximum readability on black bg */
+  color: #ffffff;
   font-size: inherit;
-  line-height: 1.5;
-  padding: 7px 14px 7px 12px;
+  /* More breathing room per line */
+  line-height: 1.7;
+  padding: 8px 14px 8px 12px;
   margin: 0;
-  border-bottom: 1px solid #0a0a0a;
+  /* Stronger separator between items */
+  border-bottom: 1px solid #151515;
   border-radius: 0;
   border-left: 3px solid transparent;
   cursor: pointer;
-  /* Always show full command — wrap at word boundaries when possible */
   white-space: normal;
   overflow-wrap: break-word;
   word-break: normal;
@@ -522,18 +522,18 @@ button {
 }
 
 .term-hist-item:hover {
-  background: #1a1a1a;
+  background: #111111;
 }
 
-/* Alternating row tint when no query — creates visual rhythm */
+/* Alternating row tint — subtle but visible */
 .term-hist-item.alt {
-  background: #080808;
+  background: #0a0a0a;
 }
 
 .term-hist-item.active {
   border-left: 3px solid var(--accent);
-  background: #0a1a0a;
-  color: #e5e5e5;
+  background: #0d1f0d;
+  color: #ffffff;
   border-bottom-color: transparent;
 }
 
