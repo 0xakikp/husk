@@ -304,7 +304,7 @@ export function TerminalHistoryPanel({
               <button
                 key={`${i}-${command}`}
                 type="button"
-                className={`term-hist-item${i === index ? " active" : ""}${!hasQuery && i % 2 === 1 ? " alt" : ""}${isFuzzy ? " fuzzy-match" : ""}`}
+                className={`term-hist-item${i === index ? " active" : ""}${!hasQuery && i % 2 === 1 ? " alt" : ""}${matchType === "prefix" ? " prefix-match" : matchType === "word" ? " word-match" : ""}`}
                 onMouseEnter={() => setIndex(i)}
                 onClick={() => choose(i)}
                 title={command} /* full text on hover */

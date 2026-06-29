@@ -547,24 +547,25 @@ button {
   word-break: break-word;
 }
 
-/* ── Match highlight: bold + underline, never a solid block ── */
+/* ── Match highlight: subtle underline, never a solid block ── */
 .term-hist-item mark {
   background: transparent;
   color: inherit;
   text-decoration: underline;
-  /* Bright green underline for high contrast against black */
-  text-decoration-color: #11c700;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 2px;
-  padding: 0;
-  font-weight: 700;
-}
-
-/* Fuzzy match highlighting is too noisy on long commands — make it subtle */
-.term-hist-item.fuzzy-match mark {
+  /* Subtle green underline — readable without visual noise on long commands */
   text-decoration-color: #0a5a0a;
   text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  padding: 0;
   font-weight: 500;
+}
+
+/* Prefix/word matches get slightly stronger emphasis */
+.term-hist-item.prefix-match mark,
+.term-hist-item.word-match mark {
+  text-decoration-color: #11c700;
+  text-decoration-thickness: 2px;
+  font-weight: 700;
 }
 
 .term-hist-item.active mark {
