@@ -430,12 +430,12 @@ button {
   font-family: inherit;
   font-size: inherit;
   line-height: 1.5;
-  padding: 12px 14px;
+  padding: 16px 20px;
   overflow: hidden;
   border: 1px solid var(--border, #1f1f1f);
   border-radius: var(--radius, 8px);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
-  min-width: 400px;
+  min-width: 480px;
 }
 
 .term-hist-header {
