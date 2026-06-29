@@ -541,10 +541,10 @@ button {
   display: block;
   flex: 1 1 auto;
   min-width: 0;
-  /* Always show full command text */
+  /* Always show full command text — wrap cleanly */
   white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* ── Match highlight: bold + underline, never a solid block ── */
