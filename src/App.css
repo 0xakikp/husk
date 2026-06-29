@@ -671,6 +671,188 @@ button {
   font-size: 0.95em;
 }
 
+/* ── Compact anchored popover (clipboard, etc.) ─────────────────────────── */
+.husk-popover {
+  position: fixed;
+  z-index: 100;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  max-height: min(480px, calc(100vh - 80px));
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 8, 8, 0.98);
+  color: #e5e5e5;
+  border: 1px solid #1a1a1a;
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9);
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+}
+
+.husk-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 6px 4px;
+  flex-shrink: 0;
+}
+
+.husk-popover-title {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #22c55e;
+}
+
+.husk-popover-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: #555;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.husk-popover-close:hover {
+  color: #e5e5e5;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.husk-popover-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #1f1f1f;
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  color: #f0f0f0;
+  font: inherit;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.husk-popover-input:focus {
+  border-color: #22c55e;
+}
+
+.husk-popover-input::placeholder {
+  color: #555;
+}
+
+.husk-popover-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.husk-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #d4d4d4;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.08s ease, color 0.08s ease;
+}
+
+.husk-popover-item:hover,
+.husk-popover-item.active {
+  background: rgba(34, 197, 94, 0.12);
+  color: #ffffff;
+}
+
+.husk-popover-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.husk-popover-meta {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #444;
+}
+
+.husk-popover-delete {
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: #555;
+  cursor: pointer;
+  transition: opacity 0.1s ease, color 0.1s ease, background 0.1s ease;
+}
+
+.husk-popover-item:hover .husk-popover-delete,
+.husk-popover-item.active .husk-popover-delete {
+  opacity: 1;
+}
+
+.husk-popover-delete:hover {
+  color: #ff5f5f;
+  background: rgba(255, 95, 95, 0.12);
+}
+
+.husk-popover-empty {
+  padding: 18px 8px;
+  text-align: center;
+  color: #555;
+  font-size: 12px;
+}
+
+.husk-popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px 0 4px;
+  margin-top: 4px;
+  border-top: 1px solid #151515;
+  font-size: 10px;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.husk-popover-footer-action {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.husk-popover-footer-action:hover {
+  color: #ff5f5f;
+}
+
 .titlebar-spacer {
   flex: 1 1 auto;
 }

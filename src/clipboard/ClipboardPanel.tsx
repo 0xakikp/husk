@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ClipboardIcon, Delete02Icon } from "@hugeicons/core-free-icons";
+import { ClipboardIcon, Delete02Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { useClipHistory, deleteClip, clearClips } from "./store";
 import { toast } from "../toast";
 import { fontStack } from "../styles/fonts";
@@ -34,17 +34,17 @@ function fuzzyMatch(query: string, text: string): boolean {
   return true;
 }
 
-export function ClipboardPanel({ onClose }: { onClose: () => void }) {
+export function ClipboardPanel({ onClose, anchorRef }: { onClose: () => void; anchorRef?: React.RefObject<HTMLElement | null> }) {
   const history = useClipHistory();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
 
   const prefs = getPrefs();
   const fontFamily = fontStack(prefs.fontFamily);
-  const fontSize = prefs.terminalFontSize;
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -66,15 +66,34 @@ export function ClipboardPanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
+    if (anchorRef?.current) {
+      const rect = anchorRef.current.getBoundingClientRect();
+      setPosition({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    } else {
+      setPosition({ top: 40, right: 16 });
+    }
+  }, [anchorRef]);
+
+  useEffect(() => {
+    if (!position) return;
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
       }
     };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (anchorRef?.current && anchorRef.current.contains(target)) return;
+      if (panelRef.current && !panelRef.current.contains(target)) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [onClose, position, anchorRef]);
 
   const copy = (text: string) => {
     void writeText(text);
@@ -105,99 +124,75 @@ export function ClipboardPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  if (!position) return null;
+
   return (
-    <>
-      <div
-        className="term-hist-backdrop"
-        onClick={onClose}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
-      />
-      <div
-        className="term-hist"
-        ref={panelRef}
-        style={{ fontFamily, fontSize: `${fontSize}px` }}
-      >
-        <div className="term-hist-header">
-          <span className="term-hist-title">
-            <HugeiconsIcon icon={ClipboardIcon} size={14} strokeWidth={1.75} style={{ marginRight: 6 }} />
-            Clipboard history
-          </span>
-          <span className="term-hist-hint">Ctrl+Shift+V</span>
-        </div>
-        <input
-          ref={inputRef}
-          autoFocus
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          className="term-hist-input"
-          value={query}
-          placeholder="Search clipboard…"
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        <div className="term-hist-list" ref={listRef}>
-          {filtered.length === 0 ? (
-            <div className="term-hist-empty">
-              {query.trim() ? "No matching clipboard items" : "Clipboard is empty. Copy something to get started."}
-            </div>
-          ) : (
-            filtered.map((it, i) => (
-              <button
-                key={it.id}
-                type="button"
-                className={`term-hist-item${i === index ? " active" : ""}${!query.trim() && i % 2 === 1 ? " alt" : ""}`}
-                onMouseEnter={() => setIndex(i)}
-                onClick={() => choose(i)}
-                title={it.text}
-              >
-                <span className="term-hist-command">{it.text}</span>
-                <span className="term-hist-match-badge" style={{ color: "#444" }}>
-                  {formatTime(it.createdAt)}
-                </span>
-                <span
-                  className="term-hist-delete"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => remove(e, it.id)}
-                  title="Delete"
-                  role="button"
-                  aria-label="Delete clipboard item"
-                >
-                  <HugeiconsIcon icon={Delete02Icon} size={12} strokeWidth={1.75} />
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-        <div className="term-hist-footer">
-          <span>
-            {filtered.length > 0
-              ? `${filtered.length} item${filtered.length === 1 ? "" : "s"}`
-              : query.trim()
-                ? "0 results"
-                : ""}
-          </span>
-          <span className="flex items-center gap-3">
-            {history.length > 0 && (
-              <button
-                type="button"
-                onClick={clearClips}
-                className="term-hist-footer-action"
-                title="Clear all"
-              >
-                Clear all
-              </button>
-            )}
-            {filtered.length > 0 && index >= 0 && (
-              <span>{`${index + 1} / ${filtered.length}`}</span>
-            )}
-          </span>
-        </div>
+    <div
+      ref={panelRef}
+      className="husk-popover"
+      style={{ fontFamily, top: position.top, right: position.right }}
+    >
+      <div className="husk-popover-header">
+        <span className="husk-popover-title">
+          <HugeiconsIcon icon={ClipboardIcon} size={13} strokeWidth={1.75} style={{ marginRight: 5 }} />
+          Clipboard history
+        </span>
+        <button type="button" onClick={onClose} className="husk-popover-close" aria-label="Close">
+          <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
+        </button>
       </div>
-    </>
+      <input
+        ref={inputRef}
+        autoFocus
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        className="husk-popover-input"
+        value={query}
+        placeholder="Search clipboard…"
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+      <div className="husk-popover-list" ref={listRef}>
+        {filtered.length === 0 ? (
+          <div className="husk-popover-empty">
+            {query.trim() ? "No matching items" : "Clipboard is empty"}
+          </div>
+        ) : (
+          filtered.map((it, i) => (
+            <button
+              key={it.id}
+              type="button"
+              className={`husk-popover-item${i === index ? " active" : ""}`}
+              onMouseEnter={() => setIndex(i)}
+              onClick={() => choose(i)}
+              title={it.text}
+            >
+              <span className="husk-popover-text">{it.text.length > 120 ? `${it.text.slice(0, 120)}…` : it.text}</span>
+              <span className="husk-popover-meta">{formatTime(it.createdAt)}</span>
+              <span
+                className="husk-popover-delete"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => remove(e, it.id)}
+                title="Delete"
+                role="button"
+                aria-label="Delete clipboard item"
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={11} strokeWidth={1.75} />
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+      <div className="husk-popover-footer">
+        <span>{filtered.length} item{filtered.length === 1 ? "" : "s"}</span>
+        {history.length > 0 && (
+          <button type="button" onClick={clearClips} className="husk-popover-footer-action" title="Clear all">
+            Clear all
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

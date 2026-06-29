@@ -968,6 +968,7 @@ function App() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [aiSessionsOpen, setAiSessionsOpen] = useState(false);
   const aiSessionsButtonRef = useRef<HTMLButtonElement>(null);
+  const clipboardButtonRef = useRef<HTMLButtonElement>(null);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -1701,14 +1702,15 @@ function App() {
               <TotpBadge />
             </Button>
             <button
-          type="button"
-          aria-label="Clipboard history"
-          title="Clipboard history"
-          onClick={() => setClipboardOpen(true)}
-          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <HugeiconsIcon icon={ClipboardIcon} size={16} strokeWidth={1.75} />
-        </button>
+              ref={clipboardButtonRef}
+              type="button"
+              aria-label="Clipboard history"
+              title="Clipboard history"
+              onClick={() => setClipboardOpen((v) => !v)}
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <HugeiconsIcon icon={ClipboardIcon} size={16} strokeWidth={1.75} />
+            </button>
 
             {prefs.aiEnabled && (
               <Button
@@ -2098,7 +2100,10 @@ function App() {
           <CommandPalette open commands={commands} onClose={() => setPaletteOpen(false)} />
         )}
         {clipboardOpen && (
-          <ClipboardPanel onClose={() => setClipboardOpen(false)} />
+          <ClipboardPanel
+            onClose={() => setClipboardOpen(false)}
+            anchorRef={clipboardButtonRef}
+          />
         )}
         <DialogLayer open={switcherOpen}>
           {switcherOpen && (
