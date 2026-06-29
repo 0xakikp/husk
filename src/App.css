@@ -535,10 +535,11 @@ button {
 }
 
 .term-hist-item.active {
-  border-left: 3px solid var(--accent, #11c700);
-  /* Stronger accent tint so selection is visible */
-  background: color-mix(in srgb, var(--accent, #11c700) 15%, var(--popover, #1f1f1f));
+  border-left: 4px solid var(--accent, #11c700);
+  /* No full-width green bar — just a left accent line + subtle tint */
+  background: color-mix(in srgb, var(--accent, #11c700) 10%, var(--popover, #1f1f1f));
   color: #ffffff;
+  font-weight: 500;
 }
 
 .term-hist-command {

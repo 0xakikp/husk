@@ -299,7 +299,6 @@ export function TerminalHistoryPanel({
             const matchType =
               score < 100 ? "prefix" : score < 200 ? "word" : score < 1000 ? "exact" : "fuzzy";
             const hasQuery = query.trim().length > 0;
-            const isFuzzy = matchType === "fuzzy";
             return (
               <button
                 key={`${i}-${command}`}
