@@ -538,8 +538,8 @@ button {
 
 .term-hist-item.active {
   border-left: 3px solid var(--accent, #11c700);
-  /* Accent-tinted background instead of solid green */
-  background: color-mix(in srgb, var(--accent, #11c700) 12%, var(--popover, #1f1f1f));
+  /* Subtle accent tint instead of solid green */
+  background: color-mix(in srgb, var(--accent, #11c700) 8%, var(--popover, #1f1f1f));
   color: var(--foreground, #e5e5e5);
 }
 
@@ -547,9 +547,10 @@ button {
   display: block;
   flex: 1 1 auto;
   min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  /* Truncate with ellipsis instead of overflowing */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Match highlight: subtle by default, stronger for prefix/word ── */
