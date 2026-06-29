@@ -411,35 +411,30 @@ button {
   color: var(--text-strong);
 }
 
-/* ── Terminal History Panel (Ctrl+R) ───────────────────────────────────────
-   Minimal, terminal-native history picker. Designed to feel like part of
-   the shell, not a floating UI widget.
-
-   Principles:
-   - Selection = 2px left accent border (no full-row background)
-   - Match highlight = bold + subtle underline (no solid color blocks)
-   - Badges = small text labels, no pill backgrounds
-   - Font = user's chosen terminal font, sized to match terminal
-   - No "recent" badge noise when query is empty
-   ──────────────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════
+   Terminal History Panel (Ctrl+R) — styled to match Husk's design tokens
+   ═══════════════════════════════════════════════════════════════════════ */
 
 .term-hist {
   position: absolute;
   top: 0;
-  bottom: 0;
   left: 0;
   right: 0;
+  bottom: 0;
   z-index: 100;
   display: flex;
   flex-direction: column;
-  /* Solid black background — terminal must never bleed through */
-  background: #000000 !important;
-  border: 1px solid var(--border-2);
-  border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  /* Panel fills terminal width; list scrolls horizontally for long commands */
+  /* Use Husk's elevated surface instead of flat black */
+  background: var(--popover, #1f1f1f);
+  color: var(--popover-foreground, #e5e5e5);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.5;
+  padding: 12px 14px;
   overflow: hidden;
-  /* Ensure panel is always wide enough to read commands */
+  border: 1px solid var(--border, #1f1f1f);
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
   min-width: 400px;
 }
 
@@ -447,137 +442,146 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px 4px;
-  border-bottom: 1px solid var(--border);
-  background: #000000;
+  padding: 0 0 10px 0;
+  border-bottom: 1px solid var(--border, #1f1f1f);
+  margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .term-hist-title {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-muted);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--accent, #11c700);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .term-hist-hint {
   font-size: 10px;
-  color: var(--text-muted);
-  opacity: 0.5;
+  color: var(--muted-foreground, #868686);
+  letter-spacing: 0.04em;
 }
 
 .term-hist-input {
-  background: #000000;
-  border: none;
-  border-bottom: 1px solid var(--border);
-  outline: none;
-  /* Bright white for maximum readability */
-  color: #ffffff;
+  width: 100%;
+  box-sizing: border-box;
+  /* Use Husk's input surface */
+  background: var(--input, #1f1f1f);
+  border: 1px solid var(--border-2, #1f1f1f);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--foreground, #e5e5e5);
   font-family: inherit;
   font-size: inherit;
-  padding: 6px 10px;
-  line-height: 1.4;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  outline: none;
+  flex-shrink: 0;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .term-hist-input::placeholder {
-  color: var(--text-muted);
-  opacity: 0.4;
+  color: var(--muted-foreground, #868686);
+  opacity: 0.6;
+}
+
+.term-hist-input:focus {
+  border-color: var(--accent, #11c700);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #11c700) 15%, transparent);
 }
 
 .term-hist-list {
+  flex: 1 1 auto;
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
+  min-height: 0;
   display: block;
-  padding: 2px 0;
+  padding: 4px 0;
   min-height: 60px;
-  /* Ensure list content is at least as wide as the panel */
   min-width: 100%;
 }
 
-/* ── History item: minimal row, selection via left border ── */
+/* ── History item: rows that feel native to Husk ── */
 .term-hist-item {
   display: flex;
   width: 100%;
   text-align: left;
   border: none;
-  background: #000000;
-  /* Pure white for maximum readability on black bg */
-  color: #ffffff;
+  /* Transparent so the popover bg shows through */
+  background: transparent;
+  color: var(--foreground, #e5e5e5);
   font-size: inherit;
-  /* More breathing room per line */
-  line-height: 1.7;
-  padding: 8px 14px 8px 12px;
+  line-height: 1.6;
+  padding: 8px 12px 8px 10px;
   margin: 0;
-  /* Stronger separator between items */
-  border-bottom: 1px solid #151515;
-  border-radius: 0;
+  border-radius: var(--radius-sm, 6px);
   border-left: 3px solid transparent;
   cursor: pointer;
   white-space: normal;
   overflow-wrap: break-word;
   word-break: normal;
-  transition: border-color 0.04s ease, background 0.04s ease;
+  transition: background 0.08s ease, border-color 0.08s ease;
   align-items: flex-start;
   gap: 6px;
 }
 
 .term-hist-item:hover {
-  background: #111111;
+  background: var(--sidebar-accent, #1f1f1f);
 }
 
-/* Alternating row tint — subtle but visible */
+/* Alternating row tint using Husk's muted surface */
 .term-hist-item.alt {
-  background: #111111;
+  background: color-mix(in srgb, var(--muted, #1f1f1f) 40%, transparent);
 }
 
 .term-hist-item.active {
-  border-left: 3px solid var(--accent);
-  background: #0d1f0d;
-  color: #ffffff;
-  border-bottom-color: transparent;
+  border-left: 3px solid var(--accent, #11c700);
+  /* Accent-tinted background instead of solid green */
+  background: color-mix(in srgb, var(--accent, #11c700) 12%, var(--popover, #1f1f1f));
+  color: var(--foreground, #e5e5e5);
 }
 
 .term-hist-command {
   display: block;
   flex: 1 1 auto;
   min-width: 0;
-  /* Always show full command text — wrap cleanly */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-/* ── Match highlight: subtle underline, never a solid block ── */
+/* ── Match highlight: subtle by default, stronger for prefix/word ── */
 .term-hist-item mark {
   background: transparent;
   color: inherit;
   text-decoration: underline;
-  /* Subtle green underline — readable without visual noise on long commands */
-  text-decoration-color: #0a5a0a;
+  text-decoration-color: color-mix(in srgb, var(--accent, #11c700) 50%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
   padding: 0;
   font-weight: 500;
 }
 
-/* Prefix/word matches get slightly stronger emphasis */
+/* Prefix/word matches get stronger emphasis */
 .term-hist-item.prefix-match mark,
 .term-hist-item.word-match mark {
-  text-decoration-color: #11c700;
+  text-decoration-color: var(--accent, #11c700);
   text-decoration-thickness: 2px;
   font-weight: 700;
 }
 
 .term-hist-item.active mark {
-  text-decoration-color: #11c700;
+  text-decoration-color: var(--accent, #11c700);
 }
 
-/* ── Badges: minimal text, no pill background ── */
+/* ── Badges: styled with Husk's muted tokens ── */
 .term-hist-match-badge {
   display: inline;
   font-size: 9px;
   letter-spacing: 0.3px;
-  opacity: 0.85;
+  color: var(--muted-foreground, #868686);
   margin-left: 8px;
   flex-shrink: 0;
 }
@@ -591,7 +595,7 @@ button {
 }
 
 .term-hist-match-badge.fuzzy {
-  color: var(--text-muted);
+  color: var(--muted-foreground, #868686);
 }
 
 /* No badge for exact or recent matches — they're self-evident */
@@ -599,24 +603,22 @@ button {
 .term-hist-empty {
   padding: 14px 10px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--muted-foreground, #868686);
   font-size: inherit;
-  opacity: 0.7;
-  background: #000000;
+  background: transparent;
 }
 
 .term-hist-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 3px 10px;
-  border-top: 1px solid var(--border);
+  padding: 6px 10px;
+  border-top: 1px solid var(--border, #1f1f1f);
   font-size: 10px;
-  color: var(--text-muted);
-  opacity: 0.5;
-  background: #000000;
+  color: var(--muted-foreground, #868686);
+  background: transparent;
+  flex-shrink: 0;
 }
-
 
 /* titlebar AI toggle */
 .titlebar-spacer {
