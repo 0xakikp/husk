@@ -50,18 +50,20 @@ export function AiSessionsPanel({
   open,
   onClose,
   onSelectSession,
+  anchorRef,
 }: {
   open: boolean;
   onClose: () => void;
   onSelectSession: (id: string) => void;
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
 
   const prefs = getPrefs();
   const fontFamily = fontStack(prefs.fontFamily);
-  const fontSize = prefs.terminalFontSize;
 
   useEffect(() => {
     if (open) setSessions(loadBubbleSessions());
@@ -69,12 +71,31 @@ export function AiSessionsPanel({
 
   useEffect(() => {
     if (!open) return;
+    if (anchorRef?.current) {
+      const rect = anchorRef.current.getBoundingClientRect();
+      setPosition({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    } else {
+      setPosition({ top: 40, right: 16 });
+    }
+  }, [open, anchorRef]);
+
+  useEffect(() => {
+    if (!open || !position) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (anchorRef?.current && anchorRef.current.contains(target)) return;
+      if (panelRef.current && !panelRef.current.contains(target)) onClose();
+    };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [open, onClose, position, anchorRef]);
 
   const handleDelete = useCallback((s: Session, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -99,83 +120,73 @@ export function AiSessionsPanel({
     }
   }, []);
 
-  if (!open) return null;
+  if (!open || !position) return null;
 
   return createPortal(
-    <>
-      <div
-        className="term-hist-backdrop"
-        onClick={onClose}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
-      />
-      <div
-        ref={panelRef}
-        className="term-hist"
-        style={{ fontFamily, fontSize: `${fontSize}px` }}
-      >
-        <div className="term-hist-header">
-          <span className="term-hist-title">
-            <HugeiconsIcon icon={MessageMultiple02Icon} size={14} strokeWidth={1.75} style={{ marginRight: 6 }} />
-            Sessions
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="term-hist-close"
-            aria-label="Close"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
-          </button>
-        </div>
-
-        <div className="term-hist-list">
-          {sessions.length === 0 ? (
-            <div className="term-hist-empty">No sessions yet</div>
-          ) : (
-            sessions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => {
-                  onSelectSession(s.id);
-                  onClose();
-                }}
-                className="term-hist-item"
-              >
-                <span className="term-hist-command">{s.title}</span>
-                <span className="term-hist-match-badge" style={{ color: "#444" }}>
-                  {s.messageCount} msgs · {formatDate(s.updatedAt)}
-                </span>
-                {confirmDeleteId === s.id ? (
-                  <span className="term-hist-delete-confirm">
-                    <button type="button" onClick={(e) => handleDelete(s, e)}>Delete</button>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}>Cancel</button>
-                  </span>
-                ) : (
-                  <span
-                    className="term-hist-delete"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(s.id); }}
-                    title="Delete session"
-                    role="button"
-                    aria-label="Delete session"
-                  >
-                    <HugeiconsIcon icon={Delete02Icon} size={12} strokeWidth={1.75} />
-                  </span>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-
-        <div className="term-hist-footer">
-          <span>{sessions.length} session{sessions.length === 1 ? "" : "s"}</span>
-        </div>
+    <div
+      ref={panelRef}
+      className="husk-popover"
+      style={{ fontFamily, top: position.top, right: position.right }}
+    >
+      <div className="husk-popover-header">
+        <span className="husk-popover-title">
+          <HugeiconsIcon icon={MessageMultiple02Icon} size={13} strokeWidth={1.75} style={{ marginRight: 5 }} />
+          Sessions
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="husk-popover-close"
+          aria-label="Close"
+        >
+          <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
+        </button>
       </div>
-    </>,
+
+      <div className="husk-popover-list">
+        {sessions.length === 0 ? (
+          <div className="husk-popover-empty">No sessions yet</div>
+        ) : (
+          sessions.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => {
+                onSelectSession(s.id);
+                onClose();
+              }}
+              className="husk-popover-item"
+            >
+              <span className="husk-popover-text">{s.title}</span>
+              <span className="husk-popover-meta">
+                {s.messageCount} msgs · {formatDate(s.updatedAt)}
+              </span>
+              {confirmDeleteId === s.id ? (
+                <span className="husk-popover-delete-confirm">
+                  <button type="button" onClick={(e) => handleDelete(s, e)}>Delete</button>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}>Cancel</button>
+                </span>
+              ) : (
+                <span
+                  className="husk-popover-delete"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(s.id); }}
+                  title="Delete session"
+                  role="button"
+                  aria-label="Delete session"
+                >
+                  <HugeiconsIcon icon={Delete02Icon} size={11} strokeWidth={1.75} />
+                </span>
+              )}
+            </button>
+          ))
+        )}
+      </div>
+
+      <div className="husk-popover-footer">
+        <span>{sessions.length} session{sessions.length === 1 ? "" : "s"}</span>
+      </div>
+    </div>,
     document.body
   );
 }
