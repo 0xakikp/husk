@@ -437,14 +437,22 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
   const doFit = () => {
     if (!session.term || !container.clientWidth || !container.clientHeight) return;
     try {
+      const dims = (session.term as unknown as { _core?: { _renderService?: { dimensions: { css: { cell: { width: number; height: number } } } } } })._core?._renderService?.dimensions;
+      if (dims) {
+        const nextCols = Math.floor(container.clientWidth / dims.css.cell.width);
+        const nextRows = Math.floor(container.clientHeight / dims.css.cell.height);
+        if (nextCols === session.lastCols && nextRows === session.lastRows) return;
+      }
       session.fitAddon.fit();
+      session.lastCols = session.term.cols;
+      session.lastRows = session.term.rows;
       session.term.scrollToBottom();
     } catch {}
   };
 
   session.resizeObserver = new ResizeObserver(() => {
     window.clearTimeout(session.resizeTimer);
-    session.resizeTimer = window.setTimeout(doFit, 150);
+    session.resizeTimer = window.setTimeout(doFit, 250);
   });
   session.resizeObserver.observe(container);
 
@@ -454,7 +462,7 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
       session.resizeTimer = 0;
       doFit();
     }
-  }, 500);
+  }, 750);
 
   session.lastCols = session.term.cols;
   session.lastRows = session.term.rows;
