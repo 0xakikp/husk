@@ -182,7 +182,7 @@ export function TerminalHistoryPanel({
     // When query is empty, show most recent entries (already sorted by recency)
     if (!q) {
       return entries
-        .slice(0, 12)
+        .slice(0, 10)
         .map((c, i) => ({ command: c, matchIndices: [] as number[], score: 0, recencyIndex: i }));
     }
 
@@ -213,7 +213,7 @@ export function TerminalHistoryPanel({
       if (a.score !== b.score) return a.score - b.score;
       return a.recencyIndex - b.recencyIndex;
     });
-    return results.slice(0, 12);
+    return results.slice(0, 10);
   }, [entries, query]);
 
   useEffect(() => {
@@ -269,6 +269,10 @@ export function TerminalHistoryPanel({
       </div>
       <input
         autoFocus
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         className="term-hist-input"
         value={query}
         placeholder={loading ? "Loading history…" : "Search history…"}

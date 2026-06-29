@@ -417,23 +417,24 @@ button {
 
 .term-hist {
   position: absolute;
-  top: 5%;
-  left: 5%;
-  right: 5%;
-  bottom: 5%;
+  top: 4%;
+  left: 4%;
+  right: 4%;
+  bottom: 4%;
   z-index: 100;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.96);
+  background: rgba(0, 0, 0, 0.98);
   color: #ffffff;
   font-family: inherit;
-  font-size: inherit;
+  /* Scale font with the larger panel */
+  font-size: calc(var(--terminal-font-size, 14px) + 2px);
   line-height: 1.5;
-  padding: 28px 36px;
+  padding: 32px 40px;
   overflow: hidden;
   border: 1px solid #1a1a1a;
-  border-radius: 16px;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.9);
+  border-radius: 18px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.95);
   backdrop-filter: blur(12px);
 }
 
@@ -441,25 +442,25 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 0 16px 0;
-  margin-bottom: 16px;
+  padding: 0 0 20px 0;
+  margin-bottom: 20px;
   flex-shrink: 0;
 }
 
 .term-hist-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent, #11c700);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .term-hist-hint {
-  font-size: 11px;
-  color: #6b6b6b;
+  font-size: 12px;
+  color: #555555;
   letter-spacing: 0.04em;
 }
 
@@ -468,19 +469,19 @@ button {
   box-sizing: border-box;
   background: #111111;
   border: 1px solid #222222;
-  border-radius: 10px;
+  border-radius: 12px;
   color: #ffffff;
   font-family: inherit;
-  font-size: inherit;
-  padding: 14px 18px;
-  margin-bottom: 18px;
+  font-size: 1.15em;
+  padding: 18px 22px;
+  margin-bottom: 22px;
   outline: none;
   flex-shrink: 0;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .term-hist-input::placeholder {
-  color: #555555;
+  color: #444444;
 }
 
 .term-hist-input:focus {
@@ -506,11 +507,11 @@ button {
   border: none;
   background: transparent;
   color: #e8e8e8;
-  font-size: inherit;
-  line-height: 1.55;
-  padding: 11px 16px 11px 14px;
-  margin: 0 0 2px 0;
-  border-radius: 8px;
+  font-size: 1em;
+  line-height: 1.5;
+  padding: 14px 18px 14px 16px;
+  margin: 0 0 4px 0;
+  border-radius: 10px;
   border-left: 3px solid transparent;
   cursor: pointer;
   white-space: normal;
@@ -518,7 +519,7 @@ button {
   word-break: normal;
   transition: background 0.08s ease, border-color 0.08s ease, color 0.08s ease;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
 }
 
 .term-hist-item:hover {
@@ -551,18 +552,18 @@ button {
   background: transparent;
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--accent, #11c700) 60%, transparent);
-  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--accent, #11c700) 70%, transparent);
+  text-decoration-thickness: 2px;
   text-underline-offset: 2px;
   padding: 0;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* Prefix/word matches get stronger emphasis */
 .term-hist-item.prefix-match mark,
 .term-hist-item.word-match mark {
   text-decoration-color: var(--accent, #11c700);
-  text-decoration-thickness: 2px;
+  text-decoration-thickness: 3px;
   font-weight: 700;
 }
 
@@ -573,10 +574,10 @@ button {
 /* ── Badges: styled with Husk's muted tokens ── */
 .term-hist-match-badge {
   display: inline;
-  font-size: 10px;
+  font-size: 0.7em;
   letter-spacing: 0.3px;
-  color: #6b6b6b;
-  margin-left: 8px;
+  color: #555555;
+  margin-left: 10px;
   flex-shrink: 0;
 }
 
@@ -589,7 +590,7 @@ button {
 }
 
 .term-hist-match-badge.fuzzy {
-  color: #6b6b6b;
+  color: #555555;
 }
 
 /* No badge for exact or recent matches — they're self-evident */
@@ -606,10 +607,10 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 4px 0 4px;
+  padding: 16px 4px 0 4px;
   border-top: 1px solid #1a1a1a;
-  font-size: 11px;
-  color: #555555;
+  font-size: 0.75em;
+  color: #444444;
   background: transparent;
   flex-shrink: 0;
 }
