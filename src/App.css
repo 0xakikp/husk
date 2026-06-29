@@ -417,24 +417,26 @@ button {
 
 .term-hist {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92%;
+  max-width: 960px;
+  height: auto;
+  max-height: 90%;
   z-index: 100;
   display: flex;
   flex-direction: column;
-  /* Use Husk's elevated surface instead of flat black */
   background: var(--popover, #1f1f1f);
   color: var(--popover-foreground, #e5e5e5);
   font-family: inherit;
   font-size: inherit;
   line-height: 1.5;
-  padding: 20px 28px;
+  padding: 20px 24px;
   overflow: hidden;
   border: 1px solid var(--border, #1f1f1f);
   border-radius: var(--radius, 8px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8);
 }
 
 .term-hist-header {
@@ -512,8 +514,8 @@ button {
   background: transparent;
   color: var(--foreground, #e5e5e5);
   font-size: inherit;
-  line-height: 1.5;
-  padding: 6px 12px 6px 10px;
+  line-height: 1.55;
+  padding: 8px 14px 8px 12px;
   margin: 0;
   border-radius: var(--radius-sm, 6px);
   border-left: 3px solid transparent;
