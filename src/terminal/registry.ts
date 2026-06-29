@@ -239,11 +239,6 @@ export async function createSession(
 
   // ── Key Handler ───────────────────────────────────────────────────────────
   term.attachCustomKeyEventHandler((e) => {
-    // DEBUG: log all key events to see if handler is being called
-    if (e.type === "keydown") {
-      console.log("[HUSK KEY]", e.key, "ctrl:", e.ctrlKey, "meta:", e.metaKey, "active:", session.active, "leafId:", leafId);
-    }
-    
     // Let TerminalView handle autocomplete keys first
     const handled = session.callbacks.onKey?.(e);
     if (handled === false) return false;
@@ -262,10 +257,11 @@ export async function createSession(
       // Aggressively clear any fzf/shell UI that may be running:
       // 1. Ctrl+C to cancel any running process
       // 2. Escape to exit any menu
-      // 3. Ctrl+L to clear screen (wipes fzf canvas output)
-      // 4. Extra Ctrl+C + reset sequence to ensure fzf is fully killed
+      // 3. Ctrl+G (fzf cancel)
+      // 4. Ctrl+L to clear screen (wipes fzf canvas output)
+      // 5. Extra Ctrl+C + reset sequence to ensure fzf is fully killed
       if (session.ptyId != null) {
-        void invoke("pty_write", { id: session.ptyId, data: "\x03\x1b\x0c\x03\x1b\x0c" });
+        void invoke("pty_write", { id: session.ptyId, data: "\x03\x1b\x07\x0c\x03\x1b\x07\x0c" });
       }
       session.historyOpen = true;
       if (session.active) session.callbacks.onHistoryOpen?.();

@@ -180,6 +180,12 @@ if [[ "$(bindkey '^R' 2>/dev/null)" == *fzf* ]]; then
   bindkey -r '^R'
 fi
 
+# Nuclear option: unconditionally remove ALL ^R bindings to ensure
+# Husk's GUI panel is the only handler for Ctrl+R. This prevents any
+# shell plugin (fzf, zsh-autosuggestions, etc.) from intercepting Ctrl+R.
+# The key event will be handled by Husk's xterm.js handler exclusively.
+bindkey -r '^R' 2>/dev/null || true
+
 # Re-source guard within a single shell (e.g. user runs `source ~/.zshrc`).
 # This is NOT exported, so each nested zsh installs its own hooks — desired,
 # since every interactive shell needs its own prompt integration.

@@ -169,6 +169,11 @@ if bind -s '\C-r' 2>/dev/null | grep -qi fzf; then
   bind -r '\C-r' 2>/dev/null || true
 fi
 
+# Nuclear option: unconditionally remove ALL \C-r bindings to ensure
+# Husk's GUI panel is the only handler for Ctrl+R. This prevents any
+# shell plugin (fzf, etc.) from intercepting Ctrl+R.
+bind -r '\C-r' 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # Husk GUI bridge command (bash)
 # ---------------------------------------------------------------------------
