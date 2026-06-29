@@ -299,11 +299,12 @@ export function TerminalHistoryPanel({
             const matchType =
               score < 100 ? "prefix" : score < 200 ? "word" : score < 1000 ? "exact" : "fuzzy";
             const hasQuery = query.trim().length > 0;
+            const isFuzzy = matchType === "fuzzy";
             return (
               <button
                 key={`${i}-${command}`}
                 type="button"
-                className={`term-hist-item${i === index ? " active" : ""}${!hasQuery && i % 2 === 1 ? " alt" : ""}`}
+                className={`term-hist-item${i === index ? " active" : ""}${!hasQuery && i % 2 === 1 ? " alt" : ""}${isFuzzy ? " fuzzy-match" : ""}`}
                 onMouseEnter={() => setIndex(i)}
                 onClick={() => choose(i)}
                 title={command} /* full text on hover */

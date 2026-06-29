@@ -527,7 +527,7 @@ button {
 
 /* Alternating row tint — subtle but visible */
 .term-hist-item.alt {
-  background: #0a0a0a;
+  background: #111111;
 }
 
 .term-hist-item.active {
@@ -558,6 +558,13 @@ button {
   text-underline-offset: 2px;
   padding: 0;
   font-weight: 700;
+}
+
+/* Fuzzy match highlighting is too noisy on long commands — make it subtle */
+.term-hist-item.fuzzy-match mark {
+  text-decoration-color: #0a5a0a;
+  text-decoration-thickness: 1px;
+  font-weight: 500;
 }
 
 .term-hist-item.active mark {
