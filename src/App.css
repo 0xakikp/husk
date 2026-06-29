@@ -675,7 +675,7 @@ button {
 .husk-popover {
   position: fixed;
   z-index: 100;
-  width: 340px;
+  width: 360px;
   max-width: calc(100vw - 32px);
   max-height: min(480px, calc(100vh - 80px));
   display: flex;
@@ -685,10 +685,11 @@ button {
   border: 1px solid #1a1a1a;
   border-radius: 12px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9);
-  padding: 8px;
+  padding: 10px;
   font-size: 13px;
   line-height: 1.45;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .husk-popover-header {
@@ -730,6 +731,7 @@ button {
 
 .husk-popover-input {
   width: 100%;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid #1f1f1f;
   border-radius: 8px;
@@ -756,6 +758,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  margin-right: -2px;
+  padding-right: 2px;
 }
 
 .husk-popover-item {
