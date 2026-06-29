@@ -443,10 +443,17 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
         const nextRows = Math.floor(container.clientHeight / dims.css.cell.height);
         if (nextCols === session.lastCols && nextRows === session.lastRows) return;
       }
+      const prevCols = session.term.cols;
       session.fitAddon.fit();
-      session.lastCols = session.term.cols;
+      const newCols = session.term.cols;
+      session.lastCols = newCols;
       session.lastRows = session.term.rows;
-      session.term.scrollToBottom();
+      // Only scroll to bottom if the column count actually changed.
+      // Resizing without changing width (e.g. window height-only resize)
+      // should not redraw the prompt and create blank lines.
+      if (newCols !== prevCols) {
+        session.term.scrollToBottom();
+      }
     } catch {}
   };
 
