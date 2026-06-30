@@ -96,6 +96,9 @@ type Session = {
   lastRows: number;
   lastWidth: number;
   lastHeight: number;
+  pendingPtyCols: number;
+  pendingPtyRows: number;
+  ptyResizeTimer: number;
   resizeObserver: ResizeObserver | null;
   prefsUnsub: (() => void) | null;
   screenEl: HTMLElement | null;
@@ -189,6 +192,9 @@ export async function createSession(
     lastRows: -1,
     lastWidth: -1,
     lastHeight: -1,
+    pendingPtyCols: -1,
+    pendingPtyRows: -1,
+    ptyResizeTimer: 0,
     resizeObserver: null,
     prefsUnsub: null,
     screenEl: null,
@@ -378,12 +384,23 @@ export async function createSession(
       session.callbacks.onData?.();
     });
 
-    // Resize handler
+    // Resize handler — throttle PTY resizes so window moves don't spam SIGWINCH
+    // and redraw the shell prompt repeatedly.
     term.onResize(({ cols, rows }) => {
       if (cols === session.lastCols && rows === session.lastRows) return;
       session.lastCols = cols;
       session.lastRows = rows;
-      void invoke("pty_resize", { id, cols, rows });
+      session.pendingPtyCols = cols;
+      session.pendingPtyRows = rows;
+      window.clearTimeout(session.ptyResizeTimer);
+      session.ptyResizeTimer = window.setTimeout(() => {
+        if (session.pendingPtyCols < 0 || session.pendingPtyRows < 0) return;
+        if (session.ptyId != null) {
+          void invoke("pty_resize", { id: session.ptyId, cols: session.pendingPtyCols, rows: session.pendingPtyRows });
+        }
+        session.pendingPtyCols = -1;
+        session.pendingPtyRows = -1;
+      }, 400);
     });
 
     session.ptyOpening = false;
@@ -463,8 +480,7 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
       const prevCols = session.term.cols;
       session.fitAddon.fit();
       const newCols = session.term.cols;
-      session.lastCols = newCols;
-      session.lastRows = session.term.rows;
+      // lastCols/lastRows are updated by the term.onResize handler above.
       // Only scroll to bottom when the column count changes (real reflow).
       // Height-only resizes should not redraw the prompt and create blank lines.
       if (newCols !== prevCols) {
@@ -475,12 +491,12 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
 
   session.resizeObserver = new ResizeObserver(() => {
     window.clearTimeout(session.resizeTimer);
-    session.resizeTimer = window.setTimeout(() => doFit(), 250);
+    session.resizeTimer = window.setTimeout(() => doFit(), 150);
   });
   session.resizeObserver.observe(container);
 
-  // Safety valve: if a resize event is somehow stuck in the debounce timer,
-  // flush it periodically. Use a long interval so normal moves don't trigger it.
+  // Safety valve: flush pending fits/PTY resizes if the observer debounce
+  // somehow gets stuck. Long interval so normal window moves don't trigger it.
   session.maxWaitTimer = window.setInterval(() => {
     if (session.resizeTimer) {
       window.clearTimeout(session.resizeTimer);
