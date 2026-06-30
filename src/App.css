@@ -427,7 +427,7 @@ button {
   position: absolute;
   top: 8px;
   left: 8px;
-  right: 8px;
+  width: min(640px, calc(100% - 16px));
   bottom: auto;
   max-height: calc(100% - 16px);
   z-index: 100;
@@ -436,14 +436,13 @@ button {
   background: rgba(0, 0, 0, 0.98);
   color: #ffffff;
   font-family: inherit;
-  /* Scale font with the larger panel */
-  font-size: calc(var(--terminal-font-size, 14px) + 3px);
-  line-height: 1.5;
-  padding: 10px 18px 8px 18px;
+  font-size: calc(var(--terminal-font-size, 14px) + 1px);
+  line-height: 1.45;
+  padding: 8px 12px 6px 12px;
   overflow: hidden;
   border: 1px solid #1a1a1a;
-  border-radius: 14px;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.95);
   backdrop-filter: blur(12px);
 }
 
@@ -469,7 +468,7 @@ button {
 
 .term-hist-hint {
   font-size: 8px;
-  color: #2a2a2a;
+  color: var(--text-faint, #5a5a5a);
   letter-spacing: 0.04em;
 }
 
@@ -599,7 +598,7 @@ button {
 }
 
 .term-hist-match-badge.fuzzy {
-  color: #333333;
+  color: var(--text-muted, #868686);
 }
 
 /* No badge for exact or recent matches — they're self-evident */
@@ -607,7 +606,7 @@ button {
 .term-hist-empty {
   padding: 14px 10px;
   text-align: center;
-  color: var(--muted-foreground, #868686);
+  color: var(--text-muted, #868686);
   font-size: inherit;
   background: transparent;
 }
@@ -618,8 +617,8 @@ button {
   justify-content: space-between;
   padding: 2px 2px 0 2px;
   border-top: 1px solid #0f0f0f;
-  font-size: 0.5em;
-  color: #222222;
+  font-size: 0.55em;
+  color: var(--text-faint, #5a5a5a);
   background: transparent;
   flex-shrink: 0;
 }
@@ -662,13 +661,6 @@ button {
 .term-hist-delete:hover {
   color: #ff5f5f;
   background: rgba(255, 95, 95, 0.12);
-}
-
-.term-hist-empty {
-  padding: 32px 16px;
-  text-align: center;
-  color: #555;
-  font-size: 0.95em;
 }
 
 /* ── Compact anchored popover (clipboard, etc.) ─────────────────────────── */

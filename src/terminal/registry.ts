@@ -94,6 +94,8 @@ type Session = {
   typingTimer: number;
   lastCols: number;
   lastRows: number;
+  lastWidth: number;
+  lastHeight: number;
   resizeObserver: ResizeObserver | null;
   prefsUnsub: (() => void) | null;
   screenEl: HTMLElement | null;
@@ -185,6 +187,8 @@ export async function createSession(
     typingTimer: 0,
     lastCols: -1,
     lastRows: -1,
+    lastWidth: -1,
+    lastHeight: -1,
     resizeObserver: null,
     prefsUnsub: null,
     screenEl: null,
@@ -437,20 +441,32 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
   const doFit = () => {
     if (!session.term || !container.clientWidth || !container.clientHeight) return;
     try {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      // Ignore sub-pixel / duplicate resize events. Moving a window can fire
+      // ResizeObserver callbacks even when the container size hasn't changed.
+      if (width === session.lastWidth && height === session.lastHeight) {
+        return;
+      }
+      session.lastWidth = width;
+      session.lastHeight = height;
+
       const dims = (session.term as unknown as { _core?: { _renderService?: { dimensions: { css: { cell: { width: number; height: number } } } } } })._core?._renderService?.dimensions;
       if (dims) {
-        const nextCols = Math.floor(container.clientWidth / dims.css.cell.width);
-        const nextRows = Math.floor(container.clientHeight / dims.css.cell.height);
-        if (nextCols === session.lastCols && nextRows === session.lastRows) return;
+        const nextCols = Math.floor(width / dims.css.cell.width);
+        const nextRows = Math.floor(height / dims.css.cell.height);
+        if (nextCols === session.lastCols && nextRows === session.lastRows) {
+          return;
+        }
       }
+
       const prevCols = session.term.cols;
       session.fitAddon.fit();
       const newCols = session.term.cols;
       session.lastCols = newCols;
       session.lastRows = session.term.rows;
-      // Only scroll to bottom if the column count actually changed.
-      // Resizing without changing width (e.g. window height-only resize)
-      // should not redraw the prompt and create blank lines.
+      // Only scroll to bottom when the column count changes (real reflow).
+      // Height-only resizes should not redraw the prompt and create blank lines.
       if (newCols !== prevCols) {
         session.term.scrollToBottom();
       }
@@ -459,20 +475,24 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
 
   session.resizeObserver = new ResizeObserver(() => {
     window.clearTimeout(session.resizeTimer);
-    session.resizeTimer = window.setTimeout(doFit, 250);
+    session.resizeTimer = window.setTimeout(() => doFit(), 250);
   });
   session.resizeObserver.observe(container);
 
+  // Safety valve: if a resize event is somehow stuck in the debounce timer,
+  // flush it periodically. Use a long interval so normal moves don't trigger it.
   session.maxWaitTimer = window.setInterval(() => {
     if (session.resizeTimer) {
       window.clearTimeout(session.resizeTimer);
       session.resizeTimer = 0;
       doFit();
     }
-  }, 750);
+  }, 2000);
 
   session.lastCols = session.term.cols;
   session.lastRows = session.term.rows;
+  session.lastWidth = container.clientWidth;
+  session.lastHeight = container.clientHeight;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
