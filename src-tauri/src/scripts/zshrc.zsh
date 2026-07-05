@@ -145,6 +145,8 @@ zstyle ':completion:*' verbose yes
 # Skip if user already has it loaded in their ~/.zshrc
 if (( ! $+functions[_zsh_autosuggest_start] )) && [[ -f "${0:A:h}/zsh-autosuggestions.zsh" ]]; then
   ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#555555"
+  ZSH_AUTOSUGGEST_STRATEGY=(history)
+  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
   source "${0:A:h}/zsh-autosuggestions.zsh"
 fi
 
@@ -235,6 +237,14 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     # the OSC handler fires — prepending captures (0,0) before prompt rendering.
     if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then
       PS1="$PS1"$'%{\e]133;B\e\\%}'
+    fi
+
+    # Prevent zsh-autosuggestions from pushing stale suggestions into the input
+    # buffer on focus/resize. Some autosuggestions builds (with SHARE_HISTORY)
+    # can restore the last command line when the terminal refocuses, which looks
+    # like a phantom paste. Explicitly clear the suggestion so the prompt stays empty.
+    if (( $+functions[_zsh_autosuggest_clear] )); then
+      _zsh_autosuggest_clear 2>/dev/null
     fi
   }
 

@@ -174,6 +174,11 @@ fi
 # shell plugin (fzf, etc.) from intercepting Ctrl+R.
 bind -r '\C-r' 2>/dev/null || true
 
+# Disable readline history expansion so stale commands aren't accidentally
+# recalled into the input buffer on terminal focus or resize. Husk has its own
+# GUI history panel; this avoids bash appearing to paste a previous command.
+bind 'set expand-history off' 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # Husk GUI bridge command (bash)
 # ---------------------------------------------------------------------------
