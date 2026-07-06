@@ -144,20 +144,28 @@ zstyle ':completion:*' verbose yes
 # Inline ghost-text suggestions (fish-style)
 # DISABLED in Husk shells: zsh-autosuggestions can recall the previous command
 # into the prompt buffer on terminal focus/resize, which looks like a phantom
-# paste. Husk already provides its own autocomplete dropdown and Ctrl+R panel.
-# If the user already loaded it in their ~/.zshrc, disable it here.
-if (( $+functions[_zsh_autosuggest_start] )); then
-  if (( $+functions[_zsh_autosuggest_disable] )); then
-    _zsh_autosuggest_disable 2>/dev/null
+# paste. Husk already provides its own autocomplete dropdown and Ctrl+R history
+# panel. If the user (or Oh My Zsh) already loaded it, forcibly disable it here.
+_husk_disable_autosuggestions() {
+  # Stop the precmd hook if it exists (various distros/Oh My Zsh names)
+  if (( $+functions[_zsh_autosuggest_start] )); then
+    add-zsh-hook -d precmd _zsh_autosuggest_start 2>/dev/null || true
   fi
-  # Also unset the start widget so it cannot be triggered by focus/resize events.
-  unfunction _zsh_autosuggest_start 2>/dev/null || true
-  unfunction _zsh_autosuggest_fetch 2>/dev/null || true
-  unfunction _zsh_autosuggest_suggest 2>/dev/null || true
-elif [[ -f "${0:A:h}/zsh-autosuggestions.zsh" ]]; then
-  # Set a sentinel so the bundled script exits immediately without installing.
-  ZSH_AUTOSUGGEST_INSTALLED="1"
-fi
+  # Disable the active widget set
+  if (( $+functions[_zsh_autosuggest_disable] )); then
+    _zsh_autosuggest_disable 2>/dev/null || true
+  fi
+  # Remove the core autosuggest widget entirely so it can never trigger
+  if (( $+widgets[autosuggest-suggest] )); then
+    zle -D autosuggest-suggest 2>/dev/null || true
+  fi
+  # Unset internal functions to prevent any delayed start from a plugin manager
+  unfunction _zsh_autosuggest_start _zsh_autosuggest_fetch _zsh_autosuggest_suggest 2>/dev/null || true
+}
+_husk_disable_autosuggestions
+unfunction _husk_disable_autosuggestions 2>/dev/null || true
+# Ensure the bundled copy is never loaded either.
+ZSH_AUTOSUGGEST_DISABLE="1"
 
 # Real-time syntax highlighting (commands green, errors red, strings yellow, paths underlined)
 # Skip if user already has it loaded in their ~/.zshrc
