@@ -142,12 +142,21 @@ zstyle ':completion:*' verbose yes
 # ---------------------------------------------------------------------------
 
 # Inline ghost-text suggestions (fish-style)
-# Skip if user already has it loaded in their ~/.zshrc
-if (( ! $+functions[_zsh_autosuggest_start] )) && [[ -f "${0:A:h}/zsh-autosuggestions.zsh" ]]; then
-  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#555555"
-  ZSH_AUTOSUGGEST_STRATEGY=(history)
-  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
-  source "${0:A:h}/zsh-autosuggestions.zsh"
+# DISABLED in Husk shells: zsh-autosuggestions can recall the previous command
+# into the prompt buffer on terminal focus/resize, which looks like a phantom
+# paste. Husk already provides its own autocomplete dropdown and Ctrl+R panel.
+# If the user already loaded it in their ~/.zshrc, disable it here.
+if (( $+functions[_zsh_autosuggest_start] )); then
+  if (( $+functions[_zsh_autosuggest_disable] )); then
+    _zsh_autosuggest_disable 2>/dev/null
+  fi
+  # Also unset the start widget so it cannot be triggered by focus/resize events.
+  unfunction _zsh_autosuggest_start 2>/dev/null || true
+  unfunction _zsh_autosuggest_fetch 2>/dev/null || true
+  unfunction _zsh_autosuggest_suggest 2>/dev/null || true
+elif [[ -f "${0:A:h}/zsh-autosuggestions.zsh" ]]; then
+  # Set a sentinel so the bundled script exits immediately without installing.
+  ZSH_AUTOSUGGEST_INSTALLED="1"
 fi
 
 # Real-time syntax highlighting (commands green, errors red, strings yellow, paths underlined)
