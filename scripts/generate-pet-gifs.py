@@ -13,7 +13,7 @@ Frames are drawn as oversized pixels for a retro pixel-art look.
 from PIL import Image, ImageDraw
 import os
 
-OUT_DIR = os.path.join(os.path.dirname(__file__), "assets")
+OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "assets", "pet")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 SIZE = 80

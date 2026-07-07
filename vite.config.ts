@@ -22,8 +22,6 @@ export default defineConfig(async () => ({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
 
-  publicDir: "public",
-
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

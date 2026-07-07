@@ -2,13 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { useCommandRunning, useActiveTerminalExit } from "../ai/terminalContext";
 import { cn } from "../lib/utils";
 
+import idleGif from "../assets/pet/pet-idle.gif";
+import typingGif from "../assets/pet/pet-typing.gif";
+import successGif from "../assets/pet/pet-success.gif";
+import failureGif from "../assets/pet/pet-failure.gif";
+import runningGif from "../assets/pet/pet-running.gif";
+import ciPassGif from "../assets/pet/pet-ci-pass.gif";
+
 const PET_ASSETS: Record<string, string> = {
-  idle: "/pet/pet-idle.gif",
-  typing: "/pet/pet-typing.gif",
-  success: "/pet/pet-success.gif",
-  failure: "/pet/pet-failure.gif",
-  running: "/pet/pet-running.gif",
-  "ci-pass": "/pet/pet-ci-pass.gif",
+  idle: idleGif,
+  typing: typingGif,
+  success: successGif,
+  failure: failureGif,
+  running: runningGif,
+  "ci-pass": ciPassGif,
 };
 
 const PET_LABEL: Record<PetState, string> = {
@@ -40,7 +47,6 @@ export function TerminalPet() {
   const lastExitRef = useRef<number | null>(null);
   const [typing, setTyping] = useState(false);
   const typingTimerRef = useRef<number>(0);
-  const [imgLoaded, setImgLoaded] = useState(true);
 
   useEffect(() => {
     if (running) {
@@ -104,17 +110,12 @@ export function TerminalPet() {
         title="Husk pet companion"
       >
         <div className="relative inline-flex size-16 items-center justify-center overflow-hidden rounded-xl bg-black/20">
-          {imgLoaded ? (
-            <img
-              src={imageUrl}
-              alt="Husk companion pet"
-              className="size-14 object-contain"
-              draggable={false}
-              onError={() => setImgLoaded(false)}
-            />
-          ) : (
-            <span className="text-3xl">🤖</span>
-          )}
+          <img
+            src={imageUrl}
+            alt="Husk companion pet"
+            className="size-14 object-contain"
+            draggable={false}
+          />
         </div>
         <div className="flex items-center gap-1.5">
           <span className={cn("size-2 rounded-full", PET_DOT[state])} />
