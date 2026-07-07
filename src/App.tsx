@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { TerminalStack } from "./TerminalStack";
 import { TerminalBottomBar } from "./terminal/TerminalBottomBar";
+import { TerminalPet } from "./terminal/TerminalPet";
 import { runInActiveTerminal, typeInActiveTerminal } from "./ai/terminalContext";
 import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
@@ -1907,6 +1908,7 @@ function App() {
                   >
                     <TerminalStack term={term} viewActive={activeKind === "term"} />
                   </ErrorBoundary>
+                  {activeKind === "term" && <TerminalPet />}
                 </div>
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
               </div>
