@@ -128,9 +128,12 @@ export function TerminalView({
             return false;
           }
           if (e.key === "Enter" || e.key === "Return") {
+            // Dismiss the autocomplete panel and let Enter run the typed command.
+            // Tab is the dedicated accept shortcut; Enter should not silently
+            // replace the user's input with the first suggestion.
             e.preventDefault();
-            acceptAutoRef.current();
-            return false;
+            dismissAutoRef.current();
+            return true;
           }
           if (e.key === "Escape") {
             e.preventDefault();
