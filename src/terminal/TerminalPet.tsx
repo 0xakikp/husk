@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCommandRunning, useActiveTerminalExit } from "../ai/terminalContext";
+import { cn } from "../lib/utils";
 
 const PET_ASSETS: Record<string, string> = {
   idle: "/pet/pet-idle.gif",
@@ -71,22 +72,24 @@ export function TerminalPet() {
   };
 
   return (
-    <div className="relative flex items-center">
+    <div className="pointer-events-auto absolute right-3 top-3 z-30 flex flex-col items-end gap-1">
       {message && (
-        <div className="absolute right-full top-1/2 mr-2 w-max max-w-[140px] -translate-y-1/2 rounded-md border border-border/60 bg-card/95 px-2 py-1 text-[10px] text-foreground shadow-md">
+        <div className="max-w-[140px] rounded-md border border-border/60 bg-card/95 px-2 py-1 text-[10px] text-foreground shadow-md">
           {message}
         </div>
       )}
       <button
         type="button"
         onClick={handleClick}
-        className="relative inline-flex size-7 items-center justify-center overflow-hidden rounded-md text-muted-foreground outline-none transition hover:bg-muted hover:text-foreground"
+        className={cn(
+          "relative inline-flex size-12 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-card",
+        )}
         title="Husk pet companion"
       >
         <img
           src={imageUrl}
           alt="Husk companion pet"
-          className="size-6 object-contain"
+          className="size-10 object-contain"
           draggable={false}
         />
       </button>
