@@ -1726,6 +1726,7 @@ function App() {
                 <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
               </Button>
             )}
+            <TerminalPet />
             <Button
               variant="ghost"
               size="icon"
@@ -1908,7 +1909,6 @@ function App() {
                   >
                     <TerminalStack term={term} viewActive={activeKind === "term"} />
                   </ErrorBoundary>
-                  {activeKind === "term" && <TerminalPet />}
                 </div>
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
               </div>
