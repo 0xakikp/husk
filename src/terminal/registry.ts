@@ -222,7 +222,6 @@ export async function createSession(
       const buf = term.buffer.active;
       const pos = { row: buf.cursorY + buf.viewportY, col: buf.cursorX };
       setPromptPosition(pos);
-      console.log("[OSC 133 B]", pos, "active:", session.active, "leafId:", leafId);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.
@@ -231,6 +230,9 @@ export async function createSession(
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
       setActiveTerminalExit(Number.isNaN(code) ? null : code);
       clearCurrentCommand();
+      // Interactive SSH/Mosh sessions are local commands that start a remote
+      // shell. When the session ends, the shell is local again.
+      session.isRemoteShell = false;
     }
     if (data.startsWith("C")) markCommandStart();
     return true;
@@ -238,8 +240,15 @@ export async function createSession(
 
   term.parser.registerOscHandler(778, (data) => {
     if (!session.active || !data.startsWith("husk;cmd;")) return true;
-    const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";");
-    setCurrentCommand(cmd.trim());
+    const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";").trim();
+    setCurrentCommand(cmd);
+    // Treat an interactive ssh/mosh session as remote for the duration of the
+    // command. The remote shell usually doesn't have Husk integration, so the
+    // only reliable signal is the local command that started it.
+    const firstWord = cmd.split(/\s+/)[0];
+    if (firstWord === "ssh" || firstWord === "mosh") {
+      session.isRemoteShell = true;
+    }
     return true;
   });
 
