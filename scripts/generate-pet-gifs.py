@@ -90,6 +90,7 @@ def save_gif(frames, filename, duration=120):
         loop=0,
         transparency=0,
         disposal=2,
+        optimize=False,
     )
     print(f"Wrote {path}")
 
@@ -113,19 +114,33 @@ for i in range(4):
     frames.append(img)
 save_gif(frames, "pet-idle.gif", duration=250)
 
-# typing: alert, ears/antenna up, watching
+# typing: alert, ears/antenna up, pupils shift
 frames = []
 for i in range(4):
     img = new_frame()
     draw = ImageDraw.Draw(img)
-    # antenna
-    rect(draw, 36, 8, 8, 12, BODY)
-    rect(draw, 34, 4, 12, 4, (255, 220, 80, 255))
-    # body slightly lower
-    draw_blob(draw, BODY, WHITE, y_offset=6, eye_open=True, mouth="surprise")
-    # pupils shift left/right
+    # antenna grows/shrinks
+    antenna_h = 12 if i % 2 == 0 else 8
+    rect(draw, 36, 4, 8, antenna_h, BODY)
+    tip_color = (255, 255, 0, 255) if i % 2 == 0 else (255, 120, 60, 255)
+    rect(draw, 34, 0, 12, 8, tip_color)
+    # body bobs up/down more
+    y_off = 4 if i % 2 == 0 else 10
+    draw_blob(draw, BODY, WHITE, y_offset=y_off, eye_open=True, mouth="surprise")
+    # eyes shift left/right with white sclera redrawn
+    eye_dirs = [(-4, -4), (0, 0), (4, 4), (0, 0)]
+    dx = eye_dirs[i][0]
+    dy = eye_dirs[i][1]
+    base_x = 20
+    base_y = 24 + y_off
+    # left eye sclera
+    rect(draw, base_x + 8 + dx, base_y + 10 + dy, 10, 10, WHITE)
+    rect(draw, base_x + 10 + dx, base_y + 12 + dy, 6, 6, BLACK)
+    # right eye sclera
+    rect(draw, base_x + 22 + dx, base_y + 10 + dy, 10, 10, WHITE)
+    rect(draw, base_x + 24 + dx, base_y + 12 + dy, 6, 6, BLACK)
     frames.append(img)
-save_gif(frames, "pet-typing.gif", duration=200)
+save_gif(frames, "pet-typing.gif", duration=180)
 
 # success: happy jump
 frames = []

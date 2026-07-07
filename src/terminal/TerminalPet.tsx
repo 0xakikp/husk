@@ -11,6 +11,24 @@ const PET_ASSETS: Record<string, string> = {
   "ci-pass": "/pet/pet-ci-pass.gif",
 };
 
+const PET_LABEL: Record<PetState, string> = {
+  idle: "Idle",
+  typing: "Typing",
+  success: "Success",
+  failure: "Failed",
+  running: "Running",
+  "ci-pass": "CI Pass",
+};
+
+const PET_DOT: Record<PetState, string> = {
+  idle: "bg-blue-400",
+  typing: "bg-yellow-400",
+  success: "bg-emerald-400",
+  failure: "bg-red-400",
+  running: "bg-amber-400",
+  "ci-pass": "bg-emerald-400",
+};
+
 type PetState = "idle" | "typing" | "success" | "failure" | "running" | "ci-pass";
 
 export function TerminalPet() {
@@ -82,23 +100,26 @@ export function TerminalPet() {
       <button
         type="button"
         onClick={handleClick}
-        className={cn(
-          "relative inline-flex size-14 items-center justify-center overflow-hidden rounded-2xl border border-border/60 bg-card/90 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card",
-          !imgLoaded && "text-2xl"
-        )}
+        className="group relative flex flex-col items-center gap-1 rounded-2xl border border-border/60 bg-card/90 p-2 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
         title="Husk pet companion"
       >
-        {imgLoaded ? (
-          <img
-            src={imageUrl}
-            alt="Husk companion pet"
-            className="size-12 object-contain"
-            draggable={false}
-            onError={() => setImgLoaded(false)}
-          />
-        ) : (
-          <span>🤖</span>
-        )}
+        <div className="relative inline-flex size-16 items-center justify-center overflow-hidden rounded-xl bg-black/20">
+          {imgLoaded ? (
+            <img
+              src={imageUrl}
+              alt="Husk companion pet"
+              className="size-14 object-contain"
+              draggable={false}
+              onError={() => setImgLoaded(false)}
+            />
+          ) : (
+            <span className="text-3xl">🤖</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className={cn("size-2 rounded-full", PET_DOT[state])} />
+          <span className="text-[9px] font-medium text-muted-foreground">{PET_LABEL[state]}</span>
+        </div>
       </button>
     </div>
   );
