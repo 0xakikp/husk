@@ -22,6 +22,7 @@ export function TerminalPet() {
   const lastExitRef = useRef<number | null>(null);
   const [typing, setTyping] = useState(false);
   const typingTimerRef = useRef<number>(0);
+  const [imgLoaded, setImgLoaded] = useState(true);
 
   useEffect(() => {
     if (running) {
@@ -72,9 +73,9 @@ export function TerminalPet() {
   };
 
   return (
-    <div className="pointer-events-auto absolute right-3 top-3 z-30 flex flex-col items-end gap-1">
+    <div className="pointer-events-auto absolute right-4 top-4 z-30 flex flex-col items-end gap-2">
       {message && (
-        <div className="max-w-[140px] rounded-md border border-border/60 bg-card/95 px-2 py-1 text-[10px] text-foreground shadow-md">
+        <div className="max-w-[160px] rounded-lg border border-border/60 bg-card/95 px-2.5 py-1.5 text-[11px] text-foreground shadow-lg">
           {message}
         </div>
       )}
@@ -82,16 +83,22 @@ export function TerminalPet() {
         type="button"
         onClick={handleClick}
         className={cn(
-          "relative inline-flex size-12 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-card",
+          "relative inline-flex size-14 items-center justify-center overflow-hidden rounded-2xl border border-border/60 bg-card/90 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card",
+          !imgLoaded && "text-2xl"
         )}
         title="Husk pet companion"
       >
-        <img
-          src={imageUrl}
-          alt="Husk companion pet"
-          className="size-10 object-contain"
-          draggable={false}
-        />
+        {imgLoaded ? (
+          <img
+            src={imageUrl}
+            alt="Husk companion pet"
+            className="size-12 object-contain"
+            draggable={false}
+            onError={() => setImgLoaded(false)}
+          />
+        ) : (
+          <span>🤖</span>
+        )}
       </button>
     </div>
   );

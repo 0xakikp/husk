@@ -1895,7 +1895,7 @@ function App() {
                 )}
                 aria-hidden={activeKind !== "term"}
               >
-                <div className="min-h-0 flex-1">
+                <div className="relative min-h-0 flex-1">
                   <ErrorBoundary
                     fallback={
                       <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
