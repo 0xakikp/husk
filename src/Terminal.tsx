@@ -97,13 +97,25 @@ export function TerminalView({
     setSessionVisible(leafId, active);
   }, [leafId, active]);
 
+  // True while the user is cycling shell history with arrow keys; used to
+  // suppress the autocomplete dropdown so it doesn't block history navigation.
+  const historyNavigatingRef = useRef(false);
+  const historyNavTimerRef = useRef<number>(0);
+
   useEffect(() => {
     if (active) {
       setSessionFocused(leafId, true);
       setSessionActive(leafId, true);
       setSessionCallbacks(leafId, {
         onFocus: () => onFocus?.(),
-        onData: () => scheduleAutoRef.current(),
+        onData: () => {
+          // Don't trigger autocomplete if the user is cycling shell history;
+          // the shell recalled command would otherwise open the dropdown and
+          // block further Up arrow presses.
+          if (!historyNavigatingRef.current) {
+            scheduleAutoRef.current();
+          }
+        },
         onSplit: (dir) => onSplit?.(dir),
         onFocusDirection: (dir) => _onFocusDirection?.(dir),
         onHistoryOpen: () => openHistory(),
@@ -111,20 +123,30 @@ export function TerminalView({
           if (e.type !== "keydown") return undefined;
           // Don't intercept when history panel or search is open
           if (historyOpen || searchOpen) return undefined;
+
+          const isHistoryArrow = e.key === "ArrowUp" || e.key === "ArrowDown";
+          if (isHistoryArrow) {
+            // Mark that the user is navigating shell history. Suppress
+            // autocomplete for a short window so the dropdown doesn't open
+            // from the recalled command.
+            historyNavigatingRef.current = true;
+            window.clearTimeout(historyNavTimerRef.current);
+            historyNavTimerRef.current = window.setTimeout(() => {
+              historyNavigatingRef.current = false;
+            }, 300);
+
+            // While arrow keys are for shell history, dismiss any open dropdown
+            // and let the shell handle the key.
+            if (autoStateRef.current.visible) {
+              dismissAutoRef.current();
+            }
+            return undefined;
+          }
+
           if (!autoStateRef.current.visible) return undefined;
           if (e.key === "Tab") {
             e.preventDefault();
             acceptAutoRef.current();
-            return false;
-          }
-          if (e.key === "ArrowDown") {
-            e.preventDefault();
-            navigateAutoRef.current(1);
-            return false;
-          }
-          if (e.key === "ArrowUp") {
-            e.preventDefault();
-            navigateAutoRef.current(-1);
             return false;
           }
           if (e.key === "Enter" || e.key === "Return") {
