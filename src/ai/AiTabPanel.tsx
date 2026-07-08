@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PlusSignIcon, Cancel01Icon, MessageMultiple02Icon, SparklesIcon } from "@hugeicons/core-free-icons";
+import { PlusSignIcon, Cancel01Icon, MessageMultiple02Icon, SparklesIcon, ComputerTerminal02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { TerminalAiComposer } from "../terminal/TerminalAiComposer";
 import {
@@ -12,6 +12,7 @@ import {
   getSession,
   ensureSession,
   updateSession,
+  isTabSessionId,
 } from "./sessionStore";
 
 export function AiTabPanel() {
@@ -96,7 +97,7 @@ export function AiTabPanel() {
                       className="flex flex-1 items-center gap-2 text-left"
                     >
                       <HugeiconsIcon
-                        icon={SparklesIcon}
+                        icon={isTabSessionId(s.id) ? ComputerTerminal02Icon : SparklesIcon}
                         size={11}
                         strokeWidth={1.75}
                         className={cn("shrink-0", activeSession.id === s.id ? "text-primary" : "text-muted-foreground/60")}

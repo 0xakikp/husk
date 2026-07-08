@@ -17,6 +17,8 @@ import {
   updateSession,
   subscribeSessions,
   setActiveSessionId,
+  ensureSession,
+  isTabSessionId,
 } from "../ai/sessionStore";
 import "./TerminalAiComposer.css";
 
@@ -41,6 +43,12 @@ function stripCodeBlocks(text: string): string {
 
 export function tabSessionId(tabId: number): string {
   return `tab-${tabId}`;
+}
+
+export function tabSessionName(sessionId: string): string {
+  if (!isTabSessionId(sessionId)) return sessionId;
+  const tabId = parseInt(sessionId.slice(4), 10);
+  return isNaN(tabId) ? sessionId : `Terminal ${tabId}`;
 }
 
 export function TerminalAiComposer({
@@ -74,6 +82,14 @@ export function TerminalAiComposer({
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Ensure the session exists (terminal tabs get created on first composer mount)
+  useEffect(() => {
+    if (isTabSessionId(sessionId)) {
+      const tabId = parseInt(sessionId.slice(4), 10);
+      ensureSession(sessionId, { name: tabSessionName(sessionId), source: "terminal", tabId });
+    }
+  }, [sessionId]);
 
   const session = getSession(sessionId);
   const messages = session.messages;

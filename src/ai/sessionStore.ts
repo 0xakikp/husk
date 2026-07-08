@@ -175,3 +175,7 @@ export function useActiveSessionId() {
 export function tabSessionId(tabId: number): string {
   return `tab-${tabId}`;
 }
+
+export function isTabSessionId(sessionId: string): boolean {
+  return sessionId.startsWith("tab-");
+}
