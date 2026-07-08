@@ -23,8 +23,13 @@
   padding-top: 16px;
 }
 
-.composer-expanded {
-  transition: max-height 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+.composer-full {
+  flex: 1;
+  max-height: none !important;
+  height: 100% !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 16px;
 }
 
 .composer-resize-handle {

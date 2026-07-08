@@ -11,17 +11,18 @@ import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { readFile } from "../fs";
+import {
+  AiMessage,
+  getSession,
+  updateSession,
+  subscribeSessions,
+  setActiveSessionId,
+} from "../ai/sessionStore";
 import "./TerminalAiComposer.css";
 
 interface CodeBlock {
   lang: string;
   code: string;
-}
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  streaming?: boolean;
 }
 
 function parseCodeBlocks(text: string): CodeBlock[] {
@@ -38,72 +39,61 @@ function stripCodeBlocks(text: string): string {
   return text.replace(/```(\w*)\n?([\s\S]*?)```/g, "").trim();
 }
 
-/* ── Per-tab session store ──────────────────────────────────────────────── */
-
-type ComposerSession = {
-  messages: Message[];
-  input: string;
-};
-
-const sessions = new Map<number, ComposerSession>();
-const subscribers = new Set<() => void>();
-
-function getSession(tabId: number): ComposerSession {
-  if (!sessions.has(tabId)) {
-    sessions.set(tabId, { messages: [], input: "" });
-  }
-  return sessions.get(tabId)!;
+export function tabSessionId(tabId: number): string {
+  return `tab-${tabId}`;
 }
 
-function updateSession(tabId: number, updater: (s: ComposerSession) => ComposerSession) {
-  const next = updater(getSession(tabId));
-  sessions.set(tabId, next);
-  subscribers.forEach((fn) => fn());
-}
-
-function subscribeSessions(fn: () => void): () => void {
-  subscribers.add(fn);
-  return () => {
-    subscribers.delete(fn);
-  };
-}
-
-/* ── Component ───────────────────────────────────────────────────────────── */
-
-export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
+export function TerminalAiComposer({
+  sessionId,
+  onOpenInAiTab,
+  variant = "docked",
+  registerToggle = true,
+  registerOpen = true,
+  registerSend = false,
+}: {
+  sessionId: string;
+  onOpenInAiTab?: () => void;
+  variant?: "docked" | "full";
+  registerToggle?: boolean;
+  registerOpen?: boolean;
+  registerSend?: boolean;
+}) {
   const prefs = usePrefs();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(variant === "full");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [height, setHeight] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [pendingRun, setPendingRun] = useState<string | null>(null);
   const abortRef = useRef(false);
   const abortCtrlRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [pendingRun, setPendingRun] = useState<string | null>(null);
+  const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const session = getSession(activeTabId);
+  const session = getSession(sessionId);
   const messages = session.messages;
   const input = session.input;
 
   const setInput = (value: string) => {
-    updateSession(activeTabId, (s) => ({ ...s, input: value }));
+    updateSession(sessionId, (s) => ({ ...s, input: value }));
   };
 
-  const setMessages = (updater: (prev: Message[]) => Message[]) => {
-    updateSession(activeTabId, (s) => ({ ...s, messages: updater(s.messages) }));
+  const setMessages = (updater: (prev: AiMessage[]) => AiMessage[]) => {
+    updateSession(sessionId, (s) => ({ ...s, messages: updater(s.messages) }));
   };
 
   useEffect(() => {
+    if (!registerToggle) return;
     return registerComposerToggle(() => setOpen((v) => !v));
   }, []);
 
   useEffect(() => {
+    if (!registerOpen) return;
     return registerComposerOpen((text) => {
       setOpen(true);
       if (text) {
@@ -114,6 +104,7 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   }, []);
 
   useEffect(() => {
+    if (!registerSend) return;
     return registerComposerSend((text) => {
       setOpen(true);
       setInput(text);
@@ -124,12 +115,10 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
     });
   }, []);
 
-  // Re-render when any session changes
   useEffect(() => {
     subscribeSessions(() => setTick((v) => v + 1));
   }, []);
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -231,18 +220,15 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
       });
       setBusy(false);
     }
-  }, [input, busy, messages, activeTabId]);
-
-  const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
+  }, [input, busy, messages, sessionId]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
   }, [handleSend]);
 
-  // Drag-to-resize handlers
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (!draggingRef.current || !panelRef.current) return;
+      if (!draggingRef.current || !panelRef.current || variant === "full") return;
       const delta = startYRef.current - e.clientY;
       const next = Math.min(
         Math.max(startHeightRef.current + delta, 120),
@@ -259,7 +245,7 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, []);
+  }, [variant]);
 
   const handleClose = () => {
     abortRef.current = true;
@@ -269,7 +255,7 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   };
 
   const newSession = () => {
-    updateSession(activeTabId, () => ({ messages: [], input: "" }));
+    updateSession(sessionId, () => ({ ...session, messages: [], input: "" }));
   };
 
   const runCommand = (cmd: string) => {
@@ -297,6 +283,11 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
     setHeight(null);
   };
 
+  const handleOpenInAiTab = () => {
+    setActiveSessionId(sessionId);
+    onOpenInAiTab?.();
+  };
+
   const cfg = loadConfig();
   const provider = cfg.providerId ? getProvider(cfg.providerId) : getProvider("openai");
 
@@ -314,39 +305,42 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
       : messages.length
         ? 'min(40vh, 280px)'
         : 'auto';
+  const panelStyle = variant === "full" ? { maxHeight: '100%', height: '100%' } : { maxHeight: computedHeight };
 
   return (
   <div
     ref={panelRef}
     data-bg-style={prefs.aiComposerBgStyle}
-    className={cn("composer-panel animate-composer-in", expanded && "composer-expanded")}
+    className={cn(
+      "composer-panel animate-composer-in",
+      expanded && "composer-expanded",
+      variant === "full" && "composer-full"
+    )}
     style={{
-      maxHeight: computedHeight,
-      borderRadius: gap ? '16px' : '16px 16px 0 0',
+      ...panelStyle,
+      borderRadius: gap && variant !== "full" ? '16px' : variant !== "full" ? '16px 16px 0 0' : '0',
       '--composer-opacity': prefs.aiMiniOpacity / 100,
       '--composer-font-size': `${prefs.aiMiniFontSize}px`,
       '--composer-bg-color': prefs.aiComposerBgColor,
       '--composer-bg-blur': `${prefs.aiMiniBgBlur}px`,
       '--composer-bg-dim': prefs.aiMiniBgDim / 100,
-    } as React.CSSProperties}
+    } as unknown as React.CSSProperties}
   >
-      {/* Resize handle */}
-      <div
-        className="composer-resize-handle"
-        onMouseDown={startResize}
-        title="Drag to resize"
-      />
-
-      {/* Gradient border glow line at top */}
+      {variant !== "full" && (
+        <div
+          className="composer-resize-handle"
+          onMouseDown={startResize}
+          title="Drag to resize"
+        />
+      )}
       <div className="composer-glow" />
 
-      {/* Header */}
       <div className="composer-header">
         <div className="flex items-center gap-2">
           <span className="composer-avatar">✦</span>
           <span className="text-[11px] font-semibold text-foreground">Husk AI</span>
           <span className="text-[10px] text-muted-foreground/60">·</span>
-          <span className="text-[10px] text-muted-foreground/70">Tab {activeTabId}</span>
+          <span className="text-[10px] text-muted-foreground/70">{session.name}</span>
           {fileName && (
             <>
               <span className="text-[10px] text-muted-foreground/60">·</span>
@@ -358,6 +352,16 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {variant === "docked" && onOpenInAiTab && (
+            <button
+              type="button"
+              onClick={handleOpenInAiTab}
+              className="composer-icon-btn"
+              title="Open in AI tab"
+            >
+              <HugeiconsIcon icon={FullScreenIcon} size={12} strokeWidth={1.75} />
+            </button>
+          )}
           <button
             type="button"
             onClick={toggleExpand}
@@ -374,13 +378,14 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
           >
             <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={1.75} />
           </button>
-          <button type="button" onClick={handleClose} className="composer-icon-btn" title="Close">
-            <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
-          </button>
+          {variant === "docked" && (
+            <button type="button" onClick={handleClose} className="composer-icon-btn" title="Close">
+              <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Messages */}
       <div ref={scrollRef} className="composer-messages">
         {messages.length === 0 ? (
           <div className="composer-empty">
@@ -453,7 +458,6 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
         )}
       </div>
 
-      {/* Pending command approval */}
       {pendingRun && (
         <div className="composer-pending-run">
           <div className="flex flex-col gap-0.5">
@@ -471,7 +475,6 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
         </div>
       )}
 
-      {/* Input */}
       <div className="composer-input-row">
         <textarea
           ref={textareaRef}
@@ -482,7 +485,7 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
               e.preventDefault();
               handleSend();
             }
-            if (e.key === "Escape") {
+            if (e.key === "Escape" && variant === "docked") {
               handleClose();
             }
           }}
@@ -500,7 +503,6 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
         </button>
       </div>
 
-      {/* Footer info */}
       <div className="composer-footer">
         <div className="flex items-center gap-1.5">
           <span className="text-primary/60">●</span>

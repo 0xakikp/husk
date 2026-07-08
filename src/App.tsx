@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { TerminalStack } from "./TerminalStack";
 import { TerminalBottomBar } from "./terminal/TerminalBottomBar";
-import { TerminalAiComposer } from "./terminal/TerminalAiComposer";
+import { TerminalAiComposer, tabSessionId } from "./terminal/TerminalAiComposer";
 import { runInActiveTerminal, typeInActiveTerminal } from "./ai/terminalContext";
 import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
@@ -72,6 +72,7 @@ import { GitGraphPanel } from "./git/GitGraphPanel";
 import { IssuesPanel } from "./git/IssuesPanel";
 import { ShortcutsDialog } from "./shortcuts/ShortcutsDialog";
 import { StatusBar } from "./statusbar/StatusBar";
+import { AiTabPanel } from "./ai/AiTabPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DialogLayer } from "./components/DialogLayer";
 import type { OpenPanelKind } from "./git/types";
@@ -246,6 +247,7 @@ function TabBar({
   settingsOpen,
   onSelectSettings,
   onCloseSettings,
+  onSelectAi,
   animationsEnabled,
 }: {
   termTabs: TermTab[];
@@ -267,6 +269,7 @@ function TabBar({
   settingsOpen: boolean;
   onSelectSettings: () => void;
   onCloseSettings: () => void;
+  onSelectAi: () => void;
   animationsEnabled?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -550,6 +553,14 @@ function TabBar({
             <span className="truncate">Settings</span>
           </TabChip>
         ) : null}
+        <TabChip
+          active={active.kind === "ai"}
+          onClick={onSelectAi}
+          animate={animationsEnabled}
+        >
+          <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} className="shrink-0" />
+          <span className="truncate">AI</span>
+        </TabChip>
         <Button
           variant="ghost"
           size="icon"
@@ -857,7 +868,8 @@ export type ActiveTab =
   | { kind: "file"; path: string }
   | { kind: "settings" }
   | { kind: "git-graph" }
-  | { kind: "issues" };
+  | { kind: "issues" }
+  | { kind: "ai" };
 
 export type { OpenPanelKind } from "./git/types";
 
@@ -1257,7 +1269,7 @@ function App() {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const term = useTerminalTabs();
-  const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues" | "sftp">("term");
+  const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues" | "sftp" | "ai">("term");
 
   // Close Monaco find widget when leaving the file editor tab
   useEffect(() => {
@@ -1570,7 +1582,9 @@ function App() {
       ? { kind: "settings" }
       : activeKind === "file" && activeFile
         ? { kind: "file", path: activeFile }
-        : { kind: "term", id: term.activeId };
+        : activeKind === "ai"
+          ? { kind: "ai" }
+          : { kind: "term", id: term.activeId };
 
   return (
     <TooltipProvider>
@@ -1681,6 +1695,7 @@ function App() {
               settingsOpen={settingsOpen}
               onSelectSettings={() => setActiveKind("settings")}
               onCloseSettings={closeSettings}
+              onSelectAi={() => setActiveKind("ai")}
               animationsEnabled={prefs.animationsEnabled}
             />
             <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
@@ -1912,7 +1927,11 @@ function App() {
                       style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
                     />
                   )}
-                  <TerminalAiComposer activeTabId={term.activeId} />
+                  <TerminalAiComposer
+                    sessionId={tabSessionId(term.activeId)}
+                    onOpenInAiTab={() => setActiveKind("ai")}
+                    registerSend={true}
+                  />
                 </div>
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
               </div>
@@ -1943,7 +1962,10 @@ function App() {
                         style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
                       />
                     )}
-                    <TerminalAiComposer activeTabId={term.activeId} />
+                    <TerminalAiComposer
+                      sessionId={tabSessionId(term.activeId)}
+                      onOpenInAiTab={() => setActiveKind("ai")}
+                    />
                   </div>
                 ) : (
                   <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -1953,6 +1975,21 @@ function App() {
                   </div>
                 )}
               </div>
+
+              {/* AI layer */}
+              {activeKind === "ai" && (
+                <div
+                  className={cn(
+                    "absolute inset-0 z-10",
+                    prefs.neonBorderGlow && "neon-glow",
+                  )}
+                  aria-hidden={activeKind !== "ai"}
+                >
+                  <ErrorBoundary>
+                    <AiTabPanel />
+                  </ErrorBoundary>
+                </div>
+              )}
 
               {/* Settings layer */}
               {settingsOpen ? (
