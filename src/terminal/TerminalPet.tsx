@@ -40,7 +40,17 @@ const PET_DOT: Record<PetState, string> = {
 
 type PetState = "idle" | "typing" | "success" | "failure" | "running" | "ci-pass";
 
-export function TerminalPet() {
+export function TerminalPet({
+  className,
+  style,
+  onClick,
+  title = "Open AI chat (Husk pet)",
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+  onClick?: () => void;
+  title?: string;
+}) {
   const running = useCommandRunning();
   const exitCode = useActiveTerminalExit();
   const [state, setState] = useState<PetState>("idle");
@@ -83,16 +93,23 @@ export function TerminalPet() {
   const imageUrl = PET_ASSETS[state];
 
   const handleClick = () => {
-    toggleBubble();
+    if (onClick) {
+      onClick();
+    } else {
+      toggleBubble();
+    }
   };
 
   return (
-    <div className="pointer-events-auto absolute right-4 top-4 z-30 flex flex-col items-end gap-2">
+    <div
+      className={cn("pointer-events-auto z-30 flex flex-col items-end gap-2", className)}
+      style={style}
+    >
       <button
         type="button"
         onClick={handleClick}
         className="group relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card pet-float"
-        title="Open AI chat (Husk pet)"
+        title={title}
       >
         <div className="relative inline-flex size-16 items-center justify-center overflow-hidden rounded-xl bg-black/20">
           <img

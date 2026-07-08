@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { usePrefs } from "../settings/preferences";
+import { TerminalPet } from "../terminal/TerminalPet";
 import {
   Cancel01Icon,
   MinusSignIcon,
@@ -589,21 +590,12 @@ export function AiFloatingBubble({
 
   if (state === "collapsed") {
     return (
-      <button
-        type="button"
+      <TerminalPet
         onClick={() => setState("expanded")}
-        className="fixed z-50 flex items-center justify-center rounded-full border border-primary/40 bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:scale-110 hover:bg-primary active:scale-95 focus:outline-none focus:ring-0 cursor-pointer"
-        style={{
-          left: pos.x,
-          top: pos.y,
-          width: BUBBLE_SIZE,
-          height: BUBBLE_SIZE,
-        }}
-        aria-label="Open AI chat"
-        title="AI Chat"
-      >
-        <span className="text-lg">🤖</span>
-      </button>
+        className="fixed"
+        style={{ left: pos.x, top: pos.y }}
+        title="Open AI chat"
+      />
     );
   }
 
