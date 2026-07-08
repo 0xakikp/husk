@@ -249,6 +249,9 @@ function TabBar({
   onSelectSettings,
   onCloseSettings,
   onSelectAi,
+  onPinAi,
+  onUnpinAi,
+  aiPinned,
   animationsEnabled,
 }: {
   termTabs: TermTab[];
@@ -271,10 +274,13 @@ function TabBar({
   onSelectSettings: () => void;
   onCloseSettings: () => void;
   onSelectAi: () => void;
+  onPinAi: () => void;
+  onUnpinAi: () => void;
+  aiPinned: boolean;
   animationsEnabled?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; kind: "term" | "file"; id: number; path?: string } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; kind: "term" | "file" | "ai"; id: number; path?: string } | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
   const canClose = termTabs.length + openFiles.length > 1;
@@ -558,6 +564,11 @@ function TabBar({
           active={active.kind === "ai"}
           onClick={onSelectAi}
           animate={animationsEnabled}
+          pinned={aiPinned}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
+          }}
         >
           <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} className="shrink-0" />
           <span className="truncate">Husk AI</span>
@@ -663,7 +674,7 @@ function TabBar({
                         </div>
                       </div>
                     </>
-                  ) : (
+                  ) : menu.kind === "file" ? (
                     <>
                       <button
                         type="button"
@@ -685,8 +696,25 @@ function TabBar({
                         </span>
                       </button>
                     </>
+                  ) : (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onClick={() => {
+                        if (aiPinned) {
+                          onUnpinAi();
+                        } else {
+                          onPinAi();
+                        }
+                        setMenu(null);
+                      }}
+                    >
+                      <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={1.75} />
+                      <span className="flex-1 text-left">{aiPinned ? "Unpin" : "Pin"}</span>
+                    </button>
                   )}
-                  {canClose ? (
+                  {canClose && menu.kind !== "ai" ? (
                     <button
                       type="button"
                       role="menuitem"
@@ -1700,6 +1728,9 @@ function App() {
               onSelectSettings={() => setActiveKind("settings")}
               onCloseSettings={closeSettings}
               onSelectAi={() => setActiveKind("ai")}
+              onPinAi={() => setPrefs({ aiTabPinned: true })}
+              onUnpinAi={() => setPrefs({ aiTabPinned: false })}
+              aiPinned={prefs.aiTabPinned}
               animationsEnabled={prefs.animationsEnabled}
             />
             <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
