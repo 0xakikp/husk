@@ -1969,6 +1969,7 @@ function App() {
                     <TerminalAiComposer
                       sessionId={tabSessionId(term.activeId)}
                       onOpenInAiTab={() => setActiveKind("ai")}
+                      className="composer-editor"
                     />
                   </div>
                 ) : (

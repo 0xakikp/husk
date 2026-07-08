@@ -102,6 +102,7 @@ export function TerminalAiComposer({
   registerToggle = true,
   registerOpen = true,
   registerSend = false,
+  className,
 }: {
   sessionId: string;
   onOpenInAiTab?: () => void;
@@ -109,6 +110,7 @@ export function TerminalAiComposer({
   registerToggle?: boolean;
   registerOpen?: boolean;
   registerSend?: boolean;
+  className?: string;
 }) {
   const prefs = usePrefs();
   const [open, setOpen] = useState(variant === "full");
@@ -442,7 +444,8 @@ export function TerminalAiComposer({
     className={cn(
       "composer-panel animate-composer-in",
       expanded && "composer-expanded",
-      variant === "full" && "composer-full"
+      variant === "full" && "composer-full",
+      className
     )}
     style={{
       ...panelStyle,
