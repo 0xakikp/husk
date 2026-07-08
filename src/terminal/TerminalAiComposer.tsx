@@ -135,6 +135,14 @@ export function TerminalAiComposer({
     }
   }, [sessionId]);
 
+  // Auto-focus textarea when composer opens
+  useEffect(() => {
+    if (open) {
+      const id = setTimeout(() => textareaRef.current?.focus(), 80);
+      return () => clearTimeout(id);
+    }
+  }, [open]);
+
   const session = getSession(sessionId);
   const messages = session.messages;
   const input = session.input;
