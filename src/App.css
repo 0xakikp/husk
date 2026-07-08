@@ -852,6 +852,69 @@ button {
   color: #ff5f5f;
 }
 
+/* Light-mode overrides for husk-popover */
+:root[data-theme="light"] .husk-popover {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme="light"] .husk-popover-close {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .husk-popover-close:hover {
+  color: var(--text-strong);
+  background: var(--hover);
+}
+
+:root[data-theme="light"] .husk-popover-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border-2);
+  color: var(--text-strong);
+}
+
+:root[data-theme="light"] .husk-popover-input::placeholder {
+  color: var(--text-faint);
+}
+
+:root[data-theme="light"] .husk-popover-item {
+  color: var(--text);
+}
+
+:root[data-theme="light"] .husk-popover-item:hover,
+:root[data-theme="light"] .husk-popover-item.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text-strong);
+}
+
+:root[data-theme="light"] .husk-popover-meta {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .husk-popover-delete {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .husk-popover-delete:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+:root[data-theme="light"] .husk-popover-empty {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .husk-popover-footer {
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .husk-popover-footer-action:hover {
+  color: #ef4444;
+}
+
 .titlebar-spacer {
   flex: 1 1 auto;
 }
