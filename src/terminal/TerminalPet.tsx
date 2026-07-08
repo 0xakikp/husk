@@ -88,18 +88,21 @@ export function TerminalPet({
         className="group relative flex items-center justify-center rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
         title={title}
       >
-        <div className="flex h-6 items-end gap-[3px]">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className={cn(
-                "w-[3px] rounded-full transition-colors",
-                STATE_COLOR[state],
-                STATE_ANIMATION[state]
-              )}
-              style={{ animationDelay: `${i * 120}ms` }}
-            />
-          ))}
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex h-8 items-end gap-1 rounded-md bg-muted/60 px-2 py-1.5">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className={cn(
+                  "w-1.5 min-h-[20%] rounded-full transition-colors",
+                  STATE_COLOR[state],
+                  STATE_ANIMATION[state]
+                )}
+                style={{ animationDelay: `${i * 100}ms` }}
+              />
+            ))}
+          </div>
+          <span className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground">AI</span>
         </div>
       </button>
     </div>
