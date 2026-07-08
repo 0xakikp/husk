@@ -116,7 +116,7 @@ export function TerminalAiComposer({
   }, []);
 
   useEffect(() => {
-    subscribeSessions(() => setTick((v) => v + 1));
+    return subscribeSessions(() => setTick((v) => v + 1));
   }, []);
 
   useEffect(() => {

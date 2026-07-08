@@ -48,14 +48,30 @@ export function getSession(id: string): AiSession {
   return sessions.get("global")!;
 }
 
+let cachedSessions: AiSession[] = [];
+let cachedSessionsDirty = true;
+
+function recomputeSessions() {
+  cachedSessions = Array.from(sessions.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  cachedSessionsDirty = false;
+}
+
 export function getAllSessions(): AiSession[] {
-  return Array.from(sessions.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  if (cachedSessionsDirty) {
+    recomputeSessions();
+  }
+  return cachedSessions;
+}
+
+function invalidateSessions() {
+  cachedSessionsDirty = true;
 }
 
 export function updateSession(id: string, updater: (s: AiSession) => AiSession) {
   const next = updater(getSession(id));
   next.updatedAt = Date.now();
   sessions.set(id, next);
+  invalidateSessions();
   subscribers.forEach((fn) => fn());
 }
 
@@ -91,6 +107,7 @@ export function createSession(options: { name?: string; source?: "terminal" | "a
     updatedAt: Date.now(),
   };
   sessions.set(id, session);
+  invalidateSessions();
   subscribers.forEach((fn) => fn());
   return session;
 }
@@ -108,6 +125,7 @@ export function ensureSession(id: string, options?: { name?: string; source?: "t
     updatedAt: Date.now(),
   };
   sessions.set(id, session);
+  invalidateSessions();
   subscribers.forEach((fn) => fn());
   return session;
 }
@@ -123,6 +141,7 @@ export function deleteSession(id: string) {
     activeSessionId = "global";
     activeSubscribers.forEach((fn) => fn());
   }
+  invalidateSessions();
   subscribers.forEach((fn) => fn());
 }
 
