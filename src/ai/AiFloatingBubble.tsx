@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { usePrefs } from "../settings/preferences";
 import {
-  SparklesIcon,
   Cancel01Icon,
   MinusSignIcon,
   Clock01Icon,
@@ -603,7 +602,7 @@ export function AiFloatingBubble({
         aria-label="Open AI chat"
         title="AI Chat"
       >
-        <HugeiconsIcon icon={SparklesIcon} size={20} strokeWidth={1.5} />
+        <span className="text-lg">🤖</span>
       </button>
     );
   }
@@ -685,7 +684,7 @@ export function AiFloatingBubble({
           )}
           title={busy ? "Streaming…" : "Ready"}
         />
-        <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.5} className="shrink-0 text-primary" />
+        <span className="shrink-0 text-primary">🤖</span>
         <span className="mr-auto text-[11px] font-semibold text-foreground">AI</span>
 
         {/* Right-side controls cluster */}
@@ -890,7 +889,7 @@ export function AiFloatingBubble({
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
             <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-              <HugeiconsIcon icon={SparklesIcon} size={18} strokeWidth={1.5} className="text-primary" />
+              <span className="text-2xl text-primary">🤖</span>
             </div>
             <div className="max-w-[220px] text-center leading-relaxed text-muted-foreground" style={{ fontSize }}>
               Type <code className="rounded bg-muted px-1 py-0.5 text-primary">/ai</code> in your terminal, or type below to ask questions.
@@ -1001,7 +1000,7 @@ export function AiFloatingBubble({
               disabled={!input.trim() || busy}
               className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
             >
-              <HugeiconsIcon icon={SparklesIcon} size={14} strokeWidth={1.5} />
+              <span className="text-xs">🤖</span>
             </button>
           </form>
         )}

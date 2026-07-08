@@ -24,6 +24,7 @@ import {
   ComputerTerminal02Icon,
   PencilEdit02Icon,
   PinIcon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { AiFloatingBubble } from "./ai/AiFloatingBubble";
 import { openBubble, toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
@@ -1712,6 +1713,20 @@ function App() {
               <HugeiconsIcon icon={ClipboardIcon} size={16} strokeWidth={1.75} />
             </button>
 
+            {prefs.aiEnabled && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+                title="Toggle AI chat (Ctrl+Shift+L)"
+                onClick={() => toggleBubble()}
+              >
+                <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
+              </Button>
+            )}
+            <TerminalPet />
             <Button
               size="icon"
               className={cn(
