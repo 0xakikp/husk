@@ -3,22 +3,22 @@ import { useCommandRunning, useActiveTerminalExit } from "../ai/terminalContext"
 import { cn } from "../lib/utils";
 import "./TerminalPet.css";
 
-const STATE_RING: Record<PetState, string> = {
-  idle: "border-primary/60",
-  typing: "border-yellow-400",
-  success: "border-emerald-400",
-  failure: "border-red-400",
-  running: "border-amber-400",
-  "ci-pass": "border-emerald-400",
-};
-
-const STATE_DOT: Record<PetState, string> = {
-  idle: "bg-blue-400",
+const STATE_COLOR: Record<PetState, string> = {
+  idle: "bg-primary/70",
   typing: "bg-yellow-400",
   success: "bg-emerald-400",
   failure: "bg-red-400",
   running: "bg-amber-400",
   "ci-pass": "bg-emerald-400",
+};
+
+const STATE_ANIMATION: Record<PetState, string> = {
+  idle: "wf-idle",
+  typing: "wf-typing",
+  success: "wf-success",
+  failure: "wf-failure",
+  running: "wf-running",
+  "ci-pass": "wf-success",
 };
 
 type PetState = "idle" | "typing" | "success" | "failure" | "running" | "ci-pass";
@@ -77,8 +77,6 @@ export function TerminalPet({
     if (onClick) onClick();
   };
 
-  const busy = state === "running" || state === "typing";
-
   return (
     <div
       className={cn("pointer-events-auto z-30 flex flex-col items-end gap-2", className)}
@@ -87,18 +85,21 @@ export function TerminalPet({
       <button
         type="button"
         onClick={handleClick}
-        className="group relative flex items-center justify-center rounded-2xl border border-border/60 bg-card/90 p-2 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
+        className="group relative flex items-center justify-center rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
         title={title}
       >
-        <div className="relative inline-flex size-8 items-center justify-center">
-          <div
-            className={cn(
-              "absolute inset-0 rounded-full border-2 border-b-transparent transition-colors",
-              STATE_RING[state],
-              busy && "pet-spin"
-            )}
-          />
-          <span className={cn("size-1.5 rounded-full", STATE_DOT[state])} />
+        <div className="flex h-6 items-end gap-[3px]">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className={cn(
+                "w-[3px] rounded-full transition-colors",
+                STATE_COLOR[state],
+                STATE_ANIMATION[state]
+              )}
+              style={{ animationDelay: `${i * 120}ms` }}
+            />
+          ))}
         </div>
       </button>
     </div>
