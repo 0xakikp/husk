@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCommandRunning, useActiveTerminalExit } from "../ai/terminalContext";
+import { toggleBubble } from "../ai/bubbleStore";
 import { cn } from "../lib/utils";
 import "./TerminalPet.css";
 
@@ -43,8 +44,6 @@ export function TerminalPet() {
   const running = useCommandRunning();
   const exitCode = useActiveTerminalExit();
   const [state, setState] = useState<PetState>("idle");
-  const [message, setMessage] = useState<string | null>(null);
-  const messageTimerRef = useRef<number>(0);
   const lastExitRef = useRef<number | null>(null);
   const [typing, setTyping] = useState(false);
   const typingTimerRef = useRef<number>(0);
@@ -84,31 +83,16 @@ export function TerminalPet() {
   const imageUrl = PET_ASSETS[state];
 
   const handleClick = () => {
-    const messages: Record<PetState, string> = {
-      idle: "Ready to help!",
-      typing: "I see you typing...",
-      success: "Nice work!",
-      failure: "Oops, that failed.",
-      running: "Still running...",
-      "ci-pass": "All green! 🎉",
-    };
-    setMessage(messages[state] ?? "Hi!");
-    window.clearTimeout(messageTimerRef.current);
-    messageTimerRef.current = window.setTimeout(() => setMessage(null), 2000);
+    toggleBubble();
   };
 
   return (
     <div className="pointer-events-auto absolute right-4 top-4 z-30 flex flex-col items-end gap-2">
-      {message && (
-        <div className="max-w-[160px] rounded-lg border border-border/60 bg-card/95 px-2.5 py-1.5 text-[11px] text-foreground shadow-lg">
-          {message}
-        </div>
-      )}
       <button
         type="button"
         onClick={handleClick}
         className="group relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card pet-float"
-        title="Husk pet companion"
+        title="Open AI chat (Husk pet)"
       >
         <div className="relative inline-flex size-16 items-center justify-center overflow-hidden rounded-xl bg-black/20">
           <img
