@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useCommandRunning, useActiveTerminalExit } from "../ai/terminalContext";
 import { cn } from "../lib/utils";
+import "./TerminalPet.css";
 
-const PET_DOT: Record<PetState, string> = {
+const STATE_RING: Record<PetState, string> = {
+  idle: "border-primary/60",
+  typing: "border-yellow-400",
+  success: "border-emerald-400",
+  failure: "border-red-400",
+  running: "border-amber-400",
+  "ci-pass": "border-emerald-400",
+};
+
+const STATE_DOT: Record<PetState, string> = {
   idle: "bg-blue-400",
   typing: "bg-yellow-400",
   success: "bg-emerald-400",
@@ -11,22 +21,13 @@ const PET_DOT: Record<PetState, string> = {
   "ci-pass": "bg-emerald-400",
 };
 
-const PET_FACE: Record<PetState, string> = {
-  idle: "[:]",
-  typing: "[::]",
-  success: "[^_^]",
-  failure: "[x_x]",
-  running: "[o_o]",
-  "ci-pass": "[✓]",
-};
-
 type PetState = "idle" | "typing" | "success" | "failure" | "running" | "ci-pass";
 
 export function TerminalPet({
   className,
   style,
   onClick,
-  title = "Open AI chat (Husk pet)",
+  title = "Open AI chat",
 }: {
   className?: string;
   style?: React.CSSProperties;
@@ -76,6 +77,8 @@ export function TerminalPet({
     if (onClick) onClick();
   };
 
+  const busy = state === "running" || state === "typing";
+
   return (
     <div
       className={cn("pointer-events-auto z-30 flex flex-col items-end gap-2", className)}
@@ -84,14 +87,18 @@ export function TerminalPet({
       <button
         type="button"
         onClick={handleClick}
-        className="group relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
+        className="group relative flex items-center justify-center rounded-2xl border border-border/60 bg-card/90 p-2 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
         title={title}
       >
-        <div className="relative inline-flex size-10 items-center justify-center overflow-hidden rounded-lg bg-black/20">
-          <span className="font-mono text-xl leading-none text-primary">{PET_FACE[state]}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span className={cn("size-1.5 rounded-full", PET_DOT[state])} />
+        <div className="relative inline-flex size-8 items-center justify-center">
+          <div
+            className={cn(
+              "absolute inset-0 rounded-full border-2 border-b-transparent transition-colors",
+              STATE_RING[state],
+              busy && "pet-spin"
+            )}
+          />
+          <span className={cn("size-1.5 rounded-full", STATE_DOT[state])} />
         </div>
       </button>
     </div>
