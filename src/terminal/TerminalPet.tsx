@@ -111,17 +111,17 @@ export function TerminalPet({
         className="group relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card pet-float"
         title={title}
       >
-        <div className="relative inline-flex size-12 items-center justify-center overflow-hidden rounded-xl bg-black/20">
+        <div className="relative inline-flex size-16 items-center justify-center overflow-hidden rounded-xl bg-black/20">
           <img
             src={imageUrl}
             alt="Husk companion pet"
-            className="size-10 object-contain"
+            className="size-14 object-contain"
             draggable={false}
           />
         </div>
-        <div className="flex items-center gap-1">
-          <span className={cn("size-1.5 rounded-full", PET_DOT[state])} />
-          <span className="text-[8px] font-medium text-muted-foreground">{PET_LABEL[state]}</span>
+        <div className="flex items-center gap-1.5">
+          <span className={cn("size-2 rounded-full", PET_DOT[state])} />
+          <span className="text-[9px] font-medium text-muted-foreground">{PET_LABEL[state]}</span>
         </div>
       </button>
     </div>
