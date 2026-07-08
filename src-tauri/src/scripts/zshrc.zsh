@@ -151,16 +151,26 @@ _husk_disable_autosuggestions() {
   if (( $+functions[_zsh_autosuggest_start] )); then
     add-zsh-hook -d precmd _zsh_autosuggest_start 2>/dev/null || true
   fi
-  # Disable the active widget set
+  # Disable the active widget set and delete accept widgets so arrow keys
+  # can't accidentally accept a suggestion and paste a previous command.
+  for widget in \
+    autosuggest-suggest \
+    autosuggest-accept \
+    autosuggest-accept-or-clear \
+    autosuggest-clear \
+    autosuggest-fetch \
+    autosuggest-toggle \
+    autosuggest-execute
+  do
+    if (( $+widgets[$widget] )); then
+      zle -D $widget 2>/dev/null || true
+    fi
+  done
   if (( $+functions[_zsh_autosuggest_disable] )); then
     _zsh_autosuggest_disable 2>/dev/null || true
   fi
-  # Remove the core autosuggest widget entirely so it can never trigger
-  if (( $+widgets[autosuggest-suggest] )); then
-    zle -D autosuggest-suggest 2>/dev/null || true
-  fi
   # Unset internal functions to prevent any delayed start from a plugin manager
-  unfunction _zsh_autosuggest_start _zsh_autosuggest_fetch _zsh_autosuggest_suggest 2>/dev/null || true
+  unfunction _zsh_autosuggest_start _zsh_autosuggest_fetch _zsh_autosuggest_suggest _zsh_autosuggest_accept 2>/dev/null || true
 }
 _husk_disable_autosuggestions
 unfunction _husk_disable_autosuggestions 2>/dev/null || true
@@ -263,6 +273,14 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     if (( $+functions[_zsh_autosuggest_clear] )); then
       _zsh_autosuggest_clear 2>/dev/null
     fi
+    # Nuclear re-disable: plugin managers (zsh-defer, antigen, etc.) may load
+    # autosuggestions after our initial guard. Strip accept widgets on every
+    # prompt so arrow keys from click-to-position never paste a previous command.
+    for widget in autosuggest-suggest autosuggest-accept autosuggest-accept-or-clear autosuggest-clear autosuggest-fetch autosuggest-toggle autosuggest-execute; do
+      if (( $+widgets[$widget] )); then
+        zle -D $widget 2>/dev/null || true
+      fi
+    done
   }
 
   _husk_preexec() {

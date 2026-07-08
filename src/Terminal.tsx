@@ -292,7 +292,7 @@ export function TerminalView({
     const x = e.clientX - screenRect.left - padL;
     const y = e.clientY - screenRect.top;
 
-    const col = Math.floor(x / cellW);
+    let col = Math.floor(x / cellW);
     const row = Math.floor(y / cellH) + buf.viewportY;
 
     const curCol = buf.cursorX;
@@ -301,6 +301,17 @@ export function TerminalView({
     if (row < prompt.row || row > curRow) return;
     if (row === prompt.row && col < prompt.col) return;
     if (col < 0 || col >= term.cols) return;
+
+    // Don't move right past the current input end: sending right arrows beyond
+    // the typed command can cause zsh-autosuggestions/fish to accept a history
+    // suggestion and paste a previous command (phantom paste bug).
+    if (row === curRow && col > curCol) {
+      const line = buf.getLine(curRow)?.translateToString(true) ?? "";
+      const inputEnd = Math.max(curCol, line.trimEnd().length);
+      col = Math.min(col, inputEnd);
+    }
+
+    if (col === curCol && row === curRow) return;
 
     const rowDelta = row - curRow;
     const colDelta = col - curCol;
