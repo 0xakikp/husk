@@ -261,10 +261,6 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
     className="composer-panel animate-composer-in"
     style={{
       maxHeight: messages.length ? 'min(40vh, 280px)' : 'auto',
-      marginTop: gap,
-      marginLeft: gap,
-      marginRight: gap,
-      marginBottom: gap,
       borderRadius: gap ? '16px' : '16px 16px 0 0',
     }}
   >

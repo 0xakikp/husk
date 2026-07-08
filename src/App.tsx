@@ -1890,7 +1890,6 @@ function App() {
                   "absolute inset-0 flex flex-col",
                   activeKind !== "term" && "invisible pointer-events-none",
                   prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
-                  prefs.panelGaps > 0 && prefs.panelGapStyle !== "none" && activeKind === "term" && `gap-pattern-${prefs.panelGapStyle}`,
                 )}
                 aria-hidden={activeKind !== "term"}
               >
@@ -1907,6 +1906,12 @@ function App() {
                   >
                     <TerminalStack term={term} viewActive={activeKind === "term"} />
                   </ErrorBoundary>
+                  {prefs.panelGaps > 0 && (
+                    <div
+                      className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
+                      style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
+                    />
+                  )}
                   <TerminalAiComposer activeTabId={term.activeId} />
                 </div>
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
@@ -1932,6 +1937,12 @@ function App() {
                     <div className="flex-1 overflow-hidden">
                       <EditorArea files={openFiles} activePath={activeFile} />
                     </div>
+                    {prefs.panelGaps > 0 && (
+                      <div
+                        className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
+                        style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
+                      />
+                    )}
                     <TerminalAiComposer activeTabId={term.activeId} />
                   </div>
                 ) : (
