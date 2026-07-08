@@ -51,7 +51,7 @@ const DEFAULT_H = 520;
 function getBubblePos(): { x: number; y: number } {
   return {
     x: window.innerWidth - BUBBLE_SIZE - PAD - 20, // 20px left of right edge
-    y: window.innerHeight - BUBBLE_SIZE - PAD - 56 - 20, // 20px above bottom
+    y: window.innerHeight - BUBBLE_SIZE - PAD - 120 - 20, // 20px above bottom bar area
   };
 }
 
