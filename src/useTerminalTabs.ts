@@ -3,6 +3,7 @@ import { getActiveTerminalCwd, useActiveTerminalCwd } from "./ai/terminalContext
 import { getWorkspaceRoot } from "./workspace/store";
 import { getPrefs } from "./settings/preferences";
 import { homeDir } from "./fs";
+import { renameSession, tabSessionId } from "./ai/sessionStore";
 import {
   newLeaf,
   splitPane,
@@ -274,8 +275,12 @@ export function useTerminalTabs() {
   const ratioLeaf = (tabId: number, splitId: number, ratio: number) =>
     updateTab(tabId, (t) => ({ ...t, root: setRatio(t.root, splitId, ratio) }));
 
-  const renameTab = (id: number, title: string) =>
-    updateTab(id, (t) => ({ ...t, title: title.trim() || t.title, renamed: true }));
+  const renameTab = (id: number, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    updateTab(id, (t) => ({ ...t, title: trimmed, renamed: true }));
+    renameSession(tabSessionId(id), trimmed);
+  };
 
   const setTabColor = (id: number, color: string | undefined) =>
     updateTab(id, (t) => ({ ...t, color }));
