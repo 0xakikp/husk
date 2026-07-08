@@ -336,13 +336,13 @@ export function AppearanceSection() {
         </div>
       </div>
 
-      {/* ── AI Floating Bubble ── */}
+      {/* ── AI Composer ── */}
       <div className="flex flex-col gap-2">
-        <Label>AI Floating Bubble</Label>
+        <Label>AI Composer</Label>
         <div className="grid grid-cols-2 gap-2">
           <SliderRow
-            title="Window opacity"
-            description="Background transparency"
+            title="Panel opacity"
+            description="Composer background transparency"
             value={p.aiMiniOpacity}
             min={10}
             max={100}
@@ -351,16 +351,18 @@ export function AppearanceSection() {
           />
           <SliderRow
             title="Font size"
-            description="Chat text size in bubble"
+            description="Chat text size"
             value={p.aiMiniFontSize}
             min={9}
             max={18}
             step={1}
             onChange={(v) => setPrefs({ aiMiniFontSize: v })}
           />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
           <SliderRow
             title="BG blur"
-            description="Image softness"
+            description="Wallpaper softness"
             value={p.aiMiniBgBlur}
             min={0}
             max={20}
@@ -380,7 +382,7 @@ export function AppearanceSection() {
         <SettingRow
           className="rounded border border-border/40 bg-muted/20 py-2"
           title="Background image"
-          description="Show a custom image behind the AI floating bubble."
+          description="Show a custom image behind the AI composer."
         >
           <Switch checked={p.aiMiniBgEnabled} onCheckedChange={(v) => setPrefs({ aiMiniBgEnabled: v })} />
         </SettingRow>

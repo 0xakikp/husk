@@ -10,7 +10,7 @@ import { getActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
-import { readFile } from "../fs";
+import { readFile, readFileBase64 } from "../fs";
 import "./TerminalAiComposer.css";
 
 interface CodeBlock {
@@ -81,6 +81,8 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
 
+  const [aiBgUrl, setAiBgUrl] = useState<string | null>(null);
+
   const session = getSession(activeTabId);
   const messages = session.messages;
   const input = session.input;
@@ -92,6 +94,22 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   const setMessages = (updater: (prev: Message[]) => Message[]) => {
     updateSession(activeTabId, (s) => ({ ...s, messages: updater(s.messages) }));
   };
+
+  useEffect(() => {
+    if (!prefs.aiMiniBgEnabled || !prefs.aiMiniBgPath) {
+      setAiBgUrl(null);
+      return;
+    }
+    let cancelled = false;
+    readFileBase64(prefs.aiMiniBgPath)
+      .then((url) => {
+        if (!cancelled) setAiBgUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setAiBgUrl(null);
+      });
+    return () => { cancelled = true; };
+  }, [prefs.aiMiniBgEnabled, prefs.aiMiniBgPath]);
 
   useEffect(() => {
     return registerComposerToggle(() => setOpen((v) => !v));
@@ -262,7 +280,13 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
     style={{
       maxHeight: messages.length ? 'min(40vh, 280px)' : 'auto',
       borderRadius: gap ? '16px' : '16px 16px 0 0',
-    }}
+      '--composer-opacity': prefs.aiMiniOpacity / 100,
+      '--composer-font-size': `${prefs.aiMiniFontSize}px`,
+      '--composer-bg-image': aiBgUrl ? `url("${aiBgUrl}")` : 'none',
+      '--composer-bg-opacity': prefs.aiMiniBgOpacity / 100,
+      '--composer-bg-blur': `${prefs.aiMiniBgBlur}px`,
+      '--composer-bg-dim': prefs.aiMiniBgDim / 100,
+    } as React.CSSProperties}
   >
       {/* Gradient border glow line at top */}
       <div className="composer-glow" />
