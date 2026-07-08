@@ -112,7 +112,7 @@ export function AiTabPanel() {
                     <button
                       type="button"
                       onClick={() => startRename(s.id, s.name)}
-                      className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:inline-flex"
+                      className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
                       title="Rename"
                     >
                       ⋮
@@ -120,7 +120,7 @@ export function AiTabPanel() {
                     <button
                       type="button"
                       onClick={() => archiveSession(s.id)}
-                      className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:inline-flex"
+                      className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
                       title="Archive"
                     >
                       <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
@@ -129,7 +129,7 @@ export function AiTabPanel() {
                       <button
                         type="button"
                         onClick={() => deleteSession(s.id)}
-                        className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover:inline-flex"
+                        className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-destructive/20 hover:text-destructive"
                         title="Delete"
                       >
                         <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
@@ -179,7 +179,7 @@ export function AiTabPanel() {
                       <button
                         type="button"
                         onClick={() => unarchiveSession(s.id)}
-                        className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:inline-flex"
+                        className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
                         title="Unarchive"
                       >
                         <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
@@ -187,7 +187,7 @@ export function AiTabPanel() {
                       <button
                         type="button"
                         onClick={() => deleteSession(s.id)}
-                        className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover:inline-flex"
+                        className="inline-flex size-4 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-destructive/20 hover:text-destructive"
                         title="Delete"
                       >
                         <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
