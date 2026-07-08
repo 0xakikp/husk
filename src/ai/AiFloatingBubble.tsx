@@ -50,7 +50,7 @@ const DEFAULT_H = 520;
 /** Static bubble position: bottom-right, well above the status bar */
 function getBubblePos(): { x: number; y: number } {
   return {
-    x: window.innerWidth - BUBBLE_SIZE - PAD - 20, // 20px left of right edge
+    x: window.innerWidth - BUBBLE_SIZE - PAD - 60, // 60px from right edge
     y: window.innerHeight - BUBBLE_SIZE - PAD - 120 - 20, // 20px above bottom bar area
   };
 }
