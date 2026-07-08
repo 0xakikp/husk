@@ -538,12 +538,15 @@ export function TerminalAiComposer({
                 <div className="composer-message-body">
                   <div className="composer-message-label">
                     {isUser ? (
-                      <span>You</span>
+                      <>
+                        <span className="dot" />
+                        <span>You</span>
+                      </>
                     ) : (
-                      <span>
+                      <>
                         <span className="composer-message-role-icon">✦</span>
-                        Husk AI
-                      </span>
+                        <span>Husk AI</span>
+                      </>
                     )}
                   </div>
                   {isUser ? (
@@ -558,7 +561,7 @@ export function TerminalAiComposer({
                       {codeBlocks.map((block, idx) => (
                         <div key={idx} className="composer-code-block">
                           <div className="composer-code-header">
-                            <span className="font-mono text-[9px] uppercase tracking-wider">{block.lang}</span>
+                            <span className="lang">{block.lang}</span>
                             <button
                               type="button"
                               onClick={() => runCommand(block.code)}
