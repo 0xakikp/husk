@@ -8,7 +8,7 @@ import { getProvider } from "../ai/providers";
 import { streamChat } from "../ai/client";
 import { getActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
-import { registerComposerToggle, registerComposerOpen } from "../ai/bubbleStore";
+import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { readFile } from "../fs";
 import "./TerminalAiComposer.css";
@@ -79,6 +79,7 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   const abortCtrlRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
 
   const session = getSession(activeTabId);
   const messages = session.messages;
@@ -99,8 +100,21 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   useEffect(() => {
     return registerComposerOpen((text) => {
       setOpen(true);
-      if (text) setInput(text);
-      setTimeout(() => textareaRef.current?.focus(), 50);
+      if (text) {
+        setInput(text);
+        setTimeout(() => textareaRef.current?.focus(), 50);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    return registerComposerSend((text) => {
+      setOpen(true);
+      setInput(text);
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        handleSendRef.current(text);
+      }, 60);
     });
   }, []);
 
@@ -116,9 +130,9 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
     }
   }, [messages, tick, busy]);
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || busy) return;
-    const text = input.trim();
+  const handleSend = useCallback(async (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
+    if (!text || busy) return;
     setInput("");
     setBusy(true);
     abortRef.current = false;
@@ -213,6 +227,10 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
     }
   }, [input, busy, messages, activeTabId]);
 
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
+
   const handleClose = () => {
     abortRef.current = true;
     abortCtrlRef.current?.abort();
@@ -228,13 +246,18 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
     runInActiveTerminal(cmd);
   };
 
+  const cfg = loadConfig();
+  const provider = cfg.providerId ? getProvider(cfg.providerId) : getProvider("openai");
+
   if (!open || !prefs.aiEnabled) return null;
 
   const currentFile = getEditorFile();
   const fileName = currentFile ? currentFile.split("/").pop() : null;
 
   return (
-    <div className="composer-panel animate-composer-in">
+  <div className="composer-panel animate-composer-in"
+    style={{ maxHeight: messages.length ? 'min(40vh, 280px)' : 'auto' }}
+  >
       {/* Gradient border glow line at top */}
       <div className="composer-glow" />
 
@@ -364,12 +387,30 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
         />
         <button
           type="button"
-          onClick={handleSend}
+          onClick={() => handleSend()}
           disabled={busy || !input.trim()}
           className="composer-send-btn"
         >
           {busy ? "…" : "Ask"}
         </button>
+      </div>
+
+      {/* Footer info */}
+      <div className="composer-footer">
+        <div className="flex items-center gap-1.5">
+          <span className="text-primary/60">●</span>
+          <span>{provider.label} · {cfg.model || provider.defaultModel}</span>
+          {currentFile && (
+            <>
+              <span>·</span>
+              <span title={currentFile}>file context</span>
+            </>
+          )}
+        </div>
+        <div className="composer-footer-shortcut">
+          <span className="composer-footer-kbd">Esc</span> close
+          <span className="composer-footer-kbd">Ctrl+Shift+L</span> toggle
+        </div>
       </div>
     </div>
   );

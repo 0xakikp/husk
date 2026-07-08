@@ -26,7 +26,7 @@ import {
   PinIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
-import { openBubble, toggleComposer, requestBubbleSwitch } from "./ai/bubbleStore";
+import { openBubble, toggleComposer, sendToComposer, requestBubbleSwitch } from "./ai/bubbleStore";
 import { getEditorSelection, getEditorFile, closeEditorFindWidget } from "./ai/editorStore";
 import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
@@ -1172,7 +1172,7 @@ function App() {
 
   useEffect(() => {
     setAiQueryListener((query) => {
-      openBubble(query);
+      sendToComposer(query);
     });
     return () => setAiQueryListener(null);
   }, []);

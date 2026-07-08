@@ -51,6 +51,22 @@ export function toggleComposer(): void {
   composerToggleFns.forEach((fn) => fn());
 }
 
+/* ── Composer send requests ── */
+
+const composerSendFns: Array<(text: string) => void> = [];
+
+export function registerComposerSend(fn: (text: string) => void): () => void {
+  composerSendFns.push(fn);
+  return () => {
+    const idx = composerSendFns.indexOf(fn);
+    if (idx >= 0) composerSendFns.splice(idx, 1);
+  };
+}
+
+export function sendToComposer(text: string): void {
+  composerSendFns.forEach((fn) => fn(text));
+}
+
 export function openComposer(text?: string): void {
   composerOpenFns.forEach((fn) => fn(text));
 }
