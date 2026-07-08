@@ -22,7 +22,35 @@ export function toggleBubble(): void {
 }
 
 export function openBubble(text?: string): void {
-  openFn?.(text);
+  // Floating bubble is retired; redirect to inline composer.
+  openComposer(text);
+}
+
+/* ── Composer toggle requests ── */
+
+let composerToggleFn: (() => void) | null = null;
+let composerOpenFn: ((text?: string) => void) | null = null;
+
+export function registerComposerToggle(fn: () => void): () => void {
+  composerToggleFn = fn;
+  return () => {
+    if (composerToggleFn === fn) composerToggleFn = null;
+  };
+}
+
+export function registerComposerOpen(fn: (text?: string) => void): () => void {
+  composerOpenFn = fn;
+  return () => {
+    if (composerOpenFn === fn) composerOpenFn = null;
+  };
+}
+
+export function toggleComposer(): void {
+  composerToggleFn?.();
+}
+
+export function openComposer(text?: string): void {
+  composerOpenFn?.(text);
 }
 
 /* ── Session switch requests ── */

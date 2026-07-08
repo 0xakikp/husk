@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { TerminalStack } from "./TerminalStack";
 import { TerminalBottomBar } from "./terminal/TerminalBottomBar";
+import { TerminalAiComposer } from "./terminal/TerminalAiComposer";
 import { runInActiveTerminal, typeInActiveTerminal } from "./ai/terminalContext";
 import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
@@ -25,8 +26,7 @@ import {
   PinIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
-import { AiFloatingBubble } from "./ai/AiFloatingBubble";
-import { openBubble, toggleBubble, requestBubbleSwitch } from "./ai/bubbleStore";
+import { openBubble, toggleComposer, requestBubbleSwitch } from "./ai/bubbleStore";
 import { getEditorSelection, getEditorFile, closeEditorFindWidget } from "./ai/editorStore";
 import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
@@ -973,7 +973,7 @@ function App() {
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [explainCtx, setExplainCtx] = useState<{ command: string; output: string; exitCode: number | null } | null>(null);
-  const [pendingAiQuery, setPendingAiQuery] = useState<string | undefined>(undefined);
+
   const explainLastError = () => setExplainCtx({ command: "", output: readActiveTerminal(), exitCode: getActiveTerminalExit() });
   const [dockerOpen, setDockerOpen] = useState(false);
   const [k8sOpen, setK8sOpen] = useState(false);
@@ -1172,7 +1172,7 @@ function App() {
 
   useEffect(() => {
     setAiQueryListener((query) => {
-      setPendingAiQuery(query);
+      openBubble(query);
     });
     return () => setAiQueryListener(null);
   }, []);
@@ -1239,7 +1239,7 @@ function App() {
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
         if (!prefs.aiEnabled) return;
         e.preventDefault();
-        toggleBubble();
+        toggleComposer();
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
         e.preventDefault();
         setSwitcherOpen((v) => !v);
@@ -1282,7 +1282,7 @@ function App() {
         ? [
             { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
             { id: "explain", label: "Explain last error (AI)", run: explainLastError },
-            { id: "ai-bubble", label: "Toggle AI chat", hint: "Ctrl/Cmd+Shift+A", run: () => toggleBubble() },
+            { id: "ai-bubble", label: "Toggle AI composer", hint: "Ctrl/Cmd+Shift+A", run: () => toggleComposer() },
             { id: "ai-explain-code", label: "AI: Explain selected code", run: () => {
               const sel = getEditorSelection();
               const file = getEditorFile();
@@ -1719,8 +1719,8 @@ function App() {
                 className={cn(
                   "size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
-                title="Toggle AI chat (Ctrl+Shift+L)"
-                onClick={() => toggleBubble()}
+                title="Toggle AI composer (Ctrl+Shift+L)"
+                onClick={() => toggleComposer()}
               >
                 <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
               </Button>
@@ -1893,7 +1893,7 @@ function App() {
                 )}
                 aria-hidden={activeKind !== "term"}
               >
-                <div className="relative min-h-0 flex-1">
+                <div className="relative flex min-h-0 flex-1 flex-col">
                   <ErrorBoundary
                     fallback={
                       <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
@@ -1906,6 +1906,7 @@ function App() {
                   >
                     <TerminalStack term={term} viewActive={activeKind === "term"} />
                   </ErrorBoundary>
+                  <TerminalAiComposer />
                 </div>
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
               </div>
@@ -2038,12 +2039,6 @@ function App() {
         <DialogLayer open={jobsOpen}>
           <JobsDialog onClose={() => setJobsOpen(false)} />
         </DialogLayer>
-        {prefs.aiEnabled && activeKind !== "settings" && (
-          <AiFloatingBubble
-            pendingQuery={pendingAiQuery}
-            activeTabId={term.activeId}
-          />
-        )}
         <DialogLayer open={prefs.aiEnabled && suggestOpen}>
           <SuggestDialog onClose={() => setSuggestOpen(false)} />
         </DialogLayer>
