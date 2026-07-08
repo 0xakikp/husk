@@ -8,6 +8,8 @@ import { streamChat } from "../ai/client";
 import { getActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { registerComposerToggle, registerComposerOpen } from "../ai/bubbleStore";
+import { getEditorFile, getEditorSelection } from "../ai/editorStore";
+import { readFile } from "../fs";
 
 interface CodeBlock {
   lang: string;
@@ -69,11 +71,28 @@ export function TerminalAiComposer() {
       return;
     }
 
-    const ctx = readActiveTerminal();
     const agent = getActiveAgent();
     let system =
       agent.systemPrompt +
-      "\n\nYou are a helpful terminal assistant. The user is working in a terminal. Respond concisely. If you suggest a shell command, wrap it in a code block.";
+      "\n\nYou are a helpful coding/terminal assistant. The user is working in Husk, a terminal+editor app. Respond concisely. If you suggest a shell command, wrap it in a code block.";
+
+    // Editor context: always include current file and selection if available
+    const currentFile = getEditorFile();
+    const selection = getEditorSelection();
+    if (currentFile) {
+      try {
+        const content = await readFile(currentFile);
+        system += `\n\nCurrent open file: ${currentFile}`;
+        if (selection) {
+          system += `\nSelected lines ${selection.startLine}-${selection.endLine}:\n\`\`\`\n${selection.text}\n\`\`\``;
+        }
+        system += `\n\nFull file content:\n\`\`\`\n${content}\n\`\`\``;
+      } catch {
+        system += `\n\nCurrent open file: ${currentFile} (could not read content)`;
+      }
+    }
+
+    const ctx = readActiveTerminal();
     if (ctx) {
       system += `\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\``;
     }
@@ -138,7 +157,7 @@ export function TerminalAiComposer() {
               handleClose();
             }
           }}
-          placeholder="Ask AI about this terminal..."
+          placeholder="Ask AI about this file or terminal..."
           rows={1}
           className="min-h-[28px] max-h-[120px] flex-1 resize-none rounded-md border border-border/40 bg-muted/30 px-2 py-1 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40"
         />
