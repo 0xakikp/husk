@@ -1906,7 +1906,7 @@ function App() {
                   >
                     <TerminalStack term={term} viewActive={activeKind === "term"} />
                   </ErrorBoundary>
-                  <TerminalAiComposer />
+                  <TerminalAiComposer activeTabId={term.activeId} />
                 </div>
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
               </div>
@@ -1931,7 +1931,7 @@ function App() {
                     <div className="flex-1 overflow-hidden">
                       <EditorArea files={openFiles} activePath={activeFile} />
                     </div>
-                    <TerminalAiComposer />
+                    <TerminalAiComposer activeTabId={term.activeId} />
                   </div>
                 ) : (
                   <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-muted-foreground">

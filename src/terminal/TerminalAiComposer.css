@@ -1,0 +1,347 @@
+/* ── Premium AI composer panel ──────────────────────────────────────────── */
+
+.composer-panel {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid rgba(var(--primary), 0.25);
+  background: linear-gradient(180deg, rgba(var(--card), 0.97) 0%, rgba(var(--background), 0.98) 100%);
+  padding: 12px 14px 14px;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25), 0 -1px 0 rgba(255, 255, 255, 0.03) inset;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  max-height: 360px;
+}
+
+.composer-glow {
+  position: absolute;
+  top: 0;
+  left: 5%;
+  right: 5%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--primary) / 0.6) 20%,
+    hsl(var(--primary) / 1) 50%,
+    hsl(var(--primary) / 0.6) 80%,
+    transparent 100%
+  );
+  box-shadow: 0 0 12px hsl(var(--primary) / 0.5), 0 0 24px hsl(var(--primary) / 0.2);
+  pointer-events: none;
+}
+
+@keyframes composer-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-composer-in {
+  animation: composer-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+}
+
+.composer-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.2), hsl(var(--primary) / 0.05));
+  border: 1px solid hsl(var(--primary) / 0.3);
+  font-size: 10px;
+  color: hsl(var(--primary));
+  text-shadow: 0 0 8px hsl(var(--primary) / 0.5);
+}
+
+.composer-avatar-lg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.2), hsl(var(--primary) / 0.05));
+  border: 1px solid hsl(var(--primary) / 0.25);
+  font-size: 18px;
+  color: hsl(var(--primary));
+  text-shadow: 0 0 16px hsl(var(--primary) / 0.5);
+}
+
+.composer-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: hsl(var(--muted-foreground) / 0.8);
+  transition: all 0.15s ease;
+}
+
+.composer-icon-btn:hover {
+  background: hsl(var(--muted) / 0.5);
+  color: hsl(var(--foreground));
+}
+
+.composer-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+  min-height: 60px;
+  max-height: 240px;
+}
+
+.composer-messages::-webkit-scrollbar {
+  width: 4px;
+}
+
+.composer-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.composer-messages::-webkit-scrollbar-thumb {
+  background: hsl(var(--border) / 0.6);
+  border-radius: 2px;
+}
+
+.composer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 8px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.composer-message {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  animation: composer-in 0.2s ease-out forwards;
+}
+
+.composer-message-user {
+  flex-direction: row-reverse;
+}
+
+.composer-message-user .composer-message-body {
+  background: hsl(var(--primary) / 0.12);
+  border: 1px solid hsl(var(--primary) / 0.18);
+  border-radius: 12px 12px 4px 12px;
+  color: hsl(var(--foreground));
+  padding: 10px 12px;
+}
+
+.composer-message-avatar {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: hsl(var(--muted) / 0.4);
+  border: 1px solid hsl(var(--border) / 0.5);
+  font-size: 10px;
+  color: hsl(var(--primary));
+  margin-top: 2px;
+}
+
+.composer-message-body {
+  flex: 1;
+  min-width: 0;
+  background: hsl(var(--muted) / 0.25);
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 12px 12px 12px 4px;
+  padding: 10px 12px;
+  color: hsl(var(--foreground) / 0.9);
+}
+
+.composer-code-block {
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.composer-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: hsl(var(--muted) / 0.2);
+  border-bottom: 1px solid hsl(var(--border) / 0.3);
+  color: hsl(var(--muted-foreground) / 0.8);
+}
+
+.composer-run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 5px;
+  background: hsl(var(--primary) / 0.15);
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: hsl(var(--primary));
+  transition: all 0.15s ease;
+}
+
+.composer-run-btn:hover {
+  background: hsl(var(--primary) / 0.25);
+}
+
+.composer-code-pre {
+  overflow-x: auto;
+  padding: 10px 12px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: hsl(var(--foreground) / 0.85);
+}
+
+.composer-code-pre code {
+  background: transparent;
+  color: inherit;
+}
+
+/* Thinking state */
+
+.composer-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.composer-pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  box-shadow: 0 0 10px hsl(var(--primary) / 0.6);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    transform: scale(0.7);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.composer-blob {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(var(--primary) / 0.8);
+  animation: blob-bounce 1.2s ease-in-out infinite;
+}
+
+.composer-blob-1 {
+  animation-delay: 0ms;
+}
+
+.composer-blob-2 {
+  animation-delay: 160ms;
+}
+
+.composer-blob-3 {
+  animation-delay: 320ms;
+}
+
+@keyframes blob-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Input */
+
+.composer-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid hsl(var(--border) / 0.4);
+}
+
+.composer-textarea {
+  flex: 1;
+  min-height: 34px;
+  max-height: 120px;
+  resize: none;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--background) / 0.6);
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: hsl(var(--foreground));
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.composer-textarea::placeholder {
+  color: hsl(var(--muted-foreground) / 0.5);
+}
+
+.composer-textarea:focus {
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
+  background: hsl(var(--background) / 0.8);
+}
+
+.composer-send-btn {
+  flex-shrink: 0;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.9), hsl(var(--primary) / 0.7));
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--primary-foreground));
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 10px hsl(var(--primary) / 0.2);
+}
+
+.composer-send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px hsl(var(--primary) / 0.3);
+}
+
+.composer-send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

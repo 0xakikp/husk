@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, ComputerTerminal02Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, ComputerTerminal02Icon, PlusSignIcon, CommandIcon } from "@hugeicons/core-free-icons";
+import { cn } from "../lib/utils";
 import { usePrefs } from "../settings/preferences";
 import { loadConfig, getKey } from "../ai/store";
 import { getProvider } from "../ai/providers";
@@ -10,10 +11,17 @@ import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { registerComposerToggle, registerComposerOpen } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { readFile } from "../fs";
+import "./TerminalAiComposer.css";
 
 interface CodeBlock {
   lang: string;
   code: string;
+}
+
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  streaming?: boolean;
 }
 
 function parseCodeBlocks(text: string): CodeBlock[] {
@@ -30,15 +38,59 @@ function stripCodeBlocks(text: string): string {
   return text.replace(/```(\w*)\n?([\s\S]*?)```/g, "").trim();
 }
 
-export function TerminalAiComposer() {
+/* ── Per-tab session store ──────────────────────────────────────────────── */
+
+type ComposerSession = {
+  messages: Message[];
+  input: string;
+};
+
+const sessions = new Map<number, ComposerSession>();
+const subscribers = new Set<() => void>();
+
+function getSession(tabId: number): ComposerSession {
+  if (!sessions.has(tabId)) {
+    sessions.set(tabId, { messages: [], input: "" });
+  }
+  return sessions.get(tabId)!;
+}
+
+function updateSession(tabId: number, updater: (s: ComposerSession) => ComposerSession) {
+  const next = updater(getSession(tabId));
+  sessions.set(tabId, next);
+  subscribers.forEach((fn) => fn());
+}
+
+function subscribeSessions(fn: () => void): () => void {
+  subscribers.add(fn);
+  return () => {
+    subscribers.delete(fn);
+  };
+}
+
+/* ── Component ───────────────────────────────────────────────────────────── */
+
+export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   const prefs = usePrefs();
   const [open, setOpen] = useState(false);
-  const [input, setInput] = useState("");
-  const [response, setResponse] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);
   const abortRef = useRef(false);
   const abortCtrlRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const session = getSession(activeTabId);
+  const messages = session.messages;
+  const input = session.input;
+
+  const setInput = (value: string) => {
+    updateSession(activeTabId, (s) => ({ ...s, input: value }));
+  };
+
+  const setMessages = (updater: (prev: Message[]) => Message[]) => {
+    updateSession(activeTabId, (s) => ({ ...s, messages: updater(s.messages) }));
+  };
 
   useEffect(() => {
     return registerComposerToggle(() => setOpen((v) => !v));
@@ -52,21 +104,39 @@ export function TerminalAiComposer() {
     });
   }, []);
 
+  // Re-render when any session changes
+  useEffect(() => {
+    subscribeSessions(() => setTick((v) => v + 1));
+  }, []);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [messages, tick, busy]);
+
   const handleSend = useCallback(async () => {
     if (!input.trim() || busy) return;
     const text = input.trim();
     setInput("");
-    setResponse("");
     setBusy(true);
     abortRef.current = false;
     abortCtrlRef.current?.abort();
     abortCtrlRef.current = new AbortController();
 
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setMessages((prev) => [...prev, { role: "assistant", content: "", streaming: true }]);
+
     const cfg = loadConfig();
     const provider = getProvider(cfg.providerId);
     const apiKey = getKey(provider.id);
     if (!provider.keyless && !apiKey) {
-      setResponse(`⚠️ Set a ${provider.label} API key in Settings → Models first.`);
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { role: "assistant", content: `⚠️ Set a ${provider.label} API key in Settings → Models first.` };
+        return next;
+      });
       setBusy(false);
       return;
     }
@@ -74,9 +144,8 @@ export function TerminalAiComposer() {
     const agent = getActiveAgent();
     let system =
       agent.systemPrompt +
-      "\n\nYou are a helpful coding/terminal assistant. The user is working in Husk, a terminal+editor app. Respond concisely. If you suggest a shell command, wrap it in a code block.";
+      "\n\nYou are a helpful coding/terminal assistant inside Husk. Respond concisely. If you suggest a shell command, wrap it in a code block.";
 
-    // Editor context: always include current file and selection if available
     const currentFile = getEditorFile();
     const selection = getEditorSelection();
     if (currentFile) {
@@ -106,44 +175,176 @@ export function TerminalAiComposer() {
           baseURL: cfg.baseURL,
         },
         system,
-        [{ role: "user", content: text }],
+        [...messages, { role: "user", content: text }],
         (delta) => {
           if (abortRef.current) return;
-          setResponse((prev) => prev + delta);
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === "assistant") {
+              next[next.length - 1] = { ...last, content: last.content + delta };
+            }
+            return next;
+          });
         },
         {},
         abortCtrlRef.current.signal,
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setResponse((prev) => prev + `\n\n⚠️ ${msg}`);
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.role === "assistant") {
+          next[next.length - 1] = { ...last, content: last.content + `\n\n⚠️ ${msg}` };
+        }
+        return next;
+      });
     } finally {
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.streaming) {
+          next[next.length - 1] = { ...last, streaming: false };
+        }
+        return next;
+      });
       setBusy(false);
     }
-  }, [input, busy]);
+  }, [input, busy, messages, activeTabId]);
 
   const handleClose = () => {
     abortRef.current = true;
     abortCtrlRef.current?.abort();
     setOpen(false);
-    setInput("");
-    setResponse("");
     setBusy(false);
+  };
+
+  const newSession = () => {
+    updateSession(activeTabId, () => ({ messages: [], input: "" }));
   };
 
   const runCommand = (cmd: string) => {
     runInActiveTerminal(cmd);
   };
 
-  const textParts = response ? stripCodeBlocks(response) : "";
-  const codeBlocks = response ? parseCodeBlocks(response) : [];
-
   if (!open || !prefs.aiEnabled) return null;
 
+  const currentFile = getEditorFile();
+  const fileName = currentFile ? currentFile.split("/").pop() : null;
+
   return (
-    <div className="shrink-0 border-t border-border/60 bg-card/95 p-2.5 shadow-lg backdrop-blur-sm">
-      <div className="flex items-center gap-2">
-        <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">AI</span>
+    <div className="composer-panel animate-composer-in">
+      {/* Gradient border glow line at top */}
+      <div className="composer-glow" />
+
+      {/* Header */}
+      <div className="composer-header">
+        <div className="flex items-center gap-2">
+          <span className="composer-avatar">✦</span>
+          <span className="text-[11px] font-semibold text-foreground">Husk AI</span>
+          <span className="text-[10px] text-muted-foreground/60">·</span>
+          <span className="text-[10px] text-muted-foreground/70">Tab {activeTabId}</span>
+          {fileName && (
+            <>
+              <span className="text-[10px] text-muted-foreground/60">·</span>
+              <span className="flex items-center gap-1 text-[10px] text-primary/80">
+                <HugeiconsIcon icon={CommandIcon} size={10} strokeWidth={1.5} />
+                {fileName}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={newSession}
+            className="composer-icon-btn"
+            title="New session"
+          >
+            <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={1.75} />
+          </button>
+          <button type="button" onClick={handleClose} className="composer-icon-btn" title="Close">
+            <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div ref={scrollRef} className="composer-messages">
+        {messages.length === 0 ? (
+          <div className="composer-empty">
+            <div className="composer-avatar-lg">✦</div>
+            <p className="text-[12px] font-medium text-foreground">What should I do?</p>
+            <p className="text-[11px] text-muted-foreground/60">Ask about the open file, terminal output, or generate commands.</p>
+          </div>
+        ) : (
+          messages.map((msg, i) => {
+            const isUser = msg.role === "user";
+            const textParts = isUser ? msg.content : stripCodeBlocks(msg.content);
+            const codeBlocks = isUser ? [] : parseCodeBlocks(msg.content);
+            return (
+              <div key={i} className={cn("composer-message", isUser && "composer-message-user")}>
+                {!isUser && (
+                  <div className="composer-message-avatar">
+                    {msg.streaming ? <span className="composer-pulse-dot" /> : "✦"}
+                  </div>
+                )}
+                <div className="composer-message-body">
+                  {isUser ? (
+                    <div className="whitespace-pre-wrap text-[12px] text-foreground">{msg.content}</div>
+                  ) : (
+                    <>
+                      {textParts && (
+                        <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">
+                          {textParts}
+                        </div>
+                      )}
+                      {codeBlocks.map((block, idx) => (
+                        <div key={idx} className="composer-code-block">
+                          <div className="composer-code-header">
+                            <span className="font-mono text-[9px] uppercase tracking-wider">{block.lang}</span>
+                            <button
+                              type="button"
+                              onClick={() => runCommand(block.code)}
+                              className="composer-run-btn"
+                            >
+                              <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
+                              Run
+                            </button>
+                          </div>
+                          <pre className="composer-code-pre">
+                            <code>{block.code}</code>
+                          </pre>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {busy && (!messages.length || messages[messages.length - 1].role !== "assistant" || messages[messages.length - 1].content) && (
+          <div className="composer-message">
+            <div className="composer-message-avatar">
+              <span className="composer-pulse-dot" />
+            </div>
+            <div className="composer-message-body">
+              <div className="composer-thinking">
+                <span className="text-[12px] text-muted-foreground">Husk is thinking</span>
+                <span className="composer-blob composer-blob-1" />
+                <span className="composer-blob composer-blob-2" />
+                <span className="composer-blob composer-blob-3" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="composer-input-row">
         <textarea
           ref={textareaRef}
           value={input}
@@ -157,53 +358,19 @@ export function TerminalAiComposer() {
               handleClose();
             }
           }}
-          placeholder="Ask AI about this file or terminal..."
+          placeholder="Ask Husk..."
           rows={1}
-          className="min-h-[28px] max-h-[120px] flex-1 resize-none rounded-md border border-border/40 bg-muted/30 px-2 py-1 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40"
+          className="composer-textarea"
         />
         <button
           type="button"
           onClick={handleSend}
           disabled={busy || !input.trim()}
-          className="shrink-0 rounded-md bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-40"
+          className="composer-send-btn"
         >
-          {busy ? "..." : "Ask"}
-        </button>
-        <button
-          type="button"
-          onClick={handleClose}
-          className="shrink-0 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Close"
-        >
-          <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
+          {busy ? "…" : "Ask"}
         </button>
       </div>
-
-      {response && (
-        <div className="mt-2.5 max-h-[220px] overflow-y-auto rounded-md border border-border/40 bg-muted/20 p-2.5 text-[12px]">
-          {textParts && (
-            <div className="mb-2 whitespace-pre-wrap leading-relaxed text-foreground">{textParts}</div>
-          )}
-          {codeBlocks.map((block, i) => (
-            <div key={i} className="mb-2 overflow-hidden rounded-md border border-border/40 bg-black/60 p-2 last:mb-0">
-              <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
-                <span className="font-mono uppercase">{block.lang}</span>
-                <button
-                  type="button"
-                  onClick={() => runCommand(block.code)}
-                  className="inline-flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 text-primary hover:bg-primary/30"
-                >
-                  <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
-                  Run
-                </button>
-              </div>
-              <pre className="overflow-x-auto font-mono text-[11px] text-foreground/90">
-                <code>{block.code}</code>
-              </pre>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

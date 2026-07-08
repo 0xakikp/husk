@@ -1,6 +1,6 @@
 [package]
 name = "husk"
-version = "0.4.31"
+version = "0.4.32"
 description = "A terminal with built-in AI and a code editor"
 authors = ["you"]
 edition = "2021"
