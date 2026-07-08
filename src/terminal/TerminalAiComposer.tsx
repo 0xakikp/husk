@@ -254,9 +254,19 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   const currentFile = getEditorFile();
   const fileName = currentFile ? currentFile.split("/").pop() : null;
 
+  const gap = prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined;
+  const gapStyle = prefs.panelGaps > 0 && prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : "";
+
   return (
-  <div className="composer-panel animate-composer-in"
-    style={{ maxHeight: messages.length ? 'min(40vh, 280px)' : 'auto' }}
+  <div
+    className={cn("composer-panel animate-composer-in", gapStyle)}
+    style={{
+      maxHeight: messages.length ? 'min(40vh, 280px)' : 'auto',
+      marginLeft: gap,
+      marginRight: gap,
+      marginBottom: gap,
+      borderRadius: gap ? '16px' : '16px 16px 0 0',
+    }}
   >
       {/* Gradient border glow line at top */}
       <div className="composer-glow" />
