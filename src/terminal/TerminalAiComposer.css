@@ -168,11 +168,15 @@
 .composer-messages {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
   overflow-y: auto;
   padding-right: 4px;
   min-height: 0;
   max-height: min(30vh, 180px);
+}
+
+.composer-full .composer-messages {
+  max-height: none;
 }
 
 .composer-messages::-webkit-scrollbar {
@@ -204,28 +208,45 @@
   gap: 10px;
   align-items: flex-start;
   animation: composer-in 0.2s ease-out forwards;
+  max-width: 90%;
 }
 
 .composer-message-user {
+  align-self: flex-end;
   flex-direction: row-reverse;
+  max-width: 80%;
 }
 
 .composer-message-user .composer-message-body {
-  background: hsl(var(--primary) / 0.12);
-  border: 1px solid hsl(var(--primary) / 0.18);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.18), hsl(var(--primary) / 0.08));
+  border: 1px solid hsl(var(--primary) / 0.25);
   border-radius: 16px 16px 4px 16px;
   color: hsl(var(--foreground));
-  padding: 10px 12px;
+  padding: 10px 14px;
+  box-shadow: 0 2px 12px hsl(var(--primary) / 0.08);
+}
+
+.composer-message-ai {
+  align-self: flex-start;
+  max-width: 92%;
+}
+
+.composer-message-ai .composer-message-body {
+  background: hsl(var(--muted) / 0.22);
+  border: 1px solid hsl(var(--border) / 0.35);
+  border-radius: 16px 16px 16px 4px;
+  padding: 10px 14px;
+  color: hsl(var(--foreground) / 0.95);
 }
 
 .composer-message-avatar {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 8px;
   background: hsl(var(--muted) / 0.4);
   border: 1px solid hsl(var(--border) / 0.5);
   font-size: 10px;
@@ -233,14 +254,44 @@
   margin-top: 2px;
 }
 
+.composer-message-user .composer-message-avatar {
+  background: hsl(var(--primary) / 0.15);
+  border-color: hsl(var(--primary) / 0.25);
+  color: hsl(var(--primary));
+  border-radius: 50%;
+}
+
 .composer-message-body {
   flex: 1;
   min-width: 0;
-  background: hsl(var(--muted) / 0.25);
-  border: 1px solid hsl(var(--border) / 0.4);
-  border-radius: 16px 16px 16px 4px;
-  padding: 10px 12px;
-  color: hsl(var(--foreground) / 0.9);
+}
+
+.composer-message-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground) / 0.6);
+  margin-bottom: 3px;
+}
+
+.composer-message-user .composer-message-label {
+  text-align: right;
+  color: hsl(var(--primary) / 0.7);
+}
+
+.composer-message-ai .composer-message-label {
+  color: hsl(var(--primary) / 0.7);
+}
+
+.composer-message-role-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  font-size: 9px;
 }
 
 .composer-code-block {
@@ -426,6 +477,35 @@
   gap: 8px;
   padding-top: 6px;
   border-top: 1px solid hsl(var(--border) / 0.4);
+}
+
+.composer-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.composer-input-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  color: hsl(var(--muted-foreground) / 0.7);
+  transition: all 0.15s ease;
+}
+
+.composer-input-action-btn:hover {
+  background: hsl(var(--muted) / 0.4);
+  color: hsl(var(--foreground));
+}
+
+.composer-input-action-btn.recording {
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.12);
+  animation: pulse-dot 1.4s ease-in-out infinite;
 }
 
 .composer-textarea {

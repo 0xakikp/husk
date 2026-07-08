@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, ComputerTerminal02Icon, PlusSignIcon, CommandIcon, FullScreenIcon, ArrowDownIcon, MessageMultiple02Icon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  ComputerTerminal02Icon,
+  PlusSignIcon,
+  CommandIcon,
+  FullScreenIcon,
+  ArrowDownIcon,
+  MessageMultiple02Icon,
+  VoiceIcon,
+  AttachmentSquareIcon,
+} from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs } from "../settings/preferences";
 import { loadConfig, getKey } from "../ai/store";
@@ -10,7 +20,8 @@ import { getActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
-import { readFile } from "../fs";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { readFile, readFileBase64 } from "../fs";
 import {
   AiMessage,
   getSession,
@@ -21,6 +32,39 @@ import {
   isTabSessionId,
 } from "../ai/sessionStore";
 import "./TerminalAiComposer.css";
+
+interface SpeechRecognitionEventLike {
+  results: SpeechRecognitionResultListLike;
+}
+
+interface SpeechRecognitionResultListLike {
+  length: number;
+  [i: number]: SpeechRecognitionResultLike;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  0: { transcript: string };
+}
+
+type SpeechRecognitionLike = EventTarget & {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+};
+
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  }
+}
 
 interface CodeBlock {
   lang: string;
@@ -304,6 +348,66 @@ export function TerminalAiComposer({
     onOpenInAiTab?.();
   };
 
+  // Voice input using Web Speech API
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  const toggleVoice = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      const current = getSession(sessionId).input;
+      setInput(current + "\n[Voice input is not supported in this environment]");
+      return;
+    }
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const recognition = new SR();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((r) => r[0].transcript)
+        .join("");
+      if (event.results[event.results.length - 1]?.isFinal) {
+        const current = getSession(sessionId).input;
+        setInput(current ? (current + " " + transcript).trim() : transcript);
+      }
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  const handleFileUpload = async () => {
+    try {
+      const path = await openDialog({ multiple: false, directory: false });
+      if (!path || typeof path !== "string") return;
+      const fileName = path.split("/").pop() || path;
+      const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(fileName);
+      let content = "";
+      try {
+        if (isImage) {
+          const b64 = await readFileBase64(path);
+          content = `[Attached image: ${fileName}]\n\n![${fileName}](data:image/${fileName.split(".").pop()};base64,${b64})`;
+        } else {
+          const text = await readFile(path);
+          content = `[Attached file: ${fileName}]\n\`\`\`\n${text}\n\`\`\``;
+        }
+      } catch (e) {
+        content = `[Failed to read file: ${fileName}]`;
+      }
+      const current = getSession(sessionId).input;
+      setInput(current ? (current + "\n\n" + content).trim() : content);
+    } catch (e) {
+      console.error("File upload failed", e);
+    }
+  };
+
   const cfg = loadConfig();
   const provider = cfg.providerId ? getProvider(cfg.providerId) : getProvider("openai");
 
@@ -415,13 +519,25 @@ export function TerminalAiComposer({
             const textParts = isUser ? msg.content : stripCodeBlocks(msg.content);
             const codeBlocks = isUser ? [] : parseCodeBlocks(msg.content);
             return (
-              <div key={i} className={cn("composer-message", isUser && "composer-message-user")}>
-                {!isUser && (
-                  <div className="composer-message-avatar">
+              <div key={i} className={cn("composer-message", isUser ? "composer-message-user" : "composer-message-ai")}>
+                {isUser ? (
+                  <div className="composer-message-avatar" title="You">Y</div>
+                ) : (
+                  <div className="composer-message-avatar" title="Husk AI">
                     {msg.streaming ? <span className="composer-pulse-dot" /> : "✦"}
                   </div>
                 )}
                 <div className="composer-message-body">
+                  <div className="composer-message-label">
+                    {isUser ? (
+                      <span>You</span>
+                    ) : (
+                      <span>
+                        <span className="composer-message-role-icon">✦</span>
+                        Husk AI
+                      </span>
+                    )}
+                  </div>
                   {isUser ? (
                     <div className="whitespace-pre-wrap text-[12px] text-foreground">{msg.content}</div>
                   ) : (
@@ -492,6 +608,24 @@ export function TerminalAiComposer({
       )}
 
       <div className="composer-input-row">
+        <div className="composer-input-actions">
+          <button
+            type="button"
+            onClick={toggleVoice}
+            className={cn("composer-input-action-btn", listening && "recording")}
+            title={listening ? "Stop listening" : "Voice input"}
+          >
+            <HugeiconsIcon icon={VoiceIcon} size={14} strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            onClick={handleFileUpload}
+            className="composer-input-action-btn"
+            title="Attach file"
+          >
+            <HugeiconsIcon icon={AttachmentSquareIcon} size={14} strokeWidth={1.75} />
+          </button>
+        </div>
         <textarea
           ref={textareaRef}
           value={input}
