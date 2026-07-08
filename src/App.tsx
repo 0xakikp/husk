@@ -560,7 +560,7 @@ function TabBar({
           animate={animationsEnabled}
         >
           <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} className="shrink-0" />
-          <span className="truncate">AI</span>
+          <span className="truncate">Husk AI</span>
         </TabChip>
         <Button
           variant="ghost"
