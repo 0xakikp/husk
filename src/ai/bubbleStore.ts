@@ -28,29 +28,31 @@ export function openBubble(text?: string): void {
 
 /* ── Composer toggle requests ── */
 
-let composerToggleFn: (() => void) | null = null;
-let composerOpenFn: ((text?: string) => void) | null = null;
+const composerToggleFns: Array<() => void> = [];
+const composerOpenFns: Array<(text?: string) => void> = [];
 
 export function registerComposerToggle(fn: () => void): () => void {
-  composerToggleFn = fn;
+  composerToggleFns.push(fn);
   return () => {
-    if (composerToggleFn === fn) composerToggleFn = null;
+    const idx = composerToggleFns.indexOf(fn);
+    if (idx >= 0) composerToggleFns.splice(idx, 1);
   };
 }
 
 export function registerComposerOpen(fn: (text?: string) => void): () => void {
-  composerOpenFn = fn;
+  composerOpenFns.push(fn);
   return () => {
-    if (composerOpenFn === fn) composerOpenFn = null;
+    const idx = composerOpenFns.indexOf(fn);
+    if (idx >= 0) composerOpenFns.splice(idx, 1);
   };
 }
 
 export function toggleComposer(): void {
-  composerToggleFn?.();
+  composerToggleFns.forEach((fn) => fn());
 }
 
 export function openComposer(text?: string): void {
-  composerOpenFn?.(text);
+  composerOpenFns.forEach((fn) => fn(text));
 }
 
 /* ── Session switch requests ── */

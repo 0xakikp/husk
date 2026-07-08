@@ -1927,15 +1927,11 @@ function App() {
               >
                 {/* Editor layer */}
                 {openFiles.length > 0 ? (
-                  <div
-                    className={cn(
-                      "h-full w-full overflow-hidden rounded-lg border border-border bg-background",
-                      prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
-                      prefs.panelShadows && "panel-shadow",
-                      prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active",
-                    )}
-                  >
-                    <EditorArea files={openFiles} activePath={activeFile} />
+                  <div className={cn("flex h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
+                    <div className="flex-1 overflow-hidden">
+                      <EditorArea files={openFiles} activePath={activeFile} />
+                    </div>
+                    <TerminalAiComposer />
                   </div>
                 ) : (
                   <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
