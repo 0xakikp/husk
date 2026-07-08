@@ -26,7 +26,8 @@ import {
   PinIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
-import { openBubble, toggleComposer, sendToComposer, requestBubbleSwitch } from "./ai/bubbleStore";
+import { openBubble, toggleComposer, sendToComposer } from "./ai/bubbleStore";
+import { setActiveSessionId } from "./ai/sessionStore";
 import { getEditorSelection, getEditorFile, closeEditorFindWidget } from "./ai/editorStore";
 import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
@@ -1663,7 +1664,10 @@ function App() {
                 <AiSessionsPanel
                   open={aiSessionsOpen}
                   onClose={() => setAiSessionsOpen(false)}
-                  onSelectSession={(id) => requestBubbleSwitch(id)}
+                  onSelectSession={(id) => {
+                    setActiveSessionId(id);
+                    setActiveKind("ai");
+                  }}
                   anchorRef={aiSessionsButtonRef}
                 />
               </div>

@@ -5,36 +5,16 @@ import {
   Delete02Icon,
   Cancel01Icon,
   MessageMultiple02Icon,
+  ComputerTerminal02Icon,
 } from "@hugeicons/core-free-icons";
-import type { BubbleSessionStore } from "./bubble/sessionStore";
 import { fontStack } from "../styles/fonts";
 import { getPrefs } from "../settings/preferences";
-
-interface Session {
-  id: string;
-  title: string;
-  updatedAt: number;
-  messageCount: number;
-}
-
-function loadBubbleSessions(): Session[] {
-  try {
-    const raw = localStorage.getItem("huskv2.ai.bubble.sessions");
-    if (!raw) return [];
-    const store = JSON.parse(raw) as BubbleSessionStore;
-    return store.sessions
-      .map((s) => ({
-        id: s.id,
-        title: s.title,
-        updatedAt: s.updatedAt,
-        messageCount: s.messages.length,
-      }))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  } catch (e) {
-    console.error("Failed to load AI sessions", e);
-    return [];
-  }
-}
+import {
+  useSessions,
+  deleteSession,
+  setActiveSessionId,
+  isTabSessionId,
+} from "./sessionStore";
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -54,20 +34,16 @@ export function AiSessionsPanel({
 }: {
   open: boolean;
   onClose: () => void;
-  onSelectSession: (id: string) => void;
+  onSelectSession?: (id: string) => void;
   anchorRef?: React.RefObject<HTMLElement | null>;
 }) {
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const sessions = useSessions();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
   const prefs = getPrefs();
   const fontFamily = fontStack(prefs.fontFamily);
-
-  useEffect(() => {
-    if (open) setSessions(loadBubbleSessions());
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -97,28 +73,17 @@ export function AiSessionsPanel({
     };
   }, [open, onClose, position, anchorRef]);
 
-  const handleDelete = useCallback((s: Session, e: React.MouseEvent) => {
+  const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      const raw = localStorage.getItem("huskv2.ai.bubble.sessions");
-      if (raw) {
-        const store = JSON.parse(raw) as BubbleSessionStore;
-        const filtered = store.sessions.filter((x) => x.id !== s.id);
-        const next: BubbleSessionStore = {
-          sessions: filtered,
-          activeSessionId:
-            store.activeSessionId === s.id
-              ? filtered[0]?.id ?? null
-              : store.activeSessionId,
-        };
-        localStorage.setItem("huskv2.ai.bubble.sessions", JSON.stringify(next));
-        setSessions(loadBubbleSessions());
-        setConfirmDeleteId(null);
-      }
-    } catch (e) {
-      console.error("Failed to delete session", e);
-    }
+    deleteSession(id);
+    setConfirmDeleteId(null);
   }, []);
+
+  const handleSelect = useCallback((id: string) => {
+    setActiveSessionId(id);
+    onSelectSession?.(id);
+    onClose();
+  }, [onSelectSession, onClose]);
 
   if (!open || !position) return null;
 
@@ -151,19 +116,24 @@ export function AiSessionsPanel({
             <button
               key={s.id}
               type="button"
-              onClick={() => {
-                onSelectSession(s.id);
-                onClose();
-              }}
+              onClick={() => handleSelect(s.id)}
               className="husk-popover-item"
             >
-              <span className="husk-popover-text">{s.title}</span>
+              <span className="husk-popover-text">
+                <HugeiconsIcon
+                  icon={isTabSessionId(s.id) ? ComputerTerminal02Icon : MessageMultiple02Icon}
+                  size={11}
+                  strokeWidth={1.75}
+                  style={{ marginRight: 6, opacity: 0.7 }}
+                />
+                {s.name}
+              </span>
               <span className="husk-popover-meta">
-                {s.messageCount} msgs · {formatDate(s.updatedAt)}
+                {s.messages.length} msgs · {formatDate(s.updatedAt)}
               </span>
               {confirmDeleteId === s.id ? (
                 <span className="husk-popover-delete-confirm">
-                  <button type="button" onClick={(e) => handleDelete(s, e)}>Delete</button>
+                  <button type="button" onClick={(e) => handleDelete(s.id, e)}>Delete</button>
                   <button type="button" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}>Cancel</button>
                 </span>
               ) : (
