@@ -479,33 +479,47 @@
   border-top: 1px solid hsl(var(--border) / 0.4);
 }
 
-.composer-input-actions {
+.composer-input-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 4px;
+  gap: 6px;
+  padding: 0 2px 2px;
 }
 
-.composer-input-action-btn {
-  display: flex;
+.composer-input-toolbar-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  color: hsl(var(--muted-foreground) / 0.7);
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.85);
+  background: transparent;
+  border: 1px solid hsl(var(--border) / 0.35);
   transition: all 0.15s ease;
 }
 
-.composer-input-action-btn:hover {
-  background: hsl(var(--muted) / 0.4);
+.composer-input-toolbar-btn:hover {
+  background: hsl(var(--muted) / 0.35);
   color: hsl(var(--foreground));
+  border-color: hsl(var(--border) / 0.6);
 }
 
-.composer-input-action-btn.recording {
+.composer-input-toolbar-btn.recording {
   color: hsl(var(--primary));
-  background: hsl(var(--primary) / 0.12);
+  border-color: hsl(var(--primary) / 0.4);
+  background: hsl(var(--primary) / 0.1);
   animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+.composer-input-actions {
+  display: none;
+}
+
+.composer-input-action-btn {
+  display: none;
 }
 
 .composer-textarea {

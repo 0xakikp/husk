@@ -615,25 +615,28 @@ export function TerminalAiComposer({
         </div>
       )}
 
+      <div className="composer-input-toolbar">
+        <button
+          type="button"
+          onClick={toggleVoice}
+          className={cn("composer-input-toolbar-btn", listening && "recording")}
+          title={listening ? "Stop listening" : "Voice input"}
+        >
+          <HugeiconsIcon icon={VoiceIcon} size={12} strokeWidth={1.75} />
+          {listening ? "Listening…" : "Voice"}
+        </button>
+        <button
+          type="button"
+          onClick={handleFileUpload}
+          className="composer-input-toolbar-btn"
+          title="Attach file"
+        >
+          <HugeiconsIcon icon={AttachmentSquareIcon} size={12} strokeWidth={1.75} />
+          Attach
+        </button>
+      </div>
+
       <div className="composer-input-row">
-        <div className="composer-input-actions">
-          <button
-            type="button"
-            onClick={toggleVoice}
-            className={cn("composer-input-action-btn", listening && "recording")}
-            title={listening ? "Stop listening" : "Voice input"}
-          >
-            <HugeiconsIcon icon={VoiceIcon} size={14} strokeWidth={1.75} />
-          </button>
-          <button
-            type="button"
-            onClick={handleFileUpload}
-            className="composer-input-action-btn"
-            title="Attach file"
-          >
-            <HugeiconsIcon icon={AttachmentSquareIcon} size={14} strokeWidth={1.75} />
-          </button>
-        </div>
         <textarea
           ref={textareaRef}
           value={input}
