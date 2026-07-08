@@ -74,14 +74,13 @@ export type Prefs = {
   editorWallpaperOpacity: number;
   customCSS?: string;
 
-  // AI Mini Window
+  // AI Composer
   aiMiniOpacity: number;
   aiMiniFontSize: number;
-  aiMiniBgEnabled: boolean;
-  aiMiniBgPath: string;
-  aiMiniBgOpacity: number;
   aiMiniBgBlur: number;
   aiMiniBgDim: number;
+  aiComposerBgStyle: "default" | "gradient" | "solid";
+  aiComposerBgColor: string;
 
   // Notes
   notesDirectory: string;
@@ -142,11 +141,10 @@ const DEFAULT: Prefs = {
 
   aiMiniOpacity: 48,
   aiMiniFontSize: 11,
-  aiMiniBgEnabled: false,
-  aiMiniBgPath: "",
-  aiMiniBgOpacity: 100,
   aiMiniBgBlur: 0,
   aiMiniBgDim: 50,
+  aiComposerBgStyle: "default",
+  aiComposerBgColor: "#000000",
 
   notesDirectory: "",
 };

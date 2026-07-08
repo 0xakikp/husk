@@ -358,11 +358,9 @@ export function AppearanceSection() {
             step={1}
             onChange={(v) => setPrefs({ aiMiniFontSize: v })}
           />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
           <SliderRow
             title="BG blur"
-            description="Wallpaper softness"
+            description="Panel backdrop softness"
             value={p.aiMiniBgBlur}
             min={0}
             max={20}
@@ -379,52 +377,51 @@ export function AppearanceSection() {
             onChange={(v) => setPrefs({ aiMiniBgDim: v })}
           />
         </div>
-        <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
-          title="Background image"
-          description="Show a custom image behind the AI composer."
-        >
-          <Switch checked={p.aiMiniBgEnabled} onCheckedChange={(v) => setPrefs({ aiMiniBgEnabled: v })} />
-        </SettingRow>
-        <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
-          title="Image file"
-          description={p.aiMiniBgPath ? p.aiMiniBgPath.split(/[\\/]/).pop() ?? "No image selected." : "No image selected."}
-        >
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-              title="Pick image"
-              onClick={async () => {
-                const selected = await open({
-                  multiple: false,
-                  filters: [
-                    { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] },
-                    { name: "All files", extensions: ["*"] },
-                  ],
-                });
-                if (selected && typeof selected === "string") {
-                  setPrefs({ aiMiniBgPath: selected, aiMiniBgEnabled: true });
-                }
-              }}
-            >
-              <HugeiconsIcon icon={Image02Icon} size={15} strokeWidth={1.75} />
-            </Button>
-            {p.aiMiniBgPath && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 rounded-md text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
-                title="Clear image"
-                onClick={() => setPrefs({ aiMiniBgPath: "", aiMiniBgEnabled: false })}
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
-              </Button>
-            )}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-2 rounded border border-border/40 bg-muted/20 px-5 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[12.5px] font-medium text-foreground">Background style</span>
+                <span className="text-[10.5px] leading-relaxed text-muted-foreground">Composer background fill</span>
+              </div>
+              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground font-mono">
+                {p.aiComposerBgStyle}
+              </span>
+            </div>
+            <div className="flex gap-1">
+              {(["default", "gradient", "solid"] as const).map((style) => (
+                <button
+                  key={style}
+                  type="button"
+                  onClick={() => setPrefs({ aiComposerBgStyle: style })}
+                  className={cn(
+                    "flex-1 rounded px-2 py-1 text-[10px] font-medium transition-colors",
+                    p.aiComposerBgStyle === style
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {style.charAt(0).toUpperCase() + style.slice(1)}
+                </button>
+              ))}
+            </div>
           </div>
-        </SettingRow>
+          <div className="flex flex-col gap-2 rounded border border-border/40 bg-muted/20 px-5 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[12.5px] font-medium text-foreground">Background color</span>
+                <span className="text-[10.5px] leading-relaxed text-muted-foreground">Used by gradient / solid</span>
+              </div>
+              <span className="text-[11px] text-muted-foreground font-mono">{p.aiComposerBgColor}</span>
+            </div>
+            <input
+              type="color"
+              value={p.aiComposerBgColor}
+              onChange={(e) => setPrefs({ aiComposerBgColor: e.target.value })}
+              className="h-7 w-full cursor-pointer rounded border border-border/40 bg-transparent p-0"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

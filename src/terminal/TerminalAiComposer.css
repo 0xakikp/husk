@@ -22,26 +22,31 @@
   isolation: isolate;
 }
 
+.composer-panel[data-bg-style="gradient"],
+.composer-panel[style*="--composer-bg-style: gradient"] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--composer-bg-color, #000000) 40%, transparent) 0%,
+    color-mix(in srgb, var(--composer-bg-color, #000000) 10%, transparent) 100%
+  );
+}
+
+.composer-panel[data-bg-style="solid"],
+.composer-panel[style*="--composer-bg-style: solid"] {
+  background: color-mix(
+    in srgb,
+    var(--composer-bg-color, #000000) calc(var(--composer-opacity, 0.97) * 100%),
+    transparent
+  );
+}
+
 .composer-panel::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background-image: var(--composer-bg-image, none);
-  background-size: cover;
-  background-position: center;
-  filter: blur(var(--composer-bg-blur, 0px));
-  opacity: var(--composer-bg-opacity, 1);
-  pointer-events: none;
-  z-index: -2;
-}
-
-.composer-panel::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
   background: rgba(0, 0, 0, var(--composer-bg-dim, 0));
+  filter: blur(var(--composer-bg-blur, 0px));
   pointer-events: none;
   z-index: -1;
 }
