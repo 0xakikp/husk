@@ -557,17 +557,16 @@ export function AiFloatingBubble({
     window.addEventListener("touchend", onUp);
   }, [panelPos, pos, size]);
 
-  // On first expand, snap panel to bubble position. After that, panelPos is controlled by drag.
+  // On first expand, snap panel above the pet. After that, panelPos is controlled by drag.
   const hasExpandedRef = useRef(false);
   useEffect(() => {
     if (state === "expanded" && !hasExpandedRef.current) {
       hasExpandedRef.current = true;
       const maxX = window.innerWidth - size.w - 8;
-      const maxY = window.innerHeight - size.h - 8;
       const anchor = getBubblePos();
       setPanelPos({
-        x: Math.max(8, Math.min(maxX, anchor.x)),
-        y: Math.max(8, Math.min(maxY, anchor.y)),
+        x: Math.max(8, Math.min(maxX, anchor.x - size.w + 64)),
+        y: Math.max(8, anchor.y - size.h - 10),
       });
     }
     if (state === "collapsed") {
@@ -587,17 +586,6 @@ export function AiFloatingBubble({
     ensureSession();
     void send(prompt);
   };
-
-  if (state === "collapsed") {
-    return (
-      <TerminalPet
-        onClick={() => setState("expanded")}
-        className="fixed"
-        style={{ left: pos.x, top: pos.y }}
-        title="Open AI chat"
-      />
-    );
-  }
 
   const isDark = prefs.theme === "dark";
   const computedBg = (() => {
@@ -624,26 +612,34 @@ export function AiFloatingBubble({
   const fontSize = prefs.aiMiniFontSize ?? 11;
 
   return (
-    <div
-      ref={panelRef}
-      className={cn(
-        "fixed z-50 flex flex-col overflow-hidden rounded-xl border",
-        dragOver ? "border-primary ring-1 ring-primary/30" : "border-border",
-        isDark ? "shadow-2xl shadow-black/40" : "shadow-lg shadow-black/10"
-      )}
-      style={{
-        left: panelPos?.x ?? pos.x,
-        top: panelPos?.y ?? pos.y,
-        width: size.w,
-        height: size.h,
-        ...computedBg,
-        backdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
-        WebkitBackdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
-      }}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
+    <>
+      <TerminalPet
+        onClick={() => setState((s) => (s === "collapsed" ? "expanded" : "collapsed"))}
+        className="fixed"
+        style={{ left: pos.x, top: pos.y }}
+        title={state === "collapsed" ? "Open AI chat" : "Close AI chat"}
+      />
+      {state === "expanded" && (
+        <div
+          ref={panelRef}
+          className={cn(
+            "fixed z-50 flex flex-col overflow-hidden rounded-xl border",
+            dragOver ? "border-primary ring-1 ring-primary/30" : "border-border",
+            isDark ? "shadow-2xl shadow-black/40" : "shadow-lg shadow-black/10"
+          )}
+          style={{
+            left: panelPos?.x ?? Math.max(8, Math.min(window.innerWidth - size.w - 8, pos.x - size.w + 64)),
+            top: panelPos?.y ?? Math.max(8, pos.y - size.h - 10),
+            width: size.w,
+            height: size.h,
+            ...computedBg,
+            backdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
+            WebkitBackdropFilter: `blur(${prefs.aiMiniBgBlur}px)`,
+          }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
       {/* Resize strips — thicker, easier to grab */}
       <div className="absolute top-0 left-2 right-2 z-20 cursor-ns-resize hover:bg-primary/10" style={{ height: 6 }} onMouseDown={startResize("n")} onTouchStart={startResize("n")} />
       <div className="absolute bottom-0 left-2 right-2 z-20 cursor-ns-resize hover:bg-primary/10" style={{ height: 6 }} onMouseDown={startResize("s")} onTouchStart={startResize("s")} />
@@ -999,8 +995,10 @@ export function AiFloatingBubble({
       </div>
 
       {/* ── PENDING EDITS ── */}
-      <PendingEditsPanel />
-    </div>
+          <PendingEditsPanel />
+        </div>
+      )}
+    </>
   );
 }
 
