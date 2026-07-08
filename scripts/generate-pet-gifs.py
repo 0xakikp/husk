@@ -108,9 +108,15 @@ frames = []
 for i in range(4):
     img = new_frame()
     draw = ImageDraw.Draw(img)
-    y_off = 0 if i % 2 == 0 else 2
-    eye_open = i != 2
+    # more pronounced breathing: larger vertical bob and color pulse
+    y_off = 0 if i % 2 == 0 else 6
+    eye_open = i != 1
+    body_color = BODY if i % 2 == 0 else (120, 170, 255, 255)
     draw_blob(draw, BODY, WHITE, y_offset=y_off, eye_open=eye_open, mouth="neutral")
+    # re-color body after draw_blob to keep shading simple
+    if i % 2 != 0:
+        rect(draw, 20, 24 + y_off, 40, 32, (0, 0, 0, 0))
+        draw_blob(draw, body_color, WHITE, y_offset=y_off, eye_open=eye_open, mouth="neutral")
     frames.append(img)
 save_gif(frames, "pet-idle.gif", duration=250)
 

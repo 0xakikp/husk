@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCommandRunning, useActiveTerminalExit } from "../ai/terminalContext";
 import { cn } from "../lib/utils";
+import "./TerminalPet.css";
 
 import idleGif from "../assets/pet/pet-idle.gif";
 import typingGif from "../assets/pet/pet-typing.gif";
@@ -106,7 +107,7 @@ export function TerminalPet() {
       <button
         type="button"
         onClick={handleClick}
-        className="group relative flex flex-col items-center gap-1 rounded-2xl border border-border/60 bg-card/90 p-2 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
+        className="group relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card pet-float"
         title="Husk pet companion"
       >
         <div className="relative inline-flex size-16 items-center justify-center overflow-hidden rounded-xl bg-black/20">
