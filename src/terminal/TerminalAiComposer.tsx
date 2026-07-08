@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, ComputerTerminal02Icon, PlusSignIcon, CommandIcon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, ComputerTerminal02Icon, PlusSignIcon, CommandIcon, FullScreenIcon, ArrowDownIcon } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs } from "../settings/preferences";
 import { loadConfig, getKey } from "../ai/store";
@@ -79,7 +79,13 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   const abortCtrlRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
+  const [height, setHeight] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [pendingRun, setPendingRun] = useState<string | null>(null);
+  const draggingRef = useRef(false);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const session = getSession(activeTabId);
   const messages = session.messages;
@@ -227,9 +233,33 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
     }
   }, [input, busy, messages, activeTabId]);
 
+  const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
+
   useEffect(() => {
     handleSendRef.current = handleSend;
   }, [handleSend]);
+
+  // Drag-to-resize handlers
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current || !panelRef.current) return;
+      const delta = startYRef.current - e.clientY;
+      const next = Math.min(
+        Math.max(startHeightRef.current + delta, 120),
+        window.innerHeight * 0.85,
+      );
+      setHeight(next);
+    };
+    const onUp = () => {
+      draggingRef.current = false;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   const handleClose = () => {
     abortRef.current = true;
@@ -243,7 +273,28 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   };
 
   const runCommand = (cmd: string) => {
-    runInActiveTerminal(cmd);
+    setPendingRun(cmd);
+  };
+
+  const confirmRun = () => {
+    if (pendingRun) {
+      runInActiveTerminal(pendingRun);
+      setPendingRun(null);
+    }
+  };
+
+  const cancelRun = () => setPendingRun(null);
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    startYRef.current = e.clientY;
+    startHeightRef.current = panelRef.current?.clientHeight ?? 280;
+  };
+
+  const toggleExpand = () => {
+    setExpanded((v) => !v);
+    setHeight(null);
   };
 
   const cfg = loadConfig();
@@ -256,12 +307,21 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
 
   const gap = prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined;
 
+  const computedHeight = expanded
+    ? 'min(70vh, 520px)'
+    : height !== null
+      ? `${height}px`
+      : messages.length
+        ? 'min(40vh, 280px)'
+        : 'auto';
+
   return (
   <div
+    ref={panelRef}
     data-bg-style={prefs.aiComposerBgStyle}
-    className="composer-panel animate-composer-in"
+    className={cn("composer-panel animate-composer-in", expanded && "composer-expanded")}
     style={{
-      maxHeight: messages.length ? 'min(40vh, 280px)' : 'auto',
+      maxHeight: computedHeight,
       borderRadius: gap ? '16px' : '16px 16px 0 0',
       '--composer-opacity': prefs.aiMiniOpacity / 100,
       '--composer-font-size': `${prefs.aiMiniFontSize}px`,
@@ -270,6 +330,13 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
       '--composer-bg-dim': prefs.aiMiniBgDim / 100,
     } as React.CSSProperties}
   >
+      {/* Resize handle */}
+      <div
+        className="composer-resize-handle"
+        onMouseDown={startResize}
+        title="Drag to resize"
+      />
+
       {/* Gradient border glow line at top */}
       <div className="composer-glow" />
 
@@ -291,6 +358,14 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={toggleExpand}
+            className="composer-icon-btn"
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            <HugeiconsIcon icon={expanded ? ArrowDownIcon : FullScreenIcon} size={12} strokeWidth={1.75} />
+          </button>
           <button
             type="button"
             onClick={newSession}
@@ -377,6 +452,24 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
           </div>
         )}
       </div>
+
+      {/* Pending command approval */}
+      {pendingRun && (
+        <div className="composer-pending-run">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-amber-400">Run this command?</span>
+            <code className="text-[10px] text-foreground/80">{pendingRun}</code>
+          </div>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={confirmRun} className="composer-approve-btn">
+              Run
+            </button>
+            <button type="button" onClick={cancelRun} className="composer-cancel-btn">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="composer-input-row">

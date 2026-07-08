@@ -20,6 +20,31 @@
   transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   font-size: var(--composer-font-size, 13px);
   isolation: isolate;
+  padding-top: 16px;
+}
+
+.composer-expanded {
+  transition: max-height 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.composer-resize-handle {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: hsl(var(--border) / 0.6);
+  cursor: ns-resize;
+  transition: background 0.15s ease, width 0.15s ease;
+  z-index: 10;
+}
+
+.composer-resize-handle:hover,
+.composer-resize-handle:active {
+  background: hsl(var(--primary) / 0.6);
+  width: 48px;
 }
 
 .composer-panel[data-bg-style="gradient"] {
@@ -274,6 +299,45 @@
 
 .composer-run-btn:hover {
   background: hsl(var(--primary) / 0.25);
+}
+
+.composer-pending-run {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 12px;
+  border: 1px solid #f59e0b4d;
+  background: #f59e0b14;
+  padding: 8px 10px;
+}
+
+.composer-approve-btn {
+  border-radius: 8px;
+  background: hsl(var(--primary) / 0.85);
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: hsl(var(--primary-foreground));
+  transition: all 0.15s ease;
+}
+
+.composer-approve-btn:hover {
+  background: hsl(var(--primary));
+}
+
+.composer-cancel-btn {
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.3);
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.8);
+  transition: all 0.15s ease;
+}
+
+.composer-cancel-btn:hover {
+  background: hsl(var(--muted) / 0.5);
 }
 
 .composer-code-pre {
