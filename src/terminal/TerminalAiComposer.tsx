@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, ComputerTerminal02Icon, PlusSignIcon, CommandIcon, FullScreenIcon, ArrowDownIcon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, ComputerTerminal02Icon, PlusSignIcon, CommandIcon, FullScreenIcon, ArrowDownIcon, MessageMultiple02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs } from "../settings/preferences";
 import { loadConfig, getKey } from "../ai/store";
@@ -359,7 +359,7 @@ export function TerminalAiComposer({
               className="composer-icon-btn"
               title="Open in AI tab"
             >
-              <HugeiconsIcon icon={FullScreenIcon} size={12} strokeWidth={1.75} />
+              <HugeiconsIcon icon={MessageMultiple02Icon} size={12} strokeWidth={1.75} />
             </button>
           )}
           <button
