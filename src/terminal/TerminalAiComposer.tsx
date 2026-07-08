@@ -255,13 +255,13 @@ export function TerminalAiComposer({ activeTabId }: { activeTabId: number }) {
   const fileName = currentFile ? currentFile.split("/").pop() : null;
 
   const gap = prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined;
-  const gapStyle = prefs.panelGaps > 0 && prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : "";
 
   return (
   <div
-    className={cn("composer-panel animate-composer-in", gapStyle)}
+    className="composer-panel animate-composer-in"
     style={{
       maxHeight: messages.length ? 'min(40vh, 280px)' : 'auto',
+      marginTop: gap,
       marginLeft: gap,
       marginRight: gap,
       marginBottom: gap,

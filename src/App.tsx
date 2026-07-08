@@ -1890,6 +1890,7 @@ function App() {
                   "absolute inset-0 flex flex-col",
                   activeKind !== "term" && "invisible pointer-events-none",
                   prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
+                  prefs.panelGaps > 0 && prefs.panelGapStyle !== "none" && activeKind === "term" && `gap-pattern-${prefs.panelGapStyle}`,
                 )}
                 aria-hidden={activeKind !== "term"}
               >
