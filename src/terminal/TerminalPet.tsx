@@ -1,33 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCommandRunning, useActiveTerminalExit } from "../ai/terminalContext";
-import { toggleBubble } from "../ai/bubbleStore";
 import { cn } from "../lib/utils";
-import "./TerminalPet.css";
-
-import idleGif from "../assets/pet/pet-idle.gif";
-import typingGif from "../assets/pet/pet-typing.gif";
-import successGif from "../assets/pet/pet-success.gif";
-import failureGif from "../assets/pet/pet-failure.gif";
-import runningGif from "../assets/pet/pet-running.gif";
-import ciPassGif from "../assets/pet/pet-ci-pass.gif";
-
-const PET_ASSETS: Record<string, string> = {
-  idle: idleGif,
-  typing: typingGif,
-  success: successGif,
-  failure: failureGif,
-  running: runningGif,
-  "ci-pass": ciPassGif,
-};
-
-const PET_LABEL: Record<PetState, string> = {
-  idle: "Idle",
-  typing: "Typing",
-  success: "Success",
-  failure: "Failed",
-  running: "Running",
-  "ci-pass": "CI Pass",
-};
 
 const PET_DOT: Record<PetState, string> = {
   idle: "bg-blue-400",
@@ -36,6 +9,15 @@ const PET_DOT: Record<PetState, string> = {
   failure: "bg-red-400",
   running: "bg-amber-400",
   "ci-pass": "bg-emerald-400",
+};
+
+const PET_FACE: Record<PetState, string> = {
+  idle: "[:]",
+  typing: "[::]",
+  success: "[^_^]",
+  failure: "[x_x]",
+  running: "[o_o]",
+  "ci-pass": "[✓]",
 };
 
 type PetState = "idle" | "typing" | "success" | "failure" | "running" | "ci-pass";
@@ -90,14 +72,8 @@ export function TerminalPet({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const imageUrl = PET_ASSETS[state];
-
   const handleClick = () => {
-    if (onClick) {
-      onClick();
-    } else {
-      toggleBubble();
-    }
+    if (onClick) onClick();
   };
 
   return (
@@ -108,20 +84,14 @@ export function TerminalPet({
       <button
         type="button"
         onClick={handleClick}
-        className="group relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card pet-float"
+        className="group relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
         title={title}
       >
-        <div className="relative inline-flex size-16 items-center justify-center overflow-hidden rounded-xl bg-black/20">
-          <img
-            src={imageUrl}
-            alt="Husk companion pet"
-            className="size-14 object-contain"
-            draggable={false}
-          />
+        <div className="relative inline-flex size-10 items-center justify-center overflow-hidden rounded-lg bg-black/20">
+          <span className="font-mono text-xl leading-none text-primary">{PET_FACE[state]}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className={cn("size-2 rounded-full", PET_DOT[state])} />
-          <span className="text-[9px] font-medium text-muted-foreground">{PET_LABEL[state]}</span>
+        <div className="flex items-center gap-1">
+          <span className={cn("size-1.5 rounded-full", PET_DOT[state])} />
         </div>
       </button>
     </div>
