@@ -82,6 +82,9 @@ export type Prefs = {
   aiComposerBgStyle: "default" | "gradient" | "solid";
   aiComposerBgColor: string;
 
+  // AI tab
+  aiTabPinned: boolean;
+
   // Notes
   notesDirectory: string;
 };
@@ -145,6 +148,7 @@ const DEFAULT: Prefs = {
   aiMiniBgDim: 50,
   aiComposerBgStyle: "default",
   aiComposerBgColor: "#000000",
+  aiTabPinned: false,
 
   notesDirectory: "",
 };
