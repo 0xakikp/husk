@@ -4,12 +4,12 @@ import { cn } from "../lib/utils";
 import "./TerminalPet.css";
 
 const STATE_COLOR: Record<PetState, string> = {
-  idle: "bg-primary/70",
-  typing: "bg-yellow-400",
-  success: "bg-emerald-400",
-  failure: "bg-red-400",
-  running: "bg-amber-400",
-  "ci-pass": "bg-emerald-400",
+  idle: "bg-foreground",
+  typing: "bg-yellow-500",
+  success: "bg-emerald-500",
+  failure: "bg-red-500",
+  running: "bg-amber-500",
+  "ci-pass": "bg-emerald-500",
 };
 
 const STATE_ANIMATION: Record<PetState, string> = {
@@ -85,25 +85,23 @@ export function TerminalPet({
       <button
         type="button"
         onClick={handleClick}
-        className="group relative flex items-center justify-center rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
+        className="group relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/90 p-2 shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-card"
         title={title}
       >
-        <div className="flex flex-col items-center gap-1">
-          <div className="flex h-8 items-end gap-1 rounded-md bg-muted/60 px-2 py-1.5">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className={cn(
-                  "w-1.5 min-h-[20%] rounded-full transition-colors",
-                  STATE_COLOR[state],
-                  STATE_ANIMATION[state]
-                )}
-                style={{ animationDelay: `${i * 100}ms` }}
-              />
-            ))}
-          </div>
-          <span className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground">AI</span>
+        <div className="flex h-9 items-end gap-[2px] rounded-md border border-border/50 bg-black/40 px-1.5 py-1">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className={cn(
+                "w-1.5 min-h-[15%] rounded-[1px]",
+                STATE_COLOR[state],
+                STATE_ANIMATION[state]
+              )}
+              style={{ animationDelay: `${i * 90}ms` }}
+            />
+          ))}
         </div>
+        <span className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground">AI</span>
       </button>
     </div>
   );
