@@ -17,13 +17,47 @@ export type AiSession = {
   tabId?: number;
   createdAt: number;
   updatedAt: number;
+  archived?: boolean;
 };
+
+const LS_KEY = "huskv2.ai.sessions.v1";
 
 const sessions = new Map<string, AiSession>();
 const subscribers = new Set<() => void>();
 
 let activeSessionId: string | null = null;
 const activeSubscribers = new Set<() => void>();
+
+function loadSessions() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { sessions: AiSession[]; activeSessionId?: string | null };
+    if (Array.isArray(parsed.sessions)) {
+      sessions.clear();
+      for (const s of parsed.sessions) {
+        if (s.id) sessions.set(s.id, s);
+      }
+      if (activeSessionId === null && parsed.activeSessionId && sessions.has(parsed.activeSessionId)) {
+        activeSessionId = parsed.activeSessionId;
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function saveSessions() {
+  try {
+    const payload = {
+      sessions: Array.from(sessions.values()),
+      activeSessionId,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore
+  }
+}
 
 function ensureGlobalSession() {
   if (!sessions.has("global")) {
@@ -39,6 +73,7 @@ function ensureGlobalSession() {
   }
 }
 
+loadSessions();
 ensureGlobalSession();
 
 export function getSession(id: string): AiSession {
@@ -65,6 +100,7 @@ export function getAllSessions(): AiSession[] {
 
 function invalidateSessions() {
   cachedSessionsDirty = true;
+  saveSessions();
 }
 
 export function updateSession(id: string, updater: (s: AiSession) => AiSession) {
@@ -134,6 +170,14 @@ export function renameSession(id: string, name: string) {
   updateSession(id, (s) => ({ ...s, name }));
 }
 
+export function archiveSession(id: string) {
+  updateSession(id, (s) => ({ ...s, archived: true }));
+}
+
+export function unarchiveSession(id: string) {
+  updateSession(id, (s) => ({ ...s, archived: false }));
+}
+
 export function deleteSession(id: string) {
   if (id === "global" && sessions.size <= 1) return;
   sessions.delete(id);
@@ -156,6 +200,7 @@ export function getActiveSessionId(): string | null {
 
 export function setActiveSessionId(id: string) {
   activeSessionId = id;
+  saveSessions();
   activeSubscribers.forEach((fn) => fn());
 }
 

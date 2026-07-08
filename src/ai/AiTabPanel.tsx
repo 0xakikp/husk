@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PlusSignIcon, Cancel01Icon, MessageMultiple02Icon, SparklesIcon, ComputerTerminal02Icon } from "@hugeicons/core-free-icons";
+import { PlusSignIcon, MessageMultiple02Icon, SparklesIcon, ComputerTerminal02Icon, Archive02Icon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { TerminalAiComposer } from "../terminal/TerminalAiComposer";
 import {
@@ -9,6 +9,8 @@ import {
   setActiveSessionId,
   createSession,
   deleteSession,
+  archiveSession,
+  unarchiveSession,
   getSession,
   ensureSession,
   updateSession,
@@ -20,6 +22,7 @@ export function AiTabPanel() {
   const activeId = useActiveSessionId();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Ensure a global session exists for the AI tab itself
@@ -31,6 +34,8 @@ export function AiTabPanel() {
   }, [activeId]);
 
   const activeSession = activeId ? getSession(activeId) : getSession("global");
+  const activeList = sessions.filter((s) => !s.archived);
+  const archivedList = sessions.filter((s) => s.archived);
 
   const startRename = (id: string, name: string) => {
     setEditingId(id);
@@ -67,7 +72,7 @@ export function AiTabPanel() {
         </div>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-2">
           <div className="flex flex-col gap-1">
-            {sessions.map((s) => (
+            {activeList.map((s) => (
               <div
                 key={s.id}
                 className={cn(
@@ -112,14 +117,22 @@ export function AiTabPanel() {
                     >
                       ⋮
                     </button>
-                    {sessions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => archiveSession(s.id)}
+                      className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:inline-flex"
+                      title="Archive"
+                    >
+                      <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
+                    </button>
+                    {activeList.length > 1 && (
                       <button
                         type="button"
                         onClick={() => deleteSession(s.id)}
                         className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover:inline-flex"
                         title="Delete"
                       >
-                        <HugeiconsIcon icon={Cancel01Icon} size={9} strokeWidth={1.75} />
+                        <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
                       </button>
                     )}
                   </>
@@ -127,6 +140,64 @@ export function AiTabPanel() {
               </div>
             ))}
           </div>
+
+          {archivedList.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-border/40">
+              <button
+                type="button"
+                onClick={() => setShowArchived((v) => !v)}
+                className="flex w-full items-center justify-between px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                <span>Archived ({archivedList.length})</span>
+                <span>{showArchived ? "▾" : "▸"}</span>
+              </button>
+              {showArchived && (
+                <div className="flex flex-col gap-1 mt-1">
+                  {archivedList.map((s) => (
+                    <div
+                      key={s.id}
+                      className={cn(
+                        "group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors",
+                        activeSession.id === s.id
+                          ? "bg-primary/15 text-primary"
+                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setActiveSessionId(s.id)}
+                        className="flex flex-1 items-center gap-2 text-left"
+                      >
+                        <HugeiconsIcon
+                          icon={isTabSessionId(s.id) ? ComputerTerminal02Icon : SparklesIcon}
+                          size={11}
+                          strokeWidth={1.75}
+                          className={cn("shrink-0", activeSession.id === s.id ? "text-primary" : "text-muted-foreground/60")}
+                        />
+                        <span className="truncate">{s.name}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => unarchiveSession(s.id)}
+                        className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:inline-flex"
+                        title="Unarchive"
+                      >
+                        <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteSession(s.id)}
+                        className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover:inline-flex"
+                        title="Delete"
+                      >
+                        <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
