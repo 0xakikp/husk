@@ -933,18 +933,8 @@ export function TerminalAiComposer({
             const tree = isUser ? null : parseFileTree(msg.content);
             return (
               <div key={i} className={cn("composer-message", isUser ? "composer-message-user" : "composer-message-ai")}>
-                {isUser ? (
+                {isUser && (
                   <div className="composer-message-avatar" title="You">Y</div>
-                ) : (
-                  <div
-                    className={cn(
-                      "composer-message-avatar",
-                      activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`,
-                    )}
-                    title={activeAgentName}
-                  >
-                    {msg.streaming ? <span className="composer-pulse-dot" /> : activeAgentIcon}
-                  </div>
                 )}
                 <div className="composer-message-body">
                   <div className="composer-message-label">
