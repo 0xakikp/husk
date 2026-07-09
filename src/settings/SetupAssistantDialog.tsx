@@ -425,7 +425,8 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-[85vh] max-h-[760px] w-[90vw] max-w-[900px] flex-col overflow-hidden p-0 sm:max-w-[900px]"
+        noZoom
+        className="flex h-[85vh] max-h-[760px] w-[90vw] max-w-[900px] flex-col overflow-hidden p-0 antialiased sm:max-w-[900px]"
       >
         <DialogHeader className="shrink-0 border-b border-border/50 px-6 py-4">
           <div className="flex items-center justify-between">
