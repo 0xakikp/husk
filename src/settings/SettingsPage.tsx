@@ -9,8 +9,7 @@ import { AppearanceSection } from "./AppearanceSection";
 import { AboutSection } from "./AboutSection";
 import { ModelsSection } from "./ModelsSection";
 import { McpSection } from "./McpSection";
-import { ToolsSection } from "./ToolsSection";
-import { SetupAssistantDialog } from "./SetupAssistantDialog";
+import { SetupAssistantDialog, SetupAssistantBanner } from "./SetupAssistantDialog";
 import { CloudSyncSection } from "./CloudSyncSection";
 import { CrashReportingSection } from "./CrashReportingSection";
 
@@ -234,8 +233,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
               <>
                 <SectionDivider />
                 <div id="settings-section-tools" className="scroll-mt-6">
-                  <ToolsSection />
-                  <div className="mt-4 flex items-center justify-center">
+                  <SetupAssistantBanner onOpen={() => setSetupOpen(true)} />
+                  <div className="flex items-center justify-center rounded-xl border border-border/60 bg-card/40 p-6">
                     <Button
                       type="button"
                       variant="outline"
