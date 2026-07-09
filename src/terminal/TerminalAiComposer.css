@@ -727,6 +727,131 @@
   color: hsl(var(--foreground) / 0.85);
 }
 
+/* ── Prompt templates ───────────────────────────────────────────────────── */
+
+.composer-prompt-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 2px 4px;
+}
+
+.composer-prompt-template-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.9);
+  background: hsl(var(--muted) / 0.25);
+  border: 1px solid hsl(var(--border) / 0.4);
+  transition: all 0.15s ease;
+}
+
+.composer-prompt-template-btn:hover {
+  background: hsl(var(--primary) / 0.12);
+  border-color: hsl(var(--primary) / 0.35);
+  color: hsl(var(--primary));
+}
+
+/* ── Attached files ─────────────────────────────────────────────────────── */
+
+.composer-attached-files {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 6px;
+  border-top: 1px solid hsl(var(--border) / 0.35);
+}
+
+.composer-attached-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.85);
+  background: hsl(var(--muted) / 0.35);
+  border: 1px solid hsl(var(--border) / 0.45);
+  transition: all 0.15s ease;
+}
+
+.composer-attached-file-chip:hover {
+  background: hsl(var(--destructive) / 0.12);
+  border-color: hsl(var(--destructive) / 0.35);
+  color: hsl(var(--destructive));
+}
+
+/* ── Code header copy button ─────────────────────────────────────────────── */
+
+.composer-code-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 0.18);
+  border: 1px solid hsl(var(--border) / 0.3);
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground) / 0.9);
+  transition: all 0.15s ease;
+}
+
+.composer-code-header-btn:hover {
+  background: hsl(var(--muted) / 0.35);
+  color: hsl(var(--foreground));
+}
+
+/* ── Drag-over state ──────────────────────────────────────────────────────── */
+
+.composer-panel.composer-drag-over {
+  outline: 2px dashed hsl(var(--primary) / 0.5);
+  outline-offset: -4px;
+  background: hsl(var(--primary) / 0.08);
+}
+
+/* ── Light mode overrides for new components ──────────────────────────────── */
+
+:root[data-theme="light"] .composer-prompt-template-btn {
+  background: hsl(var(--muted) / 0.3);
+  border-color: hsl(var(--border) / 0.55);
+  color: hsl(var(--muted-foreground) / 0.95);
+}
+
+:root[data-theme="light"] .composer-prompt-template-btn:hover {
+  background: hsl(var(--primary) / 0.1);
+  border-color: hsl(var(--primary) / 0.3);
+  color: hsl(var(--primary));
+}
+
+:root[data-theme="light"] .composer-attached-file-chip {
+  background: hsl(var(--muted) / 0.4);
+  border-color: hsl(var(--border) / 0.6);
+  color: hsl(var(--foreground) / 0.9);
+}
+
+:root[data-theme="light"] .composer-code-header-btn {
+  background: hsl(var(--muted) / 0.35);
+  border-color: hsl(var(--border) / 0.5);
+  color: hsl(var(--muted-foreground) / 0.95);
+}
+
+:root[data-theme="light"] .composer-code-header-btn:hover {
+  background: hsl(var(--muted) / 0.5);
+  color: hsl(var(--foreground));
+}
+
+:root[data-theme="light"] .composer-panel.composer-drag-over {
+  background: hsl(var(--primary) / 0.06);
+}
+
 /* ── Editor-context AI composer (stronger top boundary) ─────────────── */
 
 .composer-editor {

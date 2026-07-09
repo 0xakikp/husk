@@ -11,18 +11,25 @@ import {
   VoiceIcon,
   AttachmentSquareIcon,
   StopIcon,
+  Copy01Icon,
+  TickDouble01Icon,
+  Files01Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs } from "../settings/preferences";
 import { loadConfig, getKey } from "../ai/store";
 import { getProvider } from "../ai/providers";
 import { streamChat } from "../ai/client";
+import type { Tool } from "ai";
 import { getActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readFile, readFileBase64 } from "../fs";
+import { buildMcpTools } from "../mcp/tools";
+import { buildBuiltinTools, mergeTools } from "../ai/builtinTools";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   AiMessage,
   getSession,
@@ -96,6 +103,14 @@ export function tabSessionName(sessionId: string): string {
   return isNaN(tabId) ? sessionId : `Terminal ${tabId}`;
 }
 
+const PROMPT_TEMPLATES = [
+  { label: "Refactor", icon: "✨", prompt: "Refactor the following code. Keep the same behavior but improve readability, performance, and structure." },
+  { label: "Explain", icon: "❓", prompt: "Explain this in simple terms." },
+  { label: "Tests", icon: "🧪", prompt: "Write unit tests for the following code. Include edge cases and error scenarios." },
+  { label: "Debug", icon: "🐛", prompt: "Find and explain the bug in the following code or error output. Suggest a fix." },
+  { label: "Script", icon: "📜", prompt: "Convert the recent terminal commands into a reusable shell script." },
+];
+
 const DANGEROUS_PATTERNS = [
   /\brm\s+-rf\s+\//i,
   /\brm\s+(-[rfia]+\s+)?\//i,
@@ -131,6 +146,12 @@ export function TerminalAiComposer({
   registerSend?: boolean;
   className?: string;
 }) {
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string; isImage?: boolean }[]>([]);
+
   const prefs = usePrefs();
   const [open, setOpen] = useState(variant === "full");
   const [busy, setBusy] = useState(false);
@@ -239,6 +260,18 @@ export function TerminalAiComposer({
       return;
     }
 
+    let tools: Record<string, Tool> = {};
+    try {
+      const mcpTools = await buildMcpTools().catch(() => ({}));
+      const builtinTools = buildBuiltinTools();
+      tools = mergeTools(builtinTools, mcpTools);
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn("[AI] tool build failed", e);
+      }
+    }
+
     const agent = getActiveAgent();
     let system =
       agent.systemPrompt +
@@ -257,6 +290,13 @@ export function TerminalAiComposer({
       } catch {
         system += `\n\nCurrent open file: ${currentFile} (could not read content)`;
       }
+    }
+
+    if (attachedFiles.length > 0) {
+      const fileBlock = attachedFiles
+        .map((f) => (f.isImage ? `--- attached image: ${f.name} ---\n${f.content}` : `--- attached file: ${f.name} ---\n\`\`\`\n${f.content}\n\`\`\``))
+        .join("\n\n");
+      system += `\n\nAttached files:\n${fileBlock}`;
     }
 
     const ctx = readActiveTerminal();
@@ -285,7 +325,7 @@ export function TerminalAiComposer({
             return next;
           });
         },
-        {},
+        tools && Object.keys(tools).length > 0 ? tools : undefined,
         abortCtrlRef.current.signal,
       );
     } catch (e) {
@@ -309,8 +349,9 @@ export function TerminalAiComposer({
         return next;
       });
       setBusy(false);
+      setAttachedFiles([]);
     }
-  }, [input, busy, messages, sessionId]);
+  }, [input, busy, messages, sessionId, attachedFiles]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
@@ -388,10 +429,6 @@ export function TerminalAiComposer({
     onOpenInAiTab?.();
   };
 
-  // Voice input using Web Speech API
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-
   const toggleVoice = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
@@ -448,6 +485,44 @@ export function TerminalAiComposer({
     }
   };
 
+  const attachFiles = async (paths: string[]) => {
+    const newFiles: { name: string; content: string; isImage?: boolean }[] = [];
+    for (const path of paths) {
+      const fileName = path.split("/").pop() || path;
+      const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(fileName);
+      try {
+        if (isImage) {
+          const b64 = await readFileBase64(path);
+          newFiles.push({
+            name: fileName,
+            content: `![${fileName}](data:image/${fileName.split(".").pop()};base64,${b64})`,
+            isImage: true,
+          });
+        } else {
+          const text = await readFile(path);
+          newFiles.push({ name: fileName, content: text });
+        }
+      } catch (e) {
+        newFiles.push({ name: fileName, content: `[Failed to read file: ${fileName}]` });
+      }
+    }
+    setAttachedFiles((prev) => [...prev, ...newFiles]);
+  };
+
+  const removeAttachedFile = (idx: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const copyCode = async (code: string, idx: number) => {
+    try {
+      await writeText(code);
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx((current) => (current === idx ? null : current)), 1500);
+    } catch {
+      // ignore
+    }
+  };
+
   const cfg = loadConfig();
   const provider = cfg.providerId ? getProvider(cfg.providerId) : getProvider("openai");
 
@@ -475,6 +550,7 @@ export function TerminalAiComposer({
       "composer-panel animate-composer-in",
       expanded && "composer-expanded",
       variant === "full" && "composer-full",
+      dragOver && "composer-drag-over",
       className
     )}
     style={{
@@ -486,6 +562,25 @@ export function TerminalAiComposer({
       '--composer-bg-blur': `${prefs.aiMiniBgBlur}px`,
       '--composer-bg-dim': prefs.aiMiniBgDim / 100,
     } as unknown as React.CSSProperties}
+    onDragOver={(e) => {
+      e.preventDefault();
+      setDragOver(true);
+    }}
+    onDragLeave={() => setDragOver(false)}
+    onDrop={(e) => {
+      e.preventDefault();
+      setDragOver(false);
+      const paths: string[] = [];
+      if (e.dataTransfer.files) {
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+          const file = e.dataTransfer.files.item(i);
+          // Tauri file drops on WebKit give a path in the `path` property
+          const path = (file as unknown as { path?: string })?.path;
+          if (path) paths.push(path);
+        }
+      }
+      if (paths.length) void attachFiles(paths);
+    }}
   >
       {variant !== "full" && (
         <div
@@ -605,14 +700,25 @@ export function TerminalAiComposer({
                         <div key={idx} className="composer-code-block">
                           <div className="composer-code-header">
                             <span className="lang">{block.lang}</span>
-                            <button
-                              type="button"
-                              onClick={() => runCommand(block.code)}
-                              className="composer-run-btn"
-                            >
-                              <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
-                              Run
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => copyCode(block.code, idx)}
+                                className="composer-code-header-btn"
+                                title="Copy"
+                              >
+                                <HugeiconsIcon icon={copiedIdx === idx ? TickDouble01Icon : Copy01Icon} size={10} strokeWidth={1.75} />
+                                {copiedIdx === idx ? "Copied" : "Copy"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => runCommand(block.code)}
+                                className="composer-run-btn"
+                              >
+                                <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
+                                Run
+                              </button>
+                            </div>
                           </div>
                           <pre className="composer-code-pre">
                             <code>{block.code}</code>
@@ -643,6 +749,49 @@ export function TerminalAiComposer({
           </div>
         )}
       </div>
+
+      {messages.length === 0 && (
+        <div className="composer-prompt-templates">
+          {PROMPT_TEMPLATES.map((t) => (
+            <button
+              key={t.label}
+              type="button"
+              onClick={() => {
+                setInput(t.prompt);
+                textareaRef.current?.focus();
+              }}
+              className="composer-prompt-template-btn"
+              title={t.prompt}
+            >
+              <span>{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {attachedFiles.length > 0 && (
+        <div className="composer-attached-files">
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+            <HugeiconsIcon icon={Files01Icon} size={10} strokeWidth={1.75} />
+            <span>Attached:</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {attachedFiles.map((f, idx) => (
+              <button
+                key={`${f.name}-${idx}`}
+                type="button"
+                onClick={() => removeAttachedFile(idx)}
+                className="composer-attached-file-chip"
+                title="Click to remove"
+              >
+                <span className="truncate max-w-[140px]">{f.name}</span>
+                <span className="text-muted-foreground/50">×</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {pendingRun && (
         <div className="composer-pending-run">
