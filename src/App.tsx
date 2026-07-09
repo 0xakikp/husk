@@ -357,6 +357,23 @@ function TabBar({
       className="relative min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       <div className="flex w-full min-w-0 items-center gap-0.5" ref={tabBarRef} onDragOver={handleDragOver}>
+        {/* Pinned Husk AI tab — rendered first when pinned */}
+        {aiPinned && (
+          <TabChip
+            active={active.kind === "ai"}
+            onClick={onSelectAi}
+            animate={animationsEnabled}
+            pinned={true}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
+            }}
+          >
+            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} className="shrink-0" />
+            <span className="truncate">Husk AI</span>
+          </TabChip>
+        )}
+
         {/* Pinned file tabs — rendered first so they appear at the far left */}
         {openFiles.filter((f) => f.pinned).map((f) => {
           const originalIndex = openFiles.findIndex((of) => of.path === f.path);
@@ -572,19 +589,21 @@ function TabBar({
             <span className="truncate">Settings</span>
           </TabChip>
         ) : null}
-        <TabChip
-          active={active.kind === "ai"}
-          onClick={onSelectAi}
-          animate={animationsEnabled}
-          pinned={aiPinned}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
-          }}
-        >
-          <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} className="shrink-0" />
-          <span className="truncate">Husk AI</span>
-        </TabChip>
+        {!aiPinned && (
+          <TabChip
+            active={active.kind === "ai"}
+            onClick={onSelectAi}
+            animate={animationsEnabled}
+            pinned={false}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
+            }}
+          >
+            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} className="shrink-0" />
+            <span className="truncate">Husk AI</span>
+          </TabChip>
+        )}
         <Button
           variant="ghost"
           size="icon"
