@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import {
   GithubIcon,
-  Globe02Icon,
   Tag01Icon,
   CpuIcon,
   LicenseIcon,
-  BugIcon,
   DownloadCircle01Icon,
   Coffee01Icon,
   Idea01Icon,
@@ -17,9 +15,8 @@ import { checkForUpdates } from "../updater";
 import { SectionHeader } from "./components/SectionHeader";
 
 const REPO_URL = "https://github.com/0xakikp/husk";
-const WEBSITE = "https://github.com/0xakikp/husk";
+const FEEDBACK_URL = "https://github.com/0xakikp/husk/issues/new";
 const BUY_ME_A_COFFEE_URL = "https://buymeacoffee.com/akikp";
-const FEATURE_REQUEST_URL = "https://github.com/0xakikp/husk/issues/new?template=feature_request.yml";
 
 function platformLabel(): string {
   const ua = navigator.userAgent;
@@ -97,11 +94,9 @@ export function AboutSection() {
       <div className="flex flex-wrap items-center justify-center gap-5">
         {[
           { icon: DownloadCircle01Icon, label: "Check for updates", action: () => void checkForUpdates(true) as void },
-          { icon: Globe02Icon, label: "Website", url: WEBSITE },
           { icon: GithubIcon, label: "GitHub", url: REPO_URL },
-          { icon: BugIcon, label: "Report", url: `${REPO_URL}/issues` },
-          { icon: Idea01Icon, label: "Request feature", url: FEATURE_REQUEST_URL },
-          { icon: Coffee01Icon, label: "Buy me a coffee", url: BUY_ME_A_COFFEE_URL },
+          { icon: Idea01Icon, label: "Feedback", url: FEEDBACK_URL },
+          { icon: Coffee01Icon, label: "Support", url: BUY_ME_A_COFFEE_URL },
         ].map((a) => (
           <button type="button"
             key={a.label}

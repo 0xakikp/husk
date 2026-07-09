@@ -36,8 +36,8 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   },
   {
     id: "ai",
-    label: "AI",
-    keywords: ["agent", "persona", "system", "prompt", "template", "refactor", "explain", "tests", "debug", "script"],
+    label: "AI Composer",
+    keywords: ["agent", "persona", "system", "prompt", "template", "composer", "refactor", "explain", "tests", "debug", "script"],
   },  {
     id: "mcp",
     label: "MCP",
