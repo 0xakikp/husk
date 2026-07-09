@@ -955,9 +955,6 @@ export function TerminalAiComposer({
                       </>
                     ) : (
                       <>
-                        <span className={cn("composer-message-role-icon", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
-                          {activeAgentIcon}
-                        </span>
                         <span className={cn(activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
                           {activeAgentName}
                         </span>
