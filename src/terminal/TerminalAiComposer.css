@@ -910,9 +910,11 @@
     0 1px 0 rgba(255, 255, 255, 0.04) inset,
     0 4px 16px rgba(0, 0, 0, 0.18);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
 .composer-input-row:focus-within {
+  border-radius: 24px;
   border-color: hsl(var(--primary) / 0.55);
   box-shadow:
     0 0 0 3px hsl(var(--primary) / 0.1),
@@ -928,6 +930,7 @@
   background: transparent;
   border: none;
   outline: none;
+  box-shadow: none;
   color: hsl(var(--foreground));
   font-size: var(--composer-font-size, 13px);
   line-height: 1.5;
@@ -935,6 +938,15 @@
   font-family: inherit;
   padding: 4px 8px;
   margin: -2px 0;
+}
+
+.composer-textarea:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.composer-textarea::-moz-focus-inner {
+  border: 0;
 }
 
 .composer-textarea::placeholder {
