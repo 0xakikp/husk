@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PlusSignIcon, MessageMultiple02Icon, SparklesIcon, ComputerTerminal02Icon, Archive02Icon, Delete02Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { PlusSignIcon, MessageMultiple02Icon, SparklesIcon, ComputerTerminal02Icon, Archive02Icon, Delete02Icon, Search01Icon, Settings01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { TerminalAiComposer } from "../terminal/TerminalAiComposer";
+import { usePrefs } from "../settings/preferences";
 import {
   useSessions,
   useActiveSessionId,
@@ -42,6 +43,7 @@ function fuzzyMatch(query: string, text: string): boolean {
 export function AiTabPanel() {
   const sessions = useSessions();
   const activeId = useActiveSessionId();
+  const prefs = usePrefs();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -223,7 +225,30 @@ export function AiTabPanel() {
 
       {/* Chat area */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <TerminalAiComposer sessionId={activeSession.id} variant="full" registerToggle={false} registerOpen={false} registerSend={false} />
+        {prefs.aiEnabled ? (
+          <TerminalAiComposer sessionId={activeSession.id} variant="full" registerToggle={false} registerOpen={false} registerSend={false} />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+            <div className="composer-avatar-lg opacity-40">✦</div>
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-semibold text-foreground">AI is disabled</h3>
+              <p className="max-w-[260px] text-[11px] text-muted-foreground">
+                Enable AI in Settings to use Husk AI chat, command suggestions, and inline assistance.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                // Broadcast open settings from the AI tab. The App layer listens for this event.
+                window.dispatchEvent(new CustomEvent("husk:open-settings"));
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15"
+            >
+              <HugeiconsIcon icon={Settings01Icon} size={12} strokeWidth={1.75} />
+              Open Settings
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

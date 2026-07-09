@@ -1498,6 +1498,16 @@ function App() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [term, activeKind, openFiles]);
 
+  // Listen for internal "open settings" events from panels like the AI tab
+  useEffect(() => {
+    const onOpenSettings = () => {
+      setSettingsOpen(true);
+      setActiveKind("settings");
+    };
+    window.addEventListener("husk:open-settings", onOpenSettings);
+    return () => window.removeEventListener("husk:open-settings", onOpenSettings);
+  }, []);
+
   const openSettings = () => {
     setSettingsOpen(true);
     setActiveKind("settings");
