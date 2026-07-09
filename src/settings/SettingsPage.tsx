@@ -1,15 +1,14 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { Search01Icon, Cancel01Icon, ToolsIcon } from "@hugeicons/core-free-icons";
+import { Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GeneralSection } from "./GeneralSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { AboutSection } from "./AboutSection";
 import { ModelsSection } from "./ModelsSection";
 import { McpSection } from "./McpSection";
-import { SetupAssistantDialog, SetupAssistantBanner } from "./SetupAssistantDialog";
+import { SetupAssistantDialog, SetupAssistantBanner, ToolsSetupCard } from "./SetupAssistantDialog";
 import { CloudSyncSection } from "./CloudSyncSection";
 import { CrashReportingSection } from "./CrashReportingSection";
 
@@ -232,20 +231,9 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             {show("tools") ? (
               <>
                 <SectionDivider />
-                <div id="settings-section-tools" className="scroll-mt-6">
+                <div id="settings-section-tools" className="scroll-mt-6 space-y-4">
+                  <ToolsSetupCard onOpen={() => setSetupOpen(true)} />
                   <SetupAssistantBanner onOpen={() => setSetupOpen(true)} />
-                  <div className="flex items-center justify-center rounded-xl border border-border/60 bg-card/40 p-6">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSetupOpen(true)}
-                      className="gap-1.5 text-[11px]"
-                    >
-                      <HugeiconsIcon icon={ToolsIcon} size={13} strokeWidth={1.75} />
-                      Open Setup Assistant
-                    </Button>
-                  </div>
                 </div>
                 <SetupAssistantDialog open={setupOpen} onOpenChange={setSetupOpen} />
               </>

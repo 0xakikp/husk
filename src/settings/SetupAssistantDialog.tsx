@@ -7,6 +7,7 @@ import {
   ToolsIcon,
   ComputerTerminal02Icon,
   Cancel01Icon,
+  ArrowRight01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { detectInstalled } from "@/tools";
@@ -34,6 +35,7 @@ export type ToolInfo = {
   name: string;
   description: string;
   commands: Record<Platform, string | null>;
+  notes?: string;
 };
 
 type Platform = "macos" | "linux" | "windows";
@@ -51,7 +53,7 @@ export const SETUP_GROUPS: ToolGroup[] = [
       {
         id: "zsh",
         name: "zsh",
-        description: "Modern shell with great completion and plugin support. (Default on macOS.)",
+        description: "Modern shell with completion and plugin support. Default on macOS.",
         commands: {
           macos: "brew install zsh",
           linux: "sudo apt update \u0026\u0026 sudo apt install -y zsh",
@@ -61,7 +63,7 @@ export const SETUP_GROUPS: ToolGroup[] = [
       {
         id: "oh-my-zsh",
         name: "oh-my-zsh",
-        description: "Framework for managing zsh configuration, plugins, and themes.",
+        description: "Framework for managing zsh config, plugins, and themes.",
         commands: {
           macos: 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"',
           linux: 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"',
@@ -91,7 +93,7 @@ export const SETUP_GROUPS: ToolGroup[] = [
       {
         id: "powerlevel10k",
         name: "powerlevel10k",
-        description: "Highly customizable, fast zsh prompt theme with git status.",
+        description: "Fast, customizable zsh prompt theme with git status.",
         commands: {
           macos: "git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k",
           linux: "git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k",
@@ -113,7 +115,7 @@ export const SETUP_GROUPS: ToolGroup[] = [
   {
     id: "essentials",
     title: "Terminal Essentials",
-    description: "Drop-in replacements for core Unix tools.",
+    description: "Drop-in replacements for core Unix tools that make output look better.",
     tools: [
       {
         id: "eza",
@@ -295,7 +297,7 @@ export const SETUP_GROUPS: ToolGroup[] = [
         description: "Render Markdown files directly in the terminal.",
         commands: {
           macos: "brew install glow",
-          linux: "sudo mkdir -p /etc/apt/keyrings && curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg && echo \"deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *\" | sudo tee /etc/apt/sources.list.d/charm.list && sudo apt update && sudo apt install -y glow",
+          linux: "sudo mkdir -p /etc/apt/keyrings \u0026\u0026 curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg \u0026\u0026 echo \"deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *\" | sudo tee /etc/apt/sources.list.d/charm.list \u0026\u0026 sudo apt update \u0026\u0026 sudo apt install -y glow",
           windows: "winget install --id charmbracelet.glow -e",
         },
       },
@@ -318,40 +320,59 @@ function getCommand(tool: ToolInfo, platform: Platform): string | null {
 }
 
 function formatGroupInstall(tools: ToolInfo[], platform: Platform): string | null {
-  const brewTools: string[] = [];
-  const scripts: string[] = [];
-  for (const tool of tools) {
-    const cmd = getCommand(tool, platform);
-    if (!cmd) continue;
-    if (platform === "macos" && cmd.startsWith("brew install ")) {
-      brewTools.push(tool.id);
-    } else if (platform === "linux" && cmd.startsWith("sudo apt ")) {
-      brewTools.push(tool.id === "fd" ? "fd-find" : tool.id === "bat" ? "bat" : tool.id === "git-delta" ? "git-delta" : tool.id);
-    } else {
-      scripts.push(cmd);
-    }
-  }
-
-  if (platform === "macos" && brewTools.length > 0) {
-    scripts.unshift(`${BREW_PREFIX} && brew install ${brewTools.join(" ")}`);
-  } else if (platform === "linux") {
-    const aptNames = brewTools.filter((n) => n !== "glow" && n !== "lazygit");
-    if (aptNames.length > 0) scripts.unshift(`sudo apt update && sudo apt install -y ${aptNames.join(" ")}`);
-    // Add non-apt tools individually
+  if (platform === "macos") {
+    const brewPackages: string[] = [];
+    const scripts: string[] = [];
     for (const tool of tools) {
       const cmd = getCommand(tool, platform);
-      if (cmd && !cmd.startsWith("sudo apt ")) scripts.push(cmd);
+      if (!cmd) continue;
+      if (cmd.startsWith("brew install ")) {
+        brewPackages.push(cmd.replace("brew install ", ""));
+      } else {
+        scripts.push(cmd);
+      }
     }
+    const parts: string[] = [];
+    if (brewPackages.length > 0) {
+      parts.push(`${BREW_PREFIX} \u0026\u0026 brew install ${[...new Set(brewPackages)].join(" ")}`);
+    }
+    parts.push(...scripts);
+    return parts.length ? parts.join("\n\n") : null;
   }
 
-  if (scripts.length === 0) return null;
-  return scripts.join("\n\n");
+  if (platform === "linux") {
+    const aptNames: string[] = [];
+    const scripts: string[] = [];
+    for (const tool of tools) {
+      const cmd = getCommand(tool, platform);
+      if (!cmd) continue;
+      if (cmd.startsWith("sudo apt install -y ")) {
+        aptNames.push(cmd.replace("sudo apt install -y ", ""));
+      } else if (cmd.startsWith("sudo apt update ")) {
+        aptNames.push(cmd);
+      } else {
+        scripts.push(cmd);
+      }
+    }
+    const parts: string[] = [];
+    const uniqueApt = [...new Set(aptNames)];
+    if (uniqueApt.length > 0) {
+      parts.push(`sudo apt update \u0026\u0026 sudo apt install -y ${uniqueApt.join(" ")}`);
+    }
+    parts.push(...scripts);
+    return parts.length ? parts.join("\n\n") : null;
+  }
+
+  const scripts = tools
+    .map((t) => getCommand(t, platform))
+    .filter((c): c is string => c !== null);
+  return scripts.length ? scripts.join("\n\n") : null;
 }
 
 export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [sentHint, setSentHint] = useState(false);
+  const [toast, setToast] = useState<{ message: string; action?: () => void; actionLabel?: string } | null>(null);
 
   const check = useCallback(async () => {
     setLoading(true);
@@ -365,6 +386,12 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
     if (open) void check();
   }, [open, check]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const allTools = useMemo(() => SETUP_GROUPS.flatMap((g) => g.tools), []);
   const installedCount = allTools.filter((t) => installed.has(t.id)).length;
   const totalCount = allTools.length;
@@ -372,8 +399,16 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
 
   const runInTerminal = (cmd: string) => {
     if (typeInActiveTerminal(cmd)) {
-      setSentHint(true);
-      setTimeout(() => setSentHint(false), 4000);
+      setToast({
+        message: "Command pasted into the active terminal. Press Enter there to run it.",
+        action: () => {
+          onOpenChange(false);
+          focusActiveTerminal();
+        },
+        actionLabel: "Focus terminal",
+      });
+    } else {
+      setToast({ message: "No active terminal found. Open a terminal tab first." });
     }
   };
 
@@ -393,107 +428,124 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
-        <DialogHeader className="px-6 pt-6 pb-2">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <HugeiconsIcon icon={ToolsIcon} size={18} strokeWidth={1.75} />
-            Setup Assistant
-          </DialogTitle>
-          <DialogDescription className="space-y-1">
-            <p>
-              These tools are <span className="font-medium text-foreground">optional</span>. Husk works without them,
-              but they enhance the terminal experience.
-            </p>
+      <DialogContent
+        overlayClassName="bg-black/60 backdrop-blur-none"
+        className="fixed top-1/2 left-1/2 flex h-[92vh] w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col gap-0 overflow-hidden rounded-2xl border border-border/50 bg-background p-0 shadow-2xl"
+      >
+        <DialogHeader className="shrink-0 border-b border-border/40 px-6 py-5">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <HugeiconsIcon icon={ToolsIcon} size={18} strokeWidth={1.75} />
+              Setup Assistant
+            </DialogTitle>
             {!loading && (
-              <p className="text-muted-foreground">
-                {installedCount}/{totalCount} installed · {missingCount} missing · commands use {platformLabel}
-              </p>
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-500">
+                  <HugeiconsIcon icon={CheckmarkCircle02Icon} size={10} />
+                  {installedCount} installed
+                </span>
+                <span className="rounded-full bg-muted px-2 py-0.5">
+                  {missingCount} missing
+                </span>
+                <span className="rounded-full bg-muted px-2 py-0.5">
+                  {platformLabel}
+                </span>
+              </div>
             )}
+          </div>
+          <DialogDescription className="mt-1">
+            These tools are optional. Husk works without them, but they enhance the terminal experience.
+            Commands are generated for your current platform.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-6">
-          {sentHint && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
-              <span className="text-[11px] text-emerald-500">
-                <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} className="inline mr-1" />
-                Command pasted into the active terminal. Press Enter there to run it.
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  onOpenChange(false);
-                  focusActiveTerminal();
-                }}
-                className="h-6 text-[10px] text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-500"
-              >
-                Focus terminal
-              </Button>
+        <div className="relative flex flex-1 flex-col overflow-hidden">
+          {toast && (
+            <div className="absolute left-1/2 top-4 z-10 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 shadow-lg">
+                <span className="text-[11px] text-emerald-500">
+                  <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} className="inline mr-1" />
+                  {toast.message}
+                </span>
+                {toast.action && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={toast.action}
+                    className="h-6 text-[10px] text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-500"
+                  >
+                    {toast.actionLabel}
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="default"
-              onClick={installAll}
-              disabled={missingCount === 0 || loading}
-              className="text-[11px]"
-            >
-              <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} className="mr-1" />
-              Install all missing
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={check}
-              disabled={loading}
-              className="text-[11px]"
-            >
-              Refresh
-            </Button>
-          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="mb-5 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                onClick={installAll}
+                disabled={missingCount === 0 || loading}
+                className="text-[11px]"
+              >
+                <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} className="mr-1" />
+                Install all missing
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={check}
+                disabled={loading}
+                className="text-[11px]"
+              >
+                Refresh status
+              </Button>
+            </div>
 
-          {SETUP_GROUPS.map((group) => {
-            const groupMissing = group.tools.filter((t) => !installed.has(t.id));
-            return (
-              <div key={group.id}>
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-[13px] font-semibold text-foreground">{group.title}</h3>
-                    <p className="text-[11px] text-muted-foreground">{group.description}</p>
-                  </div>
-                  {groupMissing.length > 0 && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => installGroup(group)}
-                      className="text-[10px] h-7"
-                    >
-                      Install {groupMissing.length}
-                    </Button>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {group.tools.map((tool) => (
-                    <ToolCard
-                      key={tool.id}
-                      tool={tool}
-                      platform={PLATFORM}
-                      isInstalled={installed.has(tool.id)}
-                      loading={loading}
-                      onRunInTerminal={runInTerminal}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+            <div className="space-y-8">
+              {SETUP_GROUPS.map((group) => {
+                const groupMissing = group.tools.filter((t) => !installed.has(t.id));
+                return (
+                  <section key={group.id} className="scroll-mt-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-[14px] font-semibold text-foreground">{group.title}</h3>
+                        <p className="text-[11px] text-muted-foreground">{group.description}</p>
+                      </div>
+                      {groupMissing.length > 0 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => installGroup(group)}
+                          className="h-7 text-[10px]"
+                        >
+                          Install {groupMissing.length}
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {group.tools.map((tool) => (
+                        <ToolCard
+                          key={tool.id}
+                          tool={tool}
+                          platform={PLATFORM}
+                          isInstalled={installed.has(tool.id)}
+                          loading={loading}
+                          onRunInTerminal={runInTerminal}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -532,14 +584,14 @@ function ToolCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-xl border p-3 transition-colors",
+        "group flex flex-col gap-2 rounded-xl border p-3 transition-colors",
         isInstalled
           ? "border-emerald-500/20 bg-emerald-500/[0.03]"
-          : "border-border/60 bg-card/40",
+          : "border-border/60 bg-card/40 hover:border-border",
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
             <span
               className={cn(
@@ -549,15 +601,14 @@ function ToolCard({
             >
               {tool.name}
             </span>
-            {isInstalled && (
+            {isInstalled ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-500">
                 <HugeiconsIcon icon={CheckmarkCircle02Icon} size={9} />
                 Installed
               </span>
-            )}
-            {unsupported && !isInstalled && (
+            ) : unsupported ? (
               <span className="text-[9px] text-muted-foreground">Unsupported on {platform}</span>
-            )}
+            ) : null}
           </div>
           <p className="text-[10.5px] leading-relaxed text-muted-foreground">
             {tool.description}
@@ -575,7 +626,7 @@ function ToolCard({
       {!isInstalled && !unsupported && (
         <div className="flex flex-col gap-1.5">
           {showCommand ? (
-            <div className="flex items-center gap-2 rounded-md border border-border/50 bg-card px-2 py-1">
+            <div className="flex items-center gap-2 rounded-md border border-border/50 bg-card px-2 py-1.5">
               <code className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
                 {cmd}
               </code>
@@ -605,18 +656,16 @@ function ToolCard({
               Show install command
             </button>
           )}
-          <div className="flex flex-wrap gap-1.5">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => cmd && onRunInTerminal(cmd)}
-              className="h-6 text-[10px] gap-1"
-            >
-              <HugeiconsIcon icon={ComputerTerminal02Icon} size={11} />
-              Run in terminal
-            </Button>
-          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => cmd && onRunInTerminal(cmd)}
+            className="h-7 w-full justify-start gap-1.5 text-[10px]"
+          >
+            <HugeiconsIcon icon={ComputerTerminal02Icon} size={11} />
+            Run in terminal
+          </Button>
         </div>
       )}
     </div>
@@ -628,24 +677,25 @@ export function SetupAssistantBanner({ onOpen }: { onOpen: () => void }) {
   if (prefs.setupAssistantDismissed) return null;
 
   return (
-    <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
+    <div className="mb-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
+      <div className="flex items-start justify-between gap-4 p-5">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
-            <HugeiconsIcon icon={ToolsIcon} size={14} strokeWidth={1.75} className="text-primary" />
+            <HugeiconsIcon icon={ToolsIcon} size={16} strokeWidth={1.75} className="text-primary" />
             Enhance your terminal
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="max-w-md text-[11px] leading-relaxed text-muted-foreground">
             Husk works best with a modern shell setup. Install optional tools like eza, fzf, starship, and zoxide to get the most out of the terminal.
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <Button
               type="button"
               size="sm"
               onClick={onOpen}
-              className="h-7 text-[11px]"
+              className="h-7 gap-1 text-[11px]"
             >
               Open Setup Assistant
+              <HugeiconsIcon icon={ArrowRight01Icon} size={11} />
             </Button>
             <Button
               type="button"
@@ -666,6 +716,34 @@ export function SetupAssistantBanner({ onOpen }: { onOpen: () => void }) {
         >
           <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
         </button>
+      </div>
+    </div>
+  );
+}
+
+export function ToolsSetupCard({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/40 p-5">
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+          <HugeiconsIcon icon={ToolsIcon} size={16} strokeWidth={1.75} className="text-primary" />
+          Recommended tools
+        </div>
+        <p className="max-w-xl text-[11px] leading-relaxed text-muted-foreground">
+          Browse a curated list of optional CLI tools — eza, bat, fzf, zoxide, lazygit, starship, and more. Husk detects what you already have and can paste install commands into the active terminal.
+        </p>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onOpen}
+          className="h-8 gap-1.5 text-[11px]"
+        >
+          <HugeiconsIcon icon={ToolsIcon} size={13} strokeWidth={1.75} />
+          Open Setup Assistant
+        </Button>
       </div>
     </div>
   );
