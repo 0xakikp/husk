@@ -13,7 +13,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 export type SidebarViewId =
   | "explorer"
-  | "source-control"
   | "remotes"
   | "workflows"
   | "vault"
@@ -23,7 +22,6 @@ export type SidebarViewId =
   | "terraform"
   | "docker"
   | "tailscale"
-  | "sftp"
   | "bookmarks";
 
 const RAIL_TOOLTIP_CLASS =
@@ -45,22 +43,27 @@ type RailSlot =
       onTrigger: () => void;
       disabled?: boolean;
       active?: boolean;
+      badge?: number;
     };
 
 export function SidebarRail({
   view,
   onSelectView,
   onCommandPalette,
+  onToggleSourceControl,
+  sourceControlActive,
   changedCount = 0,
 }: {
   view: SidebarViewId;
   onSelectView: (v: SidebarViewId) => void;
   onCommandPalette: () => void;
+  onToggleSourceControl?: () => void;
+  sourceControlActive?: boolean;
   changedCount?: number;
 }) {
   const slots: RailSlot[] = [
     { kind: "view", id: "explorer", label: "Files", icon: FolderTreeIcon },
-    { kind: "view", id: "source-control", label: "Source Control", icon: FolderGitTwoIcon, badge: changedCount },
+    { kind: "action", id: "source-control", label: "Source Control", icon: FolderGitTwoIcon, onTrigger: onToggleSourceControl ?? (() => {}), active: sourceControlActive, badge: changedCount },
     { kind: "view", id: "remotes", label: "Remotes", icon: DatabaseIcon },
     { kind: "view", id: "workflows", label: "Workflows", icon: WorkflowCircle01Icon },
     { kind: "view", id: "vault", label: "Vault", icon: CollectionsBookmarkIcon },
@@ -79,7 +82,7 @@ export function SidebarRail({
           const isAction = slot.kind === "action";
           const isActionActive = isAction && slot.active === true;
           const isDisabled = isAction && slot.disabled === true;
-          const showBadge = slot.kind === "view" && !!slot.badge && slot.badge > 0;
+          const showBadge = !!slot.badge && slot.badge > 0;
           return (
             <Tooltip key={slot.id}>
               <TooltipTrigger asChild>
