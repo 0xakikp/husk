@@ -899,7 +899,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-radius: 24px;
+  border-radius: 24px !important;
   border: 1px solid hsl(var(--border) / 0.45);
   background: linear-gradient(
     180deg,
@@ -914,7 +914,7 @@
 }
 
 .composer-input-row:focus-within {
-  border-radius: 24px;
+  border-radius: 24px !important;
   border-color: hsl(var(--primary) / 0.55);
   box-shadow:
     0 0 0 3px hsl(var(--primary) / 0.1),
@@ -929,6 +929,7 @@
   resize: none;
   background: transparent;
   border: none;
+  border-radius: 0 !important;
   outline: none;
   box-shadow: none;
   color: hsl(var(--foreground));
@@ -940,9 +941,12 @@
   margin: -2px 0;
 }
 
-.composer-textarea:focus {
-  outline: none;
-  box-shadow: none;
+.composer-textarea:focus,
+.composer-textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
 }
 
 .composer-textarea::-moz-focus-inner {
@@ -959,12 +963,13 @@
   align-items: center;
   justify-content: center;
   padding: 6px 14px;
-  border-radius: 10px;
+  border-radius: 10px !important;
   background: hsl(var(--primary) / 0.9);
   color: hsl(var(--primary-foreground));
   font-size: 11px;
   font-weight: 600;
   transition: all 0.15s ease;
+  border: none;
 }
 
 .composer-send-btn:hover:not(:disabled) {
@@ -978,11 +983,10 @@
   cursor: not-allowed;
 }
 
-:root[data-theme="light"] .composer-header,
-:root[data-theme="light"] .composer-input-row {
+:root[data-theme="light"] .composer-input-row,
+:root[data-theme="light"] .composer-input-row:focus-within {
   border-color: hsl(var(--border) / 0.6);
 }
-
 .composer-drag-over {
   border-color: hsl(var(--primary) / 0.6) !important;
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) inset;
