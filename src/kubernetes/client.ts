@@ -39,6 +39,38 @@ export type K8sPodDetail = {
   containers: K8sContainer[];
   volumes: string[];
   events: K8sEvent[];
+  resources: K8sContainerResources[];
+  nodeInfo?: K8sNodeInfo;
+  usage?: K8sPodUsage;
+};
+
+export type K8sContainerResources = {
+  name: string;
+  requests: { cpu?: string; memory?: string; ephemeralStorage?: string };
+  limits: { cpu?: string; memory?: string; ephemeralStorage?: string };
+};
+
+export type K8sPodUsage = {
+  cpu: string;
+  memory: string;
+};
+
+export type K8sNodeInfo = {
+  name: string;
+  status: string;
+  roles: string;
+  age: string;
+  version: string;
+  internalIp: string;
+  externalIp: string;
+  osImage: string;
+  kernelVersion: string;
+  containerRuntime: string;
+  architecture: string;
+  topCpu: string;
+  topMem: string;
+  capacity: { cpu: string; memory: string; pods: string };
+  allocatable: { cpu: string; memory: string; pods: string };
 };
 
 export type K8sEvent = {
@@ -84,6 +116,88 @@ function parseContainerStatuses(statuses: any[]): K8sContainer[] {
   });
 }
 
+function parseResources(containerSpec: any[]): K8sContainerResources[] {
+  return containerSpec.map((c) => {
+    const r = c.resources?.requests || {};
+    const l = c.resources?.limits || {};
+    return {
+      name: c.name,
+      requests: {
+        cpu: r.cpu,
+        memory: r.memory,
+        ephemeralStorage: r["ephemeral-storage"],
+      },
+      limits: {
+        cpu: l.cpu,
+        memory: l.memory,
+        ephemeralStorage: l["ephemeral-storage"],
+      },
+    };
+  });
+}
+
+export async function getNodeInfo(name: string): Promise<K8sNodeInfo> {
+  const [json, statusOut] = await Promise.all([
+    shell(`kubectl get node ${shq(name)} -o json`, 15),
+    shell(`kubectl top node ${shq(name)} --no-headers`, 10).catch(() => ""),
+  ]);
+  const n = JSON.parse(json);
+  const status = n.status?.conditions?.find((c: any) => c.type === "Ready")?.status === "True" ? "Ready" : "NotReady";
+  const addresses = (n.status?.addresses || []) as { type: string; address: string }[];
+  const internalIp = addresses.find((a) => a.type === "InternalIP")?.address || "";
+  const externalIp = addresses.find((a) => a.type === "ExternalIP")?.address || "";
+  const roles = Object.keys(n.metadata?.labels || {}).filter((k) => k.startsWith("node-role.kubernetes.io/")).map((k) => k.split("/")[1]).join(", ") || "none";
+  const topParts = statusOut.trim().split(/\s+/);
+  const topCpu = topParts[1] || "-";
+  const topMem = topParts[3] || "-";
+  return {
+    name: n.metadata?.name || name,
+    status,
+    roles,
+    age: n.metadata?.creationTimestamp ? podAgeFromDate(n.metadata.creationTimestamp) : "",
+    version: n.status?.nodeInfo?.kubeletVersion || "",
+    internalIp,
+    externalIp,
+    osImage: n.status?.nodeInfo?.osImage || "",
+    kernelVersion: n.status?.nodeInfo?.kernelVersion || "",
+    containerRuntime: n.status?.nodeInfo?.containerRuntimeVersion || "",
+    architecture: n.status?.nodeInfo?.architecture || "",
+    topCpu,
+    topMem,
+    capacity: {
+      cpu: n.status?.capacity?.cpu || "",
+      memory: n.status?.capacity?.memory || "",
+      pods: n.status?.capacity?.pods || "",
+    },
+    allocatable: {
+      cpu: n.status?.allocatable?.cpu || "",
+      memory: n.status?.allocatable?.memory || "",
+      pods: n.status?.allocatable?.pods || "",
+    },
+  };
+}
+
+export async function getPodUsage(namespace: string, name: string): Promise<K8sPodUsage | null> {
+  const out = await shell(
+    `kubectl top pod -n ${shq(namespace)} ${shq(name)} --no-headers`,
+    10,
+  ).catch(() => "");
+  if (!out.trim()) return null;
+  const parts = out.trim().split(/\s+/);
+  return { cpu: parts[1] || "-", memory: parts[2] || "-" };
+}
+
+function podAgeFromDate(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
+}
+
 export async function describePod(namespace: string, name: string): Promise<K8sPodDetail> {
   const json = await shell(`kubectl get pod -n ${shq(namespace)} ${shq(name)} -o json`, 15);
   const p = JSON.parse(json);
@@ -117,6 +231,7 @@ export async function describePod(namespace: string, name: string): Promise<K8sP
     containers: parseContainerStatuses(status.containerStatuses || []),
     volumes: (spec.volumes || []).map((v: any) => v.name),
     events,
+    resources: parseResources(spec.containers || []),
   };
 }
 

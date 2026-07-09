@@ -16,9 +16,13 @@ import {
   describePod,
   getPodLogs,
   getServicesForPod,
+  getNodeInfo,
+  getPodUsage,
   type K8sPodDetail,
   type K8sContainer,
   type K8sService,
+  type K8sNodeInfo,
+  type K8sPodUsage,
 } from "./client";
 
 export function PodDetailPanel({
@@ -33,11 +37,13 @@ export function PodDetailPanel({
   const [detail, setDetail] = useState<K8sPodDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "containers" | "events" | "logs" | "network">("overview");
+  const [tab, setTab] = useState<"overview" | "containers" | "events" | "logs" | "network" | "resources" | "node">("overview");
   const [logContainer, setLogContainer] = useState<string | "">("");
   const [logs, setLogs] = useState<string>("");
   const [logLoading, setLogLoading] = useState(false);
   const [services, setServices] = useState<K8sService[]>([]);
+  const [nodeInfo, setNodeInfo] = useState<K8sNodeInfo | null>(null);
+  const [usage, setUsage] = useState<K8sPodUsage | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -45,8 +51,15 @@ export function PodDetailPanel({
     try {
       const d = await describePod(namespace, name);
       setDetail(d);
-      const svc = await getServicesForPod(namespace, d.labels);
+      const [svc, u] = await Promise.all([
+        getServicesForPod(namespace, d.labels),
+        getPodUsage(namespace, name).catch(() => null),
+      ]);
       setServices(svc);
+      setUsage(u);
+      if (d.node) {
+        getNodeInfo(d.node).then((n) => setNodeInfo(n)).catch(() => null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -125,6 +138,8 @@ export function PodDetailPanel({
           { id: "events", label: "Events", icon: Mining01Icon },
           { id: "logs", label: "Logs", icon: ArrowRight01Icon },
           { id: "network", label: "Network", icon: AiNetworkIcon },
+          { id: "resources", label: "Resources", icon: Database01Icon },
+          { id: "node", label: "Node", icon: AiNetworkIcon },
         ].map((t) => (
           <button
             key={t.id}
@@ -159,7 +174,7 @@ export function PodDetailPanel({
           <p className="text-center text-[12px] text-muted-foreground">No data</p>
         ) : (
           <div className="flex flex-col gap-4">
-            {tab === "overview" && <OverviewTab detail={detail} age={podAge} services={services} />}
+            {tab === "overview" && <OverviewTab detail={detail} age={podAge} services={services} usage={usage} />}
             {tab === "containers" && <ContainersTab containers={detail.containers} />}
             {tab === "events" && <EventsTab events={detail.events} />}
             {tab === "logs" && (
@@ -172,6 +187,8 @@ export function PodDetailPanel({
               />
             )}
             {tab === "network" && <NetworkTab detail={detail} services={services} />}
+            {tab === "resources" && <ResourcesTab resources={detail.resources} usage={usage} />}
+            {tab === "node" && <NodeTab node={nodeInfo} />}
           </div>
         )}
       </div>
@@ -183,10 +200,12 @@ function OverviewTab({
   detail,
   age,
   services,
+  usage,
 }: {
   detail: K8sPodDetail;
   age: (iso: string) => string;
   services: K8sService[];
+  usage: K8sPodUsage | null;
 }) {
   const rows = [
     { label: "Namespace", value: detail.namespace },
@@ -199,6 +218,9 @@ function OverviewTab({
     { label: "Age", value: age(detail.createdAt) },
     { label: "Phase", value: detail.phase },
   ];
+  if (usage) {
+    rows.splice(2, 0, { label: "CPU Usage", value: usage.cpu }, { label: "Memory Usage", value: usage.memory });
+  }
 
   return (
     <>
@@ -237,6 +259,23 @@ function OverviewTab({
               </span>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Volumes
+        </h3>
+        <div className="flex flex-col gap-1">
+          {detail.volumes.length === 0 ? (
+            <span className="text-[11px] text-muted-foreground">No volumes</span>
+          ) : (
+            detail.volumes.map((v) => (
+              <div key={v} className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5 text-[11.5px] text-foreground">
+                {v}
+              </div>
+            ))
+          )}
         </div>
       </section>
 
@@ -477,6 +516,140 @@ function NetworkTab({
               </div>
             ))
           )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ResourcesTab({
+  resources,
+  usage,
+}: {
+  resources: K8sPodDetail["resources"];
+  usage: K8sPodUsage | null;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      {usage && (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Live Usage
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5">
+              <div className="text-[10px] text-muted-foreground">CPU</div>
+              <div className="text-[11.5px] font-medium text-foreground">{usage.cpu}</div>
+            </div>
+            <div className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5">
+              <div className="text-[10px] text-muted-foreground">Memory</div>
+              <div className="text-[11.5px] font-medium text-foreground">{usage.memory}</div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Requests / Limits
+        </h3>
+        <div className="flex flex-col gap-2">
+          {resources.length === 0 ? (
+            <span className="text-[11px] text-muted-foreground">No resource configuration</span>
+          ) : (
+            resources.map((r) => (
+              <div key={r.name} className="flex flex-col gap-1 rounded-md border border-border/40 bg-muted/20 p-3">
+                <span className="text-[12px] font-semibold text-foreground">{r.name}</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-0.5 rounded bg-background/60 px-2 py-1">
+                    <span className="text-[9px] text-muted-foreground">Requests</span>
+                    <span className="text-[11px] text-foreground">CPU: {r.requests.cpu || "-"}</span>
+                    <span className="text-[11px] text-foreground">Mem: {r.requests.memory || "-"}</span>
+                    <span className="text-[11px] text-foreground">Ephemeral: {r.requests.ephemeralStorage || "-"}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 rounded bg-background/60 px-2 py-1">
+                    <span className="text-[9px] text-muted-foreground">Limits</span>
+                    <span className="text-[11px] text-foreground">CPU: {r.limits.cpu || "-"}</span>
+                    <span className="text-[11px] text-foreground">Mem: {r.limits.memory || "-"}</span>
+                    <span className="text-[11px] text-foreground">Ephemeral: {r.limits.ephemeralStorage || "-"}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function NodeTab({ node }: { node: K8sNodeInfo | null }) {
+  if (!node) {
+    return <p className="text-[12px] text-muted-foreground">Loading node info…</p>;
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Node Info
+        </h3>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { label: "Name", value: node.name },
+            { label: "Status", value: node.status },
+            { label: "Roles", value: node.roles },
+            { label: "Age", value: node.age },
+            { label: "Version", value: node.version },
+            { label: "Internal IP", value: node.internalIp },
+            { label: "External IP", value: node.externalIp || "-" },
+            { label: "CPU Usage", value: node.topCpu },
+            { label: "Memory Usage", value: node.topMem },
+            { label: "OS", value: node.osImage },
+            { label: "Kernel", value: node.kernelVersion },
+            { label: "Runtime", value: node.containerRuntime },
+            { label: "Architecture", value: node.architecture },
+          ].map((r) => (
+            <div key={r.label} className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5">
+              <div className="text-[10px] text-muted-foreground">{r.label}</div>
+              <div className="truncate text-[11.5px] font-medium text-foreground">{r.value || "-"}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Capacity
+        </h3>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "CPU", value: node.capacity.cpu },
+            { label: "Memory", value: node.capacity.memory },
+            { label: "Pods", value: node.capacity.pods },
+          ].map((r) => (
+            <div key={r.label} className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5">
+              <div className="text-[10px] text-muted-foreground">{r.label}</div>
+              <div className="truncate text-[11.5px] font-medium text-foreground">{r.value || "-"}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Allocatable
+        </h3>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "CPU", value: node.allocatable.cpu },
+            { label: "Memory", value: node.allocatable.memory },
+            { label: "Pods", value: node.allocatable.pods },
+          ].map((r) => (
+            <div key={r.label} className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5">
+              <div className="text-[10px] text-muted-foreground">{r.label}</div>
+              <div className="truncate text-[11.5px] font-medium text-foreground">{r.value || "-"}</div>
+            </div>
+          ))}
         </div>
       </section>
     </div>
