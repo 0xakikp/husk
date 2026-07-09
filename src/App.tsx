@@ -53,6 +53,7 @@ import { ToolsHubDialog } from "./tools-hub/ToolsHubDialog";
 import { ToolsHubView } from "./tools-hub/ToolsHubView";
 import { JobsDialog } from "./jobs/JobsDialog";
 import { DockerView } from "./docker/DockerView";
+import { DockerDetailPanel, type DockerResourceSelection } from "./docker/DockerDetailPanel";
 import { KubernetesView, type K8sResourceSelection } from "./kubernetes/KubernetesView";
 import { PodDetailPanel } from "./kubernetes/PodDetailPanel";
 import { ServiceDetailPanel } from "./kubernetes/ServiceDetailPanel";
@@ -1074,6 +1075,7 @@ function App() {
   const [openPanel, setOpenPanel] = useState<OpenPanelKind>(null);
 
   const [selectedK8sResource, setSelectedK8sResource] = useState<K8sResourceSelection | null>(null);
+  const [selectedDockerResource, setSelectedDockerResource] = useState<DockerResourceSelection | null>(null);
 
   const prefs = usePrefs();
   useClipboardListener();
@@ -1917,7 +1919,10 @@ function App() {
                   ) : sidebarView === "terraform" ? (
                     <TerraformView inline />
                   ) : sidebarView === "docker" ? (
-                    <DockerView inline />
+                    <DockerView
+                      inline
+                      onInspectResource={(sel) => setSelectedDockerResource(sel)}
+                    />
                   ) : sidebarView === "tailscale" ? (
                     <TailscaleView
                       inline
@@ -1995,10 +2000,10 @@ function App() {
               <div
                 className={cn(
                   "absolute inset-0 flex flex-col",
-                  (activeKind !== "term" || selectedK8sResource != null) && "invisible pointer-events-none",
+                  (activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null) && "invisible pointer-events-none",
                   prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
                 )}
-                aria-hidden={activeKind !== "term" || selectedK8sResource != null}
+                aria-hidden={activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null}
               >
                 <div className="relative flex min-h-0 flex-1 flex-col">
                   <ErrorBoundary
@@ -2039,6 +2044,28 @@ function App() {
                 >
                   <ErrorBoundary>
                     <K8sResourceDetailPanel selection={selectedK8sResource} onClose={() => setSelectedK8sResource(null)} />
+                  </ErrorBoundary>
+                </div>
+              )}
+
+              {/* Docker resource detail layer */}
+              {selectedDockerResource && (
+                <div
+                  className={cn(
+                    "absolute inset-0 z-10 flex flex-col",
+                    prefs.neonBorderGlow && "neon-glow",
+                  )}
+                  aria-hidden={!selectedDockerResource}
+                >
+                  <ErrorBoundary>
+                    <DockerDetailPanel
+                      selection={selectedDockerResource}
+                      onClose={() => setSelectedDockerResource(null)}
+                      onAction={async (fn, label) => {
+                        await fn();
+                        toast({ title: label, variant: "success" });
+                      }}
+                    />
                   </ErrorBoundary>
                 </div>
               )}
