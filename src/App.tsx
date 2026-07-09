@@ -907,29 +907,9 @@ const SIDEBAR_MIN_WIDTH = 220;
 const SIDEBAR_MAX_WIDTH = 480;
 const SIDEBAR_WIDTH_STORAGE_KEY = "husk.sidebar.width";
 const SIDEBAR_VIEW_STORAGE_KEY = "husk.sidebar.view";
-const SOURCE_CONTROL_HEIGHT_STORAGE_KEY = "husk.sourceControl.height";
-const SOURCE_CONTROL_MIN_HEIGHT = 140;
-const SOURCE_CONTROL_MAX_HEIGHT_RATIO = 0.7;
-const SOURCE_CONTROL_DEFAULT_HEIGHT = 260;
 
 function clampSidebarWidth(width: number): number {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
-}
-
-function readSourceControlHeight(): number {
-  try {
-    const stored = window.localStorage.getItem(SOURCE_CONTROL_HEIGHT_STORAGE_KEY);
-    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
-    return Number.isFinite(parsed) ? Math.max(SOURCE_CONTROL_MIN_HEIGHT, parsed) : SOURCE_CONTROL_DEFAULT_HEIGHT;
-  } catch {
-    return SOURCE_CONTROL_DEFAULT_HEIGHT;
-  }
-}
-
-function persistSourceControlHeight(height: number) {
-  try {
-    window.localStorage.setItem(SOURCE_CONTROL_HEIGHT_STORAGE_KEY, String(Math.max(SOURCE_CONTROL_MIN_HEIGHT, Math.round(height))));
-  } catch (e) { console.error("Failed to save source control height", e); }
 }
 
 function readSidebarWidth(): number {
@@ -946,7 +926,7 @@ function readSidebarView(): SidebarViewId {
   try {
     const stored = window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY);
     const valid: SidebarViewId[] = [
-      "explorer", "remotes", "workflows", "tools-hub",
+      "explorer", "source-control", "remotes", "sftp", "workflows", "tools-hub",
       "kubernetes", "ci-cd", "terraform", "docker", "bookmarks",
     ];
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
@@ -959,8 +939,6 @@ function App() {
   const [explorerWidth, setExplorerWidth] = useState(readSidebarWidth);
   const sidebarWidthWriteTimerRef = useRef(0);
   const [sidebarView, setSidebarView] = useState<SidebarViewId>(readSidebarView);
-  const [sourceControlOpen, setSourceControlOpen] = useState(false);
-  const [sourceControlHeight, setSourceControlHeight] = useState(readSourceControlHeight);
 
 
   // Track window focus for long-running command notifications
@@ -1007,12 +985,6 @@ function App() {
     },
     [persistSidebarView, sidebarView, explorerOpen],
   );
-
-  const toggleSourceControl = useCallback(() => {
-    setSourceControlOpen((v) => !v);
-  }, []);
-
-  const sourceControlRef = useRef<HTMLDivElement>(null);
 
   const persistSidebarWidth = useCallback((next: number) => {
     if (sidebarWidthWriteTimerRef.current) window.clearTimeout(sidebarWidthWriteTimerRef.current);
@@ -1438,7 +1410,7 @@ function App() {
       { id: "cicd", label: "Open CI / CD", run: () => setCicdOpen(true) },
       { id: "diff", label: "Open diff viewer", run: () => { setDiffPaths(null); setDiffOpen(true); } },
       { id: "cloud-sync", label: "Cloud sync (export/import)", run: () => setCloudSyncOpen(true) },
-      { id: "source-control", label: "Open source control", run: () => { toggleSourceControl(); } },
+      { id: "source-control", label: "Open source control", run: () => { cycleSidebarView("source-control"); } },
       { id: "git-history", label: "Open git history", run: () => setGitHistoryOpen(true) },
       { id: "shortcuts", label: "Keyboard shortcuts", run: () => setShortcutsOpen(true) },
       { id: "check-updates", label: "Check for updates", run: () => void checkForUpdates(true) },
@@ -1880,6 +1852,8 @@ function App() {
                     <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                       <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
                     </div>
+                  ) : sidebarView === "source-control" ? (
+                    <SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />
                   ) : sidebarView === "remotes" ? (
                     <RemotesView
                       inline
@@ -1926,8 +1900,6 @@ function App() {
                   view={sidebarView}
                   onSelectView={(v) => cycleSidebarView(v)}
                   onCommandPalette={() => setPaletteOpen(true)}
-                  onToggleSourceControl={toggleSourceControl}
-                  sourceControlActive={sourceControlOpen}
                 />
               </div>
               {/* Sidebar resize handle */}
@@ -1971,79 +1943,43 @@ function App() {
               marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
             }}
           >
-          <div className="relative flex min-h-0 min-w-0 flex-1">
-          {/* Terminal layer */}
-          <div
-            className={cn(
-              "absolute inset-0 flex flex-col",
-              activeKind !== "term" && "invisible pointer-events-none",
-              prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
-            )}
-            aria-hidden={activeKind !== "term"}
-          >
-            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-              {sourceControlOpen && (
-                <>
-                  <div
-                    ref={sourceControlRef}
-                    className="flex shrink-0 flex-col overflow-hidden border-b border-border/40 bg-background"
-                    style={{ height: sourceControlHeight }}
-                  >
-                    <SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />
-                  </div>
-                  <div
-                    className={cn(
-                      "relative flex shrink-0 cursor-ns-resize items-center justify-center bg-border/60 hover:bg-border",
-                      prefs.panelGaps > 0 ? "h-2" : "h-px",
-                    )}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const startY = e.clientY;
-                      const startH = sourceControlHeight;
-                      const container = sourceControlRef.current?.parentElement;
-                      let final = startH;
-                      const maxH = container ? container.clientHeight * SOURCE_CONTROL_MAX_HEIGHT_RATIO : startH + 400;
-                      const onMove = (ev: globalThis.MouseEvent) => {
-                        final = Math.min(Math.max(SOURCE_CONTROL_MIN_HEIGHT, startH + (ev.clientY - startY)), maxH);
-                        setSourceControlHeight(final);
-                      };
-                      const onUp = () => {
-                        window.removeEventListener("mousemove", onMove);
-                        window.removeEventListener("mouseup", onUp);
-                        persistSourceControlHeight(final);
-                      };
-                      window.addEventListener("mousemove", onMove);
-                      window.addEventListener("mouseup", onUp);
-                    }}
-                  />
-                </>
-              )}
-              <ErrorBoundary
-                fallback={
-                  <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-                    <div className="text-[13px] font-medium text-destructive">Terminal crashed</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      Switch to another tab or restart the app to recover.
-                    </div>
-                  </div>
-                }
+            <div className="relative flex min-h-0 min-w-0 flex-1">
+              {/* Terminal layer */}
+              <div
+                className={cn(
+                  "absolute inset-0 flex flex-col",
+                  activeKind !== "term" && "invisible pointer-events-none",
+                  prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
+                )}
+                aria-hidden={activeKind !== "term"}
               >
-                <TerminalStack term={term} viewActive={activeKind === "term"} />
-              </ErrorBoundary>
-              {prefs.panelGaps > 0 && (
-                <div
-                  className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
-                  style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
-                />
-              )}
-              <TerminalAiComposer
-                sessionId={tabSessionId(term.activeId)}
-                onOpenInAiTab={() => setActiveKind("ai")}
-                registerSend={true}
-              />
-            </div>
-            <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
-          </div>
+                <div className="relative flex min-h-0 flex-1 flex-col">
+                  <ErrorBoundary
+                    fallback={
+                      <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+                        <div className="text-[13px] font-medium text-destructive">Terminal crashed</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Switch to another tab or restart the app to recover.
+                        </div>
+                      </div>
+                    }
+                  >
+                    <TerminalStack term={term} viewActive={activeKind === "term"} />
+                  </ErrorBoundary>
+                  {prefs.panelGaps > 0 && (
+                    <div
+                      className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
+                      style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
+                    />
+                  )}
+                  <TerminalAiComposer
+                    sessionId={tabSessionId(term.activeId)}
+                    onOpenInAiTab={() => setActiveKind("ai")}
+                    registerSend={true}
+                  />
+                </div>
+                <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
+              </div>
 
               {/* Editor + AI pane row — AI panel overlays editor so nothing
                   resizes when the panel toggles.  No flex/grid reflow, no
