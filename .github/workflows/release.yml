@@ -13,10 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
+          - platform: 'macos-15'
             args: '--target aarch64-apple-darwin'
             name: macOS Apple Silicon
-          - platform: 'macos-latest'
+          - platform: 'macos-15'
             args: '--target x86_64-apple-darwin'
             name: macOS Intel
           - platform: 'ubuntu-22.04'
@@ -40,7 +40,7 @@ jobs:
           version: 9
 
       - name: Install Rust stable
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Add macOS rust target
         if: matrix.name == 'macOS Apple Silicon'
