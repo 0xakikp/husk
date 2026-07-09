@@ -7,6 +7,8 @@ import {
   LicenseIcon,
   BugIcon,
   DownloadCircle01Icon,
+  Coffee01Icon,
+  Idea01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { getVersion } from "@tauri-apps/api/app";
@@ -16,6 +18,8 @@ import { SectionHeader } from "./components/SectionHeader";
 
 const REPO_URL = "https://github.com/0xakikp/husk";
 const WEBSITE = "https://github.com/0xakikp/husk";
+const BUY_ME_A_COFFEE_URL = "https://buymeacoffee.com/akikp";
+const FEATURE_REQUEST_URL = "https://github.com/0xakikp/husk/issues/new?template=feature_request.yml";
 
 function platformLabel(): string {
   const ua = navigator.userAgent;
@@ -96,6 +100,8 @@ export function AboutSection() {
           { icon: Globe02Icon, label: "Website", url: WEBSITE },
           { icon: GithubIcon, label: "GitHub", url: REPO_URL },
           { icon: BugIcon, label: "Report", url: `${REPO_URL}/issues` },
+          { icon: Idea01Icon, label: "Request feature", url: FEATURE_REQUEST_URL },
+          { icon: Coffee01Icon, label: "Buy me a coffee", url: BUY_ME_A_COFFEE_URL },
         ].map((a) => (
           <button type="button"
             key={a.label}
