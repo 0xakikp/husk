@@ -53,8 +53,18 @@ import { ToolsHubDialog } from "./tools-hub/ToolsHubDialog";
 import { ToolsHubView } from "./tools-hub/ToolsHubView";
 import { JobsDialog } from "./jobs/JobsDialog";
 import { DockerView } from "./docker/DockerView";
-import { KubernetesView } from "./kubernetes/KubernetesView";
+import { KubernetesView, type K8sResourceSelection } from "./kubernetes/KubernetesView";
 import { PodDetailPanel } from "./kubernetes/PodDetailPanel";
+import { ServiceDetailPanel } from "./kubernetes/ServiceDetailPanel";
+import { DeploymentDetailPanel } from "./kubernetes/DeploymentDetailPanel";
+import { IngressDetailPanel } from "./kubernetes/IngressDetailPanel";
+import {
+  ConfigMapDetailPanel,
+  SecretDetailPanel,
+  PvcDetailPanel,
+  QuotaDetailPanel,
+} from "./kubernetes/ConfigAndStoragePanels";
+import { JobDetailPanel } from "./kubernetes/JobDetailPanel";
 import { TerraformView } from "./terraform/TerraformView";
 import { TailscaleView } from "./tailscale/TailscaleView";
 import { RemotesView } from "./remotes/RemotesView";
@@ -935,6 +945,37 @@ function readSidebarView(): SidebarViewId {
   return "explorer";
 }
 
+function K8sResourceDetailPanel({
+  selection,
+  onClose,
+}: {
+  selection: K8sResourceSelection;
+  onClose: () => void;
+}) {
+  switch (selection.kind) {
+    case "pod":
+      return <PodDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    case "service":
+      return <ServiceDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    case "deployment":
+      return <DeploymentDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    case "ingress":
+      return <IngressDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    case "configmap":
+      return <ConfigMapDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    case "secret":
+      return <SecretDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    case "pvc":
+      return <PvcDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    case "quota":
+      return <QuotaDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    case "job":
+      return <JobDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
+    default:
+      return null;
+  }
+}
+
 function App() {
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [explorerWidth, setExplorerWidth] = useState(readSidebarWidth);
@@ -1032,7 +1073,7 @@ function App() {
   const [previewPath, setPreviewPath] = useState<string | undefined>(undefined);
   const [openPanel, setOpenPanel] = useState<OpenPanelKind>(null);
 
-  const [selectedPod, setSelectedPod] = useState<{ namespace: string; name: string } | null>(null);
+  const [selectedK8sResource, setSelectedK8sResource] = useState<K8sResourceSelection | null>(null);
 
   const prefs = usePrefs();
   useClipboardListener();
@@ -1869,7 +1910,7 @@ function App() {
                   ) : sidebarView === "kubernetes" ? (
                     <KubernetesView
                       inline
-                      onInspectPod={(namespace, name) => setSelectedPod({ namespace, name })}
+                      onInspectResource={(sel) => setSelectedK8sResource(sel)}
                     />
                   ) : sidebarView === "ci-cd" ? (
                     <CiCdDialog inline />
@@ -1954,10 +1995,10 @@ function App() {
               <div
                 className={cn(
                   "absolute inset-0 flex flex-col",
-                  (activeKind !== "term" || selectedPod != null) && "invisible pointer-events-none",
+                  (activeKind !== "term" || selectedK8sResource != null) && "invisible pointer-events-none",
                   prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
                 )}
-                aria-hidden={activeKind !== "term" || selectedPod != null}
+                aria-hidden={activeKind !== "term" || selectedK8sResource != null}
               >
                 <div className="relative flex min-h-0 flex-1 flex-col">
                   <ErrorBoundary
@@ -1987,21 +2028,17 @@ function App() {
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
               </div>
 
-              {/* Pod detail layer */}
-              {selectedPod && (
+              {/* Kubernetes resource detail layer */}
+              {selectedK8sResource && (
                 <div
                   className={cn(
                     "absolute inset-0 z-10 flex flex-col",
                     prefs.neonBorderGlow && "neon-glow",
                   )}
-                  aria-hidden={!selectedPod}
+                  aria-hidden={!selectedK8sResource}
                 >
                   <ErrorBoundary>
-                    <PodDetailPanel
-                      namespace={selectedPod.namespace}
-                      name={selectedPod.name}
-                      onClose={() => setSelectedPod(null)}
-                    />
+                    <K8sResourceDetailPanel selection={selectedK8sResource} onClose={() => setSelectedK8sResource(null)} />
                   </ErrorBoundary>
                 </div>
               )}
@@ -2172,7 +2209,7 @@ function App() {
           <DockerView onClose={() => setDockerOpen(false)} />
         </DialogLayer>
         <DialogLayer open={k8sOpen}>
-          <KubernetesView onClose={() => setK8sOpen(false)} onInspectPod={(namespace, name) => setSelectedPod({ namespace, name })} />
+          <KubernetesView onClose={() => setK8sOpen(false)} onInspectResource={(sel) => setSelectedK8sResource(sel)} />
         </DialogLayer>
         <DialogLayer open={terraformOpen}>
           <TerraformView onClose={() => setTerraformOpen(false)} />

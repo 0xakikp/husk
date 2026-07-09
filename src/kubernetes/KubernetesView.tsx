@@ -4,8 +4,31 @@ import {
   currentContext,
   listContexts,
   useContext,
+  listNamespaces,
   listPods,
+  listServices,
+  listIngresses,
+  listDeployments,
+  listReplicaSets,
+  listStatefulSets,
+  listDaemonSets,
+  listJobs,
+  listConfigMaps,
+  listSecrets,
+  listPersistentVolumeClaims,
+  listResourceQuotas,
   type K8sPod,
+  type K8sService,
+  type K8sIngress,
+  type K8sDeployment,
+  type K8sReplicaSet,
+  type K8sStatefulSet,
+  type K8sDaemonSet,
+  type K8sJob,
+  type K8sConfigMap,
+  type K8sSecret,
+  type K8sPersistentVolumeClaim,
+  type K8sResourceQuota,
 } from "./client";
 import { toast } from "../toast";
 import { Modal } from "../components/Modal";
@@ -13,54 +36,141 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Database01Icon,
   Refresh01Icon,
+  ArrowDown01Icon,
 } from "@hugeicons/core-free-icons";
 
-const okStatus = (s: string) => s === "Running" || s === "Completed" || s === "Succeeded";
+export type K8sResourceKind =
+  | "pods"
+  | "workloads"
+  | "services"
+  | "ingresses"
+  | "config"
+  | "storage"
+  | "jobs"
+  | "quotas";
+
+export type K8sResourceSelection =
+  | { kind: "pod"; namespace: string; name: string }
+  | { kind: "service"; namespace: string; name: string }
+  | { kind: "ingress"; namespace: string; name: string }
+  | { kind: "deployment"; namespace: string; name: string }
+  | { kind: "replicaset"; namespace: string; name: string }
+  | { kind: "statefulset"; namespace: string; name: string }
+  | { kind: "daemonset"; namespace: string; name: string }
+  | { kind: "job"; namespace: string; name: string }
+  | { kind: "configmap"; namespace: string; name: string }
+  | { kind: "secret"; namespace: string; name: string }
+  | { kind: "pvc"; namespace: string; name: string }
+  | { kind: "quota"; namespace: string; name: string };
+
+const TABS: { id: K8sResourceKind; label: string }[] = [
+  { id: "pods", label: "Pods" },
+  { id: "workloads", label: "Workloads" },
+  { id: "services", label: "Services" },
+  { id: "ingresses", label: "Ingress" },
+  { id: "config", label: "Config" },
+  { id: "storage", label: "Storage" },
+  { id: "jobs", label: "Jobs" },
+  { id: "quotas", label: "Quotas" },
+];
+
+const okStatus = (s: string) => s === "Running" || s === "Completed" || s === "Succeeded" || s === "Bound" || s === "Active";
 
 export function KubernetesView({
   onClose,
   inline,
-  onInspectPod,
+  onInspectResource,
 }: {
   onClose?: () => void;
   inline?: boolean;
-  onInspectPod?: (namespace: string, name: string) => void;
+  onInspectResource?: (sel: K8sResourceSelection) => void;
 }) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [ctx, setCtx] = useState("");
   const [contexts, setContexts] = useState<string[]>([]);
-  const [pods, setPods] = useState<K8sPod[]>([]);
+  const [namespaces, setNamespaces] = useState<string[]>([]);
+  const [namespace, setNamespace] = useState<string>("_all");
+  const [tab, setTab] = useState<K8sResourceKind>("pods");
   const [loading, setLoading] = useState(false);
+  const [pods, setPods] = useState<K8sPod[]>([]);
+  const [services, setServices] = useState<K8sService[]>([]);
+  const [ingresses, setIngresses] = useState<K8sIngress[]>([]);
+  const [deployments, setDeployments] = useState<K8sDeployment[]>([]);
+  const [replicaSets, setReplicaSets] = useState<K8sReplicaSet[]>([]);
+  const [statefulSets, setStatefulSets] = useState<K8sStatefulSet[]>([]);
+  const [daemonSets, setDaemonSets] = useState<K8sDaemonSet[]>([]);
+  const [jobs, setJobs] = useState<K8sJob[]>([]);
+  const [configMaps, setConfigMaps] = useState<K8sConfigMap[]>([]);
+  const [secrets, setSecrets] = useState<K8sSecret[]>([]);
+  const [pvcs, setPvcs] = useState<K8sPersistentVolumeClaim[]>([]);
+  const [quotas, setQuotas] = useState<K8sResourceQuota[]>([]);
   const cancelledRef = useRef(false);
+
+  const refreshContexts = useCallback(async () => {
+    const [ok, currentCtx, allCtxs, ns] = await Promise.all([
+      checkKubectl(),
+      currentContext().catch(() => ""),
+      listContexts().catch(() => [] as string[]),
+      listNamespaces().catch(() => [] as string[]),
+    ]);
+    if (cancelledRef.current) return;
+    setAvailable(ok);
+    setCtx(currentCtx);
+    setContexts(allCtxs);
+    setNamespaces(ns);
+  }, []);
 
   const refresh = useCallback(async () => {
     cancelledRef.current = false;
     setLoading(true);
     try {
-      // Run independent checks in parallel
-      const [ok, currentCtx, allCtxs] = await Promise.all([
-        checkKubectl(),
-        currentContext().catch(() => ""),
-        listContexts().catch(() => [] as string[]),
-      ]);
-
+      await refreshContexts();
       if (cancelledRef.current) return;
-      setAvailable(ok);
-      if (ok) {
-        setCtx(currentCtx);
-        setContexts(allCtxs);
-        // Pods query can be slow on large clusters — run separately with shorter timeout
-        const podList = await listPods().catch(() => [] as K8sPod[]);
-        if (!cancelledRef.current) {
-          setPods(podList);
+      switch (tab) {
+        case "pods":
+          setPods(await listPods(namespace));
+          break;
+        case "services":
+          setServices(await listServices(namespace));
+          break;
+        case "ingresses":
+          setIngresses(await listIngresses(namespace));
+          break;
+        case "workloads": {
+          const [d, r, s, ds] = await Promise.all([
+            listDeployments(namespace),
+            listReplicaSets(namespace),
+            listStatefulSets(namespace),
+            listDaemonSets(namespace),
+          ]);
+          setDeployments(d);
+          setReplicaSets(r);
+          setStatefulSets(s);
+          setDaemonSets(ds);
+          break;
         }
+        case "config": {
+          const [cm, sec] = await Promise.all([listConfigMaps(namespace), listSecrets(namespace)]);
+          setConfigMaps(cm);
+          setSecrets(sec);
+          break;
+        }
+        case "storage":
+          setPvcs(await listPersistentVolumeClaims(namespace));
+          break;
+        case "jobs":
+          setJobs(await listJobs(namespace));
+          break;
+        case "quotas":
+          setQuotas(await listResourceQuotas(namespace));
+          break;
       }
+    } catch (e) {
+      toast({ title: "kubectl error", message: e instanceof Error ? e.message : String(e), variant: "error" });
     } finally {
-      if (!cancelledRef.current) {
-        setLoading(false);
-      }
+      if (!cancelledRef.current) setLoading(false);
     }
-  }, []);
+  }, [namespace, tab, refreshContexts]);
 
   useEffect(() => {
     void refresh();
@@ -75,11 +185,7 @@ export function KubernetesView({
       toast({ title: `Switched to ${c}`, variant: "success" });
       await refresh();
     } catch (e) {
-      toast({
-        title: "kubectl error",
-        message: e instanceof Error ? e.message : String(e),
-        variant: "error",
-      });
+      toast({ title: "kubectl error", message: e instanceof Error ? e.message : String(e), variant: "error" });
     }
   };
 
@@ -103,9 +209,6 @@ export function KubernetesView({
             <HugeiconsIcon icon={Database01Icon} size={20} className="text-primary" />
           </div>
           <p className="text-[12px] font-medium text-foreground">Analyzing cluster…</p>
-          <p className="max-w-[180px] text-[11px] text-muted-foreground">
-            Checking kubectl and loading contexts.
-          </p>
         </div>
       ) : available === false ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
@@ -113,9 +216,6 @@ export function KubernetesView({
             <HugeiconsIcon icon={Database01Icon} size={20} className="text-primary" />
           </div>
           <p className="text-[12px] font-medium text-foreground">kubectl not found</p>
-          <p className="max-w-[180px] text-[11px] text-muted-foreground">
-            Install kubectl to use the Kubernetes integration.
-          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -132,16 +232,10 @@ export function KubernetesView({
                     type="button"
                     onClick={() => switchCtx(c)}
                     className={`flex items-center gap-2 rounded-md px-2 py-1 text-left text-[11.5px] transition-colors ${
-                      c === ctx
-                        ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-accent/10"
+                      c === ctx ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent/10"
                     }`}
                   >
-                    <span
-                      className={`size-1.5 rounded-full ${
-                        c === ctx ? "bg-primary" : "bg-muted-foreground/40"
-                      }`}
-                    />
+                    <span className={`size-1.5 rounded-full ${c === ctx ? "bg-primary" : "bg-muted-foreground/40"}`} />
                     <span className="truncate">{c}</span>
                   </button>
                 ))}
@@ -149,36 +243,170 @@ export function KubernetesView({
             </div>
           )}
 
-          {/* Pods */}
+          {/* Namespace filter */}
           <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Namespace</span>
+            <div className="relative">
+              <select
+                value={namespace}
+                onChange={(e) => setNamespace(e.target.value)}
+                className="h-7 w-full rounded-md border border-border/40 bg-muted/40 px-2 text-[11px] text-foreground outline-none"
+              >
+                <option value="_all">All namespaces</option>
+                {namespaces.map((ns) => (
+                  <option key={ns} value={ns}>
+                    {ns}
+                  </option>
+                ))}
+              </select>
+              <HugeiconsIcon
+                icon={ArrowDown01Icon}
+                size={10}
+                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+            </div>
+          </div>
+
+          {/* Resource type tabs */}
+          <div className="flex flex-wrap gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`rounded-md px-2 py-1 text-[10.5px] font-medium transition-colors ${
+                  tab === t.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent/10 hover:text-foreground"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Resource list */}
+          <div className="flex flex-col gap-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Pods
+              {TABS.find((t) => t.id === tab)?.label}
             </span>
-            {loading && pods.length === 0 ? (
+            {loading ? (
               <p className="py-4 text-center text-[11px] text-muted-foreground">Loading…</p>
-            ) : pods.length === 0 ? (
-              <p className="py-4 text-center text-[11px] text-muted-foreground">No pods found.</p>
             ) : (
               <div className="flex flex-col gap-0.5">
-                {pods.map((p) => (
-                  <button
+                {tab === "pods" && pods.map((p) => (
+                  <ResourceRow
                     key={`${p.namespace}/${p.name}`}
-                    type="button"
-                    onClick={() => onInspectPod?.(p.namespace, p.name)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/10"
-                  >
-                    <span
-                      className={`size-1.5 shrink-0 rounded-full ${
-                        okStatus(p.status) ? "bg-emerald-500" : "bg-muted-foreground/40"
-                      }`}
-                    />
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-[11.5px] text-foreground">{p.name}</span>
-                      <span className="truncate text-[10px] text-muted-foreground">
-                        {p.namespace} · {p.status} · {p.ready} · {p.age}
-                      </span>
-                    </div>
-                  </button>
+                    label={p.name}
+                    sub={`${p.namespace} · ${p.status} · ${p.ready} · ${p.age}`}
+                    status={okStatus(p.status) ? "ok" : "warn"}
+                    onClick={() => onInspectResource?.({ kind: "pod", namespace: p.namespace, name: p.name })}
+                  />
+                ))}
+                {tab === "services" && services.map((s) => (
+                  <ResourceRow
+                    key={`${s.namespace}/${s.name}`}
+                    label={s.name}
+                    sub={`${s.namespace} · ${s.type} · ${s.clusterIp} · ${s.ports}`}
+                    status="ok"
+                    onClick={() => onInspectResource?.({ kind: "service", namespace: s.namespace, name: s.name })}
+                  />
+                ))}
+                {tab === "ingresses" && ingresses.map((i) => (
+                  <ResourceRow
+                    key={`${i.namespace}/${i.name}`}
+                    label={i.name}
+                    sub={`${i.namespace} · ${i.hosts.join(", ")}`}
+                    status="ok"
+                    onClick={() => onInspectResource?.({ kind: "ingress", namespace: i.namespace, name: i.name })}
+                  />
+                ))}
+                {tab === "workloads" && (
+                  <>
+                    {deployments.map((d) => (
+                      <ResourceRow
+                        key={`${d.namespace}/${d.name}`}
+                        label={d.name}
+                        sub={`Deployment · ${d.ready} · ${d.age}`}
+                        status={d.current === d.desired ? "ok" : "warn"}
+                        onClick={() => onInspectResource?.({ kind: "deployment", namespace: d.namespace, name: d.name })}
+                      />
+                    ))}
+                    {replicaSets.map((r) => (
+                      <ResourceRow
+                        key={`${r.namespace}/${r.name}`}
+                        label={r.name}
+                        sub={`ReplicaSet · ${r.ready}/${r.desired} · ${r.age}`}
+                        status={r.ready === r.desired ? "ok" : "warn"}
+                        onClick={() => onInspectResource?.({ kind: "replicaset", namespace: r.namespace, name: r.name })}
+                      />
+                    ))}
+                    {statefulSets.map((s) => (
+                      <ResourceRow
+                        key={`${s.namespace}/${s.name}`}
+                        label={s.name}
+                        sub={`StatefulSet · ${s.ready} · ${s.age}`}
+                        status="ok"
+                        onClick={() => onInspectResource?.({ kind: "statefulset", namespace: s.namespace, name: s.name })}
+                      />
+                    ))}
+                    {daemonSets.map((ds) => (
+                      <ResourceRow
+                        key={`${ds.namespace}/${ds.name}`}
+                        label={ds.name}
+                        sub={`DaemonSet · ${ds.ready}/${ds.desired} · ${ds.age}`}
+                        status={ds.ready === ds.desired ? "ok" : "warn"}
+                        onClick={() => onInspectResource?.({ kind: "daemonset", namespace: ds.namespace, name: ds.name })}
+                      />
+                    ))}
+                  </>
+                )}
+                {tab === "config" && (
+                  <>
+                    {configMaps.map((cm) => (
+                      <ResourceRow
+                        key={`${cm.namespace}/${cm.name}`}
+                        label={cm.name}
+                        sub={`ConfigMap · ${cm.namespace} · ${cm.dataKeys.length} keys · ${cm.age}`}
+                        status="ok"
+                        onClick={() => onInspectResource?.({ kind: "configmap", namespace: cm.namespace, name: cm.name })}
+                      />
+                    ))}
+                    {secrets.map((s) => (
+                      <ResourceRow
+                        key={`${s.namespace}/${s.name}`}
+                        label={s.name}
+                        sub={`Secret · ${s.type} · ${s.namespace} · ${s.age}`}
+                        status="ok"
+                        onClick={() => onInspectResource?.({ kind: "secret", namespace: s.namespace, name: s.name })}
+                      />
+                    ))}
+                  </>
+                )}
+                {tab === "storage" && pvcs.map((p) => (
+                  <ResourceRow
+                    key={`${p.namespace}/${p.name}`}
+                    label={p.name}
+                    sub={`PVC · ${p.status} · ${p.capacity} · ${p.storageClass}`}
+                    status={okStatus(p.status) ? "ok" : "warn"}
+                    onClick={() => onInspectResource?.({ kind: "pvc", namespace: p.namespace, name: p.name })}
+                  />
+                ))}
+                {tab === "jobs" && jobs.map((j) => (
+                  <ResourceRow
+                    key={`${j.namespace}/${j.name}`}
+                    label={j.name}
+                    sub={`Job · ${j.completions} · ${j.duration} · ${j.age}`}
+                    status={j.status === "Complete" ? "ok" : "warn"}
+                    onClick={() => onInspectResource?.({ kind: "job", namespace: j.namespace, name: j.name })}
+                  />
+                ))}
+                {tab === "quotas" && quotas.map((q) => (
+                  <ResourceRow
+                    key={`${q.namespace}/${q.name}`}
+                    label={q.name}
+                    sub={`ResourceQuota · ${q.namespace} · ${q.limits}`}
+                    status="ok"
+                    onClick={() => onInspectResource?.({ kind: "quota", namespace: q.namespace, name: q.name })}
+                  />
                 ))}
               </div>
             )}
@@ -188,3 +416,33 @@ export function KubernetesView({
     </Modal>
   );
 }
+
+function ResourceRow({
+  label,
+  sub,
+  status,
+  onClick,
+}: {
+  label: string;
+  sub: string;
+  status: "ok" | "warn" | "error";
+  onClick: () => void;
+}) {
+  const color =
+    status === "ok" ? "bg-emerald-500" : status === "warn" ? "bg-amber-500" : "bg-rose-500";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/10"
+    >
+      <span className={`size-1.5 shrink-0 rounded-full ${color}`} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-[11.5px] text-foreground">{label}</span>
+        <span className="truncate text-[10px] text-muted-foreground">{sub}</span>
+      </div>
+    </button>
+  );
+}
+
+export default KubernetesView;
