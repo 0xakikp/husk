@@ -897,17 +897,28 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 14px;
-  border: 1px solid hsl(var(--border) / 0.5);
-  background: hsl(var(--background) / 0.7);
-  transition: all 0.15s ease;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 24px;
+  border: 1px solid hsl(var(--border) / 0.45);
+  background: linear-gradient(
+    180deg,
+    hsl(var(--background) / 0.85) 0%,
+    hsl(var(--muted) / 0.25) 100%
+  );
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 4px 16px rgba(0, 0, 0, 0.18);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .composer-input-row:focus-within {
-  border-color: hsl(var(--primary) / 0.5);
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
+  border-color: hsl(var(--primary) / 0.55);
+  box-shadow:
+    0 0 0 3px hsl(var(--primary) / 0.1),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 6px 22px rgba(0, 0, 0, 0.22);
+  transform: translateY(-1px);
 }
 
 .composer-textarea {
@@ -919,9 +930,11 @@
   outline: none;
   color: hsl(var(--foreground));
   font-size: var(--composer-font-size, 13px);
-  line-height: 1.45;
+  line-height: 1.5;
   max-height: 120px;
   font-family: inherit;
+  padding: 4px 8px;
+  margin: -2px 0;
 }
 
 .composer-textarea::placeholder {
