@@ -1066,6 +1066,25 @@
   padding: 8px 4px;
 }
 
+:root[data-theme="light"] .composer-panel[data-bg-style="gradient"],
+[data-theme="light"] .composer-panel[data-bg-style="gradient"] {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--card) / 0.98) 0%,
+    hsl(var(--background) / 1) 100%
+  ) !important;
+}
+
+:root[data-theme="light"] .composer-panel[data-bg-style="solid"],
+[data-theme="light"] .composer-panel[data-bg-style="solid"] {
+  background: hsl(var(--background) / 1) !important;
+}
+
+:root[data-theme="light"] .composer-panel::before,
+[data-theme="light"] .composer-panel::before {
+  background: rgba(255, 255, 255, var(--composer-bg-dim, 0)) !important;
+}
+
 :root[data-theme="light"] .composer-panel,
 [data-theme="light"] .composer-panel {
   background: linear-gradient(
