@@ -16,6 +16,7 @@ import {
   Files01Icon,
   VolumeHighIcon,
   VolumeOffIcon,
+  ArrowDown01Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs } from "../settings/preferences";
@@ -166,6 +167,8 @@ export function TerminalAiComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
+  const agentDropdownRef = useRef<HTMLDivElement>(null);
+  const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
@@ -186,6 +189,18 @@ export function TerminalAiComposer({
       return () => clearTimeout(id);
     }
   }, [open]);
+
+  // Close agent dropdown when clicking outside
+  useEffect(() => {
+    if (!agentDropdownOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!agentDropdownRef.current?.contains(e.target as Node)) {
+        setAgentDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [agentDropdownOpen]);
 
   const session = getSession(sessionId);
   const messages = session.messages;
@@ -631,17 +646,50 @@ export function TerminalAiComposer({
       <div className="composer-header">
         <div className="flex items-center gap-2">
           <span className="composer-avatar">{activeAgentIcon}</span>
-          <select
-            value={activeAgent?.id}
-            onChange={(e) => setActiveAgent(e.target.value)}
-            className="h-6 rounded border border-border/40 bg-background px-1.5 text-[11px] font-semibold text-foreground outline-none hover:border-primary/50"
-          >
-            {agents.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <div ref={agentDropdownRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setAgentDropdownOpen((v) => !v)}
+              className="flex h-6 items-center gap-1 rounded border border-border/40 bg-background pl-2 pr-1 text-[11px] font-semibold text-foreground transition-colors hover:border-primary/50"
+            >
+              {activeAgentName}
+              <HugeiconsIcon
+                icon={ArrowDown01Icon}
+                size={11}
+                strokeWidth={1.75}
+                className={cn(
+                  "text-muted-foreground transition-transform",
+                  agentDropdownOpen && "rotate-180",
+                )}
+              />
+            </button>
+            {agentDropdownOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border/60 bg-card/95 py-1 shadow-lg backdrop-blur-md">
+                {agents.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveAgent(a.id);
+                      setAgentDropdownOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] transition-colors",
+                      activeAgent?.id === a.id
+                        ? "bg-primary/10 text-primary"
+                        : "text-foreground hover:bg-muted/50",
+                    )}
+                  >
+                    <span className="text-[13px]">{a.icon}</span>
+                    <span className="flex-1 truncate">{a.name}</span>
+                    {activeAgent?.id === a.id && (
+                      <span className="text-[10px]">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <span className="text-[10px] text-muted-foreground/60">·</span>
           <span className="text-[10px] text-muted-foreground/70">{session.name}</span>
           {fileName && (
