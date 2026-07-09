@@ -47,7 +47,8 @@ function buildModel(cfg: ChatConfig) {
 }
 
 /** Stream a chat completion, calling `onDelta` for each text chunk. When
- *  `tools` are supplied the model can call them across up to 8 steps. */
+ *  `tools` are supplied the model can call them across up to 8 steps.
+ *  Optional `onStatus` receives tool-call/result status strings. */
 export async function streamChat(
   cfg: ChatConfig,
   system: string,
@@ -55,6 +56,7 @@ export async function streamChat(
   onDelta: (text: string) => void,
   tools?: Record<string, Tool>,
   abortSignal?: AbortSignal,
+  onStatus?: (status: string) => void,
 ): Promise<void> {
   const result = streamText({
     model: buildModel(cfg),
@@ -64,9 +66,24 @@ export async function streamChat(
     stopWhen: stepCountIs(8),
     abortSignal,
   });
-  for await (const delta of result.textStream) {
+  for await (const event of result.fullStream) {
     if (abortSignal?.aborted) break;
-    onDelta(delta);
+    switch (event.type) {
+      case "text-delta":
+        onDelta(event.text);
+        break;
+      case "tool-call":
+        onStatus?.(`🛠️ ${event.toolName}`);
+        break;
+      case "tool-result":
+        onStatus?.(`✅ ${event.toolName}`);
+        break;
+      case "error":
+        onStatus?.(`⚠️ error`);
+        break;
+      default:
+        break;
+    }
   }
 }
 

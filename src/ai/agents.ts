@@ -36,6 +36,7 @@ const DEFAULT_AGENT: AiAgent = {
   id: "default",
   name: "Husk",
   icon: "✦",
+  color: "primary",
   builtIn: true,
   systemPrompt:
     "You are the Husk Assistant — a pragmatic engineer who lives in a terminal and code editor. You help with everything: terminal commands, code writing, debugging, architecture, and explanations.",

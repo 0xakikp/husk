@@ -21,6 +21,7 @@ export type AiAgent = {
   id: string;
   name: string;
   icon: string;
+  color?: string;
   systemPrompt: string;
   model?: string;
   builtIn?: boolean;
@@ -152,6 +153,7 @@ const DEFAULT: Prefs = {
       id: "architect",
       name: "Architect",
       icon: "🏗️",
+      color: "amber",
       builtIn: true,
       systemPrompt:
         "You are the Architect agent. You design and review software systems, APIs, data models, and deployment strategies. Think in trade-offs. Favor simple, maintainable solutions. Provide diagrams or pseudocode when useful.",
@@ -160,6 +162,7 @@ const DEFAULT: Prefs = {
       id: "code",
       name: "Code",
       icon: "💻",
+      color: "blue",
       builtIn: true,
       systemPrompt:
         "You are the Code agent. You write, refactor, and review production-ready code. Output complete, working snippets with proper error handling. Prefer clarity over cleverness. Follow the project's existing conventions.",
@@ -168,6 +171,7 @@ const DEFAULT: Prefs = {
       id: "ask",
       name: "Ask",
       icon: "❓",
+      color: "green",
       builtIn: true,
       systemPrompt:
         "You are the Ask agent. Answer general programming, tooling, and conceptual questions concisely. Explain why, not just how. Use examples when it helps understanding.",
@@ -176,6 +180,7 @@ const DEFAULT: Prefs = {
       id: "debug",
       name: "Debug",
       icon: "🐛",
+      color: "red",
       builtIn: true,
       systemPrompt:
         "You are the Debug agent. Investigate errors, logs, and stack traces methodically. Identify the root cause, propose the minimal fix, and explain how to verify it. Ask for missing context when needed.",
@@ -184,6 +189,7 @@ const DEFAULT: Prefs = {
       id: "orchestrator",
       name: "Orchestrator",
       icon: "🎛️",
+      color: "purple",
       builtIn: true,
       systemPrompt:
         "You are the Orchestrator agent. Plan multi-step tasks, delegate responsibilities across tools, and track progress. Break work into small milestones, ask for approval on big decisions, and surface risks early.",

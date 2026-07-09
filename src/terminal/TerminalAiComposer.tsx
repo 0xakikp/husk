@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Cancel01Icon,
@@ -82,6 +82,28 @@ interface CodeBlock {
   code: string;
 }
 
+interface DiffBlockType {
+  fileName?: string;
+  lines: { kind: "add" | "del" | "ctx"; text: string }[];
+}
+
+interface FileTreeNode {
+  name: string;
+  children?: FileTreeNode[];
+}
+
+const AGENT_ACCENT: Record<string, string> = {
+  amber: "composer-avatar-accent-amber composer-label-accent-amber composer-message-accent-amber",
+  blue: "composer-avatar-accent-blue composer-label-accent-blue composer-message-accent-blue",
+  red: "composer-avatar-accent-red composer-label-accent-red composer-message-accent-red",
+  green: "composer-avatar-accent-green composer-label-accent-green composer-message-accent-green",
+  purple: "composer-avatar-accent-purple composer-label-accent-purple composer-message-accent-purple",
+};
+
+function getAccentClasses(color?: string) {
+  return AGENT_ACCENT[color || "primary"] || "";
+}
+
 function parseCodeBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
   const regex = /```(\w*)\n?([\s\S]*?)```/g;
@@ -96,6 +118,31 @@ function stripCodeBlocks(text: string): string {
   return text.replace(/```(\w*)\n?([\s\S]*?)```/g, "").trim();
 }
 
+function parseDiffBlocks(text: string): DiffBlockType[] {
+  const blocks: DiffBlockType[] = [];
+  const regex = /```diff\n?([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const raw = match[1];
+    const lines = raw.split("\n").map((line) => {
+      if (line.startsWith("+")) return { kind: "add" as const, text: line };
+      if (line.startsWith("-")) return { kind: "del" as const, text: line };
+      return { kind: "ctx" as const, text: line };
+    });
+    blocks.push({ lines });
+  }
+  return blocks;
+}
+
+function parseFileTree(text: string): FileTreeNode[] | null {
+  const lines = text.split("\n").filter((l) => l.trim().startsWith("├──") || l.trim().startsWith("└──") || l.trim().startsWith("│"));
+  if (lines.length < 2) return null;
+  return lines.map((line) => {
+    const cleaned = line.replace(/^[│\s]*[├└]── /, "").trim();
+    return { name: cleaned };
+  });
+}
+
 export function tabSessionId(tabId: number): string {
   return `tab-${tabId}`;
 }
@@ -105,8 +152,6 @@ export function tabSessionName(sessionId: string): string {
   const tabId = parseInt(sessionId.slice(4), 10);
   return isNaN(tabId) ? sessionId : `Terminal ${tabId}`;
 }
-
-// Prompt templates are now stored in user preferences (Prefs.aiPromptTemplates).
 
 const DANGEROUS_PATTERNS = [
   /\brm\s+-rf\s+\//i,
@@ -124,6 +169,21 @@ const DANGEROUS_PATTERNS = [
 function isDangerousCommand(cmd: string): boolean {
   const trimmed = cmd.trim();
   return DANGEROUS_PATTERNS.some((p) => p.test(trimmed));
+}
+
+function extractCommandFromCode(code: string): string {
+  const lines = code.split("\n").filter(Boolean);
+  return lines[0] || code;
+}
+
+function extractFollowups(text: string): string[] {
+  const regex = /(?:\n|^)(?:\d+\.\s*|-\s*|\*\s*)([^\n]{10,80})/g;
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(text)) !== null && out.length < 3) {
+    out.push(m[1].trim().replace(/[:;\.]$/, ""));
+  }
+  return out;
 }
 
 export function TerminalAiComposer({
@@ -156,51 +216,30 @@ export function TerminalAiComposer({
   const activeAgent = getActiveAgent();
   const activeAgentName = activeAgent?.name ?? "Husk AI";
   const activeAgentIcon = activeAgent?.icon ?? "✦";
+  const activeAccent = getAccentClasses(activeAgent?.color);
   const [open, setOpen] = useState(variant === "full");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
   const [height, setHeight] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [pendingRun, setPendingRun] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [followups, setFollowups] = useState<string[]>([]);
   const abortRef = useRef(false);
   const abortCtrlRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
   const agentDropdownRef = useRef<HTMLDivElement>(null);
+  const slashPaletteRef = useRef<HTMLDivElement>(null);
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashIndex, setSlashIndex] = useState(0);
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
-
-  // Ensure the session exists (terminal tabs get created on first composer mount)
-  useEffect(() => {
-    if (isTabSessionId(sessionId)) {
-      const tabId = parseInt(sessionId.slice(4), 10);
-      ensureSession(sessionId, { name: tabSessionName(sessionId), source: "terminal", tabId });
-    }
-  }, [sessionId]);
-
-  // Auto-focus textarea when composer opens
-  useEffect(() => {
-    if (open) {
-      const id = setTimeout(() => textareaRef.current?.focus(), 80);
-      return () => clearTimeout(id);
-    }
-  }, [open]);
-
-  // Close agent dropdown when clicking outside
-  useEffect(() => {
-    if (!agentDropdownOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (!agentDropdownRef.current?.contains(e.target as Node)) {
-        setAgentDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [agentDropdownOpen]);
+  const [codeTabMap, setCodeTabMap] = useState<Record<number, number>>({});
 
   const session = getSession(sessionId);
   const messages = session.messages;
@@ -213,6 +252,118 @@ export function TerminalAiComposer({
   const setMessages = (updater: (prev: AiMessage[]) => AiMessage[]) => {
     updateSession(sessionId, (s) => ({ ...s, messages: updater(s.messages) }));
   };
+
+  // Context chips
+  const currentFile = useMemo(() => getEditorFile(), [tick]);
+  const selection = useMemo(() => getEditorSelection(), [tick]);
+  const fileName = currentFile ? currentFile.split("/").pop() : null;
+  const [includeFile, setIncludeFile] = useState(true);
+  const [includeSelection, setIncludeSelection] = useState(true);
+  const [includeTerminal, setIncludeTerminal] = useState(true);
+
+  const contextChips = useMemo(() => {
+    const chips: { id: string; icon: string; label: string; onRemove: () => void }[] = [];
+    if (currentFile && includeFile) {
+      chips.push({
+        id: "file",
+        icon: "📄",
+        label: fileName || currentFile,
+        onRemove: () => setIncludeFile(false),
+      });
+    }
+    if (selection && includeSelection) {
+      chips.push({
+        id: "selection",
+        icon: "📋",
+        label: `selection:${selection.startLine}-${selection.endLine}`,
+        onRemove: () => setIncludeSelection(false),
+      });
+    }
+    if (includeTerminal) {
+      chips.push({
+        id: "terminal",
+        icon: "🖥️",
+        label: "terminal output",
+        onRemove: () => setIncludeTerminal(false),
+      });
+    }
+    return chips;
+  }, [currentFile, fileName, selection, includeFile, includeSelection, includeTerminal]);
+
+  // Slash palette commands
+  const slashCommands = useMemo(() => {
+    const templates = prefs.aiPromptTemplates ?? [];
+    const base = [
+      { id: "/clear", label: "/clear", desc: "Clear context and start fresh", icon: "🧹", run: () => newSession() },
+      { id: "/agent", label: "/agent", desc: "Switch AI agent", icon: "🤖", run: () => setAgentDropdownOpen(true) },
+      { id: "/attach", label: "/attach", desc: "Attach a file", icon: "📎", run: () => handleFileUpload() },
+    ];
+    templates.forEach((t) => {
+      base.push({
+        id: `/${t.label.toLowerCase()}`,
+        label: `/${t.label.toLowerCase()}`,
+        desc: t.prompt.slice(0, 55),
+        icon: t.icon,
+        run: () => setInput(t.prompt),
+      });
+    });
+    agents.forEach((a) => {
+      base.push({
+        id: `/agent-${a.id}`,
+        label: `/${a.name.toLowerCase()}`,
+        desc: `Switch to ${a.name} agent`,
+        icon: a.icon,
+        run: () => setActiveAgent(a.id),
+      });
+    });
+    return base;
+  }, [prefs.aiPromptTemplates, agents]);
+
+  const slashQuery = input.startsWith("/") ? input.slice(1).toLowerCase() : "";
+  const filteredSlash = useMemo(() => {
+    if (!slashQuery) return slashCommands;
+    return slashCommands.filter((c) => c.label.toLowerCase().includes(slashQuery) || c.desc.toLowerCase().includes(slashQuery));
+  }, [slashQuery, slashCommands]);
+
+  useEffect(() => {
+    if (input.startsWith("/")) {
+      setSlashOpen(true);
+      setSlashIndex(0);
+    } else {
+      setSlashOpen(false);
+    }
+  }, [input]);
+
+  // Auto-focus textarea when composer opens
+  useEffect(() => {
+    if (open) {
+      const id = setTimeout(() => textareaRef.current?.focus(), 80);
+      return () => clearTimeout(id);
+    }
+  }, [open]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    if (!agentDropdownOpen && !slashOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!agentDropdownRef.current?.contains(e.target as Node)) {
+        setAgentDropdownOpen(false);
+      }
+      if (!slashPaletteRef.current?.contains(e.target as Node)) {
+        setSlashOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [agentDropdownOpen, slashOpen]);
+
+  // Ensure the session exists (terminal tabs get created on first composer mount)
+  useEffect(() => {
+    if (isTabSessionId(sessionId)) {
+      const tabId = parseInt(sessionId.slice(4), 10);
+      ensureSession(sessionId, { name: tabSessionName(sessionId), source: "terminal", tabId });
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     if (!registerToggle) return;
@@ -250,13 +401,16 @@ export function TerminalAiComposer({
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     }
-  }, [messages, tick, busy]);
+  }, [messages, tick, busy, status]);
 
   const handleSend = useCallback(async (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
     if (!text || busy) return;
     setInput("");
+    setSlashOpen(false);
     setBusy(true);
+    setStatus("💭 thinking…");
+    setFollowups([]);
     abortRef.current = false;
     abortCtrlRef.current?.abort();
     abortCtrlRef.current = new AbortController();
@@ -274,6 +428,7 @@ export function TerminalAiComposer({
         return next;
       });
       setBusy(false);
+      setStatus(null);
       return;
     }
 
@@ -284,7 +439,6 @@ export function TerminalAiComposer({
       tools = mergeTools(builtinTools, mcpTools);
     } catch (e) {
       if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
         console.warn("[AI] tool build failed", e);
       }
     }
@@ -294,13 +448,11 @@ export function TerminalAiComposer({
       agent.systemPrompt +
       "\n\nYou are a helpful coding/terminal assistant inside Husk. Respond concisely. If you suggest a shell command, wrap it in a code block.";
 
-    const currentFile = getEditorFile();
-    const selection = getEditorSelection();
-    if (currentFile) {
+    if (currentFile && includeFile) {
       try {
         const content = await readFile(currentFile);
         system += `\n\nCurrent open file: ${currentFile}`;
-        if (selection) {
+        if (selection && includeSelection) {
           system += `\nSelected lines ${selection.startLine}-${selection.endLine}:\n\`\`\`\n${selection.text}\n\`\`\``;
         }
         system += `\n\nFull file content:\n\`\`\`\n${content}\n\`\`\``;
@@ -316,9 +468,11 @@ export function TerminalAiComposer({
       system += `\n\nAttached files:\n${fileBlock}`;
     }
 
-    const ctx = readActiveTerminal();
-    if (ctx) {
-      system += `\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\``;
+    if (includeTerminal) {
+      const ctx = readActiveTerminal();
+      if (ctx) {
+        system += `\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\``;
+      }
     }
 
     try {
@@ -344,6 +498,7 @@ export function TerminalAiComposer({
         },
         tools && Object.keys(tools).length > 0 ? tools : undefined,
         abortCtrlRef.current.signal,
+        (statusText) => setStatus(statusText),
       );
     } catch (e) {
       if (abortRef.current) return;
@@ -366,19 +521,22 @@ export function TerminalAiComposer({
         return next;
       });
       setBusy(false);
+      setStatus(null);
       setAttachedFiles([]);
       const finalMessages = getSession(sessionId).messages;
       const assistantMsg = [...finalMessages].reverse().find((m: AiMessage) => m.role === "assistant" && !m.streaming);
       if (assistantMsg?.content) {
+        setFollowups(extractFollowups(assistantMsg.content));
         speakText(assistantMsg.content);
       }
     }
-  }, [input, busy, messages, sessionId, attachedFiles]);
+  }, [input, busy, messages, sessionId, attachedFiles, currentFile, selection, includeFile, includeSelection, includeTerminal]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
     abortCtrlRef.current?.abort();
     setBusy(false);
+    setStatus(null);
   }, []);
 
   useEffect(() => {
@@ -411,17 +569,23 @@ export function TerminalAiComposer({
     abortCtrlRef.current?.abort();
     setOpen(false);
     setBusy(false);
+    setStatus(null);
   };
 
   const newSession = () => {
     updateSession(sessionId, () => ({ ...session, messages: [], input: "" }));
+    setFollowups([]);
+    setIncludeFile(true);
+    setIncludeSelection(true);
+    setIncludeTerminal(true);
   };
 
   const runCommand = (cmd: string) => {
-    if (isDangerousCommand(cmd)) {
-      setPendingRun(cmd);
+    const first = extractCommandFromCode(cmd);
+    if (isDangerousCommand(first)) {
+      setPendingRun(first);
     } else {
-      runInActiveTerminal(cmd);
+      runInActiveTerminal(first);
     }
   };
 
@@ -580,9 +744,6 @@ export function TerminalAiComposer({
 
   if (!open || !prefs.aiEnabled) return null;
 
-  const currentFile = getEditorFile();
-  const fileName = currentFile ? currentFile.split("/").pop() : null;
-
   const gap = prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined;
 
   const computedHeight = expanded
@@ -595,45 +756,45 @@ export function TerminalAiComposer({
   const panelStyle = variant === "full" ? { maxHeight: '100%', height: '100%' } : { maxHeight: computedHeight };
 
   return (
-  <div
-    ref={panelRef}
-    data-bg-style={prefs.aiComposerBgStyle}
-    className={cn(
-      "composer-panel animate-composer-in",
-      expanded && "composer-expanded",
-      variant === "full" && "composer-full",
-      dragOver && "composer-drag-over",
-      className
-    )}
-    style={{
-      ...panelStyle,
-      borderRadius: gap && variant !== "full" ? '16px' : variant !== "full" ? '16px 16px 0 0' : '0',
-      '--composer-opacity': prefs.aiMiniOpacity / 100,
-      '--composer-font-size': `${prefs.aiMiniFontSize}px`,
-      '--composer-bg-color': prefs.aiComposerBgColor,
-      '--composer-bg-blur': `${prefs.aiMiniBgBlur}px`,
-      '--composer-bg-dim': prefs.aiMiniBgDim / 100,
-    } as unknown as React.CSSProperties}
-    onDragOver={(e) => {
-      e.preventDefault();
-      setDragOver(true);
-    }}
-    onDragLeave={() => setDragOver(false)}
-    onDrop={(e) => {
-      e.preventDefault();
-      setDragOver(false);
-      const paths: string[] = [];
-      if (e.dataTransfer.files) {
-        for (let i = 0; i < e.dataTransfer.files.length; i++) {
-          const file = e.dataTransfer.files.item(i);
-          // Tauri file drops on WebKit give a path in the `path` property
-          const path = (file as unknown as { path?: string })?.path;
-          if (path) paths.push(path);
+    <div
+      ref={panelRef}
+      data-bg-style={prefs.aiComposerBgStyle}
+      className={cn(
+        "composer-panel animate-composer-in",
+        expanded && "composer-expanded",
+        variant === "full" && "composer-full",
+        dragOver && "composer-drag-over",
+        activeAccent,
+        className
+      )}
+      style={{
+        ...panelStyle,
+        borderRadius: gap && variant !== "full" ? '16px' : variant !== "full" ? '16px 16px 0 0' : '0',
+        '--composer-opacity': prefs.aiMiniOpacity / 100,
+        '--composer-font-size': `${prefs.aiMiniFontSize}px`,
+        '--composer-bg-color': prefs.aiComposerBgColor,
+        '--composer-bg-blur': `${prefs.aiMiniBgBlur}px`,
+        '--composer-bg-dim': prefs.aiMiniBgDim / 100,
+      } as unknown as React.CSSProperties}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const paths: string[] = [];
+        if (e.dataTransfer.files) {
+          for (let i = 0; i < e.dataTransfer.files.length; i++) {
+            const file = e.dataTransfer.files.item(i);
+            const path = (file as unknown as { path?: string })?.path;
+            if (path) paths.push(path);
+          }
         }
-      }
-      if (paths.length) void attachFiles(paths);
-    }}
-  >
+        if (paths.length) void attachFiles(paths);
+      }}
+    >
       {variant !== "full" && (
         <div
           className="composer-resize-handle"
@@ -645,7 +806,9 @@ export function TerminalAiComposer({
 
       <div className="composer-header">
         <div className="flex items-center gap-2">
-          <span className="composer-avatar">{activeAgentIcon}</span>
+          <span className={cn("composer-avatar", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
+            {activeAgentIcon}
+          </span>
           <div ref={agentDropdownRef} className="relative">
             <button
               type="button"
@@ -664,7 +827,7 @@ export function TerminalAiComposer({
               />
             </button>
             {agentDropdownOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border/60 bg-card/95 py-1 shadow-lg backdrop-blur-md">
+              <div className="absolute left-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-border/60 bg-card/95 py-1 shadow-lg backdrop-blur-md">
                 {agents.map((a) => (
                   <button
                     key={a.id}
@@ -680,7 +843,7 @@ export function TerminalAiComposer({
                         : "text-foreground hover:bg-muted/50",
                     )}
                   >
-                    <span className="text-[13px]">{a.icon}</span>
+                    <span className={cn("text-[13px]", a.color && `composer-label-accent-${a.color}`)}>{a.icon}</span>
                     <span className="flex-1 truncate">{a.name}</span>
                     {activeAgent?.id === a.id && (
                       <span className="text-[10px]">✓</span>
@@ -713,19 +876,17 @@ export function TerminalAiComposer({
               <HugeiconsIcon icon={StopIcon} size={12} strokeWidth={1.75} />
             </button>
           )}
-          {(
-            <button
-              type="button"
-              onClick={speaking ? stopSpeaking : () => {
-                const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && !m.streaming);
-                if (lastAssistant?.content) speakText(lastAssistant.content);
-              }}
-              className={cn("composer-icon-btn", speaking && "composer-icon-btn-speaking")}
-              title={speaking ? "Stop speaking" : "Read last response"}
-            >
-              <HugeiconsIcon icon={speaking ? VolumeOffIcon : VolumeHighIcon} size={12} strokeWidth={1.75} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={speaking ? stopSpeaking : () => {
+              const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && !m.streaming);
+              if (lastAssistant?.content) speakText(lastAssistant.content);
+            }}
+            className={cn("composer-icon-btn", speaking && "composer-icon-btn-speaking")}
+            title={speaking ? "Stop speaking" : "Read last response"}
+          >
+            <HugeiconsIcon icon={speaking ? VolumeOffIcon : VolumeHighIcon} size={12} strokeWidth={1.75} />
+          </button>
           {variant === "docked" && onOpenInAiTab && (
             <button
               type="button"
@@ -763,21 +924,41 @@ export function TerminalAiComposer({
       <div ref={scrollRef} className="composer-messages">
         {messages.length === 0 ? (
           <div className="composer-empty">
-            <div className="composer-avatar-lg">{activeAgentIcon}</div>
+            <div className={cn("composer-avatar-lg", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
+              {activeAgentIcon}
+            </div>
             <p className="text-[12px] font-medium text-foreground">What should I do?</p>
             <p className="text-[11px] text-muted-foreground/60">Ask about the open file, terminal output, or generate commands.</p>
+            {prefs.aiPromptTemplates.slice(0, 3).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setInput(t.prompt)}
+                className="composer-followup-btn"
+              >
+                {t.icon} {t.label}
+              </button>
+            ))}
           </div>
         ) : (
           messages.map((msg, i) => {
             const isUser = msg.role === "user";
             const textParts = isUser ? msg.content : stripCodeBlocks(msg.content);
             const codeBlocks = isUser ? [] : parseCodeBlocks(msg.content);
+            const diffBlocks = isUser ? [] : parseDiffBlocks(msg.content);
+            const tree = isUser ? null : parseFileTree(msg.content);
             return (
               <div key={i} className={cn("composer-message", isUser ? "composer-message-user" : "composer-message-ai")}>
                 {isUser ? (
                   <div className="composer-message-avatar" title="You">Y</div>
                 ) : (
-                  <div className="composer-message-avatar" title={activeAgentName}>
+                  <div
+                    className={cn(
+                      "composer-message-avatar",
+                      activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`,
+                    )}
+                    title={activeAgentName}
+                  >
                     {msg.streaming ? <span className="composer-pulse-dot" /> : activeAgentIcon}
                   </div>
                 )}
@@ -790,8 +971,12 @@ export function TerminalAiComposer({
                       </>
                     ) : (
                       <>
-                        <span className="composer-message-role-icon">{activeAgentIcon}</span>
-                        <span>{activeAgentName}</span>
+                        <span className={cn("composer-message-role-icon", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
+                          {activeAgentIcon}
+                        </span>
+                        <span className={cn(activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
+                          {activeAgentName}
+                        </span>
                       </>
                     )}
                   </div>
@@ -804,35 +989,20 @@ export function TerminalAiComposer({
                           {textParts}
                         </div>
                       )}
-                      {codeBlocks.map((block, idx) => (
-                        <div key={idx} className="composer-code-block">
-                          <div className="composer-code-header">
-                            <span className="lang">{block.lang}</span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => copyCode(block.code, idx)}
-                                className="composer-code-header-btn"
-                                title="Copy"
-                              >
-                                <HugeiconsIcon icon={copiedIdx === idx ? TickDouble01Icon : Copy01Icon} size={10} strokeWidth={1.75} />
-                                {copiedIdx === idx ? "Copied" : "Copy"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => runCommand(block.code)}
-                                className="composer-run-btn"
-                              >
-                                <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
-                                Run
-                              </button>
-                            </div>
-                          </div>
-                          <pre className="composer-code-pre">
-                            <code>{block.code}</code>
-                          </pre>
-                        </div>
+                      {codeBlocks.length > 0 && (
+                        <CodeBlockTabs
+                          blocks={codeBlocks}
+                          copiedIdx={copiedIdx}
+                          onCopy={copyCode}
+                          onRun={runCommand}
+                          tabIndex={codeTabMap[i] ?? 0}
+                          onChangeTab={(idx) => setCodeTabMap((m) => ({ ...m, [i]: idx }))}
+                        />
+                      )}
+                      {diffBlocks.map((diff, idx) => (
+                        <DiffBlock key={idx} diff={diff} />
                       ))}
+                      {tree && <FileTreeBlock tree={tree} />}
                     </>
                   )}
                 </div>
@@ -841,14 +1011,16 @@ export function TerminalAiComposer({
           })
         )}
 
-        {busy && (!messages.length || messages[messages.length - 1].role !== "assistant" || messages[messages.length - 1].content) && (
+        {busy && (
           <div className="composer-message">
-            <div className="composer-message-avatar">
+            <div className={cn("composer-message-avatar", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
               <span className="composer-pulse-dot" />
             </div>
             <div className="composer-message-body">
               <div className="composer-thinking">
-                <span className="text-[12px] text-muted-foreground">Husk is thinking</span>
+                <span className={cn("text-[12px]", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
+                  {status || "Husk is thinking"}
+                </span>
                 <span className="composer-blob composer-blob-1" />
                 <span className="composer-blob composer-blob-2" />
                 <span className="composer-blob composer-blob-3" />
@@ -874,6 +1046,39 @@ export function TerminalAiComposer({
               <span>{t.icon}</span>
               <span>{t.label}</span>
             </button>
+          ))}
+        </div>
+      )}
+
+      {followups.length > 0 && !busy && (
+        <div className="composer-followups">
+          {followups.map((f, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => handleSend(f)}
+              className="composer-followup-btn"
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {contextChips.length > 0 && (
+        <div className="composer-context-chips">
+          {contextChips.map((chip) => (
+            <div key={chip.id} className="composer-context-chip">
+              <span>{chip.icon}</span>
+              <span className="truncate max-w-[140px]">{chip.label}</span>
+              <button
+                type="button"
+                onClick={chip.onRemove}
+                className="composer-context-chip-remove"
+              >
+                ×
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -939,32 +1144,91 @@ export function TerminalAiComposer({
         </button>
       </div>
 
-      <div className="composer-input-row">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-            if (e.key === "Escape" && variant === "docked") {
-              handleClose();
-            }
-          }}
-          placeholder="Ask Husk..."
-          rows={1}
-          className="composer-textarea"
-        />
-        <button
-          type="button"
-          onClick={() => handleSend()}
-          disabled={busy || !input.trim()}
-          className="composer-send-btn"
-        >
-          {busy ? "…" : "Ask"}
-        </button>
+      <div ref={slashPaletteRef} className="composer-input-wrapper">
+        {slashOpen && (
+          <div className="composer-slash-palette">
+            {filteredSlash.length === 0 ? (
+              <div className="px-3 py-2 text-[10px] text-muted-foreground">No commands</div>
+            ) : (
+              filteredSlash.map((cmd, idx) => (
+                <button
+                  key={cmd.id}
+                  type="button"
+                  onClick={() => {
+                    cmd.run();
+                    setSlashOpen(false);
+                    if (cmd.id !== "/attach" && cmd.id !== "/agent") {
+                      setTimeout(() => textareaRef.current?.focus(), 50);
+                    }
+                  }}
+                  className={cn(
+                    "composer-slash-palette-item",
+                    idx === slashIndex && "composer-slash-palette-item-active",
+                  )}
+                  onMouseEnter={() => setSlashIndex(idx)}
+                >
+                  <span className="text-[13px]">{cmd.icon}</span>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{cmd.label}</span>
+                    <span className="composer-slash-palette-item-desc">{cmd.desc}</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+        <div className="composer-input-row">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (slashOpen) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSlashIndex((i) => (i + 1) % filteredSlash.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSlashIndex((i) => (i - 1 + filteredSlash.length) % filteredSlash.length);
+                  return;
+                }
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const cmd = filteredSlash[slashIndex];
+                  if (cmd) {
+                    cmd.run();
+                    setSlashOpen(false);
+                  }
+                  return;
+                }
+                if (e.key === "Escape") {
+                  setSlashOpen(false);
+                  return;
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+              if (e.key === "Escape" && variant === "docked") {
+                handleClose();
+              }
+            }}
+            placeholder="Ask Husk..."
+            rows={1}
+            className="composer-textarea"
+          />
+          <button
+            type="button"
+            onClick={() => handleSend()}
+            disabled={busy || !input.trim()}
+            className="composer-send-btn"
+          >
+            {busy ? "…" : "Ask"}
+          </button>
+        </div>
       </div>
 
       <div className="composer-footer">
@@ -983,6 +1247,133 @@ export function TerminalAiComposer({
           <span className="composer-footer-kbd">Ctrl+Shift+L</span> toggle
         </div>
       </div>
+    </div>
+  );
+}
+
+function CodeBlockTabs({
+  blocks,
+  copiedIdx,
+  onCopy,
+  onRun,
+  tabIndex,
+  onChangeTab,
+}: {
+  blocks: CodeBlock[];
+  copiedIdx: number | null;
+  onCopy: (code: string, idx: number) => void;
+  onRun: (code: string) => void;
+  tabIndex: number;
+  onChangeTab: (idx: number) => void;
+}) {
+  if (blocks.length === 1) {
+    return <CodeBlockCard block={blocks[0]} idx={0} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} />;
+  }
+  const active = blocks[tabIndex] || blocks[0];
+  return (
+    <div className="composer-code-block">
+      <div className="composer-code-tabs">
+        {blocks.map((b, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onChangeTab(i)}
+            className={cn("composer-code-tab", i === tabIndex && "composer-code-tab-active")}
+          >
+            {b.lang || "code"}
+          </button>
+        ))}
+      </div>
+      <CodeBlockCard block={active} idx={tabIndex} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} hideHeader />
+    </div>
+  );
+}
+
+function CodeBlockCard({
+  block,
+  idx,
+  copiedIdx,
+  onCopy,
+  onRun,
+  hideHeader,
+}: {
+  block: CodeBlock;
+  idx: number;
+  copiedIdx: number | null;
+  onCopy: (code: string, idx: number) => void;
+  onRun: (code: string) => void;
+  hideHeader?: boolean;
+}) {
+  return (
+    <div className="composer-code-block">
+      {!hideHeader && (
+        <div className="composer-code-header">
+          <span className="lang">{block.lang}</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onCopy(block.code, idx)}
+              className="composer-code-header-btn"
+              title="Copy"
+            >
+              <HugeiconsIcon icon={copiedIdx === idx ? TickDouble01Icon : Copy01Icon} size={10} strokeWidth={1.75} />
+              {copiedIdx === idx ? "Copied" : "Copy"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onRun(block.code)}
+              className="composer-run-btn"
+            >
+              <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
+              Run
+            </button>
+          </div>
+        </div>
+      )}
+      <pre className="composer-code-pre">
+        <code>{block.code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function DiffBlock({ diff }: { diff: DiffBlockType }) {
+  return (
+    <div className="composer-diff-block">
+      <div className="composer-diff-header">
+        <span>Diff</span>
+        <span className="text-[9px] text-muted-foreground/60">{diff.lines.length} lines</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {diff.lines.map((line: { kind: "add" | "del" | "ctx"; text: string }, i: number) => (
+          <div
+            key={i}
+            className={cn(
+              "composer-diff-line",
+              line.kind === "add" && "composer-diff-line-add",
+              line.kind === "del" && "composer-diff-line-del",
+              line.kind === "ctx" && "composer-diff-line-ctx",
+            )}
+          >
+            {line.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FileTreeBlock({ tree }: { tree: FileTreeNode[] }) {
+  return (
+    <div className="composer-filetree">
+      <div className="text-[10px] font-semibold text-muted-foreground mb-1">Files</div>
+      {tree.map((node, i) => (
+        <div key={i} className="composer-filetree-row">
+          <span className="composer-filetree-row-indent" />
+          <span>📄</span>
+          <span>{node.name}</span>
+        </div>
+      ))}
     </div>
   );
 }
