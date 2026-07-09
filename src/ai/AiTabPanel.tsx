@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PlusSignIcon, MessageMultiple02Icon, SparklesIcon, ComputerTerminal02Icon, Archive02Icon, Delete02Icon } from "@hugeicons/core-free-icons";
+import { PlusSignIcon, MessageMultiple02Icon, SparklesIcon, ComputerTerminal02Icon, Archive02Icon, Delete02Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { TerminalAiComposer } from "../terminal/TerminalAiComposer";
 import {
@@ -17,13 +17,37 @@ import {
   isTabSessionId,
 } from "./sessionStore";
 
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  if (diff < 60000) return "just now";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function fuzzyMatch(query: string, text: string): boolean {
+  const q = query.toLowerCase();
+  const t = text.toLowerCase();
+  let ti = 0;
+  for (let i = 0; i < q.length; i++) {
+    const idx = t.indexOf(q[i], ti);
+    if (idx === -1) return false;
+    ti = idx + 1;
+  }
+  return true;
+}
+
 export function AiTabPanel() {
   const sessions = useSessions();
   const activeId = useActiveSessionId();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [query, setQuery] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Ensure a global session exists for the AI tab itself
   useEffect(() => {
@@ -34,8 +58,15 @@ export function AiTabPanel() {
   }, [activeId]);
 
   const activeSession = activeId ? getSession(activeId) : getSession("global");
-  const activeList = sessions.filter((s) => !s.archived);
-  const archivedList = sessions.filter((s) => s.archived);
+
+  const filtered = useMemo(() => {
+    const q = query.trim();
+    if (!q) return sessions;
+    return sessions.filter((s) => fuzzyMatch(q, s.name));
+  }, [sessions, query]);
+
+  const activeList = filtered.filter((s) => !s.archived);
+  const archivedList = filtered.filter((s) => s.archived);
 
   const startRename = (id: string, name: string) => {
     setEditingId(id);
@@ -48,6 +79,88 @@ export function AiTabPanel() {
     }
     setEditingId(null);
   };
+
+  const sessionRow = (s: typeof sessions[0], isArchived = false) => (
+    <div
+      key={s.id}
+      className={cn(
+        "group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] transition-colors",
+        activeSession.id === s.id
+          ? "bg-primary/15 text-primary"
+          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      )}
+    >
+      {editingId === s.id ? (
+        <input
+          autoFocus
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename();
+            if (e.key === "Escape") setEditingId(null);
+          }}
+          className="flex-1 min-w-0 bg-transparent text-foreground outline-none"
+        />
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => setActiveSessionId(s.id)}
+            className="flex flex-1 min-w-0 flex-col items-start text-left"
+          >
+            <span className="flex w-full items-center gap-2">
+              <HugeiconsIcon
+                icon={isTabSessionId(s.id) ? ComputerTerminal02Icon : SparklesIcon}
+                size={11}
+                strokeWidth={1.75}
+                className={cn("shrink-0", activeSession.id === s.id ? "text-primary" : "text-muted-foreground/60")}
+              />
+              <span className="truncate">{s.name}</span>
+            </span>
+            <span className="ml-[17px] text-[9px] text-muted-foreground/50">
+              {s.messages.length} msg{s.messages.length === 1 ? "" : "s"} · {formatDate(s.updatedAt)}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => startRename(s.id, s.name)}
+            className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
+            title="Rename"
+          >
+            ⋮
+          </button>
+          {isArchived ? (
+            <button
+              type="button"
+              onClick={() => unarchiveSession(s.id)}
+              className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
+              title="Unarchive"
+            >
+              <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => archiveSession(s.id)}
+              className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
+              title="Archive"
+            >
+              <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => deleteSession(s.id)}
+            className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-destructive/20 hover:text-destructive"
+            title="Delete"
+          >
+            <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
+          </button>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -70,75 +183,22 @@ export function AiTabPanel() {
             <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={1.75} />
           </button>
         </div>
+        <div className="px-2 pt-2">
+          <div className="relative">
+            <HugeiconsIcon icon={Search01Icon} size={11} strokeWidth={1.75} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search sessions..."
+              className="h-7 w-full rounded-md border border-border/60 bg-muted/30 pl-7 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary/60 focus:bg-muted/50"
+            />
+          </div>
+        </div>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-2">
           <div className="flex flex-col gap-1">
-            {activeList.map((s) => (
-              <div
-                key={s.id}
-                className={cn(
-                  "group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors",
-                  activeSession.id === s.id
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                )}
-              >
-                {editingId === s.id ? (
-                  <input
-                    autoFocus
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitRename();
-                      if (e.key === "Escape") setEditingId(null);
-                    }}
-                    className="flex-1 min-w-0 bg-transparent text-foreground outline-none"
-                  />
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSessionId(s.id)}
-                      className="flex flex-1 items-center gap-2 text-left"
-                    >
-                      <HugeiconsIcon
-                        icon={isTabSessionId(s.id) ? ComputerTerminal02Icon : SparklesIcon}
-                        size={11}
-                        strokeWidth={1.75}
-                        className={cn("shrink-0", activeSession.id === s.id ? "text-primary" : "text-muted-foreground/60")}
-                      />
-                      <span className="truncate">{s.name}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => startRename(s.id, s.name)}
-                      className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
-                      title="Rename"
-                    >
-                      ⋮
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => archiveSession(s.id)}
-                      className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
-                      title="Archive"
-                    >
-                      <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
-                    </button>
-                    {activeList.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => deleteSession(s.id)}
-                        className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-destructive/20 hover:text-destructive"
-                        title="Delete"
-                      >
-                        <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
+            {activeList.map((s) => sessionRow(s))}
           </div>
 
           {archivedList.length > 0 && (
@@ -153,47 +213,7 @@ export function AiTabPanel() {
               </button>
               {showArchived && (
                 <div className="flex flex-col gap-1 mt-1">
-                  {archivedList.map((s) => (
-                    <div
-                      key={s.id}
-                      className={cn(
-                        "group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors",
-                        activeSession.id === s.id
-                          ? "bg-primary/15 text-primary"
-                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setActiveSessionId(s.id)}
-                        className="flex flex-1 items-center gap-2 text-left"
-                      >
-                        <HugeiconsIcon
-                          icon={isTabSessionId(s.id) ? ComputerTerminal02Icon : SparklesIcon}
-                          size={11}
-                          strokeWidth={1.75}
-                          className={cn("shrink-0", activeSession.id === s.id ? "text-primary" : "text-muted-foreground/60")}
-                        />
-                        <span className="truncate">{s.name}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => unarchiveSession(s.id)}
-                        className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
-                        title="Unarchive"
-                      >
-                        <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteSession(s.id)}
-                        className="inline-flex size-4 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-destructive/20 hover:text-destructive"
-                        title="Delete"
-                      >
-                        <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
-                      </button>
-                    </div>
-                  ))}
+                  {archivedList.map((s) => sessionRow(s, true))}
                 </div>
               )}
             </div>

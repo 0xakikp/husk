@@ -10,6 +10,7 @@ import {
   MessageMultiple02Icon,
   VoiceIcon,
   AttachmentSquareIcon,
+  StopIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs } from "../settings/preferences";
@@ -93,6 +94,24 @@ export function tabSessionName(sessionId: string): string {
   if (!isTabSessionId(sessionId)) return sessionId;
   const tabId = parseInt(sessionId.slice(4), 10);
   return isNaN(tabId) ? sessionId : `Terminal ${tabId}`;
+}
+
+const DANGEROUS_PATTERNS = [
+  /\brm\s+-rf\s+\//i,
+  /\brm\s+(-[rfia]+\s+)?\//i,
+  /\bdd\s+if=/i,
+  /\bmkfs\./i,
+  /\bsudo\s+/i,
+  /\bsu\s+-/i,
+  /\bchmod\s+-R\s+777\b/i,
+  />\s*\/dev\/null\s+.*\b(sda|disk0|rdisk0)\b/i,
+  /\bcurl\s+.*\|\s*(sh|bash|zsh|csh|tcsh|fish)\b/i,
+  /\bwget\s+.*-O\s*-\s*\|\s*(sh|bash|zsh|csh|tcsh|fish)\b/i,
+];
+
+function isDangerousCommand(cmd: string): boolean {
+  const trimmed = cmd.trim();
+  return DANGEROUS_PATTERNS.some((p) => p.test(trimmed));
 }
 
 export function TerminalAiComposer({
@@ -270,6 +289,7 @@ export function TerminalAiComposer({
         abortCtrlRef.current.signal,
       );
     } catch (e) {
+      if (abortRef.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       setMessages((prev) => {
         const next = [...prev];
@@ -291,6 +311,12 @@ export function TerminalAiComposer({
       setBusy(false);
     }
   }, [input, busy, messages, sessionId]);
+
+  const stop = useCallback(() => {
+    abortRef.current = true;
+    abortCtrlRef.current?.abort();
+    setBusy(false);
+  }, []);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
@@ -329,7 +355,11 @@ export function TerminalAiComposer({
   };
 
   const runCommand = (cmd: string) => {
-    setPendingRun(cmd);
+    if (isDangerousCommand(cmd)) {
+      setPendingRun(cmd);
+    } else {
+      runInActiveTerminal(cmd);
+    }
   };
 
   const confirmRun = () => {
@@ -483,6 +513,16 @@ export function TerminalAiComposer({
           )}
         </div>
         <div className="flex items-center gap-1">
+          {busy && (
+            <button
+              type="button"
+              onClick={stop}
+              className="composer-icon-btn text-destructive"
+              title="Stop generating"
+            >
+              <HugeiconsIcon icon={StopIcon} size={12} strokeWidth={1.75} />
+            </button>
+          )}
           {variant === "docked" && onOpenInAiTab && (
             <button
               type="button"
@@ -607,7 +647,7 @@ export function TerminalAiComposer({
       {pendingRun && (
         <div className="composer-pending-run">
           <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] font-medium text-amber-400">Run this command?</span>
+            <span className="text-[10px] font-medium text-amber-400">⚠️ Dangerous command — approve to run</span>
             <code className="text-[10px] text-foreground/80">{pendingRun}</code>
           </div>
           <div className="flex items-center gap-1">
