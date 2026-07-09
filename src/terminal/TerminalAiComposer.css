@@ -540,6 +540,11 @@
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 
+.composer-icon-btn-speaking {
+  color: hsl(var(--primary)) !important;
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
 .composer-input-actions {
   display: none;
 }

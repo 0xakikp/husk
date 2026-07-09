@@ -55,6 +55,7 @@ export type Prefs = {
   // AI
   aiEnabled: boolean;
   terminalAiErrorAssist: boolean;
+  aiTalkBack: boolean;
 
   // Session
   sessionRestoreEnabled: boolean;
@@ -121,6 +122,7 @@ const DEFAULT: Prefs = {
 
   aiEnabled: true,
   terminalAiErrorAssist: false,
+  aiTalkBack: false,
 
   sessionRestoreEnabled: true,
 

@@ -14,6 +14,8 @@ import {
   Copy01Icon,
   TickDouble01Icon,
   Files01Icon,
+  VolumeHighIcon,
+  VolumeOffIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs } from "../settings/preferences";
@@ -151,6 +153,8 @@ export function TerminalAiComposer({
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string; isImage?: boolean }[]>([]);
+  const [speaking, setSpeaking] = useState(false);
+  const speakUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const prefs = usePrefs();
   const [open, setOpen] = useState(variant === "full");
@@ -350,8 +354,15 @@ export function TerminalAiComposer({
       });
       setBusy(false);
       setAttachedFiles([]);
+      if (prefs.aiTalkBack) {
+        const finalMessages = getSession(sessionId).messages;
+        const assistantMsg = [...finalMessages].reverse().find((m: AiMessage) => m.role === "assistant" && !m.streaming);
+        if (assistantMsg?.content) {
+          speakText(assistantMsg.content);
+        }
+      }
     }
-  }, [input, busy, messages, sessionId, attachedFiles]);
+  }, [input, busy, messages, sessionId, attachedFiles, prefs.aiTalkBack]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
@@ -523,6 +534,31 @@ export function TerminalAiComposer({
     }
   };
 
+  const stopSpeaking = () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeaking(false);
+  };
+
+  const speakText = (text: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    stopSpeaking();
+    const clean = stripCodeBlocks(text).replace(/!\[.*?\]\(.*?\)/g, "[image]").slice(0, 4000);
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 1.05;
+    utterance.pitch = 1;
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    speakUtteranceRef.current = utterance;
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    return () => stopSpeaking();
+  }, []);
+
   const cfg = loadConfig();
   const provider = cfg.providerId ? getProvider(cfg.providerId) : getProvider("openai");
 
@@ -616,6 +652,19 @@ export function TerminalAiComposer({
               title="Stop generating"
             >
               <HugeiconsIcon icon={StopIcon} size={12} strokeWidth={1.75} />
+            </button>
+          )}
+          {prefs.aiTalkBack && (
+            <button
+              type="button"
+              onClick={speaking ? stopSpeaking : () => {
+                const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && !m.streaming);
+                if (lastAssistant?.content) speakText(lastAssistant.content);
+              }}
+              className={cn("composer-icon-btn", speaking && "composer-icon-btn-speaking")}
+              title={speaking ? "Stop speaking" : "Read last response"}
+            >
+              <HugeiconsIcon icon={speaking ? VolumeOffIcon : VolumeHighIcon} size={12} strokeWidth={1.75} />
             </button>
           )}
           {variant === "docked" && onOpenInAiTab && (
