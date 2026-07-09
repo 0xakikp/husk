@@ -263,7 +263,9 @@ function TabBar({
   onSelectAi,
   onPinAi,
   onUnpinAi,
+  onSetAiTabColor,
   aiPinned,
+  aiColor,
   animationsEnabled,
 }: {
   termTabs: TermTab[];
@@ -288,7 +290,9 @@ function TabBar({
   onSelectAi: () => void;
   onPinAi: () => void;
   onUnpinAi: () => void;
+  onSetAiTabColor?: (color: string | undefined) => void;
   aiPinned: boolean;
+  aiColor?: string;
   animationsEnabled?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -364,6 +368,7 @@ function TabBar({
             onClick={onSelectAi}
             animate={animationsEnabled}
             pinned={true}
+            color={aiColor}
             onContextMenu={(e) => {
               e.preventDefault();
               setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
@@ -595,6 +600,7 @@ function TabBar({
             onClick={onSelectAi}
             animate={animationsEnabled}
             pinned={false}
+            color={aiColor}
             onContextMenu={(e) => {
               e.preventDefault();
               setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
@@ -728,22 +734,59 @@ function TabBar({
                       </button>
                     </>
                   ) : (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                      onClick={() => {
-                        if (aiPinned) {
-                          onUnpinAi();
-                        } else {
-                          onPinAi();
-                        }
-                        setMenu(null);
-                      }}
-                    >
-                      <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={1.75} />
-                      <span className="flex-1 text-left">{aiPinned ? "Unpin" : "Pin"}</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        onClick={() => {
+                          if (aiPinned) {
+                            onUnpinAi();
+                          } else {
+                            onPinAi();
+                          }
+                          setMenu(null);
+                        }}
+                      >
+                        <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={1.75} />
+                        <span className="flex-1 text-left">{aiPinned ? "Unpin" : "Pin"}</span>
+                      </button>
+                      {/* Color picker */}
+                      <div className="px-2 py-1.5">
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</span>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {TAB_COLORS.map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => {
+                                onSetAiTabColor?.(c.class);
+                                setMenu(null);
+                              }}
+                              className={cn(
+                                "size-4 rounded-full ring-1 ring-transparent transition-all hover:scale-110",
+                                aiColor === c.class && "ring-white/60 scale-110"
+                              )}
+                              style={{ backgroundColor: c.hex }}
+                              title={c.name}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onSetAiTabColor?.(undefined);
+                              setMenu(null);
+                            }}
+                            className="flex size-4 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-muted/80"
+                            title="Clear"
+                          >
+                            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.2">
+                              <path d="M1 1l6 6M7 1L1 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </>
                   )}
                   {canClose && menu.kind !== "ai" ? (
                     <button
@@ -1805,7 +1848,9 @@ function App() {
               onSelectAi={() => setActiveKind("ai")}
               onPinAi={() => setPrefs({ aiTabPinned: true })}
               onUnpinAi={() => setPrefs({ aiTabPinned: false })}
+              onSetAiTabColor={(color) => setPrefs({ aiTabColor: color })}
               aiPinned={prefs.aiTabPinned}
+              aiColor={prefs.aiTabColor}
               animationsEnabled={prefs.animationsEnabled}
             />
             <div data-tauri-drag-region className="h-full min-w-2 flex-1" />

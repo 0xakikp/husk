@@ -104,6 +104,7 @@ export type Prefs = {
 
   // AI tab
   aiTabPinned: boolean;
+  aiTabColor?: string;
 
   // Notes
   notesDirectory: string;
@@ -224,6 +225,7 @@ const DEFAULT: Prefs = {
   aiComposerBgStyle: "default",
   aiComposerBgColor: "#000000",
   aiTabPinned: false,
+  aiTabColor: undefined,
 
   notesDirectory: "",
 };
