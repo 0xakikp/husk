@@ -819,7 +819,7 @@ export function TerminalAiComposer({
               />
             </button>
             {agentDropdownOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-border/60 bg-card/95 py-1 shadow-lg backdrop-blur-md">
+              <div className="absolute left-0 top-full z-50 mt-1 min-w-[170px] rounded-lg border border-border/60 bg-background py-1 shadow-lg">
                 {agents.map((a) => (
                   <button
                     key={a.id}
@@ -832,11 +832,13 @@ export function TerminalAiComposer({
                       "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] transition-colors",
                       activeAgent?.id === a.id
                         ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-muted/50",
+                        : "text-foreground hover:bg-muted/40",
                     )}
                   >
                     <span className={cn("text-[13px]", a.color && `composer-label-accent-${a.color}`)}>{a.icon}</span>
-                    <span className="flex-1 truncate">{a.name}</span>
+                    <div className="flex flex-col">
+                      <span className="flex-1 truncate">{a.name}</span>
+                    </div>
                     {activeAgent?.id === a.id && (
                       <span className="text-[10px]">✓</span>
                     )}
@@ -921,16 +923,6 @@ export function TerminalAiComposer({
             </div>
             <p className="text-[12px] font-medium text-foreground">What should I do?</p>
             <p className="text-[11px] text-muted-foreground/60">Ask about the open file, terminal output, or generate commands.</p>
-            {prefs.aiPromptTemplates.slice(0, 3).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setInput(t.prompt)}
-                className="composer-followup-btn"
-              >
-                {t.icon} {t.label}
-              </button>
-            ))}
           </div>
         ) : (
           messages.map((msg, i) => {
