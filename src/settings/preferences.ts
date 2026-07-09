@@ -17,6 +17,15 @@ export type BackgroundSettings = {
   dim: number;
 };
 
+export type AiAgent = {
+  id: string;
+  name: string;
+  icon: string;
+  systemPrompt: string;
+  model?: string;
+  builtIn?: boolean;
+};
+
 export type PromptTemplate = {
   id: string;
   label: string;
@@ -63,6 +72,8 @@ export type Prefs = {
   aiEnabled: boolean;
   terminalAiErrorAssist: boolean;
   aiPromptTemplates: PromptTemplate[];
+  aiAgents: AiAgent[];
+  activeAgentId: string;
 
   // Session
   sessionRestoreEnabled: boolean;
@@ -136,6 +147,49 @@ const DEFAULT: Prefs = {
     { id: "debug", label: "Debug", icon: "🐛", prompt: "Find and explain the bug in the following code or error output. Suggest a fix." },
     { id: "script", label: "Script", icon: "📜", prompt: "Convert the recent terminal commands into a reusable shell script." },
   ],
+  aiAgents: [
+    {
+      id: "architect",
+      name: "Architect",
+      icon: "🏗️",
+      builtIn: true,
+      systemPrompt:
+        "You are the Architect agent. You design and review software systems, APIs, data models, and deployment strategies. Think in trade-offs. Favor simple, maintainable solutions. Provide diagrams or pseudocode when useful.",
+    },
+    {
+      id: "code",
+      name: "Code",
+      icon: "💻",
+      builtIn: true,
+      systemPrompt:
+        "You are the Code agent. You write, refactor, and review production-ready code. Output complete, working snippets with proper error handling. Prefer clarity over cleverness. Follow the project's existing conventions.",
+    },
+    {
+      id: "ask",
+      name: "Ask",
+      icon: "❓",
+      builtIn: true,
+      systemPrompt:
+        "You are the Ask agent. Answer general programming, tooling, and conceptual questions concisely. Explain why, not just how. Use examples when it helps understanding.",
+    },
+    {
+      id: "debug",
+      name: "Debug",
+      icon: "🐛",
+      builtIn: true,
+      systemPrompt:
+        "You are the Debug agent. Investigate errors, logs, and stack traces methodically. Identify the root cause, propose the minimal fix, and explain how to verify it. Ask for missing context when needed.",
+    },
+    {
+      id: "orchestrator",
+      name: "Orchestrator",
+      icon: "🎛️",
+      builtIn: true,
+      systemPrompt:
+        "You are the Orchestrator agent. Plan multi-step tasks, delegate responsibilities across tools, and track progress. Break work into small milestones, ask for approval on big decisions, and surface risks early.",
+    },
+  ],
+  activeAgentId: "code",
 
   sessionRestoreEnabled: true,
 

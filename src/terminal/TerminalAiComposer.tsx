@@ -23,7 +23,7 @@ import { loadConfig, getKey } from "../ai/store";
 import { getProvider } from "../ai/providers";
 import { streamChat } from "../ai/client";
 import type { Tool } from "ai";
-import { getActiveAgent } from "../ai/agents";
+import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
@@ -151,6 +151,10 @@ export function TerminalAiComposer({
   const speakUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const prefs = usePrefs();
+  const agents = useAgents();
+  const activeAgent = getActiveAgent();
+  const activeAgentName = activeAgent?.name ?? "Husk AI";
+  const activeAgentIcon = activeAgent?.icon ?? "✦";
   const [open, setOpen] = useState(variant === "full");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
@@ -626,8 +630,18 @@ export function TerminalAiComposer({
 
       <div className="composer-header">
         <div className="flex items-center gap-2">
-          <span className="composer-avatar">✦</span>
-          <span className="text-[11px] font-semibold text-foreground">Husk AI</span>
+          <span className="composer-avatar">{activeAgentIcon}</span>
+          <select
+            value={activeAgent?.id}
+            onChange={(e) => setActiveAgent(e.target.value)}
+            className="h-6 rounded border border-border/40 bg-background px-1.5 text-[11px] font-semibold text-foreground outline-none hover:border-primary/50"
+          >
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
           <span className="text-[10px] text-muted-foreground/60">·</span>
           <span className="text-[10px] text-muted-foreground/70">{session.name}</span>
           {fileName && (
@@ -701,7 +715,7 @@ export function TerminalAiComposer({
       <div ref={scrollRef} className="composer-messages">
         {messages.length === 0 ? (
           <div className="composer-empty">
-            <div className="composer-avatar-lg">✦</div>
+            <div className="composer-avatar-lg">{activeAgentIcon}</div>
             <p className="text-[12px] font-medium text-foreground">What should I do?</p>
             <p className="text-[11px] text-muted-foreground/60">Ask about the open file, terminal output, or generate commands.</p>
           </div>
@@ -715,8 +729,8 @@ export function TerminalAiComposer({
                 {isUser ? (
                   <div className="composer-message-avatar" title="You">Y</div>
                 ) : (
-                  <div className="composer-message-avatar" title="Husk AI">
-                    {msg.streaming ? <span className="composer-pulse-dot" /> : "✦"}
+                  <div className="composer-message-avatar" title={activeAgentName}>
+                    {msg.streaming ? <span className="composer-pulse-dot" /> : activeAgentIcon}
                   </div>
                 )}
                 <div className="composer-message-body">
@@ -728,8 +742,8 @@ export function TerminalAiComposer({
                       </>
                     ) : (
                       <>
-                        <span className="composer-message-role-icon">✦</span>
-                        <span>Husk AI</span>
+                        <span className="composer-message-role-icon">{activeAgentIcon}</span>
+                        <span>{activeAgentName}</span>
                       </>
                     )}
                   </div>
