@@ -17,7 +17,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { detectInstalled } from "@/tools";
 import { IS_MAC, IS_WINDOWS } from "@/lib/platform";
-import { typeInActiveTerminal, focusActiveTerminal } from "@/ai/terminalContext";
 import { usePrefs, setPrefs } from "@/settings/preferences";
 import {
   Dialog,
@@ -51,6 +50,7 @@ type Platform = "macos" | "linux" | "windows";
 const PLATFORM: Platform = IS_MAC ? "macos" : IS_WINDOWS ? "windows" : "linux";
 
 const BREW_PREFIX = '[ -x /opt/homebrew/bin/brew ] \u0026\u0026 eval "$(/opt/homebrew/bin/brew shellenv)"; [ -x /usr/local/bin/brew ] \u0026\u0026 eval "$(/usr/local/bin/brew shellenv)"';
+void BREW_PREFIX; // referenced by future background installer
 
 export const SETUP_GROUPS: ToolGroup[] = [
   {
@@ -359,62 +359,12 @@ function getCommand(tool: ToolInfo, platform: Platform): string | null {
   return tool.commands[platform] ?? tool.commands.macos ?? null;
 }
 
-function formatGroupInstall(tools: ToolInfo[], platform: Platform): string | null {
-  if (platform === "macos") {
-    const brewPackages: string[] = [];
-    const scripts: string[] = [];
-    for (const tool of tools) {
-      const cmd = getCommand(tool, platform);
-      if (!cmd) continue;
-      if (cmd.startsWith("brew install ")) {
-        brewPackages.push(cmd.replace("brew install ", ""));
-      } else {
-        scripts.push(cmd);
-      }
-    }
-    const parts: string[] = [];
-    if (brewPackages.length > 0) {
-      parts.push(`${BREW_PREFIX} \u0026\u0026 brew install ${[...new Set(brewPackages)].join(" ")}`);
-    }
-    parts.push(...scripts);
-    return parts.length ? parts.join("\n\n") : null;
-  }
-
-  if (platform === "linux") {
-    const aptNames: string[] = [];
-    const scripts: string[] = [];
-    for (const tool of tools) {
-      const cmd = getCommand(tool, platform);
-      if (!cmd) continue;
-      if (cmd.startsWith("sudo apt install -y ")) {
-        aptNames.push(cmd.replace("sudo apt install -y ", ""));
-      } else if (cmd.startsWith("sudo apt update ")) {
-        aptNames.push("eza bat fzf zoxide ripgrep fd-find git-delta lazygit just btop tldr jq");
-      } else {
-        scripts.push(cmd);
-      }
-    }
-    const parts: string[] = [];
-    const uniqueApt = [...new Set(aptNames)];
-    if (uniqueApt.length > 0) {
-      parts.push(`sudo apt update \u0026\u0026 sudo apt install -y ${uniqueApt.join(" ")}`);
-    }
-    parts.push(...scripts);
-    return parts.length ? parts.join("\n\n") : null;
-  }
-
-  const scripts = tools
-    .map((t) => getCommand(t, platform))
-    .filter((c): c is string => c !== null);
-  return scripts.length ? scripts.join("\n\n") : null;
-}
-
 export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<"All" | ToolGroup["id"]>("All");
-  const [toast, setToast] = useState<{ message: string; action?: () => void; actionLabel?: string } | null>(null);
+  const [lastOp, setLastOp] = useState<{ message: string; ok: boolean } | null>(null);
 
   const check = useCallback(async () => {
     setLoading(true);
@@ -425,14 +375,11 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
   }, []);
 
   useEffect(() => {
-    if (open) void check();
+    if (open) {
+      setLastOp(null);
+      void check();
+    }
   }, [open, check]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const allTools = useMemo(() => SETUP_GROUPS.flatMap((g) => g.tools), []);
   const installedCount = allTools.filter((t) => installed.has(t.id)).length;
@@ -452,35 +399,28 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
       .filter((g) => g.tools.length > 0);
   }, [visibleGroups, query]);
 
-  const runInTerminal = (cmd: string) => {
-    if (typeInActiveTerminal(cmd)) {
-      setToast({
-        message: "Command pasted into the active terminal. Press Enter there to run it.",
-        action: () => {
-          onOpenChange(false);
-          focusActiveTerminal();
-        },
-        actionLabel: "Focus terminal",
-      });
-    } else {
-      setToast({ message: "No active terminal found. Open a terminal tab first." });
+  const platformLabel = PLATFORM === "macos" ? "Homebrew" : PLATFORM === "linux" ? "apt" : "winget";
+  const categories = ["All", ...SETUP_GROUPS.map((g) => g.id)];
+
+  const copyCommand = (tool: ToolInfo, platform: Platform) => {
+    const cmd = getCommand(tool, platform);
+    if (!cmd) {
+      setLastOp({ message: `No install command available for ${tool.name} on ${platform}.`, ok: false });
+      return;
     }
+    navigator.clipboard
+      .writeText(cmd)
+      .then(() => setLastOp({ message: `Copied ${tool.name} install command to clipboard.`, ok: true }))
+      .catch(() => setLastOp({ message: `Failed to copy ${tool.name} install command.`, ok: false }));
   };
 
   const installAll = () => {
-    const missing = allTools.filter((t) => !installed.has(t.id));
-    const script = formatGroupInstall(missing, PLATFORM);
-    if (script) runInTerminal(script);
+    setLastOp({ message: "Background install is not yet available. Copy commands and run them in your terminal.", ok: false });
   };
 
   const installGroup = (group: ToolGroup) => {
-    const missing = group.tools.filter((t) => !installed.has(t.id));
-    const script = formatGroupInstall(missing, PLATFORM);
-    if (script) runInTerminal(script);
+    setLastOp({ message: `Background install for ${group.title} is not yet available.`, ok: false });
   };
-
-  const platformLabel = PLATFORM === "macos" ? "Homebrew" : PLATFORM === "linux" ? "apt" : "winget";
-  const categories = ["All", ...SETUP_GROUPS.map((g) => g.id)];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -562,28 +502,6 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
         </DialogHeader>
 
         <div className="relative flex flex-1 flex-col overflow-hidden">
-          {toast && (
-            <div className="absolute left-1/2 top-4 z-10 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 shadow-lg">
-                <span className="text-[11px] text-emerald-500">
-                  <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} className="inline mr-1" />
-                  {toast.message}
-                </span>
-                {toast.action && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={toast.action}
-                    className="h-6 text-[10px] text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-500"
-                  >
-                    {toast.actionLabel}
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {filteredGroups.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
@@ -632,7 +550,7 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
                             group={group}
                             platform={PLATFORM}
                             isInstalled={installed.has(tool.id)}
-                            onRunInTerminal={runInTerminal}
+                            onCopyCommand={copyCommand}
                           />
                         ))}
                       </div>
@@ -640,6 +558,29 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
                   );
                 })}
               </div>
+            )}
+          </div>
+
+          <div className="shrink-0 border-t border-border/50 px-6 py-3">
+            {lastOp ? (
+              <div
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-[11px]",
+                  lastOp.ok
+                    ? "bg-emerald-500/10 text-emerald-500"
+                    : "bg-amber-500/10 text-amber-500",
+                )}
+              >
+                <HugeiconsIcon
+                  icon={lastOp.ok ? CheckmarkCircle02Icon : ComputerTerminal02Icon}
+                  size={12}
+                />
+                {lastOp.message}
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                Tip: Copy a command and paste it into your terminal to install a tool. Detection runs automatically.
+              </p>
             )}
           </div>
         </div>
@@ -653,29 +594,16 @@ function ToolCard({
   group,
   platform,
   isInstalled,
-  onRunInTerminal,
+  onCopyCommand,
 }: {
   tool: ToolInfo;
   group: ToolGroup;
   platform: Platform;
   isInstalled: boolean;
-  onRunInTerminal: (cmd: string) => void;
+  onCopyCommand: (tool: ToolInfo, platform: Platform) => void;
 }) {
-  const [showCommand, setShowCommand] = useState(false);
-  const [copied, setCopied] = useState(false);
   const cmd = getCommand(tool, platform);
   const unsupported = cmd === null;
-
-  const copy = async () => {
-    if (!cmd) return;
-    try {
-      await navigator.clipboard.writeText(cmd);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // ignore
-    }
-  };
 
   return (
     <div
@@ -721,43 +649,19 @@ function ToolCard({
 
       {!isInstalled && !unsupported && (
         <div className="flex flex-col gap-1.5 pt-1">
-          {showCommand ? (
-            <div className="flex items-center gap-2 rounded-md border border-border/50 bg-card px-2 py-1.5">
-              <code className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
-                {cmd}
-              </code>
-              <button
-                type="button"
-                onClick={copy}
-                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                title="Copy"
-              >
-                {copied ? (
-                  <HugeiconsIcon icon={CheckmarkCircle02Icon} size={11} className="text-emerald-500" />
-                ) : (
-                  <HugeiconsIcon icon={Copy01Icon} size={11} />
-                )}
-              </button>
-            </div>
-          ) : (
+          <div className="flex items-center gap-2 rounded-md border border-border/50 bg-card px-2 py-1.5">
+            <code className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
+              {cmd}
+            </code>
             <button
               type="button"
-              onClick={() => setShowCommand(true)}
-              className="self-start text-[10px] text-emerald-500 underline-offset-2 hover:underline"
+              onClick={() => onCopyCommand(tool, platform)}
+              className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Copy install command"
             >
-              Show install command
+              <HugeiconsIcon icon={Copy01Icon} size={11} />
             </button>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => cmd && onRunInTerminal(cmd)}
-            className="h-7 w-full justify-start gap-1.5 text-[11px]"
-          >
-            <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} />
-            Run in terminal
-          </Button>
+          </div>
         </div>
       )}
     </div>
