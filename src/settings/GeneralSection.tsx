@@ -388,18 +388,6 @@ export function GeneralSection() {
           {p.aiEnabled && (
             <SettingRow
               className="rounded border border-border/40 bg-muted/20 py-2"
-              title="AI talk back"
-              description="Read AI responses aloud using the system text-to-speech engine."
-            >
-              <Switch
-                checked={p.aiTalkBack}
-                onCheckedChange={(v) => setPrefs({ aiTalkBack: v })}
-              />
-            </SettingRow>
-          )}
-          {p.aiEnabled && (
-            <SettingRow
-              className="rounded border border-border/40 bg-muted/20 py-2"
               title="Error assistance"
               description="When a command fails, show a toast with an Explain button that opens the AI assistant with the error context."
             >

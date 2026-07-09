@@ -62,7 +62,6 @@ export type Prefs = {
   // AI
   aiEnabled: boolean;
   terminalAiErrorAssist: boolean;
-  aiTalkBack: boolean;
   aiPromptTemplates: PromptTemplate[];
 
   // Session
@@ -130,7 +129,6 @@ const DEFAULT: Prefs = {
 
   aiEnabled: true,
   terminalAiErrorAssist: false,
-  aiTalkBack: false,
   aiPromptTemplates: [
     { id: "refactor", label: "Refactor", icon: "✨", prompt: "Refactor the following code. Keep the same behavior but improve readability, performance, and structure." },
     { id: "explain", label: "Explain", icon: "❓", prompt: "Explain this in simple terms." },

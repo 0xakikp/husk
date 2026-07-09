@@ -348,15 +348,13 @@ export function TerminalAiComposer({
       });
       setBusy(false);
       setAttachedFiles([]);
-      if (prefs.aiTalkBack) {
-        const finalMessages = getSession(sessionId).messages;
-        const assistantMsg = [...finalMessages].reverse().find((m: AiMessage) => m.role === "assistant" && !m.streaming);
-        if (assistantMsg?.content) {
-          speakText(assistantMsg.content);
-        }
+      const finalMessages = getSession(sessionId).messages;
+      const assistantMsg = [...finalMessages].reverse().find((m: AiMessage) => m.role === "assistant" && !m.streaming);
+      if (assistantMsg?.content) {
+        speakText(assistantMsg.content);
       }
     }
-  }, [input, busy, messages, sessionId, attachedFiles, prefs.aiTalkBack]);
+  }, [input, busy, messages, sessionId, attachedFiles]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
@@ -540,8 +538,13 @@ export function TerminalAiComposer({
     stopSpeaking();
     const clean = stripCodeBlocks(text).replace(/!\[.*?\]\(.*?\)/g, "[image]").slice(0, 4000);
     const utterance = new SpeechSynthesisUtterance(clean);
+    const voices = window.speechSynthesis.getVoices();
+    const female = voices.find((v) =>
+      /samantha|victoria|karen|alex|joanna|kimberly|salli|emma|amy|catherine|moira|zira|zhiyu|laila|meijia/i.test(v.name)
+    );
+    if (female) utterance.voice = female;
     utterance.rate = 1.05;
-    utterance.pitch = 1;
+    utterance.pitch = 1.1;
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
     speakUtteranceRef.current = utterance;
@@ -648,7 +651,7 @@ export function TerminalAiComposer({
               <HugeiconsIcon icon={StopIcon} size={12} strokeWidth={1.75} />
             </button>
           )}
-          {prefs.aiTalkBack && (
+          {(
             <button
               type="button"
               onClick={speaking ? stopSpeaking : () => {

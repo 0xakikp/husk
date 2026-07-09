@@ -5,14 +5,14 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   border-top: 1px solid rgba(var(--primary), 0.25);
   background: linear-gradient(
     180deg,
     hsl(var(--card) / var(--composer-opacity, 0.97)) 0%,
     hsl(var(--background) / var(--composer-opacity, 0.98)) 100%
   );
-  padding: 10px 12px 12px;
+  padding: 8px 10px 10px;
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25), 0 -1px 0 rgba(255, 255, 255, 0.03) inset;
   backdrop-filter: blur(var(--composer-bg-blur, 16px));
   -webkit-backdrop-filter: blur(var(--composer-bg-blur, 16px));
@@ -20,7 +20,7 @@
   transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   font-size: var(--composer-font-size, 13px);
   isolation: isolate;
-  padding-top: 16px;
+  padding-top: 12px;
 }
 
 .composer-full {
@@ -29,7 +29,8 @@
   height: 100% !important;
   border-radius: 0 !important;
   margin: 0 !important;
-  padding: 16px;
+  padding: 12px;
+  gap: 8px;
 }
 
 .composer-resize-handle {
@@ -117,7 +118,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px solid hsl(var(--border) / 0.5);
 }
 
@@ -168,15 +169,19 @@
 .composer-messages {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   overflow-y: auto;
   padding-right: 4px;
   min-height: 0;
   max-height: min(30vh, 180px);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .composer-full .composer-messages {
   max-height: none;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .composer-messages::-webkit-scrollbar {
@@ -205,55 +210,55 @@
 
 .composer-message {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: flex-start;
   animation: composer-in 0.2s ease-out forwards;
-  max-width: 90%;
+  max-width: 92%;
 }
 
 .composer-message-user {
   align-self: flex-end;
   flex-direction: row-reverse;
-  max-width: 80%;
+  max-width: 85%;
 }
 
 .composer-message-user .composer-message-body {
   background: linear-gradient(135deg, hsl(var(--primary) / 0.28), hsl(var(--primary) / 0.12));
   border: 1px solid hsl(var(--primary) / 0.45);
-  border-radius: 16px 16px 4px 16px;
+  border-radius: 14px 14px 4px 14px;
   color: hsl(var(--foreground));
-  padding: 10px 14px;
+  padding: 8px 12px;
   box-shadow: 0 0 0 1px hsl(var(--primary) / 0.05), 0 3px 14px hsl(var(--primary) / 0.15);
 }
 
 .composer-message-ai {
   align-self: flex-start;
-  max-width: 92%;
+  max-width: 94%;
 }
 
 .composer-message-ai .composer-message-body {
   background: hsl(var(--muted) / 0.22);
   border: 1px solid hsl(var(--border) / 0.55);
   border-left: 3px solid hsl(var(--primary) / 0.6);
-  border-radius: 16px 16px 16px 4px;
-  padding: 10px 14px;
+  border-radius: 14px 14px 14px 4px;
+  padding: 8px 12px;
   color: hsl(var(--foreground) / 0.92);
   box-shadow: 0 0 0 1px hsl(var(--border) / 0.05), 0 2px 10px rgba(0, 0, 0, 0.18);
 }
 
 .composer-message-avatar {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 6px;
   background: hsl(var(--muted) / 0.4);
   border: 1px solid hsl(var(--border) / 0.5);
-  font-size: 10px;
+  font-size: 9px;
   color: hsl(var(--primary));
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .composer-message-user .composer-message-avatar {
@@ -274,7 +279,7 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: hsl(var(--muted-foreground) / 0.55);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -292,8 +297,8 @@
 }
 
 .composer-message-label .dot {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   background: currentColor;
   box-shadow: 0 0 6px currentColor;
@@ -303,26 +308,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  margin-right: 4px;
+  width: 12px;
+  height: 12px;
+  margin-right: 3px;
   font-size: 9px;
 }
 
 .composer-code-block {
-  margin-top: 10px;
+  margin-top: 8px;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid hsl(var(--border) / 0.6);
   background: rgba(0, 0, 0, 0.45);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
 
 .composer-code-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 4px 8px;
   background: hsl(var(--muted) / 0.25);
   border-bottom: 1px solid hsl(var(--border) / 0.4);
   color: hsl(var(--muted-foreground) / 0.85);
@@ -340,12 +345,12 @@
 .composer-run-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 6px;
+  gap: 3px;
+  border-radius: 5px;
   background: hsl(var(--primary) / 0.15);
   border: 1px solid hsl(var(--primary) / 0.25);
-  padding: 3px 8px;
-  font-size: 10px;
+  padding: 2px 6px;
+  font-size: 9px;
   font-weight: 600;
   color: hsl(var(--primary));
   transition: all 0.15s ease;
@@ -422,13 +427,37 @@
   background: hsl(var(--muted) / 0.5);
 }
 
+.composer-code-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 5px;
+  background: hsl(var(--muted) / 0.18);
+  border: 1px solid hsl(var(--border) / 0.3);
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground) / 0.9);
+  transition: all 0.15s ease;
+}
+
+.composer-code-header-btn:hover {
+  background: hsl(var(--muted) / 0.35);
+  color: hsl(var(--foreground));
+}
+
 .composer-code-pre {
   overflow-x: auto;
-  padding: 10px 12px;
+  padding: 8px 10px;
   font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: hsl(var(--foreground) / 0.85);
+}
+
+.composer-full .composer-code-pre {
   font-size: 11px;
   line-height: 1.5;
-  color: hsl(var(--foreground) / 0.85);
 }
 
 .composer-code-pre code {
@@ -442,12 +471,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 0;
+  padding: 4px 0;
 }
 
 .composer-pulse-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: hsl(var(--primary));
   box-shadow: 0 0 10px hsl(var(--primary) / 0.6);
@@ -602,6 +631,75 @@
   cursor: not-allowed;
 }
 
+/* Prompt templates */
+
+.composer-prompt-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 2px 4px;
+}
+
+.composer-prompt-template-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.9);
+  background: hsl(var(--muted) / 0.25);
+  border: 1px solid hsl(var(--border) / 0.4);
+  transition: all 0.15s ease;
+}
+
+.composer-prompt-template-btn:hover {
+  background: hsl(var(--primary) / 0.12);
+  border-color: hsl(var(--primary) / 0.35);
+  color: hsl(var(--primary));
+}
+
+/* Attached files */
+
+.composer-attached-files {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 6px;
+  border-top: 1px solid hsl(var(--border) / 0.35);
+}
+
+.composer-attached-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.85);
+  background: hsl(var(--muted) / 0.35);
+  border: 1px solid hsl(var(--border) / 0.45);
+  transition: all 0.15s ease;
+}
+
+.composer-attached-file-chip:hover {
+  background: hsl(var(--destructive) / 0.12);
+  border-color: hsl(var(--destructive) / 0.35);
+  color: hsl(var(--destructive));
+}
+
+/* Drag-over state */
+
+.composer-panel.composer-drag-over {
+  outline: 2px dashed hsl(var(--primary) / 0.5);
+  outline-offset: -4px;
+  background: hsl(var(--primary) / 0.08);
+}
+
 /* ── Light mode overrides ─────────────────────────────────────────────── */
 
 :root[data-theme="light"] .composer-panel {
@@ -689,6 +787,39 @@
   color: hsl(var(--foreground));
 }
 
+:root[data-theme="light"] .composer-prompt-template-btn {
+  background: hsl(var(--muted) / 0.3);
+  border-color: hsl(var(--border) / 0.55);
+  color: hsl(var(--muted-foreground) / 0.95);
+}
+
+:root[data-theme="light"] .composer-prompt-template-btn:hover {
+  background: hsl(var(--primary) / 0.1);
+  border-color: hsl(var(--primary) / 0.3);
+  color: hsl(var(--primary));
+}
+
+:root[data-theme="light"] .composer-attached-file-chip {
+  background: hsl(var(--muted) / 0.4);
+  border-color: hsl(var(--border) / 0.6);
+  color: hsl(var(--foreground) / 0.9);
+}
+
+:root[data-theme="light"] .composer-code-header-btn {
+  background: hsl(var(--muted) / 0.35);
+  border-color: hsl(var(--border) / 0.5);
+  color: hsl(var(--muted-foreground) / 0.95);
+}
+
+:root[data-theme="light"] .composer-code-header-btn:hover {
+  background: hsl(var(--muted) / 0.5);
+  color: hsl(var(--foreground));
+}
+
+:root[data-theme="light"] .composer-panel.composer-drag-over {
+  background: hsl(var(--primary) / 0.06);
+}
+
 :root[data-theme="light"] .composer-textarea {
   background: hsl(var(--background));
   border-color: hsl(var(--border) / 0.8);
@@ -732,131 +863,6 @@
   color: hsl(var(--foreground) / 0.85);
 }
 
-/* ── Prompt templates ───────────────────────────────────────────────────── */
-
-.composer-prompt-templates {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 2px 4px;
-}
-
-.composer-prompt-template-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-  color: hsl(var(--muted-foreground) / 0.9);
-  background: hsl(var(--muted) / 0.25);
-  border: 1px solid hsl(var(--border) / 0.4);
-  transition: all 0.15s ease;
-}
-
-.composer-prompt-template-btn:hover {
-  background: hsl(var(--primary) / 0.12);
-  border-color: hsl(var(--primary) / 0.35);
-  color: hsl(var(--primary));
-}
-
-/* ── Attached files ─────────────────────────────────────────────────────── */
-
-.composer-attached-files {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 2px 6px;
-  border-top: 1px solid hsl(var(--border) / 0.35);
-}
-
-.composer-attached-file-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-size: 9px;
-  font-weight: 500;
-  color: hsl(var(--foreground) / 0.85);
-  background: hsl(var(--muted) / 0.35);
-  border: 1px solid hsl(var(--border) / 0.45);
-  transition: all 0.15s ease;
-}
-
-.composer-attached-file-chip:hover {
-  background: hsl(var(--destructive) / 0.12);
-  border-color: hsl(var(--destructive) / 0.35);
-  color: hsl(var(--destructive));
-}
-
-/* ── Code header copy button ─────────────────────────────────────────────── */
-
-.composer-code-header-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: 6px;
-  background: hsl(var(--muted) / 0.18);
-  border: 1px solid hsl(var(--border) / 0.3);
-  padding: 3px 8px;
-  font-size: 10px;
-  font-weight: 600;
-  color: hsl(var(--muted-foreground) / 0.9);
-  transition: all 0.15s ease;
-}
-
-.composer-code-header-btn:hover {
-  background: hsl(var(--muted) / 0.35);
-  color: hsl(var(--foreground));
-}
-
-/* ── Drag-over state ──────────────────────────────────────────────────────── */
-
-.composer-panel.composer-drag-over {
-  outline: 2px dashed hsl(var(--primary) / 0.5);
-  outline-offset: -4px;
-  background: hsl(var(--primary) / 0.08);
-}
-
-/* ── Light mode overrides for new components ──────────────────────────────── */
-
-:root[data-theme="light"] .composer-prompt-template-btn {
-  background: hsl(var(--muted) / 0.3);
-  border-color: hsl(var(--border) / 0.55);
-  color: hsl(var(--muted-foreground) / 0.95);
-}
-
-:root[data-theme="light"] .composer-prompt-template-btn:hover {
-  background: hsl(var(--primary) / 0.1);
-  border-color: hsl(var(--primary) / 0.3);
-  color: hsl(var(--primary));
-}
-
-:root[data-theme="light"] .composer-attached-file-chip {
-  background: hsl(var(--muted) / 0.4);
-  border-color: hsl(var(--border) / 0.6);
-  color: hsl(var(--foreground) / 0.9);
-}
-
-:root[data-theme="light"] .composer-code-header-btn {
-  background: hsl(var(--muted) / 0.35);
-  border-color: hsl(var(--border) / 0.5);
-  color: hsl(var(--muted-foreground) / 0.95);
-}
-
-:root[data-theme="light"] .composer-code-header-btn:hover {
-  background: hsl(var(--muted) / 0.5);
-  color: hsl(var(--foreground));
-}
-
-:root[data-theme="light"] .composer-panel.composer-drag-over {
-  background: hsl(var(--primary) / 0.06);
-}
-
 /* ── Editor-context AI composer (stronger top boundary) ─────────────── */
 
 .composer-editor {
@@ -874,4 +880,3 @@
   border-top: 2px solid hsl(var(--primary) / 0.45);
   box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.12), 0 -1px 0 rgba(0, 0, 0, 0.06) inset;
 }
-
