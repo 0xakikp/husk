@@ -54,6 +54,7 @@ import { ToolsHubView } from "./tools-hub/ToolsHubView";
 import { JobsDialog } from "./jobs/JobsDialog";
 import { DockerView } from "./docker/DockerView";
 import { KubernetesView } from "./kubernetes/KubernetesView";
+import { PodDetailPanel } from "./kubernetes/PodDetailPanel";
 import { TerraformView } from "./terraform/TerraformView";
 import { TailscaleView } from "./tailscale/TailscaleView";
 import { RemotesView } from "./remotes/RemotesView";
@@ -926,8 +927,8 @@ function readSidebarView(): SidebarViewId {
   try {
     const stored = window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY);
     const valid: SidebarViewId[] = [
-      "explorer", "source-control", "remotes", "sftp", "workflows", "tools-hub",
-      "kubernetes", "ci-cd", "terraform", "docker", "bookmarks",
+      "explorer", "source-control", "remotes", "workflows", "tools-hub",
+      "kubernetes", "ci-cd", "terraform", "docker", "tailscale", "sftp", "bookmarks",
     ];
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
   } catch (e) { console.error("Failed to read sidebar view", e); }
@@ -1030,6 +1031,8 @@ function App() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | undefined>(undefined);
   const [openPanel, setOpenPanel] = useState<OpenPanelKind>(null);
+
+  const [selectedPod, setSelectedPod] = useState<{ namespace: string; name: string } | null>(null);
 
   const prefs = usePrefs();
   useClipboardListener();
@@ -1864,7 +1867,10 @@ function App() {
                   ) : sidebarView === "tools-hub" ? (
                     <ToolsHubView onSelectView={(v) => persistSidebarView(v)} />
                   ) : sidebarView === "kubernetes" ? (
-                    <KubernetesView inline />
+                    <KubernetesView
+                      inline
+                      onInspectPod={(namespace, name) => setSelectedPod({ namespace, name })}
+                    />
                   ) : sidebarView === "ci-cd" ? (
                     <CiCdDialog inline />
                   ) : sidebarView === "terraform" ? (
@@ -1948,10 +1954,10 @@ function App() {
               <div
                 className={cn(
                   "absolute inset-0 flex flex-col",
-                  activeKind !== "term" && "invisible pointer-events-none",
+                  (activeKind !== "term" || selectedPod != null) && "invisible pointer-events-none",
                   prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
                 )}
-                aria-hidden={activeKind !== "term"}
+                aria-hidden={activeKind !== "term" || selectedPod != null}
               >
                 <div className="relative flex min-h-0 flex-1 flex-col">
                   <ErrorBoundary
@@ -1980,6 +1986,25 @@ function App() {
                 </div>
                 <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
               </div>
+
+              {/* Pod detail layer */}
+              {selectedPod && (
+                <div
+                  className={cn(
+                    "absolute inset-0 z-10 flex flex-col",
+                    prefs.neonBorderGlow && "neon-glow",
+                  )}
+                  aria-hidden={!selectedPod}
+                >
+                  <ErrorBoundary>
+                    <PodDetailPanel
+                      namespace={selectedPod.namespace}
+                      name={selectedPod.name}
+                      onClose={() => setSelectedPod(null)}
+                    />
+                  </ErrorBoundary>
+                </div>
+              )}
 
               {/* Editor + AI pane row — AI panel overlays editor so nothing
                   resizes when the panel toggles.  No flex/grid reflow, no
@@ -2147,7 +2172,7 @@ function App() {
           <DockerView onClose={() => setDockerOpen(false)} />
         </DialogLayer>
         <DialogLayer open={k8sOpen}>
-          <KubernetesView onClose={() => setK8sOpen(false)} />
+          <KubernetesView onClose={() => setK8sOpen(false)} onInspectPod={(namespace, name) => setSelectedPod({ namespace, name })} />
         </DialogLayer>
         <DialogLayer open={terraformOpen}>
           <TerraformView onClose={() => setTerraformOpen(false)} />

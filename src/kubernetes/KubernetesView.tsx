@@ -17,7 +17,15 @@ import {
 
 const okStatus = (s: string) => s === "Running" || s === "Completed" || s === "Succeeded";
 
-export function KubernetesView({ onClose, inline }: { onClose?: () => void; inline?: boolean }) {
+export function KubernetesView({
+  onClose,
+  inline,
+  onInspectPod,
+}: {
+  onClose?: () => void;
+  inline?: boolean;
+  onInspectPod?: (namespace: string, name: string) => void;
+}) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [ctx, setCtx] = useState("");
   const [contexts, setContexts] = useState<string[]>([]);
@@ -153,9 +161,11 @@ export function KubernetesView({ onClose, inline }: { onClose?: () => void; inli
             ) : (
               <div className="flex flex-col gap-0.5">
                 {pods.map((p) => (
-                  <div
+                  <button
                     key={`${p.namespace}/${p.name}`}
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/10"
+                    type="button"
+                    onClick={() => onInspectPod?.(p.namespace, p.name)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/10"
                   >
                     <span
                       className={`size-1.5 shrink-0 rounded-full ${
@@ -168,7 +178,7 @@ export function KubernetesView({ onClose, inline }: { onClose?: () => void; inli
                         {p.namespace} · {p.status} · {p.ready} · {p.age}
                       </span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
