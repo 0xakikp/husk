@@ -15,7 +15,7 @@ import { CrashReportingSection } from "./CrashReportingSection";
 import { PromptTemplatesSection } from "./PromptTemplatesSection";
 import { AiAgentsSection } from "./AiAgentsSection";
 
-type SectionId = "about" | "general" | "appearance" | "models" | "aiAgents" | "mcp" | "tools" | "cloudSync" | "promptTemplates";
+type SectionId = "about" | "general" | "appearance" | "models" | "ai" | "mcp" | "tools" | "cloudSync";
 
 const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   { id: "about", label: "Manifest", keywords: ["about", "version", "build", "license"] },
@@ -35,16 +35,10 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
     keywords: ["model", "provider", "api", "key", "ai", "anthropic", "openai", "local"],
   },
   {
-    id: "aiAgents",
-    label: "AI Agents",
-    keywords: ["agent", "persona", "system", "prompt", "architect", "code", "debug", "orchestrator"],
-  },
-  {
-    id: "promptTemplates",
-    label: "Prompt Templates",
-    keywords: ["prompt", "template", "quick", "action", "refactor", "explain", "tests", "debug", "script"],
-  },
-  {
+    id: "ai",
+    label: "AI",
+    keywords: ["agent", "persona", "system", "prompt", "template", "refactor", "explain", "tests", "debug", "script"],
+  },  {
     id: "mcp",
     label: "MCP",
     keywords: ["mcp", "server", "tool", "context", "protocol", "external"],
@@ -62,14 +56,7 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
 ];
 
 function scrollToSection(id: SectionId) {
-  const elId =
-    id === "cloudSync"
-      ? "cloud-sync"
-      : id === "promptTemplates"
-        ? "prompt-templates"
-        : id === "aiAgents"
-          ? "ai-agents"
-          : `settings-section-${id}`;
+  const elId = id === "ai" ? "ai" : id === "cloudSync" ? "cloud-sync" : `settings-section-${id}`;
   document.getElementById(elId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -92,7 +79,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       let current: SectionId = "about";
       let lastVisible: SectionId | null = null;
       for (const s of SECTIONS) {
-        const elId = s.id === "cloudSync" ? "cloud-sync" : s.id === "promptTemplates" ? "prompt-templates" : s.id === "aiAgents" ? "ai-agents" : `settings-section-${s.id}`;
+        const elId = s.id === "ai" ? "ai" : s.id === "cloudSync" ? "cloud-sync" : `settings-section-${s.id}`;
         const el = document.getElementById(elId);
         if (!el) continue;
         const rect = el.getBoundingClientRect();
@@ -223,18 +210,11 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 </div>
               </>
             ) : null}
-            {show("aiAgents") ? (
+            {show("ai") ? (
               <>
                 <SectionDivider />
-                <div id="ai-agents" className="scroll-mt-6">
+                <div id="ai" className="scroll-mt-6 flex flex-col gap-6">
                   <AiAgentsSection />
-                </div>
-              </>
-            ) : null}
-            {show("promptTemplates") ? (
-              <>
-                <SectionDivider />
-                <div id="prompt-templates" className="scroll-mt-6">
                   <PromptTemplatesSection />
                 </div>
               </>
