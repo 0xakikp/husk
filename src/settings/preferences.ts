@@ -17,6 +17,13 @@ export type BackgroundSettings = {
   dim: number;
 };
 
+export type PromptTemplate = {
+  id: string;
+  label: string;
+  icon: string;
+  prompt: string;
+};
+
 export type Prefs = {
   // App
   theme: "dark" | "light";
@@ -56,6 +63,7 @@ export type Prefs = {
   aiEnabled: boolean;
   terminalAiErrorAssist: boolean;
   aiTalkBack: boolean;
+  aiPromptTemplates: PromptTemplate[];
 
   // Session
   sessionRestoreEnabled: boolean;
@@ -123,6 +131,13 @@ const DEFAULT: Prefs = {
   aiEnabled: true,
   terminalAiErrorAssist: false,
   aiTalkBack: false,
+  aiPromptTemplates: [
+    { id: "refactor", label: "Refactor", icon: "✨", prompt: "Refactor the following code. Keep the same behavior but improve readability, performance, and structure." },
+    { id: "explain", label: "Explain", icon: "❓", prompt: "Explain this in simple terms." },
+    { id: "tests", label: "Tests", icon: "🧪", prompt: "Write unit tests for the following code. Include edge cases and error scenarios." },
+    { id: "debug", label: "Debug", icon: "🐛", prompt: "Find and explain the bug in the following code or error output. Suggest a fix." },
+    { id: "script", label: "Script", icon: "📜", prompt: "Convert the recent terminal commands into a reusable shell script." },
+  ],
 
   sessionRestoreEnabled: true,
 

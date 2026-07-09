@@ -12,7 +12,9 @@ import { ToolsSection } from "./ToolsSection";
 import { CloudSyncSection } from "./CloudSyncSection";
 import { CrashReportingSection } from "./CrashReportingSection";
 
-type SectionId = "about" | "general" | "appearance" | "models" | "mcp" | "tools" | "cloudSync";
+import { PromptTemplatesSection } from "./PromptTemplatesSection";
+
+type SectionId = "about" | "general" | "appearance" | "models" | "mcp" | "tools" | "cloudSync" | "promptTemplates";
 
 const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
   { id: "about", label: "Manifest", keywords: ["about", "version", "build", "license"] },
@@ -32,6 +34,11 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
     keywords: ["model", "provider", "api", "key", "ai", "anthropic", "openai", "local"],
   },
   {
+    id: "promptTemplates",
+    label: "Prompt Templates",
+    keywords: ["prompt", "template", "quick", "action", "refactor", "explain", "tests", "debug", "script"],
+  },
+  {
     id: "mcp",
     label: "MCP",
     keywords: ["mcp", "server", "tool", "context", "protocol", "external"],
@@ -49,7 +56,8 @@ const SECTIONS: { id: SectionId; label: string; keywords: string[] }[] = [
 ];
 
 function scrollToSection(id: SectionId) {
-  const elId = id === "cloudSync" ? "cloud-sync" : `settings-section-${id}`;
+  const elId =
+    id === "cloudSync" ? "cloud-sync" : id === "promptTemplates" ? "prompt-templates" : `settings-section-${id}`;
   document.getElementById(elId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -72,7 +80,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       let current: SectionId = "about";
       let lastVisible: SectionId | null = null;
       for (const s of SECTIONS) {
-        const elId = s.id === "cloudSync" ? "cloud-sync" : `settings-section-${s.id}`;
+        const elId = s.id === "cloudSync" ? "cloud-sync" : s.id === "promptTemplates" ? "prompt-templates" : `settings-section-${s.id}`;
         const el = document.getElementById(elId);
         if (!el) continue;
         const rect = el.getBoundingClientRect();
@@ -200,6 +208,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 <SectionDivider />
                 <div id="settings-section-models" className="scroll-mt-6">
                   <ModelsSection />
+                </div>
+              </>
+            ) : null}
+            {show("promptTemplates") ? (
+              <>
+                <SectionDivider />
+                <div id="prompt-templates" className="scroll-mt-6">
+                  <PromptTemplatesSection />
                 </div>
               </>
             ) : null}

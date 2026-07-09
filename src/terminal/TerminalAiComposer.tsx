@@ -105,13 +105,7 @@ export function tabSessionName(sessionId: string): string {
   return isNaN(tabId) ? sessionId : `Terminal ${tabId}`;
 }
 
-const PROMPT_TEMPLATES = [
-  { label: "Refactor", icon: "✨", prompt: "Refactor the following code. Keep the same behavior but improve readability, performance, and structure." },
-  { label: "Explain", icon: "❓", prompt: "Explain this in simple terms." },
-  { label: "Tests", icon: "🧪", prompt: "Write unit tests for the following code. Include edge cases and error scenarios." },
-  { label: "Debug", icon: "🐛", prompt: "Find and explain the bug in the following code or error output. Suggest a fix." },
-  { label: "Script", icon: "📜", prompt: "Convert the recent terminal commands into a reusable shell script." },
-];
+// Prompt templates are now stored in user preferences (Prefs.aiPromptTemplates).
 
 const DANGEROUS_PATTERNS = [
   /\brm\s+-rf\s+\//i,
@@ -801,9 +795,9 @@ export function TerminalAiComposer({
 
       {messages.length === 0 && (
         <div className="composer-prompt-templates">
-          {PROMPT_TEMPLATES.map((t) => (
+          {prefs.aiPromptTemplates.map((t) => (
             <button
-              key={t.label}
+              key={t.id}
               type="button"
               onClick={() => {
                 setInput(t.prompt);
