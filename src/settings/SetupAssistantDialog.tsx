@@ -11,7 +11,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { detectInstalled } from "@/tools";
 import { IS_MAC, IS_WINDOWS } from "@/lib/platform";
-import { typeInActiveTerminal } from "@/ai/terminalContext";
+import { typeInActiveTerminal, focusActiveTerminal } from "@/ai/terminalContext";
 import { usePrefs, setPrefs } from "@/settings/preferences";
 import {
   Dialog,
@@ -373,7 +373,7 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
   const runInTerminal = (cmd: string) => {
     if (typeInActiveTerminal(cmd)) {
       setSentHint(true);
-      setTimeout(() => setSentHint(false), 2500);
+      setTimeout(() => setSentHint(false), 4000);
     }
   };
 
@@ -414,9 +414,23 @@ export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; on
 
         <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-6">
           {sentHint && (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-500">
-              <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} className="inline mr-1" />
-              Command pasted into the active terminal. Press Enter to run it.
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+              <span className="text-[11px] text-emerald-500">
+                <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} className="inline mr-1" />
+                Command pasted into the active terminal. Press Enter there to run it.
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  onOpenChange(false);
+                  focusActiveTerminal();
+                }}
+                className="h-6 text-[10px] text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-500"
+              >
+                Focus terminal
+              </Button>
             </div>
           )}
 
