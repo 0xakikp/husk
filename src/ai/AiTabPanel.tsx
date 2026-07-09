@@ -167,7 +167,7 @@ export function AiTabPanel() {
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Session sidebar */}
-      <div className="flex h-full w-56 flex-col border-r border-border/60 bg-background/95">
+      <div className="flex h-full w-56 shrink-0 flex-col border-r border-border/60 bg-background/95">
         <div className="flex h-8 shrink-0 items-center justify-between border-b border-border/60 px-3">
           <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
             <HugeiconsIcon icon={MessageMultiple02Icon} size={13} strokeWidth={1.75} />
@@ -194,7 +194,7 @@ export function AiTabPanel() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search sessions..."
-              className="h-7 w-full rounded-md border border-border/60 bg-muted/30 pl-7 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary/60 focus:bg-muted/50"
+              className="h-7 w-full box-border rounded-md border border-border/60 bg-muted/30 pl-7 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary/60 focus:bg-muted/50"
             />
           </div>
         </div>
