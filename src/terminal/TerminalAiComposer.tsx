@@ -92,16 +92,8 @@ interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-const AGENT_ACCENT: Record<string, string> = {
-  amber: "composer-avatar-accent-amber composer-label-accent-amber composer-message-accent-amber",
-  blue: "composer-avatar-accent-blue composer-label-accent-blue composer-message-accent-blue",
-  red: "composer-avatar-accent-red composer-label-accent-red composer-message-accent-red",
-  green: "composer-avatar-accent-green composer-label-accent-green composer-message-accent-green",
-  purple: "composer-avatar-accent-purple composer-label-accent-purple composer-message-accent-purple",
-};
-
-function getAccentClasses(color?: string) {
-  return AGENT_ACCENT[color || "primary"] || "";
+function getMessageAccentClass(color?: string) {
+  return color ? `composer-message-accent-${color}` : "";
 }
 
 function parseCodeBlocks(text: string): CodeBlock[] {
@@ -216,7 +208,7 @@ export function TerminalAiComposer({
   const activeAgent = getActiveAgent();
   const activeAgentName = activeAgent?.name ?? "Husk AI";
   const activeAgentIcon = activeAgent?.icon ?? "✦";
-  const activeAccent = getAccentClasses(activeAgent?.color);
+  const messageAccentClass = getMessageAccentClass(activeAgent?.color);
   const [open, setOpen] = useState(variant === "full");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
@@ -252,6 +244,39 @@ export function TerminalAiComposer({
   const setMessages = (updater: (prev: AiMessage[]) => AiMessage[]) => {
     updateSession(sessionId, (s) => ({ ...s, messages: updater(s.messages) }));
   };
+
+  const newSession = useCallback(() => {
+    updateSession(sessionId, () => ({ ...getSession(sessionId), messages: [], input: "" }));
+    setFollowups([]);
+    setIncludeFile(true);
+    setIncludeSelection(true);
+    setIncludeTerminal(true);
+  }, [sessionId]);
+
+  const handleFileUpload = useCallback(async () => {
+    try {
+      const path = await openDialog({ multiple: false, directory: false });
+      if (!path || typeof path !== "string") return;
+      const fileName = path.split("/").pop() || path;
+      const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(fileName);
+      let content = "";
+      try {
+        if (isImage) {
+          const b64 = await readFileBase64(path);
+          content = `[Attached image: ${fileName}]\n\n![${fileName}](data:image/${fileName.split(".").pop()};base64,${b64})`;
+        } else {
+          const text = await readFile(path);
+          content = `[Attached file: ${fileName}]\n\`\`\`\n${text}\n\`\`\``;
+        }
+      } catch (e) {
+        content = `[Failed to read file: ${fileName}]`;
+      }
+      const current = getSession(sessionId).input;
+      setInput(current ? (current + "\n\n" + content).trim() : content);
+    } catch (e) {
+      console.error("File upload failed", e);
+    }
+  }, [sessionId]);
 
   // Context chips
   const currentFile = useMemo(() => getEditorFile(), [tick]);
@@ -317,7 +342,7 @@ export function TerminalAiComposer({
       });
     });
     return base;
-  }, [prefs.aiPromptTemplates, agents]);
+  }, [prefs.aiPromptTemplates, agents, newSession, handleFileUpload]);
 
   const slashQuery = input.startsWith("/") ? input.slice(1).toLowerCase() : "";
   const filteredSlash = useMemo(() => {
@@ -572,14 +597,6 @@ export function TerminalAiComposer({
     setStatus(null);
   };
 
-  const newSession = () => {
-    updateSession(sessionId, () => ({ ...session, messages: [], input: "" }));
-    setFollowups([]);
-    setIncludeFile(true);
-    setIncludeSelection(true);
-    setIncludeTerminal(true);
-  };
-
   const runCommand = (cmd: string) => {
     const first = extractCommandFromCode(cmd);
     if (isDangerousCommand(first)) {
@@ -644,31 +661,6 @@ export function TerminalAiComposer({
     };
     recognitionRef.current = recognition;
     recognition.start();
-  };
-
-  const handleFileUpload = async () => {
-    try {
-      const path = await openDialog({ multiple: false, directory: false });
-      if (!path || typeof path !== "string") return;
-      const fileName = path.split("/").pop() || path;
-      const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(fileName);
-      let content = "";
-      try {
-        if (isImage) {
-          const b64 = await readFileBase64(path);
-          content = `[Attached image: ${fileName}]\n\n![${fileName}](data:image/${fileName.split(".").pop()};base64,${b64})`;
-        } else {
-          const text = await readFile(path);
-          content = `[Attached file: ${fileName}]\n\`\`\`\n${text}\n\`\`\``;
-        }
-      } catch (e) {
-        content = `[Failed to read file: ${fileName}]`;
-      }
-      const current = getSession(sessionId).input;
-      setInput(current ? (current + "\n\n" + content).trim() : content);
-    } catch (e) {
-      console.error("File upload failed", e);
-    }
   };
 
   const attachFiles = async (paths: string[]) => {
@@ -764,7 +756,7 @@ export function TerminalAiComposer({
         expanded && "composer-expanded",
         variant === "full" && "composer-full",
         dragOver && "composer-drag-over",
-        activeAccent,
+        messageAccentClass,
         className
       )}
       style={{

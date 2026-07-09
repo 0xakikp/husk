@@ -386,7 +386,11 @@
   border-bottom: 1px solid hsl(var(--border) / 0.4);
   background: rgba(0, 0, 0, 0.3);
   overflow-x: auto;
-  [scrollbar-width: none];
+  scrollbar-width: none;
+}
+
+.composer-code-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .composer-code-tab {
