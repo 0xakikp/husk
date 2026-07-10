@@ -75,11 +75,13 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
                   className="max-w-[260px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2.5 shadow-lg"
                 >
                   <div className="flex flex-col gap-1.5">
-                    <p>Reusable command sequences you can run with one click.</p>
+                    <p className="font-medium text-foreground">Workflows</p>
+                    <p>Save multi-step shell commands and run them instantly from any terminal.</p>
                     <div className="rounded bg-muted/40 px-1.5 py-1 font-mono text-[10px]">
-                      {"cd ~/{{service}} && git pull"}
+                      {"cd ~/{{service}} && git pull && make deploy"}
                     </div>
-                    <p>Use {"{"+"{"+"param"+"}"+"}"} or {"{"+"{"+"param=default"+"}"+"}"} to prompt at runtime.</p>
+                    <p>Inject values at runtime with {"{{"}param{"}}"} or {"{{"}param=default{"}}"}.</p>
+                    <p className="text-muted-foreground">Tip: chain commands with && or ; and each workflow will stop on error unless configured otherwise.</p>
                   </div>
                 </TooltipContent>
               </Tooltip>
