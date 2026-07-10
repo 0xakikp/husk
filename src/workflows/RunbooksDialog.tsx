@@ -48,13 +48,22 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
     <>
       <Modal title="Workflows" onClose={onClose} inline={inline} headerActions={mode.kind === "list" ? listHeaderActions : undefined}>
         {mode.kind === "list" ? (
-          <RunbookList
-            workflows={workflows}
-            onNew={() => setMode({ kind: "edit", wf: null })}
-            onEdit={(wf) => setMode({ kind: "edit", wf })}
-            onDelete={(id) => setWorkflows((prev) => prev.filter((w) => w.id !== id))}
-            onRun={startRun}
-          />
+          <div className="flex flex-col gap-3">
+            <div className="rounded-md border border-border/30 bg-muted/20 px-2.5 py-2">
+              <p className="text-[10px] leading-relaxed text-muted-foreground">
+                Workflows are reusable command sequences. Add steps like
+                <code className="rounded bg-muted/40 px-1 text-[10px]">{"cd ~/{{service}} && git pull"}</code>
+                and run them with one click. Use {"{"+"{"+"param"+"}"+"}"} or {"{"+"{"+"param=default"+"}"+"}"} to prompt at runtime.
+              </p>
+            </div>
+            <RunbookList
+              workflows={workflows}
+              onNew={() => setMode({ kind: "edit", wf: null })}
+              onEdit={(wf) => setMode({ kind: "edit", wf })}
+              onDelete={(id) => setWorkflows((prev) => prev.filter((w) => w.id !== id))}
+              onRun={startRun}
+            />
+          </div>
         ) : mode.kind === "run" ? (
           <RunbookRunner wf={mode.wf} onCancel={() => setMode({ kind: "list" })} onRun={run} />
         ) : (
