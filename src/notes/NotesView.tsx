@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -7,6 +7,11 @@ import {
   Delete02Icon,
   Search01Icon,
   FileEditIcon,
+  PinIcon,
+  PinOffIcon,
+  Clock01Icon,
+  File02Icon,
+  ArrowRight01Icon,
 } from "@hugeicons/core-free-icons";
 import { fileIconUrl, folderIconUrl } from "../explorer/iconResolver";
 import { Input } from "@/components/ui/input";
@@ -22,7 +27,18 @@ import {
   isNoteFile,
   getLastViewedNote,
   setLastViewedNote,
+  pinNote,
+  unpinNote,
+  isNotePinned,
+  touchRecentNote,
+  removeRecentNote,
+  getPinnedNotes,
+  getRecentNotes,
+  searchNotesContent,
+  NOTE_TEMPLATES,
+  getTemplateById,
   type FileNode,
+  type NoteSearchResult,
 } from "./store";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
@@ -38,10 +54,15 @@ export function NotesView({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [searchActive, setSearchActive] = useState(false);
+  const [searchResults, setSearchResults] = useState<NoteSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [pinned, setPinned] = useState<string[]>([]);
+  const [recents, setRecents] = useState<string[]>([]);
 
   /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -63,6 +84,11 @@ export function NotesView({
   const [createDir, setCreateDir] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const notesDirRef = useRef<string>("");
+
+  const loadLists = useCallback(() => {
+    setPinned(getPinnedNotes());
+    setRecents(getRecentNotes());
+  }, []);
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -86,12 +112,33 @@ export function NotesView({
       }
     }
     
+    loadLists();
     setLoading(false);
-  }, []);
+  }, [loadLists]);
 
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+
+  // Full-text search effect
+  useEffect(() => {
+    if (!search.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      setSearching(true);
+      const results = await searchNotesContent(notesDirRef.current, search);
+      if (!cancelled) {
+        setSearchResults(results);
+        setSearching(false);
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [search]);
 
   const toggleExpanded = (path: string) => {
     setExpanded((prev) => {
@@ -107,6 +154,8 @@ export function NotesView({
 
   const handleOpenNote = async (path: string) => {
     setLastViewedNote(path);
+    touchRecentNote(path);
+    loadLists();
     if (onOpenFile) {
       const name = path.split("/").pop() || path;
       onOpenFile(path, name);
@@ -149,10 +198,31 @@ export function NotesView({
     }
   };
 
+  const handleCreateFromTemplate = async (templateId: string) => {
+    const dir = notesDirRef.current;
+    const template = getTemplateById(templateId);
+    if (!template) return;
+    try {
+      const date = new Date();
+      const name = template.fileName(date);
+      const contents = template.contents(date);
+      const path = await createNote(dir, name, contents);
+      setShowTemplatePicker(false);
+      await loadTree();
+      await handleOpenNote(path);
+      toast({ title: `Created ${template.label}`, variant: "success" });
+    } catch {
+      // error handled in store
+    }
+  };
+
   const handleDelete = async (path: string, name: string) => {
     if (!confirm(`Delete "${name}"?`)) return;
     try {
       await deleteNote(path);
+      unpinNote(path);
+      removeRecentNote(path);
+      loadLists();
       await loadTree();
       if (editingFile === path) {
         setEditingFile(null);
@@ -162,6 +232,15 @@ export function NotesView({
     } catch {
       // error handled in store
     }
+  };
+
+  const togglePin = (path: string) => {
+    if (isNotePinned(path)) {
+      unpinNote(path);
+    } else {
+      pinNote(path);
+    }
+    loadLists();
   };
 
   const fuzzyMatch = (text: string, query: string): boolean => {
@@ -192,7 +271,35 @@ export function NotesView({
     return result;
   };
 
-  const filteredTree = search.trim() ? filterTree(tree, search) : tree;
+  const filteredTree = useMemo(
+    () => (search.trim() ? filterTree(tree, search) : tree),
+    [tree, search]
+  );
+
+  const allNotePaths = useMemo(() => {
+    const paths: string[] = [];
+    function walk(nodes: FileNode[]) {
+      for (const n of nodes) {
+        if (n.isDirectory && n.children) walk(n.children);
+        else if (!n.isDirectory && isNoteFile(n.name)) paths.push(n.path);
+      }
+    }
+    walk(tree);
+    return paths;
+  }, [tree]);
+
+  const pinnedInfo = useMemo(() => {
+    return pinned
+      .filter((p) => allNotePaths.includes(p))
+      .map((p) => ({ path: p, name: p.split("/").pop() || p }));
+  }, [pinned, allNotePaths]);
+
+  const recentsInfo = useMemo(() => {
+    return recents
+      .filter((r) => allNotePaths.includes(r) && !pinned.includes(r))
+      .map((r) => ({ path: r, name: r.split("/").pop() || r }))
+      .slice(0, 5);
+  }, [recents, allNotePaths, pinned]);
 
   const renderNode = (node: FileNode, depth: number) => {
     const isExpanded = expanded.has(node.path) || node.expanded;
@@ -275,6 +382,25 @@ export function NotesView({
                 <HugeiconsIcon icon={PlusSignIcon} size={9} />
               </button>
             )}
+            {!node.isDirectory && isNoteFile(node.name) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePin(node.path);
+                }}
+                className={cn(
+                  "rounded p-0.5 hover:bg-foreground/10",
+                  isNotePinned(node.path) && "text-primary opacity-100"
+                )}
+                title={isNotePinned(node.path) ? "Unpin note" : "Pin note"}
+              >
+                <HugeiconsIcon
+                  icon={isNotePinned(node.path) ? PinIcon : PinIcon}
+                  size={9}
+                />
+              </button>
+            )}
             <button
               type="button"
               onClick={(e) => {
@@ -296,6 +422,30 @@ export function NotesView({
     );
   };
 
+  const renderQuickNote = (item: { path: string; name: string }) => (
+    <div
+      key={item.path}
+      className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 hover:border-border/40 cursor-pointer"
+      onClick={() => handleOpenNote(item.path)}
+    >
+      <img src={fileIconUrl(item.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
+      <span className="flex-1 min-w-0 truncate text-[11px] text-foreground">{item.name}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          togglePin(item.path);
+        }}
+        className="rounded p-0.5 text-primary opacity-0 transition-opacity group-hover:opacity-100"
+        title="Unpin"
+      >
+        <HugeiconsIcon icon={PinOffIcon} size={8} />
+      </button>
+    </div>
+  );
+
+  const searchIsActive = searchActive && search.trim().length > 0;
+
   return (
     <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
       {/* Header */}
@@ -303,6 +453,14 @@ export function NotesView({
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex-1 truncate">
           Notes
         </h3>
+        <button
+          type="button"
+          onClick={() => setShowTemplatePicker(true)}
+          className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
+          title="New note from template"
+        >
+          <HugeiconsIcon icon={File02Icon} size={10} />
+        </button>
         {tree.length > 0 && (
           <button
             type="button"
@@ -311,7 +469,7 @@ export function NotesView({
               "inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors",
               searchActive && "border-border/70 text-foreground"
             )}
-            title="Filter notes"
+            title="Search notes"
           >
             <HugeiconsIcon icon={Search01Icon} size={10} />
           </button>
@@ -352,17 +510,89 @@ export function NotesView({
                 setSearchActive(false);
               }
             }}
-            placeholder=""
+            placeholder="Search names & content…"
             className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-1.5 text-[10px] text-foreground outline-none focus:border-border/70"
             autoFocus
           />
         </div>
       )}
 
-      {/* Tree */}
+      {/* Pinned & Recents */}
+      {!searchIsActive && !loading && (
+        <div className="flex flex-col gap-2 mb-2">
+          {pinnedInfo.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground/80 font-semibold">
+                <HugeiconsIcon icon={PinIcon} size={8} />
+                Pinned
+              </div>
+              <div className="flex flex-col gap-1">{pinnedInfo.map(renderQuickNote)}</div>
+            </div>
+          )}
+          {recentsInfo.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground/80 font-semibold">
+                <HugeiconsIcon icon={Clock01Icon} size={8} />
+                Recent
+              </div>
+              <div className="flex flex-col gap-1">
+                {recentsInfo.map((item) => (
+                  <div
+                    key={item.path}
+                    className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 hover:border-border/40 cursor-pointer"
+                    onClick={() => handleOpenNote(item.path)}
+                  >
+                    <img src={fileIconUrl(item.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
+                    <span className="flex-1 min-w-0 truncate text-[11px] text-foreground">{item.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pinNote(item.path);
+                        loadLists();
+                      }}
+                      className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+                      title="Pin note"
+                    >
+                      <HugeiconsIcon icon={PinIcon} size={8} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tree / Search results */}
       <div className="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {loading ? (
-          <div className="py-4 text-center text-[11px] text-muted-foreground">Loading...</div>
+        {loading || searching ? (
+          <div className="py-4 text-center text-[11px] text-muted-foreground">{searching ? "Searching…" : "Loading…"}</div>
+        ) : searchIsActive ? (
+          searchResults.length === 0 ? (
+            <div className="py-4 text-center text-[11px] text-muted-foreground">No matches.</div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {searchResults.map((r) => (
+                <div
+                  key={r.path}
+                  className="group flex flex-col gap-0.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1.5 hover:border-border/40 cursor-pointer"
+                  onClick={() => handleOpenNote(r.path)}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <img src={fileIconUrl(r.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
+                    <span className="flex-1 min-w-0 truncate text-[11px] font-medium text-foreground">{r.name}</span>
+                    {r.matchesContent && (
+                      <span className="text-[8px] px-1 rounded bg-primary/10 text-primary">content</span>
+                    )}
+                  </div>
+                  {r.preview && (
+                    <p className="text-[9px] text-muted-foreground line-clamp-2 pl-5">{r.preview}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
         ) : filteredTree.length === 0 ? (
           <div className="py-4 text-center text-[11px] text-muted-foreground">
             {search ? "No matches." : "No notes. Click + to create."}
@@ -437,6 +667,56 @@ export function NotesView({
                     Cancel
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Template picker modal */}
+      {showTemplatePicker &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-[2px] p-4"
+            onClick={() => setShowTemplatePicker(false)}
+          >
+            <div
+              className="w-full max-w-xs rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+                <span className="text-xs font-medium">New note from template</span>
+                <button
+                  type="button"
+                  className="inline-flex size-6 items-center justify-center rounded text-slate-500 transition-colors hover:bg-white/10 hover:text-white"
+                  onClick={() => setShowTemplatePicker(false)}
+                >
+                  <span className="text-lg leading-none">×</span>
+                </button>
+              </div>
+              <div className="p-2 flex flex-col gap-1">
+                {NOTE_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleCreateFromTemplate(t.id)}
+                    className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="text-[11px] font-medium text-foreground">{t.label}</span>
+                    <HugeiconsIcon icon={ArrowRight01Icon} size={10} className="text-muted-foreground" />
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTemplatePicker(false);
+                    setShowCreate(true);
+                  }}
+                  className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-muted/50 transition-colors"
+                >
+                  <span className="text-[11px] text-muted-foreground">Blank note</span>
+                  <HugeiconsIcon icon={PlusSignIcon} size={10} className="text-muted-foreground" />
+                </button>
               </div>
             </div>
           </div>,

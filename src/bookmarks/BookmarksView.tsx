@@ -13,12 +13,22 @@ import {
   Search01Icon,
   CollectionsBookmarkIcon,
   FileEditIcon,
+  PinIcon,
+  PinOffIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { addBookmark, useBookmarks, removeBookmark, updateBookmark, type Bookmark } from "./store";
+import {
+  addBookmark,
+  useBookmarks,
+  removeBookmark,
+  updateBookmark,
+  toggleBookmarkPin,
+  getPinnedBookmarks,
+  type Bookmark,
+} from "./store";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import { NotesView } from "../notes/NotesView";
@@ -49,6 +59,8 @@ export function BookmarksView({
   const [path, setPath] = useState("");
   const [command, setCommand] = useState("");
 
+  const pinned = getPinnedBookmarks();
+
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
@@ -78,6 +90,8 @@ export function BookmarksView({
           fuzzyMatch(b.command || "", search)
       )
     : bookmarks;
+
+  const unpinnedFiltered = filtered.filter((b) => !b.pinned);
 
   const handleAdd = () => {
     if (!label.trim()) return;
@@ -142,6 +156,84 @@ export function BookmarksView({
         return ComputerTerminal02Icon;
     }
   };
+
+  const renderBookmarkRow = (b: Bookmark, isPinned: boolean) => (
+    <div
+      key={b.id}
+      className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 transition-colors hover:border-border/40 cursor-pointer"
+      onClick={() => handleRun(b)}
+      title={b.path || b.command}
+    >
+      <HugeiconsIcon
+        icon={getIcon(b)}
+        size={12}
+        className={cn(
+          "shrink-0",
+          isPinned ? "text-primary" : "text-muted-foreground"
+        )}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-[11px] font-medium text-foreground">
+          {b.label}
+        </span>
+        <span className="truncate text-[9px] text-muted-foreground">
+          {b.path || b.command}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleBookmarkPin(b.id);
+          toast({
+            title: isPinned ? "Bookmark unpinned" : "Bookmark pinned",
+            variant: "success",
+          });
+        }}
+        className={cn(
+          "rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100",
+          isPinned && "text-primary opacity-60 group-hover:opacity-100"
+        )}
+        title={isPinned ? "Unpin" : "Pin"}
+      >
+        <HugeiconsIcon icon={isPinned ? PinOffIcon : PinIcon} size={9} strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setViewing(b);
+        }}
+        className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+        title="View"
+      >
+        <HugeiconsIcon icon={ViewIcon} size={9} strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          startEdit(b);
+        }}
+        className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+        title="Edit"
+      >
+        <HugeiconsIcon icon={PencilEdit01Icon} size={9} strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          removeBookmark(b.id);
+          toast({ title: "Bookmark removed", variant: "success" });
+        }}
+        className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
+        title="Delete"
+      >
+        <HugeiconsIcon icon={Cancel01Icon} size={9} strokeWidth={2} />
+      </button>
+    </div>
+  );
 
   return (
     <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
@@ -240,68 +332,25 @@ export function BookmarksView({
             </div>
           )}
 
-          {filtered.length === 0 && !showForm && (
+          {/* Pinned bookmarks */}
+          {pinned.length > 0 && (
+            <div className="flex flex-col gap-1 mb-2">
+              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground/80 font-semibold">
+                <HugeiconsIcon icon={PinIcon} size={8} />
+                Pinned
+              </div>
+              <div className="flex flex-col gap-1">{pinned.map((b) => renderBookmarkRow(b, true))}</div>
+            </div>
+          )}
+
+          {unpinnedFiltered.length === 0 && !showForm && (
             <p className="text-muted-foreground text-[11px] text-center py-4">
               {search ? "No matches." : "No bookmarks. Click + to add."}
             </p>
           )}
 
           <div className="flex flex-col gap-1 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {filtered.map((b) => (
-              <div
-                key={b.id}
-                className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 transition-colors hover:border-border/40 cursor-pointer"
-                onClick={() => handleRun(b)}
-                title={b.path || b.command}
-              >
-                <HugeiconsIcon
-                  icon={getIcon(b)}
-                  size={12}
-                  className="text-muted-foreground shrink-0"
-                />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-[11px] font-medium text-foreground">
-                    {b.label}
-                  </span>
-                  <span className="truncate text-[9px] text-muted-foreground">
-                    {b.path || b.command}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setViewing(b);
-                  }}
-                  className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
-                  title="View"
-                >
-                  <HugeiconsIcon icon={ViewIcon} size={9} strokeWidth={2} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startEdit(b);
-                  }}
-                  className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
-                  title="Edit"
-                >
-                  <HugeiconsIcon icon={PencilEdit01Icon} size={9} strokeWidth={2} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeBookmark(b.id);
-                  }}
-                  className="rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
-                  title="Delete"
-                >
-                  <HugeiconsIcon icon={Cancel01Icon} size={9} strokeWidth={2} />
-                </button>
-              </div>
-            ))}
+            {unpinnedFiltered.map((b) => renderBookmarkRow(b, false))}
           </div>
         </>
       )}
@@ -447,55 +496,31 @@ export function BookmarksView({
                   </code>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-col gap-1">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
+                    onClick={() => {
+                      handleRun(viewing);
+                      setViewing(null);
+                    }}
+                    className="inline-flex items-center justify-center gap-1 rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    <HugeiconsIcon icon={getIcon(viewing)} size={10} />
+                    {viewing.type === "command" ? "Type command" : "Open"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       const text = viewing.path || viewing.command || "";
-                      navigator.clipboard.writeText(text);
-                      toast({ title: "Copied", variant: "success" });
+                      navigator.clipboard.writeText(text).then(() => {
+                        toast({ title: "Copied", variant: "success" });
+                      });
                     }}
+                    className="inline-flex items-center justify-center gap-1 rounded-md border border-border/50 px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-muted/50"
                   >
-                    <HugeiconsIcon icon={Copy01Icon} size={9} />
+                    <HugeiconsIcon icon={Copy01Icon} size={10} />
                     Copy
                   </button>
-                  {viewing.type === "command" && onTypeCommand && (
-                    <button
-                      type="button"
-                      className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
-                      onClick={() => {
-                        onTypeCommand(viewing.command || "");
-                        setViewing(null);
-                      }}
-                    >
-                      Type
-                    </button>
-                  )}
-                  {viewing.type === "directory" && onOpenDirectory && (
-                    <button
-                      type="button"
-                      className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
-                      onClick={() => {
-                        onOpenDirectory(viewing.path || "");
-                        setViewing(null);
-                      }}
-                    >
-                      cd
-                    </button>
-                  )}
-                  {viewing.type === "file" && onOpenFile && (
-                    <button
-                      type="button"
-                      className="inline-flex items-center text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition"
-                      onClick={() => {
-                        onOpenFile(viewing.path || "");
-                        setViewing(null);
-                      }}
-                    >
-                      Open
-                    </button>
-                  )}
                 </div>
               </div>
             </div>

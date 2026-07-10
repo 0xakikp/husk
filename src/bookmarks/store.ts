@@ -5,9 +5,11 @@ export type Bookmark = {
   path?: string;
   command?: string;
   createdAt: number;
+  pinned?: boolean;
 };
 
 const LS_KEY = "huskv2.bookmarks";
+const MAX_PINNED = 5;
 
 let bookmarks: Bookmark[] = [];
 
@@ -29,6 +31,10 @@ function save() {
 
 export function getBookmarks(): Bookmark[] {
   return [...bookmarks];
+}
+
+export function getPinnedBookmarks(): Bookmark[] {
+  return bookmarks.filter((b) => b.pinned).slice(0, MAX_PINNED);
 }
 
 export function addBookmark(b: Omit<Bookmark, "id" | "createdAt">): Bookmark {
@@ -59,6 +65,23 @@ export function updateBookmark(
   Object.assign(b, patch);
   save();
   return true;
+}
+
+export function pinBookmark(id: string): boolean {
+  const pinnedCount = bookmarks.filter((b) => b.pinned).length;
+  if (pinnedCount >= MAX_PINNED) return false;
+  return updateBookmark(id, { pinned: true });
+}
+
+export function unpinBookmark(id: string): boolean {
+  return updateBookmark(id, { pinned: false });
+}
+
+export function toggleBookmarkPin(id: string): boolean {
+  const b = bookmarks.find((b) => b.id === id);
+  if (!b) return false;
+  if (b.pinned) return unpinBookmark(id);
+  return pinBookmark(id);
 }
 
 export function useBookmarks(): Bookmark[] {

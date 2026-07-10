@@ -26,6 +26,73 @@ export async function setNotesDirectory(dir: string) {
   setPrefs({ notesDirectory: dir });
 }
 
+/* ── Pinned notes ───────────────────────────────────────────────────── */
+
+const PINNED_KEY = "huskv2.notes.pinned";
+const MAX_PINNED = 5;
+
+export function getPinnedNotes(): string[] {
+  try {
+    const raw = localStorage.getItem(PINNED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pinNote(path: string) {
+  const current = getPinnedNotes();
+  if (current.includes(path)) return;
+  const next = [path, ...current].slice(0, MAX_PINNED);
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+export function unpinNote(path: string) {
+  const next = getPinnedNotes().filter((p) => p !== path);
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+export function isNotePinned(path: string): boolean {
+  return getPinnedNotes().includes(path);
+}
+
+/* ── Recent notes ───────────────────────────────────────────────────── */
+
+const RECENTS_KEY = "huskv2.notes.recents";
+const MAX_RECENTS = 8;
+
+export function getRecentNotes(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function touchRecentNote(path: string) {
+  const current = getRecentNotes();
+  const next = [path, ...current.filter((p) => p !== path)].slice(0, MAX_RECENTS);
+  try {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+export function removeRecentNote(path: string) {
+  const next = getRecentNotes().filter((p) => p !== path);
+  try {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch {}
+}
+
 /* ── Last viewed note ─────────────────────────────────────────────── */
 
 const LAST_NOTE_KEY = "huskv2.notes.lastViewed";
@@ -115,10 +182,10 @@ export async function writeNote(path: string, contents: string): Promise<void> {
   }
 }
 
-export async function createNote(dir: string, name: string): Promise<string> {
+export async function createNote(dir: string, name: string, contents = ""): Promise<string> {
   const path = `${dir}/${name}`;
   try {
-    await writeFile(path, "");
+    await writeFile(path, contents);
     return path;
   } catch (e) {
     toast({ title: "Failed to create note", variant: "error" });
@@ -148,4 +215,126 @@ export async function deleteNote(path: string): Promise<void> {
 
 export function isNoteFile(name: string): boolean {
   return name.endsWith(".md") || name.endsWith(".txt") || name.endsWith(".mdx");
+}
+
+/* ── Templates ──────────────────────────────────────────────────────── */
+
+export type NoteTemplate = {
+  id: string;
+  label: string;
+  fileName: (date: Date) => string;
+  contents: (date: Date) => string;
+};
+
+export const NOTE_TEMPLATES: NoteTemplate[] = [
+  {
+    id: "daily",
+    label: "Daily Standup",
+    fileName: (date) => `daily-${date.toISOString().slice(0, 10)}.md`,
+    contents: (date) => `# Daily Standup — ${date.toISOString().slice(0, 10)}\n\n## Yesterday\n\n## Today\n\n## Blockers\n`,
+  },
+  {
+    id: "incident",
+    label: "Incident",
+    fileName: () => `incident-${Date.now()}.md`,
+    contents: () => `# Incident Report\n\n## Severity\n\n## Summary\n\n## Timeline\n\n## Root cause\n\n## Resolution\n\n## Follow-ups\n`,
+  },
+  {
+    id: "todo",
+    label: "Todo",
+    fileName: () => `todo-${Date.now()}.md`,
+    contents: () => `# Todo\n\n- [ ] \n- [ ] \n- [ ] \n`,
+  },
+];
+
+export function getTemplateById(id: string): NoteTemplate | undefined {
+  return NOTE_TEMPLATES.find((t) => t.id === id);
+}
+
+/* ── Full-text search index ───────────────────────────────────────── */
+
+export type NoteSearchResult = {
+  path: string;
+  name: string;
+  preview: string;
+  matchesContent: boolean;
+};
+
+export async function searchNotesContent(
+  dir: string,
+  query: string
+): Promise<NoteSearchResult[]> {
+  const q = query.toLowerCase().replace(/\s+/g, "");
+  if (!q) return [];
+
+  const results: NoteSearchResult[] = [];
+  const seen = new Set<string>();
+
+  async function walk(nodes: FileNode[]) {
+    for (const node of nodes) {
+      if (node.isDirectory && node.children) {
+        await walk(node.children);
+        continue;
+      }
+      if (!isNoteFile(node.name)) continue;
+      if (seen.has(node.path)) continue;
+      seen.add(node.path);
+
+      const nameMatch = fuzzyMatch(node.name, q);
+      let contentMatch = false;
+      let preview = "";
+
+      if (!nameMatch) {
+        try {
+          const content = await readFile(node.path);
+          const lowerContent = content.toLowerCase();
+          const idx = lowerContent.replace(/\s+/g, "").indexOf(q);
+          if (idx !== -1) {
+            contentMatch = true;
+            const realIdx = findOriginalIndex(lowerContent, q, idx);
+            const start = Math.max(0, realIdx - 40);
+            const end = Math.min(content.length, realIdx + q.length + 60);
+            preview = (start > 0 ? "…" : "") + content.slice(start, end) + (end < content.length ? "…" : "");
+          }
+        } catch {
+          // ignore unreadable files
+        }
+      }
+
+      if (nameMatch || contentMatch) {
+        results.push({
+          path: node.path,
+          name: node.name,
+          preview: nameMatch ? "" : preview,
+          matchesContent: contentMatch,
+        });
+      }
+    }
+  }
+
+  const tree = await loadNotesTree(dir);
+  await walk(tree);
+  return results;
+}
+
+function fuzzyMatch(text: string, query: string): boolean {
+  const t = text.toLowerCase();
+  let i = 0;
+  for (const char of query) {
+    i = t.indexOf(char, i);
+    if (i === -1) return false;
+    i++;
+  }
+  return true;
+}
+
+function findOriginalIndex(lowerContent: string, _query: string, compressedIdx: number): number {
+  // compressedIdx is the index in the whitespace-stripped version; map back to original index
+  let compressed = 0;
+  for (let i = 0; i < lowerContent.length; i++) {
+    if (/\s/.test(lowerContent[i])) continue;
+    if (compressed === compressedIdx) return i;
+    compressed++;
+  }
+  return 0;
 }
