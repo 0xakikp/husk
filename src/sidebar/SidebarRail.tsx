@@ -27,14 +27,13 @@ export type SidebarViewId =
   | "bookmarks";
 
 const RAIL_TOOLTIP_CLASS =
-  "border border-border/60 bg-zinc-950 text-zinc-100 shadow-lg shadow-black/30 dark:bg-zinc-950 dark:text-zinc-100 max-w-[200px]";
+  "border border-border/60 bg-zinc-950 text-zinc-100 shadow-lg shadow-black/30 dark:bg-zinc-950 dark:text-zinc-100";
 
 type RailSlot =
   | {
       kind: "view";
       id: SidebarViewId;
       label: string;
-      description: string;
       icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
       badge?: number;
     }
@@ -42,7 +41,6 @@ type RailSlot =
       kind: "action";
       id: string;
       label: string;
-      description: string;
       icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
       onTrigger: () => void;
       disabled?: boolean;
@@ -61,13 +59,13 @@ export function SidebarRail({
   changedCount?: number;
 }) {
   const slots: RailSlot[] = [
-    { kind: "view", id: "explorer", label: "Files", description: "Browse the workspace and open files in the editor.", icon: FolderTreeIcon },
-    { kind: "view", id: "source-control", label: "Source Control", description: "Review Git changes, commits, history, and issues.", icon: FolderGitTwoIcon, badge: changedCount },
-    { kind: "view", id: "remotes", label: "Remotes", description: "Connect to SSH hosts and browse remote files via SFTP.", icon: DatabaseIcon },
-    { kind: "view", id: "workflows", label: "Workflows", description: "Save and run reusable multi-step command sequences.", icon: WorkflowCircle01Icon },
-    { kind: "view", id: "vault", label: "Vault", description: "Notes, bookmarks, and quick-reference for the workspace.", icon: CollectionsBookmarkIcon },
-    { kind: "view", id: "tools-hub", label: "Integrations", description: "Switch between Kubernetes, Docker, Terraform, CI/CD, and Tailscale.", icon: PuzzleIcon },
-    { kind: "action", id: "command-palette", label: "Command Palette", description: "Quickly run commands and jump around the app.", icon: CommandIcon, onTrigger: onCommandPalette },
+    { kind: "view", id: "explorer", label: "Files", icon: FolderTreeIcon },
+    { kind: "view", id: "source-control", label: "Source Control", icon: FolderGitTwoIcon, badge: changedCount },
+    { kind: "view", id: "remotes", label: "Remotes", icon: DatabaseIcon },
+    { kind: "view", id: "workflows", label: "Workflows", icon: WorkflowCircle01Icon },
+    { kind: "view", id: "vault", label: "Vault", icon: CollectionsBookmarkIcon },
+    { kind: "view", id: "tools-hub", label: "Integrations", icon: PuzzleIcon },
+    { kind: "action", id: "command-palette", label: "Command Palette", icon: CommandIcon, onTrigger: onCommandPalette },
   ];
 
   return (
@@ -129,10 +127,9 @@ export function SidebarRail({
               <TooltipContent
                 side="top"
                 sideOffset={8}
-                className={cn(RAIL_TOOLTIP_CLASS, "text-[10.5px] p-2")}
+                className={cn(RAIL_TOOLTIP_CLASS, "text-[10.5px]")}
               >
-                <p className="font-medium">{slot.label}</p>
-                <p className="text-[10px] leading-snug text-zinc-300">{slot.description}</p>
+                {slot.label}
               </TooltipContent>
             </Tooltip>
           );
