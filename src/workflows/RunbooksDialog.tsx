@@ -9,7 +9,14 @@ import {
   Edit02Icon,
   Delete02Icon,
   Add01Icon,
+  InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type Mode =
   | { kind: "list" }
@@ -46,16 +53,38 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
 
   return (
     <>
-      <Modal title="Workflows" onClose={onClose} inline={inline} headerActions={mode.kind === "list" ? listHeaderActions : undefined}>
-        {mode.kind === "list" ? (
-          <div className="flex flex-col gap-3">
-            <div className="rounded-md border border-border/30 bg-muted/20 px-2.5 py-2">
-              <p className="text-[10px] leading-relaxed text-muted-foreground">
-                Workflows are reusable command sequences. Add steps like
-                <code className="rounded bg-muted/40 px-1 text-[10px]">{"cd ~/{{service}} && git pull"}</code>
-                and run them with one click. Use {"{"+"{"+"param"+"}"+"}"} or {"{"+"{"+"param=default"+"}"+"}"} to prompt at runtime.
-              </p>
+      <TooltipProvider delayDuration={200}>
+        <Modal
+          title={
+            <div className="flex items-center gap-1.5">
+              <span>Workflows</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="What is this?"
+                  >
+                    <HugeiconsIcon icon={InformationCircleIcon} size={13} strokeWidth={1.75} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="right"
+                  sideOffset={6}
+                  className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
+                >
+                  Reusable command sequences. Add steps like
+                  <code className="rounded bg-muted/40 px-1 text-[10px]">{"cd ~/{{service}} && git pull"}</code>
+                  and run them with one click. Use {"{"+"{"+"param"+"}"+"}"} or {"{"+"{"+"param=default"+"}"+"}"} to prompt at runtime.
+                </TooltipContent>
+              </Tooltip>
             </div>
+          }
+          onClose={onClose}
+          inline={inline}
+          headerActions={mode.kind === "list" ? listHeaderActions : undefined}
+        >
+          {mode.kind === "list" ? (
             <RunbookList
               workflows={workflows}
               onNew={() => setMode({ kind: "edit", wf: null })}
@@ -63,16 +92,16 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
               onDelete={(id) => setWorkflows((prev) => prev.filter((w) => w.id !== id))}
               onRun={startRun}
             />
-          </div>
-        ) : mode.kind === "run" ? (
-          <RunbookRunner wf={mode.wf} onCancel={() => setMode({ kind: "list" })} onRun={run} />
-        ) : (
-          /* placeholder when editor is shown as popup */
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <p className="text-[12px] text-muted-foreground">Opening editor…</p>
-          </div>
-        )}
-      </Modal>
+          ) : mode.kind === "run" ? (
+            <RunbookRunner wf={mode.wf} onCancel={() => setMode({ kind: "list" })} onRun={run} />
+          ) : (
+            /* placeholder when editor is shown as popup */
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <p className="text-[12px] text-muted-foreground">Opening editor…</p>
+            </div>
+          )}
+        </Modal>
+      </TooltipProvider>
 
       {/* Editor always as centered popup for full real estate */}
       {mode.kind === "edit" && (
