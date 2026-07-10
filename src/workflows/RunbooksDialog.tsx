@@ -69,13 +69,18 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
                   </button>
                 </TooltipTrigger>
                 <TooltipContent
-                  side="right"
+                  side="bottom"
+                  align="start"
                   sideOffset={6}
-                  className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
+                  className="max-w-[260px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2.5 shadow-lg"
                 >
-                  Reusable command sequences. Add steps like
-                  <code className="rounded bg-muted/40 px-1 text-[10px]">{"cd ~/{{service}} && git pull"}</code>
-                  and run them with one click. Use {"{"+"{"+"param"+"}"+"}"} or {"{"+"{"+"param=default"+"}"+"}"} to prompt at runtime.
+                  <div className="flex flex-col gap-1.5">
+                    <p>Reusable command sequences you can run with one click.</p>
+                    <div className="rounded bg-muted/40 px-1.5 py-1 font-mono text-[10px]">
+                      {"cd ~/{{service}} && git pull"}
+                    </div>
+                    <p>Use {"{"+"{"+"param"+"}"+"}"} or {"{"+"{"+"param=default"+"}"+"}"} to prompt at runtime.</p>
+                  </div>
                 </TooltipContent>
               </Tooltip>
             </div>
