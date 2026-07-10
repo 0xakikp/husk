@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Label } from "@/components/ui/label";
 import {
   ArrowDown01Icon,
   PlusSignIcon,
@@ -12,6 +13,8 @@ import {
   Clock01Icon,
   File02Icon,
   ArrowRight01Icon,
+  PencilEdit01Icon,
+  Cancel01Icon,
 } from "@hugeicons/core-free-icons";
 import { fileIconUrl, folderIconUrl } from "../explorer/iconResolver";
 import { Input } from "@/components/ui/input";
@@ -35,10 +38,15 @@ import {
   getPinnedNotes,
   getRecentNotes,
   searchNotesContent,
-  NOTE_TEMPLATES,
+  getAllTemplates,
   getTemplateById,
+  applyTemplate,
+  addCustomTemplate,
+  updateCustomTemplate,
+  deleteCustomTemplate,
   type FileNode,
   type NoteSearchResult,
+  type NoteTemplate,
 } from "./store";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
@@ -61,6 +69,12 @@ export function NotesView({
   const [editContent, setEditContent] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [templateLabel, setTemplateLabel] = useState("");
+  const [templateFileName, setTemplateFileName] = useState("");
+  const [templateContents, setTemplateContents] = useState("");
+  const [templates, setTemplates] = useState<NoteTemplate[]>(getAllTemplates);
   const [pinned, setPinned] = useState<string[]>([]);
   const [recents, setRecents] = useState<string[]>([]);
 
@@ -84,6 +98,10 @@ export function NotesView({
   const [createDir, setCreateDir] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const notesDirRef = useRef<string>("");
+
+  const refreshTemplates = useCallback(() => {
+    setTemplates(getAllTemplates());
+  }, []);
 
   const loadLists = useCallback(() => {
     setPinned(getPinnedNotes());
@@ -113,8 +131,9 @@ export function NotesView({
     }
     
     loadLists();
+    refreshTemplates();
     setLoading(false);
-  }, [loadLists]);
+  }, [loadLists, refreshTemplates]);
 
   useEffect(() => {
     loadTree();
@@ -203,9 +222,7 @@ export function NotesView({
     const template = getTemplateById(templateId);
     if (!template) return;
     try {
-      const date = new Date();
-      const name = template.fileName(date);
-      const contents = template.contents(date);
+      const { name, contents } = applyTemplate(template);
       const path = await createNote(dir, name, contents);
       setShowTemplatePicker(false);
       await loadTree();
@@ -214,6 +231,50 @@ export function NotesView({
     } catch {
       // error handled in store
     }
+  };
+
+  const startTemplateEdit = (template: NoteTemplate) => {
+    setEditingTemplateId(template.id);
+    setTemplateLabel(template.label);
+    setTemplateFileName(template.fileName);
+    setTemplateContents(template.contents);
+    setShowTemplateEditor(true);
+  };
+
+  const startNewTemplate = () => {
+    setEditingTemplateId(null);
+    setTemplateLabel("");
+    setTemplateFileName("{{date}}.md");
+    setTemplateContents("");
+    setShowTemplateEditor(true);
+  };
+
+  const handleSaveTemplate = () => {
+    if (!templateLabel.trim() || !templateFileName.trim()) return;
+    if (editingTemplateId) {
+      updateCustomTemplate(editingTemplateId, {
+        label: templateLabel.trim(),
+        fileName: templateFileName.trim(),
+        contents: templateContents,
+      });
+      toast({ title: "Template updated", variant: "success" });
+    } else {
+      addCustomTemplate({
+        label: templateLabel.trim(),
+        fileName: templateFileName.trim(),
+        contents: templateContents,
+      });
+      toast({ title: "Template created", variant: "success" });
+    }
+    refreshTemplates();
+    setShowTemplateEditor(false);
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    if (!confirm("Delete this template?")) return;
+    deleteCustomTemplate(id);
+    refreshTemplates();
+    toast({ title: "Template deleted", variant: "success" });
   };
 
   const handleDelete = async (path: string, name: string) => {
@@ -445,6 +506,7 @@ export function NotesView({
   );
 
   const searchIsActive = searchActive && search.trim().length > 0;
+  const builtinTemplateIds = useMemo(() => new Set(["builtin-daily", "builtin-incident", "builtin-todo"]), []);
 
   return (
     <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
@@ -681,31 +743,78 @@ export function NotesView({
             onClick={() => setShowTemplatePicker(false)}
           >
             <div
-              className="w-full max-w-xs rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden"
+              className="w-full max-w-sm rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden flex flex-col max-h-[80vh]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
-                <span className="text-xs font-medium">New note from template</span>
-                <button
-                  type="button"
-                  className="inline-flex size-6 items-center justify-center rounded text-slate-500 transition-colors hover:bg-white/10 hover:text-white"
-                  onClick={() => setShowTemplatePicker(false)}
-                >
-                  <span className="text-lg leading-none">×</span>
-                </button>
-              </div>
-              <div className="p-2 flex flex-col gap-1">
-                {NOTE_TEMPLATES.map((t) => (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium">New note from template</span>
+                </div>
+                <div className="flex items-center gap-1">
                   <button
-                    key={t.id}
                     type="button"
-                    onClick={() => handleCreateFromTemplate(t.id)}
-                    className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-muted/50 transition-colors"
+                    onClick={() => {
+                      setShowTemplatePicker(false);
+                      startNewTemplate();
+                    }}
+                    className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-white/10 hover:text-white"
+                    title="Create custom template"
                   >
-                    <span className="text-[11px] font-medium text-foreground">{t.label}</span>
-                    <HugeiconsIcon icon={ArrowRight01Icon} size={10} className="text-muted-foreground" />
+                    <HugeiconsIcon icon={PlusSignIcon} size={12} />
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplatePicker(false)}
+                    className="inline-flex size-6 items-center justify-center rounded text-slate-500 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <span className="text-lg leading-none">×</span>
+                  </button>
+                </div>
+              </div>
+              <div className="p-2 flex flex-col gap-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {templates.map((t) => {
+                  const isBuiltin = builtinTemplateIds.has(t.id);
+                  return (
+                    <div
+                      key={t.id}
+                      className="group flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleCreateFromTemplate(t.id)}
+                        className="flex flex-1 min-w-0 items-center justify-between text-left"
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[11px] font-medium text-foreground truncate">{t.label}</span>
+                          <span className="text-[9px] text-muted-foreground truncate">{t.fileName}</span>
+                        </div>
+                        <HugeiconsIcon icon={ArrowRight01Icon} size={10} className="text-muted-foreground shrink-0" />
+                      </button>
+                      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                        {!isBuiltin && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startTemplateEdit(t)}
+                              className="rounded p-0.5 hover:bg-foreground/10 text-muted-foreground"
+                              title="Edit"
+                            >
+                              <HugeiconsIcon icon={PencilEdit01Icon} size={10} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTemplate(t.id)}
+                              className="rounded p-0.5 hover:bg-foreground/10 text-destructive"
+                              title="Delete"
+                            >
+                              <HugeiconsIcon icon={Cancel01Icon} size={10} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
                 <button
                   type="button"
                   onClick={() => {
@@ -717,6 +826,81 @@ export function NotesView({
                   <span className="text-[11px] text-muted-foreground">Blank note</span>
                   <HugeiconsIcon icon={PlusSignIcon} size={10} className="text-muted-foreground" />
                 </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Template editor modal */}
+      {showTemplateEditor &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-[2px] p-4"
+            onClick={() => setShowTemplateEditor(false)}
+          >
+            <div
+              className="w-full max-w-lg rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden flex flex-col max-h-[80vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+                <span className="text-xs font-medium">
+                  {editingTemplateId ? "Edit template" : "New template"}
+                </span>
+                <button
+                  type="button"
+                  className="inline-flex size-6 items-center justify-center rounded text-slate-500 transition-colors hover:bg-white/10 hover:text-white"
+                  onClick={() => setShowTemplateEditor(false)}
+                >
+                  <span className="text-lg leading-none">×</span>
+                </button>
+              </div>
+              <div className="p-4 flex flex-col gap-3 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[11px] text-foreground font-medium">Label</Label>
+                  <Input
+                    value={templateLabel}
+                    onChange={(e) => setTemplateLabel(e.target.value)}
+                    placeholder="e.g., Meeting notes"
+                    className="h-8 text-[11px]"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] text-foreground font-medium">File name</Label>
+                    <span className="text-[9px] text-muted-foreground">{"Use {{date}}, {{time}}, {{timestamp}}"}</span>
+                  </div>
+                  <Input
+                    value={templateFileName}
+                    onChange={(e) => setTemplateFileName(e.target.value)}
+                    placeholder="meeting-{{date}}.md"
+                    className="h-8 text-[11px]"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] text-foreground font-medium">Contents</Label>
+                    <span className="text-[9px] text-muted-foreground">{"Supports {{date}}, {{time}}, {{timestamp}}"}</span>
+                  </div>
+                  <textarea
+                    value={templateContents}
+                    onChange={(e) => setTemplateContents(e.target.value)}
+                    placeholder="# Title\n\nBody..."
+                    className="h-48 rounded-md border border-border/50 bg-muted/30 p-2 text-[11px] font-mono text-foreground outline-none focus:border-border/70 resize-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <Button size="sm" className="text-[10px] h-7" onClick={handleSaveTemplate}>
+                    {editingTemplateId ? "Update" : "Create"}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-[10px] h-7" onClick={() => setShowTemplateEditor(false)}>
+                    Cancel
+                  </Button>
+                </div>
               </div>
             </div>
           </div>,

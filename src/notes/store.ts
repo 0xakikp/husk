@@ -222,34 +222,108 @@ export function isNoteFile(name: string): boolean {
 export type NoteTemplate = {
   id: string;
   label: string;
-  fileName: (date: Date) => string;
-  contents: (date: Date) => string;
+  fileName: string;
+  contents: string;
 };
 
-export const NOTE_TEMPLATES: NoteTemplate[] = [
+const BUILTIN_TEMPLATES: NoteTemplate[] = [
   {
-    id: "daily",
+    id: "builtin-daily",
     label: "Daily Standup",
-    fileName: (date) => `daily-${date.toISOString().slice(0, 10)}.md`,
-    contents: (date) => `# Daily Standup — ${date.toISOString().slice(0, 10)}\n\n## Yesterday\n\n## Today\n\n## Blockers\n`,
+    fileName: "daily-{{date}}.md",
+    contents: "# Daily Standup — {{date}}\n\n## Yesterday\n\n## Today\n\n## Blockers\n",
   },
   {
-    id: "incident",
+    id: "builtin-incident",
     label: "Incident",
-    fileName: () => `incident-${Date.now()}.md`,
-    contents: () => `# Incident Report\n\n## Severity\n\n## Summary\n\n## Timeline\n\n## Root cause\n\n## Resolution\n\n## Follow-ups\n`,
+    fileName: "incident-{{timestamp}}.md",
+    contents: "# Incident Report\n\n## Severity\n\n## Summary\n\n## Timeline\n\n## Root cause\n\n## Resolution\n\n## Follow-ups\n",
   },
   {
-    id: "todo",
+    id: "builtin-todo",
     label: "Todo",
-    fileName: () => `todo-${Date.now()}.md`,
-    contents: () => `# Todo\n\n- [ ] \n- [ ] \n- [ ] \n`,
+    fileName: "todo-{{timestamp}}.md",
+    contents: "# Todo\n\n- [ ] \n- [ ] \n- [ ] \n",
   },
 ];
 
-export function getTemplateById(id: string): NoteTemplate | undefined {
-  return NOTE_TEMPLATES.find((t) => t.id === id);
+const CUSTOM_TEMPLATES_KEY = "huskv2.notes.customTemplates";
+
+export function getCustomTemplates(): NoteTemplate[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_TEMPLATES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (t): t is NoteTemplate =>
+            t && typeof t.id === "string" && typeof t.label === "string" &&
+t.label === "string" && typeof t.fileName === "string" && typeof t.contents === "string"
+        )
+      : [];
+  } catch {
+    return [];
+  }
 }
+
+export function saveCustomTemplates(templates: NoteTemplate[]) {
+  try {
+    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(templates));
+  } catch {}
+}
+
+export function getAllTemplates(): NoteTemplate[] {
+  return [...BUILTIN_TEMPLATES, ...getCustomTemplates()];
+}
+
+export function getTemplateById(id: string): NoteTemplate | undefined {
+  return getAllTemplates().find((t) => t.id === id);
+}
+
+export function addCustomTemplate(template: Omit<NoteTemplate, "id">): NoteTemplate {
+  const full: NoteTemplate = { ...template, id: crypto.randomUUID() };
+  const current = getCustomTemplates();
+  saveCustomTemplates([...current, full]);
+  return full;
+}
+
+export function updateCustomTemplate(id: string, patch: Partial<Omit<NoteTemplate, "id">>): boolean {
+  const current = getCustomTemplates();
+  const idx = current.findIndex((t) => t.id === id);
+  if (idx === -1) return false;
+  current[idx] = { ...current[idx], ...patch };
+  saveCustomTemplates(current);
+  return true;
+}
+
+export function deleteCustomTemplate(id: string): boolean {
+  const current = getCustomTemplates();
+  const next = current.filter((t) => t.id !== id);
+  if (next.length === current.length) return false;
+  saveCustomTemplates(next);
+  return true;
+}
+
+export function applyTemplate(template: NoteTemplate, date: Date = new Date()): { name: string; contents: string } {
+  const iso = date.toISOString();
+  const dateStr = iso.slice(0, 10);
+  const timestamp = String(Date.now());
+  const timeStr = iso.slice(11, 19);
+
+  let name = template.fileName
+    .replace(/{{date}}/g, dateStr)
+    .replace(/{{timestamp}}/g, timestamp)
+    .replace(/{{time}}/g, timeStr);
+
+  let contents = template.contents
+    .replace(/{{date}}/g, dateStr)
+    .replace(/{{timestamp}}/g, timestamp)
+    .replace(/{{time}}/g, timeStr);
+
+  return { name, contents };
+}
+
+export const NOTE_TEMPLATES = getAllTemplates();
 
 /* ── Full-text search index ───────────────────────────────────────── */
 
