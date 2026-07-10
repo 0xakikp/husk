@@ -2,6 +2,12 @@ import { useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Folder01Icon,
   File01Icon,
   ComputerTerminal02Icon,
@@ -15,6 +21,7 @@ import {
   FileEditIcon,
   PinIcon,
   PinOffIcon,
+  InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -236,124 +243,145 @@ export function BookmarksView({
   );
 
   return (
-    <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
-      {/* Vault tab toggle */}
-      <div className="flex rounded-lg border border-border/50 bg-muted/30 p-0.5 mb-2">
-        <button
-          type="button"
-          onClick={() => setTab("notes")}
-          className={cn(
-            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-            tab === "notes"
-              ? "bg-card shadow-sm border border-border/50"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          style={tab === "notes" ? { color: "var(--accent)" } : undefined}
-        >
-          <HugeiconsIcon icon={FileEditIcon} size={10} />
-          Notes
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("bookmarks")}
-          className={cn(
-            "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-            tab === "bookmarks"
-              ? "bg-card shadow-sm border border-border/50"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          style={tab === "bookmarks" ? { color: "var(--accent)" } : undefined}
-        >
-          <HugeiconsIcon icon={CollectionsBookmarkIcon} size={10} />
-          Bookmarks
-        </button>
-      </div>
-
-      {tab === "notes" ? (
-        <NotesView inline={inline} onOpenFile={onOpenFile} />
-      ) : (
-        <>
-          {/* Header row: title + search icon + add icon, all inline */}
-          <div className="flex items-center gap-1 mb-2">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex-1 truncate">
-              Bookmarks
-            </h3>
-            {bookmarks.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSearchActive(true)}
-                className={cn(
-                  "inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors",
-                  searchActive && "border-border/70 text-foreground"
-                )}
-                title="Filter bookmarks"
-              >
-                <HugeiconsIcon icon={Search01Icon} size={10} />
-              </button>
+    <TooltipProvider delayDuration={200}>
+      <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
+        {/* Vault tab toggle */}
+        <div className="flex rounded-lg border border-border/50 bg-muted/30 p-0.5 mb-2">
+          <button
+            type="button"
+            onClick={() => setTab("notes")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+              tab === "notes"
+                ? "bg-card shadow-sm border border-border/50"
+                : "text-muted-foreground hover:text-foreground"
             )}
-            {!showForm && (
-              <button
-                type="button"
-                onClick={() => setShowForm(true)}
-                className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
-                title="Add bookmark"
-              >
-                <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
-              </button>
+            style={tab === "notes" ? { color: "var(--accent)" } : undefined}
+          >
+            <HugeiconsIcon icon={FileEditIcon} size={10} />
+            Notes
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("bookmarks")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+              tab === "bookmarks"
+                ? "bg-card shadow-sm border border-border/50"
+                : "text-muted-foreground hover:text-foreground"
             )}
-          </div>
+            style={tab === "bookmarks" ? { color: "var(--accent)" } : undefined}
+          >
+            <HugeiconsIcon icon={CollectionsBookmarkIcon} size={10} />
+            Bookmarks
+          </button>
+        </div>
 
-          {/* Search input — inline, replaces the icon when active */}
-          {searchActive && bookmarks.length > 0 && (
-            <div className="relative mb-2">
-              <HugeiconsIcon
-                icon={Search01Icon}
-                size={9}
-                className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onBlur={() => {
-                  if (!search) setSearchActive(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setSearch("");
-                    setSearchActive(false);
-                  }
-                }}
-                placeholder=""
-                className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-1.5 text-[10px] text-foreground outline-none focus:border-border/70"
-                autoFocus
-              />
-            </div>
-          )}
-
-          {/* Pinned bookmarks */}
-          {pinned.length > 0 && (
-            <div className="flex flex-col gap-1 mb-2">
-              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground/80 font-semibold">
-                <HugeiconsIcon icon={PinIcon} size={8} />
-                Pinned
+        {tab === "notes" ? (
+          <NotesView inline={inline} onOpenFile={onOpenFile} />
+        ) : (
+          <>
+            {/* Header row: title + search icon + add icon, all inline */}
+            <div className="flex items-center gap-1 mb-2">
+              <div className="flex items-center gap-1.5 flex-1">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">
+                  Bookmarks
+                </h3>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="What is this?"
+                    >
+                      <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="right"
+                    sideOffset={6}
+                    className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
+                  >
+                    Shortcuts to directories, files, and terminal commands. Pin the most-used ones to the top.
+                  </TooltipContent>
+                </Tooltip>
               </div>
-              <div className="flex flex-col gap-1">{pinned.map((b) => renderBookmarkRow(b, true))}</div>
+              {bookmarks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSearchActive(true)}
+                  className={cn(
+                    "inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors",
+                    searchActive && "border-border/70 text-foreground"
+                  )}
+                  title="Filter bookmarks"
+                >
+                  <HugeiconsIcon icon={Search01Icon} size={10} />
+                </button>
+              )}
+              {!showForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowForm(true)}
+                  className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Add bookmark"
+                >
+                  <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
+                </button>
+              )}
             </div>
-          )}
 
-          {unpinnedFiltered.length === 0 && !showForm && (
-            <p className="text-muted-foreground text-[11px] text-center py-4">
-              {search ? "No matches." : "No bookmarks. Click + to add."}
-            </p>
-          )}
+            {/* Search input — inline, replaces the icon when active */}
+            {searchActive && bookmarks.length > 0 && (
+              <div className="relative mb-2">
+                <HugeiconsIcon
+                  icon={Search01Icon}
+                  size={9}
+                  className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onBlur={() => {
+                    if (!search) setSearchActive(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setSearch("");
+                      setSearchActive(false);
+                    }
+                  }}
+                  placeholder=""
+                  className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-1.5 text-[10px] text-foreground outline-none focus:border-border/70"
+                  autoFocus
+                />
+              </div>
+            )}
 
-          <div className="flex flex-col gap-1 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {unpinnedFiltered.map((b) => renderBookmarkRow(b, false))}
-          </div>
-        </>
-      )}
+            {/* Pinned bookmarks */}
+            {pinned.length > 0 && (
+              <div className="flex flex-col gap-1 mb-2">
+                <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground/80 font-semibold">
+                  <HugeiconsIcon icon={PinIcon} size={8} />
+                  Pinned
+                </div>
+                <div className="flex flex-col gap-1">{pinned.map((b) => renderBookmarkRow(b, true))}</div>
+              </div>
+            )}
+
+            {unpinnedFiltered.length === 0 && !showForm && (
+              <p className="text-muted-foreground text-[11px] text-center py-4">
+                {search ? "No matches." : "No bookmarks. Click + to add."}
+              </p>
+            )}
+
+            <div className="flex flex-col gap-1 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {unpinnedFiltered.map((b) => renderBookmarkRow(b, false))}
+            </div>
+          </>
+        )}
 
       {showForm &&
         createPortal(
@@ -527,6 +555,7 @@ export function BookmarksView({
           </div>,
           document.body
         )}
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
