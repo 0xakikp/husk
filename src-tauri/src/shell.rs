@@ -1,7 +1,12 @@
 //! One-shot shell command runner (distinct from the interactive PTY).
 //! Used by the docker / kubernetes / terraform clients to run a CLI and
 //! capture its output, with a timeout and output cap.
+//!
+//! Security: commands are executed directly via std::process::Command with an
+//! explicit program and argument array. No shell is invoked, so shell
+//! metacharacters in arguments are treated as literal data.
 
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
@@ -11,14 +16,78 @@ use serde::Serialize;
 
 const MAX_OUT: usize = 256 * 1024;
 
-/// Reject commands that contain shell metacharacters used for injection.
-/// This is defense-in-depth; the real protection is Command::arg().
-fn validate_command(command: &str) -> Result<&str, String> {
-    // Block backtick command substitution and $() which could execute arbitrary code
-    if command.contains('`') || command.contains("$(") {
-        return Err("Command substitution not allowed in one-shot commands".to_string());
+/// Shell interpreters that must never be invoked directly. These are excluded
+/// to prevent callers from bypassing the no-shell rule by passing
+/// `sh -c '...'` or similar.
+const SHELL_NAMES: &[&str] = &[
+    "sh",
+    "bash",
+    "zsh",
+    "cmd",
+    "cmd.exe",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "pwsh.exe",
+];
+
+/// Characters that are not allowed in a program path. None of these can appear
+/// in a safe binary name or absolute path.
+fn program_has_metachar(program: &str) -> bool {
+    program.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '|' | '&' | '$' | '(' | ')' | '`' | '<' | '>' | '*' | '?' | '[' | ']' | '{'
+                | '}' | '~' | ' ' | '\n' | '\t' | '"' | '\''
+        )
+    })
+}
+
+/// Validate that `program` is a real executable and not a shell interpreter.
+/// Absolute paths must exist; relative names must be found on PATH.
+pub fn validate_program(program: &str) -> Result<&str, String> {
+    if program.is_empty() {
+        return Err("program is empty".to_string());
     }
-    Ok(command)
+    if program_has_metachar(program) {
+        return Err(format!("program contains shell metacharacters: {program}"));
+    }
+
+    let path = Path::new(program);
+    let base = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(program);
+    let base_lower = base.to_lowercase();
+    if SHELL_NAMES.iter().any(|s| *s == base_lower) {
+        return Err(format!("'{program}' is a shell interpreter and is not allowed"));
+    }
+
+    if path.is_absolute() {
+        if !path.exists() {
+            return Err(format!("program does not exist: {program}"));
+        }
+    } else {
+        let found = std::env::var_os("PATH")
+            .map(|paths| {
+                std::env::split_paths(&paths).any(|dir| {
+                    let candidate = dir.join(program);
+                    candidate.exists()
+                })
+            })
+            .unwrap_or(false);
+        if !found {
+            return Err(format!("program not found on PATH: {program}"));
+        }
+    }
+
+    Ok(program)
+}
+
+/// Quote a single token for safe interpolation into a POSIX shell command.
+/// Used only by the trusted detection helper, not for arbitrary user input.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 #[derive(Serialize)]
@@ -32,34 +101,22 @@ pub struct ShellOutput {
 
 #[tauri::command]
 pub fn shell_run_command(
-    command: String,
+    program: String,
+    args: Vec<String>,
     cwd: Option<String>,
     timeout_secs: Option<u64>,
 ) -> Result<ShellOutput, String> {
-    validate_command(&command)?;
+    validate_program(&program)?;
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(20));
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        // Login shell so PATH includes brew/user bins (docker, kubectl, …).
-        #[cfg(windows)]
-        let output = {
-            let mut c = Command::new("cmd");
-            c.arg("/C").arg(&command);
-            if let Some(dir) = cwd {
-                c.current_dir(dir);
-            }
-            c.output()
-        };
-        #[cfg(not(windows))]
-        let output = {
-            let mut c = Command::new("sh");
-            c.arg("-lc").arg(&command);
-            if let Some(dir) = cwd {
-                c.current_dir(dir);
-            }
-            c.output()
-        };
+        let mut c = Command::new(&program);
+        c.args(&args);
+        if let Some(dir) = cwd {
+            c.current_dir(dir);
+        }
+        let output = c.output();
         let _ = tx.send(output);
     });
 
@@ -85,4 +142,47 @@ pub fn shell_run_command(
             truncated: false,
         }),
     }
+}
+
+/// Detect which of the requested binaries are installed.
+/// Runs `command -v` through the user's login shell so Homebrew and other
+/// PATH modifications are applied, matching the behaviour of an interactive
+/// shell. Each name is validated and quoted before reaching the shell.
+#[tauri::command]
+pub fn detect_binaries(bins: Vec<String>) -> Result<Vec<String>, String> {
+    let mut found = Vec::new();
+
+    for bin in bins {
+        if bin.is_empty() {
+            continue;
+        }
+        if program_has_metachar(&bin) {
+            continue;
+        }
+        // Reject shell interpreters being asked for as a "binary".
+        let base = Path::new(&bin)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&bin)
+            .to_lowercase();
+        if SHELL_NAMES.iter().any(|s| *s == base) {
+            continue;
+        }
+
+        let script = format!("command -v {}", shell_quote(&bin));
+        let output = Command::new("sh")
+            .arg("-lc")
+            .arg(&script)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if output.status.success() {
+            let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !line.is_empty() && PathBuf::from(&line).exists() {
+                found.push(bin);
+            }
+        }
+    }
+
+    Ok(found)
 }

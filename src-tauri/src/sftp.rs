@@ -1,8 +1,13 @@
 //! SFTP file transfer using russh + russh-sftp (pure-Rust SSH).
 //! Replaces ssh2/libssh2 which doesn't support modern OpenSSH key exchange algorithms.
+//!
+//! Security: host keys are verified using trust-on-first-use (TOFU). The first
+//! connection to a host stores its fingerprint; subsequent connections reject
+//! the host if the fingerprint changes. Passphrase-protected keys are supported.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
@@ -15,16 +20,50 @@ use russh_sftp::client::SftpSession;
 use tauri::{AppHandle, Emitter, State};
 
 /// SSH client handler (required by russh, minimal implementation).
-pub struct SshClient;
+pub struct SshClient {
+    known_hosts: Arc<Mutex<HashMap<String, String>>>,
+    app_data_dir: Option<PathBuf>,
+    host: String,
+}
+
+impl SshClient {
+    async fn save_known_hosts(&self, hosts: &HashMap<String, String>) {
+        if let Some(dir) = &self.app_data_dir {
+            let path = dir.join("known_hosts.json");
+            if let Ok(json) = serde_json::to_string_pretty(hosts) {
+                let _ = tokio::fs::create_dir_all(dir).await;
+                let _ = tokio::fs::write(&path, json).await;
+            }
+        }
+    }
+}
 
 impl client::Handler for SshClient {
     type Error = russh::Error;
 
     fn check_server_key(
         &mut self,
-        _server_public_key: &ssh_key::PublicKey,
+        server_public_key: &ssh_key::PublicKey,
     ) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
-        async move { Ok(true) }
+        let host = self.host.clone();
+        let known_hosts = self.known_hosts.clone();
+        let app_data_dir = self.app_data_dir.clone();
+        let fingerprint = server_public_key.fingerprint(Default::default()).to_string();
+        async move {
+            let mut hosts = known_hosts.lock().await;
+            if let Some(known) = hosts.get(&host) {
+                return Ok(known == &fingerprint);
+            }
+            // First connect: store the fingerprint and persist it.
+            hosts.insert(host.clone(), fingerprint);
+            let client = SshClient {
+                known_hosts: known_hosts.clone(),
+                app_data_dir: app_data_dir.clone(),
+                host: host.clone(),
+            };
+            client.save_known_hosts(&*hosts).await;
+            Ok(true)
+        }
     }
 }
 
@@ -39,12 +78,48 @@ struct Connection {
 #[derive(Clone)]
 pub struct SftpManager {
     connections: Arc<Mutex<HashMap<String, Connection>>>,
+    known_hosts: Arc<Mutex<HashMap<String, String>>>,
+    app_data_dir: Option<PathBuf>,
 }
 
 impl SftpManager {
     pub fn new() -> Self {
         Self {
             connections: Arc::new(Mutex::new(HashMap::new())),
+            known_hosts: Arc::new(Mutex::new(HashMap::new())),
+            app_data_dir: None,
+        }
+    }
+
+    pub fn with_app_data_dir(app_data_dir: Option<PathBuf>) -> Self {
+        let known_hosts = Self::load_known_hosts(&app_data_dir);
+        Self {
+            connections: Arc::new(Mutex::new(HashMap::new())),
+            known_hosts: Arc::new(Mutex::new(known_hosts)),
+            app_data_dir,
+        }
+    }
+
+    fn load_known_hosts(app_data_dir: &Option<PathBuf>) -> HashMap<String, String> {
+        if let Some(dir) = app_data_dir {
+            let path = dir.join("known_hosts.json");
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
+                    return map;
+                }
+            }
+        }
+        HashMap::new()
+    }
+
+    async fn save_known_hosts(&self) {
+        if let Some(dir) = &self.app_data_dir {
+            let path = dir.join("known_hosts.json");
+            let hosts = self.known_hosts.lock().await;
+            if let Ok(json) = serde_json::to_string_pretty(&*hosts) {
+                let _ = tokio::fs::create_dir_all(dir).await;
+                let _ = tokio::fs::write(&path, json).await;
+            }
         }
     }
 
@@ -168,7 +243,11 @@ impl SftpManager {
     }
 
     /// Connect or return cached connection.
-    pub async fn connect(&self, host: &str) -> Result<(), String> {
+    pub async fn connect(
+        &self,
+        host: &str,
+        passphrase: Option<String>,
+    ) -> Result<(), String> {
         let mut conns = self.connections.lock().await;
         if conns.contains_key(host) {
             return Ok(());
@@ -183,7 +262,13 @@ impl SftpManager {
             .parse()
             .map_err(|e| format!("Invalid address: {}", e))?;
 
-        let mut session = client::connect(config, addr, SshClient)
+        let client = SshClient {
+            known_hosts: self.known_hosts.clone(),
+            app_data_dir: self.app_data_dir.clone(),
+            host: host.to_string(),
+        };
+
+        let mut session = client::connect(config, addr, client)
             .await
             .map_err(|e| format!("SSH connect failed: {}", e))?;
 
@@ -192,7 +277,7 @@ impl SftpManager {
         for key_path in identity_files {
             let expanded = shellexpand::tilde(&key_path).to_string();
             if std::path::Path::new(&expanded).exists() {
-                let secret_key = load_secret_key(&expanded, None)
+                let secret_key = load_secret_key(&expanded, passphrase.as_deref())
                     .map_err(|e| format!("Failed to load key {}: {}", expanded, e))?;
                 let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(secret_key), None);
                 match session.authenticate_publickey(&username, key_with_hash).await {
@@ -243,6 +328,15 @@ impl SftpManager {
             let _ = conn.session.disconnect(Disconnect::ByApplication, "Closed", "English").await;
         }
     }
+
+    /// Remove stored host key(s) for a host.
+    pub async fn forget_host_keys(&self, host: &str) {
+        {
+            let mut hosts = self.known_hosts.lock().await;
+            hosts.remove(host);
+        }
+        self.save_known_hosts().await;
+    }
 }
 
 impl Default for SftpManager {
@@ -264,9 +358,10 @@ pub struct SftpEntry {
 #[tauri::command]
 pub async fn sftp_connect(
     host: String,
+    passphrase: Option<String>,
     manager: State<'_, SftpManager>,
 ) -> Result<bool, String> {
-    manager.connect(&host).await.map(|_| true)
+    manager.connect(&host, passphrase).await.map(|_| true)
 }
 
 #[tauri::command]
@@ -275,6 +370,15 @@ pub async fn sftp_disconnect(
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
     manager.disconnect(&host).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn sftp_forget_host_keys(
+    host: String,
+    manager: State<'_, SftpManager>,
+) -> Result<(), String> {
+    manager.forget_host_keys(&host).await;
     Ok(())
 }
 

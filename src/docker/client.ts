@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { shq } from "../lib/shellQuote";
 
 export type DockerContainer = {
   id: string;
@@ -83,9 +82,10 @@ type ShellOutput = {
   truncated: boolean;
 };
 
-async function shell(cmd: string): Promise<string> {
+async function shell(program: string, args: string[]): Promise<string> {
   const out = await invoke<ShellOutput>("shell_run_command", {
-    command: cmd,
+    program,
+    args,
     cwd: null,
     timeout_secs: 15,
   });
@@ -95,7 +95,7 @@ async function shell(cmd: string): Promise<string> {
 
 export async function checkDocker(): Promise<boolean> {
   try {
-    await shell("docker --version");
+    await shell("docker", ["--version"]);
     return true;
   } catch {
     return false;
@@ -103,9 +103,12 @@ export async function checkDocker(): Promise<boolean> {
 }
 
 export async function listContainers(): Promise<DockerContainer[]> {
-  const stdout = await shell(
-    "docker ps -a --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}\t{{.Ports}}'",
-  );
+  const stdout = await shell("docker", [
+    "ps",
+    "-a",
+    "--format",
+    "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}\t{{.Ports}}",
+  ]);
   return stdout
     .trim()
     .split("\n")
@@ -124,9 +127,11 @@ export async function listContainers(): Promise<DockerContainer[]> {
 }
 
 export async function listImages(): Promise<DockerImage[]> {
-  const stdout = await shell(
-    "docker images --format '{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}'",
-  );
+  const stdout = await shell("docker", [
+    "images",
+    "--format",
+    "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}",
+  ]);
   return stdout
     .trim()
     .split("\n")
@@ -137,14 +142,14 @@ export async function listImages(): Promise<DockerImage[]> {
     });
 }
 
-export const startContainer = (id: string) => shell(`docker start ${shq(id)}`);
-export const stopContainer = (id: string) => shell(`docker stop ${shq(id)}`);
-export const removeContainer = (id: string) => shell(`docker rm ${shq(id)}`);
+export const startContainer = (id: string) => shell("docker", ["start", id]);
+export const stopContainer = (id: string) => shell("docker", ["stop", id]);
+export const removeContainer = (id: string) => shell("docker", ["rm", id]);
 
 export async function describeContainer(id: string): Promise<DockerContainerDetail> {
   const [json, logs] = await Promise.all([
-    shell(`docker inspect ${shq(id)} --format '{{json .}}'`),
-    shell(`docker logs --tail 200 ${shq(id)}`).catch(() => ""),
+    shell("docker", ["inspect", id, "--format", "{{json .}}"]),
+    shell("docker", ["logs", "--tail", "200", id]).catch(() => ""),
   ]);
   const c = JSON.parse(json);
   const config = c.Config || {};
@@ -196,7 +201,13 @@ export async function describeContainer(id: string): Promise<DockerContainerDeta
 }
 
 export async function getContainerStats(id: string): Promise<DockerContainerStats | null> {
-  const out = await shell(`docker stats --no-stream --format '{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}\t{{.PIDs}}' ${shq(id)}`).catch(() => "");
+  const out = await shell("docker", [
+    "stats",
+    "--no-stream",
+    "--format",
+    "{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}\t{{.PIDs}}",
+    id,
+  ]).catch(() => "");
   if (!out.trim()) return null;
   const p = out.trim().split("\t");
   return {
@@ -212,8 +223,8 @@ export async function getContainerStats(id: string): Promise<DockerContainerStat
 
 export async function describeImage(id: string): Promise<DockerImageDetail> {
   const [json, history] = await Promise.all([
-    shell(`docker inspect ${shq(id)} --format '{{json .}}'`),
-    shell(`docker history --format '{{.CreatedBy}}\t{{.Size}}\t{{.CreatedAt}}' --no-trunc ${shq(id)}`).catch(() => ""),
+    shell("docker", ["inspect", id, "--format", "{{json .}}"]),
+    shell("docker", ["history", "--format", "{{.CreatedBy}}\t{{.Size}}\t{{.CreatedAt}}", "--no-trunc", id]).catch(() => ""),
   ]);
   const im = JSON.parse(json);
   const config = im.Config || {};

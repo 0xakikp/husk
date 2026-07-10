@@ -8,6 +8,40 @@ export type CloudSyncData = {
 };
 
 const CURRENT_VERSION = 1;
+const KEY_ITERATIONS = 100_000;
+const SALT_LEN = 16;
+const IV_LEN = 12;
+
+async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
+  const encoder = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(passphrase),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: KEY_ITERATIONS,
+      hash: "SHA-256",
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes));
+}
+
+function decodeBase64(str: string): Uint8Array {
+  return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+}
 
 export function exportSettings(): CloudSyncData {
   const connections = JSON.parse(localStorage.getItem("huskv2.connections") || "[]");
@@ -65,28 +99,38 @@ export function importSettings(data: CloudSyncData): { success: boolean; importe
   return result;
 }
 
-export function encryptData(data: CloudSyncData, passphrase: string): string {
+export async function encryptData(data: CloudSyncData, passphrase: string): Promise<string> {
+  const encoder = new TextEncoder();
   const json = JSON.stringify(data);
-  // Simple XOR-based encryption (not production-grade, but portable)
-  // For real security, use Web Crypto API or a proper library
-  const key = passphrase.split("").map((c) => c.charCodeAt(0));
-  const bytes = new TextEncoder().encode(json);
-  const encrypted = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) {
-    encrypted[i] = bytes[i] ^ key[i % key.length];
-  }
-  return btoa(String.fromCharCode(...encrypted));
+  const salt = crypto.getRandomValues(new Uint8Array(SALT_LEN));
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
+  const key = await deriveKey(passphrase, salt);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    encoder.encode(json)
+  );
+  const combined = new Uint8Array(SALT_LEN + IV_LEN + ciphertext.byteLength);
+  combined.set(salt, 0);
+  combined.set(iv, SALT_LEN);
+  combined.set(new Uint8Array(ciphertext), SALT_LEN + IV_LEN);
+  return encodeBase64(combined);
 }
 
-export function decryptData(encrypted: string, passphrase: string): CloudSyncData {
-  const key = passphrase.split("").map((c) => c.charCodeAt(0));
-  const bytes = new Uint8Array(
-    atob(encrypted).split("").map((c) => c.charCodeAt(0))
-  );
-  const decrypted = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) {
-    decrypted[i] = bytes[i] ^ key[i % key.length];
+export async function decryptData(encrypted: string, passphrase: string): Promise<CloudSyncData> {
+  const combined = decodeBase64(encrypted);
+  if (combined.length < SALT_LEN + IV_LEN) {
+    throw new Error("Invalid encrypted data");
   }
+  const salt = combined.slice(0, SALT_LEN);
+  const iv = combined.slice(SALT_LEN, SALT_LEN + IV_LEN);
+  const ciphertext = combined.slice(SALT_LEN + IV_LEN);
+  const key = await deriveKey(passphrase, salt);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    key,
+    ciphertext
+  );
   const json = new TextDecoder().decode(decrypted);
   return JSON.parse(json);
 }

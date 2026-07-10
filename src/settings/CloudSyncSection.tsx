@@ -12,13 +12,13 @@ export function CloudSyncSection() {
   const [passphrase, setPassphrase] = useState("");
   const [blob, setBlob] = useState("");
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!passphrase.trim()) {
       toast({ title: "Passphrase required", variant: "error" });
       return;
     }
     try {
-      const encrypted = exportSettings(passphrase.trim());
+      const encrypted = await exportSettings(passphrase.trim());
       setBlob(encrypted);
       toast({ title: "Settings exported to clipboard", variant: "success" });
     } catch (e) {
@@ -26,13 +26,13 @@ export function CloudSyncSection() {
     }
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!passphrase.trim() || !blob.trim()) {
       toast({ title: "Passphrase and blob required", variant: "error" });
       return;
     }
     try {
-      importSettings(blob.trim(), passphrase.trim());
+      await importSettings(blob.trim(), passphrase.trim());
       toast({ title: "Settings imported. Reloading…", variant: "success" });
       setTimeout(() => window.location.reload(), 800);
     } catch (e) {

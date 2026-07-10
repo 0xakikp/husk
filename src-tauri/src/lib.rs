@@ -19,6 +19,7 @@ use secrets::SecretsState;
 use sftp::SftpManager;
 use port_forward::PortForwardManager;
 use tailscale::TailscaleState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,11 +35,15 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::default().build())
+        .setup(|app| {
+            let app_data_dir = app.path().app_data_dir().ok();
+            app.manage(SftpManager::with_app_data_dir(app_data_dir));
+            Ok(())
+        })
         .manage(PtyState::default())
         .manage(McpState::default())
         .manage(SecretsState::default())
         .manage(JobsState::default())
-        .manage(SftpManager::default())
         .manage(PortForwardManager::new())
         .manage(TailscaleState::default())
         .invoke_handler(tauri::generate_handler![
@@ -69,6 +74,7 @@ pub fn run() {
             remote::ssh_pwd,
             sftp::sftp_connect,
             sftp::sftp_disconnect,
+            sftp::sftp_forget_host_keys,
             sftp::sftp_list_dir,
             sftp::sftp_download,
             sftp::sftp_upload,
@@ -82,6 +88,7 @@ pub fn run() {
             mcp::mcp_recv,
             mcp::mcp_kill,
             shell::shell_run_command,
+            shell::detect_binaries,
             secrets::secrets_get,
             secrets::secrets_set,
             secrets::secrets_delete,

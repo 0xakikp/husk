@@ -3,15 +3,22 @@
 //! Spawns an MCP server as a child process with piped stdin/stdout and shuttles
 //! JSON-RPC lines between it and the frontend (which runs the MCP SDK client
 //! over a custom Tauri transport). Mirrors the husk implementation.
+//!
+//! Security: the command is validated to be a real executable that is not a
+//! shell interpreter, and is resolved via `command -v` when a relative name is
+//! provided.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use tauri::State;
+
+use crate::shell::validate_program;
 
 struct McpSession {
     child: Child,
@@ -26,6 +33,32 @@ pub struct McpState {
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 
+/// Quote a single token for safe interpolation into a POSIX shell command.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Resolve a command name to an absolute path via the user's login shell.
+fn resolve_command(command: &str) -> Result<String, String> {
+    if Path::new(command).is_absolute() {
+        return Ok(command.to_string());
+    }
+    let script = format!("command -v {}", shell_quote(command));
+    let output = Command::new("sh")
+        .arg("-lc")
+        .arg(&script)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(format!("command not found: {command}"));
+    }
+    let resolved = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if resolved.is_empty() {
+        return Err(format!("command not found: {command}"));
+    }
+    Ok(resolved)
+}
+
 /// Spawn an MCP server process with piped stdin/stdout (stderr inherited).
 #[tauri::command]
 pub fn mcp_spawn(
@@ -35,7 +68,10 @@ pub fn mcp_spawn(
     env: Option<HashMap<String, String>>,
     cwd: Option<String>,
 ) -> Result<u32, String> {
-    let mut cmd = Command::new(&command);
+    let resolved = resolve_command(&command)?;
+    validate_program(&resolved)?;
+
+    let mut cmd = Command::new(&resolved);
     cmd.args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -14,3 +14,55 @@
 export function shq(value: string | number): string {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
+
+/**
+ * Tokenize a simple shell-like command string into program + args.
+ * Handles single- and double-quoted substrings, including the escaped single
+ * quote sequence `'\''`. This lets callers keep using `shq()` in template
+ * literals while the backend executes via `Command::arg()` (no shell invoked).
+ */
+export function tokenizeCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let inQuote: "'" | '"' | null = null;
+  let i = 0;
+
+  while (i < command.length) {
+    const c = command[i];
+    if (inQuote === "'") {
+      if (c === "'") {
+        // escaped single quote: '\''
+        if (command.slice(i, i + 4) === "'\\''") {
+          current += "'";
+          i += 4;
+          continue;
+        }
+        inQuote = null;
+      } else {
+        current += c;
+      }
+    } else if (inQuote === '"') {
+      if (c === '"') {
+        inQuote = null;
+      } else {
+        current += c;
+      }
+    } else if (c === "'" || c === '"') {
+      inQuote = c;
+    } else if (/\s/.test(c)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+    } else {
+      current += c;
+    }
+    i++;
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}

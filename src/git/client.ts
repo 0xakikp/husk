@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getWorkspaceRoot } from "../workspace/store";
-import { shq } from "../lib/shellQuote";
+import { shq, tokenizeCommand } from "../lib/shellQuote";
 
 type ShellOutput = { stdout: string; stderr: string; exit_code: number | null };
 
 async function git(args: string, cwd?: string | null): Promise<string> {
+  const parsed = tokenizeCommand(args);
   const out = await invoke<ShellOutput>("shell_run_command", {
-    command: `git ${args}`,
+    program: "git",
+    args: parsed,
     cwd: (cwd ?? getWorkspaceRoot()) || null,
     timeout_secs: 15,
   });
@@ -179,7 +181,8 @@ export async function hasGhCli(): Promise<boolean> {
   try {
     const out = await withTimeout(
       invoke<ShellOutput>("shell_run_command", {
-        command: "gh --version",
+        program: "gh",
+        args: ["--version"],
         cwd: getWorkspaceRoot() || null,
         timeout_secs: 5,
       }),
@@ -198,7 +201,8 @@ export async function listIssues(): Promise<
   try {
     const out = await withTimeout(
       invoke<ShellOutput>("shell_run_command", {
-        command: "gh issue list --json number,title,author,state,createdAt,labels --limit 30",
+        program: "gh",
+        args: ["issue", "list", "--json", "number,title,author,state,createdAt,labels", "--limit", "30"],
         cwd: getWorkspaceRoot() || null,
         timeout_secs: 15,
       }),

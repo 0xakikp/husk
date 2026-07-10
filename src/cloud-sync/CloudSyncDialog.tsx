@@ -18,22 +18,23 @@ export function CloudSyncDialog({ open, onClose }: { open: boolean; onClose: () 
   const [encryptedBlob, setEncryptedBlob] = useState("");
   const [mode, setMode] = useState<"export" | "import">("export");
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!passphrase.trim()) {
       toast({ title: "Passphrase required", variant: "error" });
       return;
     }
-    const data = exportSettings();
-    const encrypted = encryptData(data, passphrase);
-    setEncryptedBlob(encrypted);
-    navigator.clipboard.writeText(encrypted).then(() => {
+    try {
+      const data = exportSettings();
+      const encrypted = await encryptData(data, passphrase);
+      setEncryptedBlob(encrypted);
+      await navigator.clipboard.writeText(encrypted);
       toast({ title: "Exported & copied to clipboard", variant: "success" });
-    }).catch(() => {
-      toast({ title: "Exported (copy failed)", variant: "info" });
-    });
+    } catch {
+      toast({ title: "Export failed", variant: "error" });
+    }
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!passphrase.trim()) {
       toast({ title: "Passphrase required", variant: "error" });
       return;
@@ -43,7 +44,7 @@ export function CloudSyncDialog({ open, onClose }: { open: boolean; onClose: () 
       return;
     }
     try {
-      const data = decryptData(encryptedBlob.trim(), passphrase);
+      const data = await decryptData(encryptedBlob.trim(), passphrase);
       const result = importSettings(data);
       if (result.success) {
         toast({

@@ -15,7 +15,8 @@ type ShellOutput = { exit_code: number | null };
 async function checkTerraform(): Promise<boolean> {
   try {
     const o = await invoke<ShellOutput>("shell_run_command", {
-      command: "terraform version",
+      program: "terraform",
+      args: ["version"],
       cwd: null,
       timeout_secs: 10,
     });

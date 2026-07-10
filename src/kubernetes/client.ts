@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { shq } from "../lib/shellQuote";
+import { shq, tokenizeCommand } from "../lib/shellQuote";
 
 export type K8sPod = {
   namespace: string;
@@ -201,8 +201,12 @@ type ShellOutput = {
 };
 
 async function shell(cmd: string, timeoutSecs = 15): Promise<string> {
+  const tokens = tokenizeCommand(cmd);
+  const [program, ...args] = tokens;
+  if (!program) throw new Error("empty command");
   const out = await invoke<ShellOutput>("shell_run_command", {
-    command: cmd,
+    program,
+    args,
     cwd: null,
     timeout_secs: timeoutSecs,
   });

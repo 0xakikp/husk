@@ -1,10 +1,14 @@
 //! Background jobs: long-running commands (dev servers, `logs -f`, builds)
 //! spawned detached from the interactive PTY, with their combined stdout/stderr
 //! captured in a bounded ring buffer the UI can tail incrementally.
+//!
+//! Security: jobs are executed directly via std::process::Command with an
+//! explicit program and argument array. No shell is invoked.
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io::Read;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -14,16 +18,9 @@ use std::time::SystemTime;
 use serde::Serialize;
 use shared_child::SharedChild;
 
-const RING_CAP: usize = 4 * 1024 * 1024;
+use crate::shell::validate_program;
 
-/// Reject commands that contain shell metacharacters used for injection.
-/// Defense-in-depth; the real protection is Command::arg().
-fn validate_command(command: &str) -> Result<&str, String> {
-    if command.contains('`') || command.contains("$(") {
-        return Err("Command substitution not allowed in background jobs".to_string());
-    }
-    Ok(command)
-}
+const RING_CAP: usize = 4 * 1024 * 1024;
 
 /// Byte ring buffer with monotonic offsets, so callers can tail it: each push
 /// advances `next_offset` even when old bytes are dropped to stay under `cap`.
@@ -73,7 +70,8 @@ impl BoundedRingBuffer {
 }
 
 pub struct BackgroundProc {
-    command: String,
+    program: String,
+    args: Vec<String>,
     cwd: Option<String>,
     started_at_ms: u64,
     child: Arc<SharedChild>,
@@ -136,11 +134,19 @@ impl BackgroundProc {
         };
         BackgroundProcInfo {
             handle,
-            command: self.command.clone(),
+            command: self.display_command(),
             cwd: self.cwd.clone(),
             started_at_ms: self.started_at_ms,
             exited,
             exit_code,
+        }
+    }
+
+    fn display_command(&self) -> String {
+        if self.args.is_empty() {
+            self.program.clone()
+        } else {
+            format!("{} {}", self.program, self.args.join(" "))
         }
     }
 }
@@ -151,35 +157,21 @@ impl Drop for BackgroundProc {
     }
 }
 
-fn build_command(command: &str) -> Command {
-    #[cfg(windows)]
-    {
-        let mut c = Command::new("cmd");
-        c.arg("/C").arg(command);
-        c
-    }
-    #[cfg(not(windows))]
-    {
-        // Login shell so PATH includes brew/user bins.
-        let mut c = Command::new("sh");
-        c.arg("-lc").arg(command);
-        c
-    }
+fn build_command(program: &str, args: &[String]) -> Command {
+    let mut c = Command::new(program);
+    c.args(args);
+    c
 }
 
-fn spawn(command: String, cwd: Option<String>) -> Result<Arc<BackgroundProc>, String> {
-    let trimmed = command.trim().to_string();
-    validate_command(&trimmed)?;
-    if trimmed.is_empty() {
-        return Err("empty command".into());
-    }
+fn spawn(program: String, args: Vec<String>, cwd: Option<String>) -> Result<Arc<BackgroundProc>, String> {
+    validate_program(&program)?;
     if let Some(ref dir) = cwd {
-        if !std::path::Path::new(dir).is_dir() {
+        if !Path::new(dir).is_dir() {
             return Err(format!("cwd is not a directory: {dir}"));
         }
     }
 
-    let mut cmd = build_command(&trimmed);
+    let mut cmd = build_command(&program, &args);
     if let Some(ref dir) = cwd {
         cmd.current_dir(dir);
     }
@@ -196,8 +188,9 @@ fn spawn(command: String, cwd: Option<String>) -> Result<Arc<BackgroundProc>, St
         .unwrap_or(0);
 
     let proc = Arc::new(BackgroundProc {
-        command: trimmed,
-        cwd,
+        program: program.clone(),
+        args: args.clone(),
+        cwd: cwd.clone(),
         started_at_ms,
         child,
         buffer: Mutex::new(BoundedRingBuffer::new(RING_CAP)),
@@ -258,10 +251,11 @@ pub struct JobsState {
 #[tauri::command]
 pub fn shell_bg_spawn(
     state: tauri::State<JobsState>,
-    command: String,
+    program: String,
+    args: Vec<String>,
     cwd: Option<String>,
 ) -> Result<u32, String> {
-    let proc = spawn(command, cwd)?;
+    let proc = spawn(program, args, cwd)?;
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     state.procs.write().map_err(|e| e.to_string())?.insert(id, proc);
     Ok(id)
