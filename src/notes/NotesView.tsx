@@ -621,7 +621,7 @@ export function NotesView({
           )}
           {recentsInfo.length > 0 && (
             <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground/80 font-semibold">
+              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-amber-600/90 dark:text-amber-400/90 font-semibold">
                 <HugeiconsIcon icon={Clock01Icon} size={8} />
                 Recent
               </div>
@@ -629,7 +629,7 @@ export function NotesView({
                 {recentsInfo.map((item) => (
                   <div
                     key={item.path}
-                    className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 hover:border-border/40 cursor-pointer"
+                    className="group flex items-center gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-1 hover:border-amber-500/45 hover:bg-amber-500/[0.09] cursor-pointer dark:border-amber-400/20 dark:bg-amber-400/[0.05] dark:hover:border-amber-400/40"
                     onClick={() => handleOpenNote(item.path)}
                   >
                     <img src={fileIconUrl(item.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
