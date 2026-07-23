@@ -1,35 +1,19 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
-import { TabBar } from "./shell/TabBar";
+import { AppHeader } from "./shell/AppHeader";
 import { DialogHost } from "./shell/DialogHost";
 import { SidebarHost } from "./shell/SidebarHost";
 import { WorkspacePanels } from "./shell/WorkspacePanels";
 import { typeInActiveTerminal } from "./ai/terminalContext";
 import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
-import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  Search01Icon,
-  LayoutThreeColumnIcon,
-  MessageMultiple02Icon,
-  Timer01Icon,
-  Moon02Icon,
-  Sun03Icon,
-  Settings01Icon,
-  Cancel01Icon,
-  SparklesIcon,
-} from "@hugeicons/core-free-icons";
 import { openBubble, toggleComposer, sendToComposer } from "./ai/bubbleStore";
 import { setActiveSessionId } from "./ai/sessionStore";
 import { getEditorSelection, getEditorFile, closeEditorFindWidget } from "./ai/editorStore";
-import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
 import type { OpenFile } from "./editor/EditorArea";
-import { useTotpTimer } from "./totp/useTotpTimer";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { initKeys } from "./ai/store";
@@ -42,7 +26,6 @@ import type { Command } from "./command-palette/CommandPalette";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
 import { pickWorkspaceFolder } from "./workspace/store";
 import { useActiveSshHost } from "./remote/store";
-import { ClipboardIcon } from "@hugeicons/core-free-icons";
 import { StatusBar } from "./statusbar/StatusBar";
 import type { OpenPanelKind } from "./git/types";
 import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId } from "./ai/terminalContext";
@@ -53,161 +36,6 @@ import type { ActiveTab, ActiveKind } from "./shell/types";
 import type { K8sResourceSelection } from "./kubernetes/KubernetesView";
 import type { DockerResourceSelection } from "./docker/DockerDetailPanel";
 import "./App.css";
-
-/* ── Header helpers ─────────────────────────────────────────────────────── */
-
-function ThemeToggle() {
-  const theme = usePrefs().theme;
-  const isDark = theme === "dark";
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-      onClick={() => setPrefs({ theme: isDark ? "light" : "dark" })}
-      title={isDark ? "Switch to light theme" : "Switch to dark theme"}
-    >
-      <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} size={16} strokeWidth={1.75} />
-    </Button>
-  );
-}
-
-
-/* ── Search inline (husk v1 compact style) ────────────────────────────── */
-
-function SearchInline() {
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const expanded = open;
-
-  useEffect(() => {
-    if (expanded && inputRef.current) inputRef.current.focus();
-  }, [expanded]);
-
-  // Wire typed query directly into the active terminal's scrollback search.
-  useEffect(() => {
-    if (!expanded || !q) return;
-    import("./ai/terminalContext")
-      .then((m) => {
-        m.searchActiveTerminal(q);
-      })
-      .catch(() => {});
-  }, [q, expanded]);
-
-  return (
-    <div className={cn("relative h-6 shrink-0", expanded ? "w-48" : "w-6")}>
-      {expanded ? (
-        <div className="absolute inset-0 flex items-center">
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={12}
-            strokeWidth={1.75}
-            className="pointer-events-none absolute left-2 text-muted-foreground"
-          />
-          <input
-            ref={inputRef}
-            value={q}
-            placeholder="Search terminal…"
-            className="h-6 w-full rounded-md border-0 bg-muted/80 py-0 pr-7 pl-7 text-[13px] text-foreground placeholder:text-muted-foreground/70 outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onChange={(e) => setQ(e.target.value)}
-            onBlur={() => {
-              if (!q) setOpen(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setQ("");
-                setOpen(false);
-              } else if (e.key === "Enter") {
-                import("./ai/terminalContext")
-                  .then((m) => {
-                    m.searchActiveTerminal(q);
-                  })
-                  .catch(() => {});
-              }
-            }}
-          />
-          {q && (
-            <button
-              type="button"
-              onClick={() => {
-                setQ("");
-                inputRef.current?.focus();
-              }}
-              className="absolute right-1.5 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
-            </button>
-          )}
-        </div>
-      ) : (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          title="Search terminal scrollback"
-          onClick={() => setOpen(true)}
-        >
-          <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.75} />
-        </Button>
-      )}
-    </div>
-  );
-}
-
-/* ── Window controls (non-macOS) ──────────────────────────────────────── */
-
-function WindowControls() {
-  const minimize = () => {
-    import("@tauri-apps/api/window")
-      .then((m) => m.getCurrentWindow().minimize())
-      .catch(() => {});
-  };
-  const maximize = () => {
-    import("@tauri-apps/api/window")
-      .then(async (m) => {
-        const w = m.getCurrentWindow();
-        const maximized = await w.isMaximized();
-        if (maximized) w.unmaximize(); else w.maximize();
-      })
-      .catch(() => {});
-  };
-  const close = () => {
-    import("@tauri-apps/api/window")
-      .then((m) => m.getCurrentWindow().close())
-      .catch(() => {});
-  };
-
-  return (
-    <div className="flex items-center">
-      <button
-        type="button"
-        onClick={minimize}
-        className="inline-flex h-6 w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Minimize"
-      >
-        <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor"><rect width="10" height="1" /></svg>
-      </button>
-      <button
-        type="button"
-        onClick={maximize}
-        className="inline-flex h-6 w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Maximize"
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1"><rect x="0.5" y="0.5" width="9" height="9" rx="1" /></svg>
-      </button>
-      <button
-        type="button"
-        onClick={close}
-        className="inline-flex h-6 w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
-        aria-label="Close"
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M1 1l8 8M9 1L1 9" /></svg>
-      </button>
-    </div>
-  );
-}
 
 /* ── Main App ─────────────────────────────────────────────────────────── */
 
@@ -349,16 +177,6 @@ function App() {
 
   const prefs = usePrefs();
   useClipboardListener();
-
-  /* ── TOTP toolbar countdown badge ── */
-  function TotpBadge() {
-    const remaining = useTotpTimer();
-    if (remaining > 10) return null;
-    const color = remaining <= 5 ? "bg-destructive" : "bg-amber-500";
-    return (
-      <span className={`absolute -top-0.5 -right-0.5 block h-2 w-2 rounded-full ${color} ring-1 ring-background`} />
-    );
-  }
 
   // ── Background image (base64 via Rust) ──────────────────────
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null);
@@ -967,165 +785,52 @@ function App() {
           </>
         )}
 
-        {/* ── Header ─────────────────────────────────────────────── */}
-        <header
-          data-tauri-drag-region
-          className={cn(
-            "relative flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 select-none",
-            prefs.frostedGlass && bgDataUrl
-              ? "bg-background/60 backdrop-blur-md"
-              : "bg-background/92",
-            IS_MAC ? "pr-2 pl-[72px]" : "pr-0 pl-2",
-          )}
-          style={{
-            marginLeft: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-            marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-            marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-            borderTopLeftRadius: prefs.panelGaps > 0 ? "0.375rem" : undefined,
-            borderTopRightRadius: prefs.panelGaps > 0 ? "0.375rem" : undefined,
+        <AppHeader
+          prefs={prefs}
+          bgDataUrl={bgDataUrl}
+          toggleSidebar={toggleSidebar}
+          aiSessionsOpen={aiSessionsOpen}
+          setAiSessionsOpen={setAiSessionsOpen}
+          aiSessionsButtonRef={aiSessionsButtonRef}
+          onSelectAiSession={(id) => {
+            setActiveSessionId(id);
+            setActiveKind("ai");
           }}
-        >
-          {/* Left: sidebar toggle + AI sessions */}
-          <div className="flex shrink-0 items-center gap-0.5">
-            <Button
-              onClick={toggleSidebar}
-              title="Toggle sidebar"
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <HugeiconsIcon icon={LayoutThreeColumnIcon} size={16} strokeWidth={1.75} />
-            </Button>
-            {prefs.aiEnabled && (
-              <div className="relative" ref={aiSessionsButtonRef}>
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setAiSessionsOpen((v) => !v);
-                  }}
-                  title="AI Sessions"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "size-6 shrink-0 rounded-md",
-                    aiSessionsOpen
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                  )}
-                >
-                  <HugeiconsIcon icon={MessageMultiple02Icon} size={15} strokeWidth={1.75} />
-                </Button>
-                <AiSessionsPanel
-                  open={aiSessionsOpen}
-                  onClose={() => setAiSessionsOpen(false)}
-                  onSelectSession={(id) => {
-                    setActiveSessionId(id);
-                    setActiveKind("ai");
-                  }}
-                  anchorRef={aiSessionsButtonRef}
-                />
-              </div>
-            )}
-          </div>
-
-          {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}
-          {IS_MAC && <span className="mr-1 h-full w-px shrink-0 bg-border" />}
-
-          {/* Center: tabs */}
-          <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch" data-tauri-drag-region>
-            <TabBar
-              termTabs={term.tabs}
-              openFiles={openFiles}
-              active={active}
-              onSelectTerm={selectTerm}
-              onSelectFile={selectFile}
-              onCloseTerm={term.closeTab}
-              onCloseFile={closeFile}
-              onNewTerm={term.addTab}
-              onRenameTerm={term.renameTab}
-              onSetTabColor={term.setTabColor}
-              onPinTerm={term.pinTab}
-              onUnpinTerm={term.unpinTab}
-              onPinFile={pinFile}
-              onUnpinFile={unpinFile}
-              onMoveTerm={term.moveTab}
-              onMoveFile={moveFile}
-              settingsOpen={settingsOpen}
-              onSelectSettings={() => setActiveKind("settings")}
-              onCloseSettings={closeSettings}
-              onSelectAi={() => setActiveKind("ai")}
-              onPinAi={() => setPrefs({ aiTabPinned: true })}
-              onUnpinAi={() => setPrefs({ aiTabPinned: false })}
-              onSetAiTabColor={(color) => setPrefs({ aiTabColor: color })}
-              aiPinned={prefs.aiTabPinned}
-              aiColor={prefs.aiTabColor}
-              animationsEnabled={prefs.animationsEnabled}
-            />
-            <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
-          </div>
-
-          {/* Right: search + actions */}
-          <SearchInline />
-
-          <div className="flex items-center gap-0.5">
-            <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-              title="Authenticator (2FA)"
-              onClick={() => setTotpOpen(true)}
-            >
-              <HugeiconsIcon icon={Timer01Icon} size={14} strokeWidth={1.75} />
-              <TotpBadge />
-            </Button>
-            <button
-              ref={clipboardButtonRef}
-              type="button"
-              aria-label="Clipboard history"
-              title="Clipboard history"
-              onClick={() => setClipboardOpen((v) => !v)}
-              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <HugeiconsIcon icon={ClipboardIcon} size={16} strokeWidth={1.75} />
-            </button>
-
-            {prefs.aiEnabled && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
-                )}
-                title="Toggle AI composer (Ctrl+Shift+L)"
-                onClick={() => toggleComposer()}
-              >
-                <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
-              </Button>
-            )}
-            <Button
-              size="icon"
-              className={cn(
-                "size-6 shrink-0 rounded-md",
-                activeKind === "settings"
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-              title="Settings"
-              onClick={openSettings}
-            >
-              <HugeiconsIcon icon={Settings01Icon} size={15} strokeWidth={1.75} />
-            </Button>
-          </div>
-
-          {USE_CUSTOM_WINDOW_CONTROLS && (
-            <>
-              <span className="ml-1 h-5 w-px shrink-0 bg-border" />
-              <WindowControls />
-            </>
-          )}
-        </header>
-
+          tabBarProps={{
+            termTabs: term.tabs,
+            openFiles,
+            active,
+            onSelectTerm: selectTerm,
+            onSelectFile: selectFile,
+            onCloseTerm: term.closeTab,
+            onCloseFile: closeFile,
+            onNewTerm: term.addTab,
+            onRenameTerm: term.renameTab,
+            onSetTabColor: term.setTabColor,
+            onPinTerm: term.pinTab,
+            onUnpinTerm: term.unpinTab,
+            onPinFile: pinFile,
+            onUnpinFile: unpinFile,
+            onMoveTerm: term.moveTab,
+            onMoveFile: moveFile,
+            settingsOpen,
+            onSelectSettings: () => setActiveKind("settings"),
+            onCloseSettings: closeSettings,
+            onSelectAi: () => setActiveKind("ai"),
+            onPinAi: () => setPrefs({ aiTabPinned: true }),
+            onUnpinAi: () => setPrefs({ aiTabPinned: false }),
+            onSetAiTabColor: (color) => setPrefs({ aiTabColor: color }),
+            aiPinned: prefs.aiTabPinned,
+            aiColor: prefs.aiTabColor,
+            animationsEnabled: prefs.animationsEnabled,
+          }}
+          clipboardButtonRef={clipboardButtonRef}
+          onToggleClipboard={() => setClipboardOpen((v) => !v)}
+          onOpenTotp={() => setTotpOpen(true)}
+          onToggleComposer={() => toggleComposer()}
+          onOpenSettings={openSettings}
+          activeKind={activeKind}
+        />
         {/* ── Path bar (cwd / breadcrumb) ────────────────────────── */}
         <div
           className="bg-background/85"
