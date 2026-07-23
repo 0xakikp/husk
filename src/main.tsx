@@ -2,7 +2,6 @@ import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import App from "./App";
-import { SettingsPage } from "./settings/SettingsPage";
 import { getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -30,6 +29,10 @@ if (getSentryEnabled()) {
   });
 }
 
+const SettingsPage = React.lazy(() =>
+  import("./settings/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+);
+
 /** Wraps the settings page with focus/blur listeners that dim the window
  *  when it loses focus — a hyprland-style inactive window treatment. */
 function SettingsWindowWrapper() {
@@ -51,7 +54,11 @@ function SettingsWindowWrapper() {
       unsubBlur?.();
     };
   }, []);
-  return <SettingsPage onClose={() => void getCurrentWindow().close()} />;
+  return (
+    <React.Suspense fallback={<div className="flex h-full items-center justify-center text-[11px] text-muted-foreground">Loading settings…</div>}>
+      <SettingsPage onClose={() => void getCurrentWindow().close()} />
+    </React.Suspense>
+  );
 }
 
 // Paint with the saved theme + mono font immediately, so either entry point

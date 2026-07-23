@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -33,11 +33,8 @@ import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
 import { FileExplorer } from "./explorer/FileExplorer";
-import { EditorArea, type OpenFile } from "./editor/EditorArea";
-import { RunbooksDialog } from "./workflows/RunbooksDialog";
-import { TotpDialog } from "./totp/TotpDialog";
+import type { OpenFile } from "./editor/EditorArea";
 import { useTotpTimer } from "./totp/useTotpTimer";
-import { SettingsPage } from "./settings/SettingsPage";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { initKeys } from "./ai/store";
@@ -47,59 +44,76 @@ import { ToastContainer, toast } from "./toast";
 import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
 import { WelcomeDialog } from "./welcome/WelcomeDialog";
-import { CommandPalette, type Command } from "./command-palette/CommandPalette";
-
-import { ToolsHubDialog } from "./tools-hub/ToolsHubDialog";
-import { ToolsHubView } from "./tools-hub/ToolsHubView";
-import { JobsDialog } from "./jobs/JobsDialog";
-import { DockerView } from "./docker/DockerView";
-import { DockerDetailPanel, type DockerResourceSelection } from "./docker/DockerDetailPanel";
-import { KubernetesView, type K8sResourceSelection } from "./kubernetes/KubernetesView";
-import { PodDetailPanel } from "./kubernetes/PodDetailPanel";
-import { ServiceDetailPanel } from "./kubernetes/ServiceDetailPanel";
-import { DeploymentDetailPanel } from "./kubernetes/DeploymentDetailPanel";
-import { IngressDetailPanel } from "./kubernetes/IngressDetailPanel";
-import {
-  ConfigMapDetailPanel,
-  SecretDetailPanel,
-  PvcDetailPanel,
-  QuotaDetailPanel,
-} from "./kubernetes/ConfigAndStoragePanels";
-import { JobDetailPanel } from "./kubernetes/JobDetailPanel";
-import { TerraformView } from "./terraform/TerraformView";
-import { TailscaleView } from "./tailscale/TailscaleView";
-import { RemotesView } from "./remotes/RemotesView";
-import { SftpView } from "./remotes/SftpView";
-import { useActiveSshHost } from "./remote/store";
-import { GithubIssuesDialog } from "./github-issues/GithubIssuesDialog";
-import { CiCdDialog } from "./ci-cd/CiCdDialog";
+import type { Command } from "./command-palette/CommandPalette";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
-import { ClipboardPanel } from "./clipboard/ClipboardPanel";
-import { ClipboardIcon } from "@hugeicons/core-free-icons";
-import { DiffDialog } from "./diff/DiffDialog";
-import { CloudSyncDialog } from "./cloud-sync/CloudSyncDialog";
 import { pickWorkspaceFolder } from "./workspace/store";
-import { SourceControlPanel } from "./git/SourceControlPanel";
-import { GitHistoryDialog } from "./git/GitHistoryDialog";
-import { GitGraphPanel } from "./git/GitGraphPanel";
-import { IssuesPanel } from "./git/IssuesPanel";
-import { ShortcutsDialog } from "./shortcuts/ShortcutsDialog";
+import { useActiveSshHost } from "./remote/store";
+import { ClipboardIcon } from "@hugeicons/core-free-icons";
 import { StatusBar } from "./statusbar/StatusBar";
-import { AiTabPanel } from "./ai/AiTabPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DialogLayer } from "./components/DialogLayer";
 import type { OpenPanelKind } from "./git/types";
 import { SuggestDialog, ExplainDialog } from "./ai/AssistDialogs";
 import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId } from "./ai/terminalContext";
 import { invoke } from "@tauri-apps/api/core";
-import { PreviewDialog } from "./preview/PreviewDialog";
 import { SidebarRail, type SidebarViewId } from "./sidebar/SidebarRail";
-import { BookmarksView } from "./bookmarks/BookmarksView";
 import { fileIconUrl } from "./explorer/iconResolver";
 import { PathBar } from "./header/PathBar";
 import type { TermTab } from "./useTerminalTabs";
-import { QuickSwitcher } from "./switcher/QuickSwitcher";
+import type { K8sResourceSelection } from "./kubernetes/KubernetesView";
+import type { DockerResourceSelection } from "./docker/DockerDetailPanel";
 import "./App.css";
+
+const EditorArea = lazy(() => import("./editor/EditorArea").then((m) => ({ default: m.EditorArea })));
+const RunbooksDialog = lazy(() => import("./workflows/RunbooksDialog").then((m) => ({ default: m.RunbooksDialog })));
+const TotpDialog = lazy(() => import("./totp/TotpDialog").then((m) => ({ default: m.TotpDialog })));
+const SettingsPage = lazy(() => import("./settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const ToolsHubDialog = lazy(() => import("./tools-hub/ToolsHubDialog").then((m) => ({ default: m.ToolsHubDialog })));
+const ToolsHubView = lazy(() => import("./tools-hub/ToolsHubView").then((m) => ({ default: m.ToolsHubView })));
+const JobsDialog = lazy(() => import("./jobs/JobsDialog").then((m) => ({ default: m.JobsDialog })));
+const DockerView = lazy(() => import("./docker/DockerView").then((m) => ({ default: m.DockerView })));
+const DockerDetailPanel = lazy(() => import("./docker/DockerDetailPanel").then((m) => ({ default: m.DockerDetailPanel })));
+const KubernetesView = lazy(() => import("./kubernetes/KubernetesView").then((m) => ({ default: m.KubernetesView })));
+const PodDetailPanel = lazy(() => import("./kubernetes/PodDetailPanel").then((m) => ({ default: m.PodDetailPanel })));
+const ServiceDetailPanel = lazy(() => import("./kubernetes/ServiceDetailPanel").then((m) => ({ default: m.ServiceDetailPanel })));
+const DeploymentDetailPanel = lazy(() => import("./kubernetes/DeploymentDetailPanel").then((m) => ({ default: m.DeploymentDetailPanel })));
+const IngressDetailPanel = lazy(() => import("./kubernetes/IngressDetailPanel").then((m) => ({ default: m.IngressDetailPanel })));
+const ConfigMapDetailPanel = lazy(() => import("./kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.ConfigMapDetailPanel })));
+const SecretDetailPanel = lazy(() => import("./kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.SecretDetailPanel })));
+const PvcDetailPanel = lazy(() => import("./kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.PvcDetailPanel })));
+const QuotaDetailPanel = lazy(() => import("./kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.QuotaDetailPanel })));
+const JobDetailPanel = lazy(() => import("./kubernetes/JobDetailPanel").then((m) => ({ default: m.JobDetailPanel })));
+const TerraformView = lazy(() => import("./terraform/TerraformView").then((m) => ({ default: m.TerraformView })));
+const TailscaleView = lazy(() => import("./tailscale/TailscaleView").then((m) => ({ default: m.TailscaleView })));
+const RemotesView = lazy(() => import("./remotes/RemotesView").then((m) => ({ default: m.RemotesView })));
+const SftpView = lazy(() => import("./remotes/SftpView").then((m) => ({ default: m.SftpView })));
+const GithubIssuesDialog = lazy(() => import("./github-issues/GithubIssuesDialog").then((m) => ({ default: m.GithubIssuesDialog })));
+const CiCdDialog = lazy(() => import("./ci-cd/CiCdDialog").then((m) => ({ default: m.CiCdDialog })));
+const ClipboardPanel = lazy(() => import("./clipboard/ClipboardPanel").then((m) => ({ default: m.ClipboardPanel })));
+const DiffDialog = lazy(() => import("./diff/DiffDialog").then((m) => ({ default: m.DiffDialog })));
+const CloudSyncDialog = lazy(() => import("./cloud-sync/CloudSyncDialog").then((m) => ({ default: m.CloudSyncDialog })));
+const SourceControlPanel = lazy(() => import("./git/SourceControlPanel").then((m) => ({ default: m.SourceControlPanel })));
+const GitHistoryDialog = lazy(() => import("./git/GitHistoryDialog").then((m) => ({ default: m.GitHistoryDialog })));
+const GitGraphPanel = lazy(() => import("./git/GitGraphPanel").then((m) => ({ default: m.GitGraphPanel })));
+const IssuesPanel = lazy(() => import("./git/IssuesPanel").then((m) => ({ default: m.IssuesPanel })));
+const ShortcutsDialog = lazy(() => import("./shortcuts/ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
+const AiTabPanel = lazy(() => import("./ai/AiTabPanel").then((m) => ({ default: m.AiTabPanel })));
+const PreviewDialog = lazy(() => import("./preview/PreviewDialog").then((m) => ({ default: m.PreviewDialog })));
+const BookmarksView = lazy(() => import("./bookmarks/BookmarksView").then((m) => ({ default: m.BookmarksView })));
+const CommandPalette = lazy(() => import("./command-palette/CommandPalette").then((m) => ({ default: m.CommandPalette })));
+const QuickSwitcher = lazy(() => import("./switcher/QuickSwitcher").then((m) => ({ default: m.QuickSwitcher })));
+
+function PanelLoading({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="flex h-full min-h-[90px] items-center justify-center text-[11px] text-muted-foreground">
+      {label}
+    </div>
+  );
+}
+
+function lazyPanel(node: React.ReactNode, label?: string) {
+  return <Suspense fallback={<PanelLoading label={label} />}>{node}</Suspense>;
+}
 
 /* ── Header helpers ─────────────────────────────────────────────────────── */
 
@@ -1963,53 +1977,68 @@ function App() {
                       <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
                     </div>
                   ) : sidebarView === "source-control" ? (
-                    <SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />
+                    lazyPanel(<SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />, "Source Control")
                   ) : sidebarView === "remotes" ? (
-                    <RemotesView
-                      inline
-                      onSftp={(h) => openSftp(h)}
-                    />
+                    lazyPanel(
+                      <RemotesView
+                        inline
+                        onSftp={(h) => openSftp(h)}
+                      />,
+                      "Remotes",
+                    )
                   ) : sidebarView === "workflows" ? (
-                    <RunbooksDialog inline />
+                    lazyPanel(<RunbooksDialog inline />, "Workflows")
                   ) : sidebarView === "tools-hub" ? (
-                    <ToolsHubView onSelectView={(v) => persistSidebarView(v)} />
+                    lazyPanel(<ToolsHubView onSelectView={(v) => persistSidebarView(v)} />, "Integrations")
                   ) : sidebarView === "kubernetes" ? (
-                    <KubernetesView
-                      inline
-                      onInspectResource={(sel) => setSelectedK8sResource(sel)}
-                    />
+                    lazyPanel(
+                      <KubernetesView
+                        inline
+                        onInspectResource={(sel) => setSelectedK8sResource(sel)}
+                      />,
+                      "Kubernetes",
+                    )
                   ) : sidebarView === "ci-cd" ? (
-                    <CiCdDialog inline />
+                    lazyPanel(<CiCdDialog inline />, "CI/CD")
                   ) : sidebarView === "terraform" ? (
-                    <TerraformView inline />
+                    lazyPanel(<TerraformView inline />, "Terraform")
                   ) : sidebarView === "docker" ? (
-                    <DockerView
-                      inline
-                      onInspectResource={(sel) => setSelectedDockerResource(sel)}
-                    />
+                    lazyPanel(
+                      <DockerView
+                        inline
+                        onInspectResource={(sel) => setSelectedDockerResource(sel)}
+                      />,
+                      "Docker",
+                    )
                   ) : sidebarView === "tailscale" ? (
-                    <TailscaleView
-                      inline
-                      onConnect={(device) => {
-                        const sshUser = device.user || "root";
-                        const cmd = `ssh ${sshUser}@${device.ipv4}`;
-                        typeInActiveTerminal(cmd);
-                      }}
-                    />
+                    lazyPanel(
+                      <TailscaleView
+                        inline
+                        onConnect={(device) => {
+                          const sshUser = device.user || "root";
+                          const cmd = `ssh ${sshUser}@${device.ipv4}`;
+                          typeInActiveTerminal(cmd);
+                        }}
+                      />,
+                      "Tailscale",
+                    )
                   ) : sidebarView === "vault" ? (
-                    <BookmarksView
-                      inline
-                      onTypeCommand={(cmd) => {
-                        typeInActiveTerminal(cmd);
-                      }}
-                      onOpenFile={(path) => {
-                        const name = path.split("/").pop() || path;
-                        openFile(path, name);
-                      }}
-                      onOpenDirectory={(path) => {
-                        typeInActiveTerminal(`cd "${path}"`);
-                      }}
-                    />
+                    lazyPanel(
+                      <BookmarksView
+                        inline
+                        onTypeCommand={(cmd) => {
+                          typeInActiveTerminal(cmd);
+                        }}
+                        onOpenFile={(path) => {
+                          const name = path.split("/").pop() || path;
+                          openFile(path, name);
+                        }}
+                        onOpenDirectory={(path) => {
+                          typeInActiveTerminal(`cd "${path}"`);
+                        }}
+                      />,
+                      "Vault",
+                    )
                   ) : null}
                 </div>
                 <SidebarRail
@@ -2107,7 +2136,7 @@ function App() {
                   aria-hidden={!selectedK8sResource}
                 >
                   <ErrorBoundary>
-                    <K8sResourceDetailPanel selection={selectedK8sResource} onClose={() => setSelectedK8sResource(null)} />
+                    {lazyPanel(<K8sResourceDetailPanel selection={selectedK8sResource} onClose={() => setSelectedK8sResource(null)} />, "Kubernetes")}
                   </ErrorBoundary>
                 </div>
               )}
@@ -2122,14 +2151,17 @@ function App() {
                   aria-hidden={!selectedDockerResource}
                 >
                   <ErrorBoundary>
-                    <DockerDetailPanel
-                      selection={selectedDockerResource}
-                      onClose={() => setSelectedDockerResource(null)}
-                      onAction={async (fn, label) => {
-                        await fn();
-                        toast({ title: label, variant: "success" });
-                      }}
-                    />
+                    {lazyPanel(
+                      <DockerDetailPanel
+                        selection={selectedDockerResource}
+                        onClose={() => setSelectedDockerResource(null)}
+                        onAction={async (fn, label) => {
+                          await fn();
+                          toast({ title: label, variant: "success" });
+                        }}
+                      />,
+                      "Docker",
+                    )}
                   </ErrorBoundary>
                 </div>
               )}
@@ -2152,7 +2184,7 @@ function App() {
                 {openFiles.length > 0 ? (
                   <div className={cn("flex h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
                     <div className="flex-1 overflow-hidden">
-                      <EditorArea files={openFiles} activePath={activeFile} />
+                      {lazyPanel(<EditorArea files={openFiles} activePath={activeFile} />, "Editor")}
                     </div>
                     {prefs.panelGaps > 0 && (
                       <div
@@ -2185,7 +2217,7 @@ function App() {
                   aria-hidden={activeKind !== "ai"}
                 >
                   <ErrorBoundary>
-                    <AiTabPanel />
+                    {lazyPanel(<AiTabPanel />, "Husk AI")}
                   </ErrorBoundary>
                 </div>
               )}
@@ -2205,7 +2237,7 @@ function App() {
                   )}
                   aria-hidden={activeKind !== "settings"}
                 >
-                  <SettingsPage onClose={closeSettings} />
+                  {lazyPanel(<SettingsPage onClose={closeSettings} />, "Settings")}
                 </div>
               ) : null}
               {/* Git Graph layer */}
@@ -2219,7 +2251,7 @@ function App() {
                   aria-hidden={activeKind !== "git-graph"}
                 >
                   <ErrorBoundary>
-                    <GitGraphPanel onClose={closeGitGraph} />
+                    {lazyPanel(<GitGraphPanel onClose={closeGitGraph} />, "Git Graph")}
                   </ErrorBoundary>
                 </div>
               )}
@@ -2234,7 +2266,7 @@ function App() {
                   aria-hidden={activeKind !== "issues"}
                 >
                   <ErrorBoundary>
-                    <IssuesPanel onClose={closeIssues} />
+                    {lazyPanel(<IssuesPanel onClose={closeIssues} />, "Issues")}
                   </ErrorBoundary>
                 </div>
               )}
@@ -2251,7 +2283,7 @@ function App() {
                     aria-hidden={term.activeId !== tab.id || activeKind !== "sftp"}
                   >
                     <ErrorBoundary>
-                      <SftpView host={tab.sftpHost!} onClose={closeSftp} />
+                      {lazyPanel(<SftpView host={tab.sftpHost!} onClose={closeSftp} />, "SFTP")}
                     </ErrorBoundary>
                   </div>
                 ) : null
@@ -2274,14 +2306,14 @@ function App() {
 
         {/* ── Floating overlays ──────────────────────────────────── */}
         <DialogLayer open={gitHistoryOpen}>
-          <GitHistoryDialog onClose={() => setGitHistoryOpen(false)} />
+          {lazyPanel(<GitHistoryDialog onClose={() => setGitHistoryOpen(false)} />, "Git History")}
         </DialogLayer>
         <DialogLayer open={shortcutsOpen}>
-          <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+          {lazyPanel(<ShortcutsDialog onClose={() => setShortcutsOpen(false)} />, "Shortcuts")}
         </DialogLayer>
-        {totpOpen && <TotpDialog onClose={() => setTotpOpen(false)} variant="dropdown" />}
+        {totpOpen && lazyPanel(<TotpDialog onClose={() => setTotpOpen(false)} variant="dropdown" />, "Authenticator")}
         <DialogLayer open={jobsOpen}>
-          <JobsDialog onClose={() => setJobsOpen(false)} />
+          {lazyPanel(<JobsDialog onClose={() => setJobsOpen(false)} />, "Jobs")}
         </DialogLayer>
         <DialogLayer open={prefs.aiEnabled && suggestOpen}>
           <SuggestDialog onClose={() => setSuggestOpen(false)} />
@@ -2297,54 +2329,59 @@ function App() {
           )}
         </DialogLayer>
         <DialogLayer open={dockerOpen}>
-          <DockerView onClose={() => setDockerOpen(false)} />
+          {lazyPanel(<DockerView onClose={() => setDockerOpen(false)} />, "Docker")}
         </DialogLayer>
         <DialogLayer open={k8sOpen}>
-          <KubernetesView onClose={() => setK8sOpen(false)} onInspectResource={(sel) => setSelectedK8sResource(sel)} />
+          {lazyPanel(<KubernetesView onClose={() => setK8sOpen(false)} onInspectResource={(sel) => setSelectedK8sResource(sel)} />, "Kubernetes")}
         </DialogLayer>
         <DialogLayer open={terraformOpen}>
-          <TerraformView onClose={() => setTerraformOpen(false)} />
+          {lazyPanel(<TerraformView onClose={() => setTerraformOpen(false)} />, "Terraform")}
         </DialogLayer>
         <DialogLayer open={githubOpen}>
-          <GithubIssuesDialog onClose={() => setGithubOpen(false)} />
+          {lazyPanel(<GithubIssuesDialog onClose={() => setGithubOpen(false)} />, "GitHub Issues")}
         </DialogLayer>
         <DialogLayer open={cicdOpen}>
-          <CiCdDialog onClose={() => setCicdOpen(false)} />
+          {lazyPanel(<CiCdDialog onClose={() => setCicdOpen(false)} />, "CI/CD")}
         </DialogLayer>
         <DialogLayer open={toolsOpen}>
-          <ToolsHubDialog onClose={() => setToolsOpen(false)} />
+          {lazyPanel(<ToolsHubDialog onClose={() => setToolsOpen(false)} />, "Integrations")}
         </DialogLayer>
         <DialogLayer open={diffOpen}>
-          {diffOpen && (
+          {diffOpen && lazyPanel(
             <DiffDialog
               initialLeft={diffPaths?.left}
               initialRight={diffPaths?.right}
               onClose={() => setDiffOpen(false)}
-            />
+            />,
+            "Diff",
           )}
         </DialogLayer>
         <DialogLayer open={previewOpen}>
-          {previewOpen && (
-            <PreviewDialog initialPath={previewPath} onClose={() => setPreviewOpen(false)} />
+          {previewOpen && lazyPanel(
+            <PreviewDialog initialPath={previewPath} onClose={() => setPreviewOpen(false)} />,
+            "Preview",
           )}
         </DialogLayer>
         <DialogLayer open={cloudSyncOpen}>
-          {cloudSyncOpen && (
-            <CloudSyncDialog open={cloudSyncOpen} onClose={() => setCloudSyncOpen(false)} />
+          {cloudSyncOpen && lazyPanel(
+            <CloudSyncDialog open={cloudSyncOpen} onClose={() => setCloudSyncOpen(false)} />,
+            "Cloud Sync",
           )}
         </DialogLayer>
         {!prefs.hasSeenWelcome ? <WelcomeDialog /> : null}
-        {paletteOpen && (
-          <CommandPalette open commands={commands} onClose={() => setPaletteOpen(false)} />
+        {paletteOpen && lazyPanel(
+          <CommandPalette open commands={commands} onClose={() => setPaletteOpen(false)} />,
+          "Command Palette",
         )}
-        {clipboardOpen && (
+        {clipboardOpen && lazyPanel(
           <ClipboardPanel
             onClose={() => setClipboardOpen(false)}
             anchorRef={clipboardButtonRef}
-          />
+          />,
+          "Clipboard",
         )}
         <DialogLayer open={switcherOpen}>
-          {switcherOpen && (
+          {switcherOpen && lazyPanel(
             <QuickSwitcher
               open={switcherOpen}
               term={term}
@@ -2357,7 +2394,8 @@ function App() {
                 else openSettings();
               }}
               onClose={() => setSwitcherOpen(false)}
-            />
+            />,
+            "Quick Switcher",
           )}
         </DialogLayer>
         <ToastContainer />
