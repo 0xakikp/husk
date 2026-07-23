@@ -625,11 +625,11 @@ export function NotesView({
                 <HugeiconsIcon icon={Clock01Icon} size={8} />
                 Recent
               </div>
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-0.5 border-l-2 border-amber-400/60 pl-1.5">
                 {recentsInfo.map((item) => (
                   <div
                     key={item.path}
-                    className="group flex items-center gap-1.5 rounded-sm border-l-2 border-l-amber-400/70 bg-transparent px-1.5 py-1 cursor-pointer transition-colors hover:bg-amber-400/[0.07]"
+                    className="group flex items-center gap-1.5 rounded-sm bg-transparent px-1 py-1 cursor-pointer transition-colors hover:bg-amber-400/[0.07]"
                     onClick={() => handleOpenNote(item.path)}
                   >
                     <img src={fileIconUrl(item.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
