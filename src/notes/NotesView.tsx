@@ -629,11 +629,11 @@ export function NotesView({
                 {recentsInfo.map((item) => (
                   <div
                     key={item.path}
-                    className="group flex items-center gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-1 hover:border-amber-500/45 hover:bg-amber-500/[0.09] cursor-pointer dark:border-amber-400/20 dark:bg-amber-400/[0.05] dark:hover:border-amber-400/40"
+                    className="group flex items-center gap-1.5 rounded-sm border-l-2 border-l-amber-400/70 bg-transparent px-1.5 py-1 cursor-pointer transition-colors hover:bg-amber-400/[0.07]"
                     onClick={() => handleOpenNote(item.path)}
                   >
                     <img src={fileIconUrl(item.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
-                    <span className="flex-1 min-w-0 truncate text-[11px] text-foreground">{item.name}</span>
+                    <span className="flex-1 min-w-0 truncate text-[11px] text-foreground/90 transition-colors group-hover:text-amber-300">{item.name}</span>
                     <button
                       type="button"
                       onClick={(e) => {
