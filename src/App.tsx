@@ -1,14 +1,13 @@
-import { lazy, useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
-import { TerminalStack } from "./TerminalStack";
 import { TabBar } from "./shell/TabBar";
 import { DialogHost } from "./shell/DialogHost";
-import { TerminalBottomBar } from "./terminal/TerminalBottomBar";
-import { TerminalAiComposer, tabSessionId } from "./terminal/TerminalAiComposer";
-import { runInActiveTerminal, typeInActiveTerminal } from "./ai/terminalContext";
+import { SidebarHost } from "./shell/SidebarHost";
+import { WorkspacePanels } from "./shell/WorkspacePanels";
+import { typeInActiveTerminal } from "./ai/terminalContext";
 import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -21,7 +20,6 @@ import {
   Sun03Icon,
   Settings01Icon,
   Cancel01Icon,
-  PencilEdit02Icon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { openBubble, toggleComposer, sendToComposer } from "./ai/bubbleStore";
@@ -30,7 +28,6 @@ import { getEditorSelection, getEditorFile, closeEditorFindWidget } from "./ai/e
 import { AiSessionsPanel } from "./ai/AiSessionsPanel";
 import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
-import { FileExplorer } from "./explorer/FileExplorer";
 import type { OpenFile } from "./editor/EditorArea";
 import { useTotpTimer } from "./totp/useTotpTimer";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
@@ -47,44 +44,15 @@ import { pickWorkspaceFolder } from "./workspace/store";
 import { useActiveSshHost } from "./remote/store";
 import { ClipboardIcon } from "@hugeicons/core-free-icons";
 import { StatusBar } from "./statusbar/StatusBar";
-import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { OpenPanelKind } from "./git/types";
 import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId } from "./ai/terminalContext";
 import { invoke } from "@tauri-apps/api/core";
-import { SidebarRail, type SidebarViewId } from "./sidebar/SidebarRail";
+import type { SidebarViewId } from "./sidebar/SidebarRail";
 import { PathBar } from "./header/PathBar";
-import type { ActiveTab } from "./shell/types";
-import { lazyPanel } from "./shell/lazy";
+import type { ActiveTab, ActiveKind } from "./shell/types";
 import type { K8sResourceSelection } from "./kubernetes/KubernetesView";
 import type { DockerResourceSelection } from "./docker/DockerDetailPanel";
 import "./App.css";
-
-const EditorArea = lazy(() => import("./editor/EditorArea").then((m) => ({ default: m.EditorArea })));
-const RunbooksDialog = lazy(() => import("./workflows/RunbooksDialog").then((m) => ({ default: m.RunbooksDialog })));
-const SettingsPage = lazy(() => import("./settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
-const ToolsHubView = lazy(() => import("./tools-hub/ToolsHubView").then((m) => ({ default: m.ToolsHubView })));
-const DockerView = lazy(() => import("./docker/DockerView").then((m) => ({ default: m.DockerView })));
-const DockerDetailPanel = lazy(() => import("./docker/DockerDetailPanel").then((m) => ({ default: m.DockerDetailPanel })));
-const KubernetesView = lazy(() => import("./kubernetes/KubernetesView").then((m) => ({ default: m.KubernetesView })));
-const PodDetailPanel = lazy(() => import("./kubernetes/PodDetailPanel").then((m) => ({ default: m.PodDetailPanel })));
-const ServiceDetailPanel = lazy(() => import("./kubernetes/ServiceDetailPanel").then((m) => ({ default: m.ServiceDetailPanel })));
-const DeploymentDetailPanel = lazy(() => import("./kubernetes/DeploymentDetailPanel").then((m) => ({ default: m.DeploymentDetailPanel })));
-const IngressDetailPanel = lazy(() => import("./kubernetes/IngressDetailPanel").then((m) => ({ default: m.IngressDetailPanel })));
-const ConfigMapDetailPanel = lazy(() => import("./kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.ConfigMapDetailPanel })));
-const SecretDetailPanel = lazy(() => import("./kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.SecretDetailPanel })));
-const PvcDetailPanel = lazy(() => import("./kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.PvcDetailPanel })));
-const QuotaDetailPanel = lazy(() => import("./kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.QuotaDetailPanel })));
-const JobDetailPanel = lazy(() => import("./kubernetes/JobDetailPanel").then((m) => ({ default: m.JobDetailPanel })));
-const TerraformView = lazy(() => import("./terraform/TerraformView").then((m) => ({ default: m.TerraformView })));
-const TailscaleView = lazy(() => import("./tailscale/TailscaleView").then((m) => ({ default: m.TailscaleView })));
-const RemotesView = lazy(() => import("./remotes/RemotesView").then((m) => ({ default: m.RemotesView })));
-const SftpView = lazy(() => import("./remotes/SftpView").then((m) => ({ default: m.SftpView })));
-const CiCdDialog = lazy(() => import("./ci-cd/CiCdDialog").then((m) => ({ default: m.CiCdDialog })));
-const SourceControlPanel = lazy(() => import("./git/SourceControlPanel").then((m) => ({ default: m.SourceControlPanel })));
-const GitGraphPanel = lazy(() => import("./git/GitGraphPanel").then((m) => ({ default: m.GitGraphPanel })));
-const IssuesPanel = lazy(() => import("./git/IssuesPanel").then((m) => ({ default: m.IssuesPanel })));
-const AiTabPanel = lazy(() => import("./ai/AiTabPanel").then((m) => ({ default: m.AiTabPanel })));
-const BookmarksView = lazy(() => import("./bookmarks/BookmarksView").then((m) => ({ default: m.BookmarksView })));
 
 /* ── Header helpers ─────────────────────────────────────────────────────── */
 
@@ -277,37 +245,6 @@ function readSidebarView(): SidebarViewId {
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
   } catch (e) { console.error("Failed to read sidebar view", e); }
   return "explorer";
-}
-
-function K8sResourceDetailPanel({
-  selection,
-  onClose,
-}: {
-  selection: K8sResourceSelection;
-  onClose: () => void;
-}) {
-  switch (selection.kind) {
-    case "pod":
-      return <PodDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "service":
-      return <ServiceDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "deployment":
-      return <DeploymentDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "ingress":
-      return <IngressDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "configmap":
-      return <ConfigMapDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "secret":
-      return <SecretDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "pvc":
-      return <PvcDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "quota":
-      return <QuotaDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "job":
-      return <JobDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    default:
-      return null;
-  }
 }
 
 function App() {
@@ -677,7 +614,7 @@ function App() {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const term = useTerminalTabs();
-  const [activeKind, setActiveKind] = useState<"term" | "file" | "settings" | "git-graph" | "issues" | "sftp" | "ai">("term");
+  const [activeKind, setActiveKind] = useState<ActiveKind>("term");
 
   // Close Monaco find widget when leaving the file editor tab
   useEffect(() => {
@@ -1208,346 +1145,48 @@ function App() {
           )}
           style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
         >
-          {/* Sidebar */}
-          {explorerOpen && (
-            <>
-              <div
-                className={cn(
-                  "flex flex-col border-r border-[var(--border)] overflow-hidden rounded-lg",
-                  prefs.frostedGlass && bgDataUrl
-                    ? "bg-background/50 backdrop-blur-md"
-                    : "bg-background/95",
-                  prefs.animationsEnabled && "animate-sidebar-enter",
-                  prefs.neonBorderGlow && "neon-glow",
-                  prefs.panelShadows && "panel-shadow",
-                )}
-                style={{
-                  width: explorerWidth,
-                  minWidth: SIDEBAR_MIN_WIDTH,
-                  maxWidth: SIDEBAR_MAX_WIDTH,
-                  margin: prefs.panelGaps > 0 ? `var(--panel-gaps) 0 var(--panel-gaps) var(--panel-gaps)` : undefined,
-                }}
-              >
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  {sidebarView === "explorer" ? (
-                    <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
-                    </div>
-                  ) : sidebarView === "source-control" ? (
-                    lazyPanel(<SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />, "Source Control")
-                  ) : sidebarView === "remotes" ? (
-                    lazyPanel(
-                      <RemotesView
-                        inline
-                        onSftp={(h) => openSftp(h)}
-                      />,
-                      "Remotes",
-                    )
-                  ) : sidebarView === "workflows" ? (
-                    lazyPanel(<RunbooksDialog inline />, "Workflows")
-                  ) : sidebarView === "tools-hub" ? (
-                    lazyPanel(<ToolsHubView onSelectView={(v) => persistSidebarView(v)} />, "Integrations")
-                  ) : sidebarView === "kubernetes" ? (
-                    lazyPanel(
-                      <KubernetesView
-                        inline
-                        onInspectResource={(sel) => setSelectedK8sResource(sel)}
-                      />,
-                      "Kubernetes",
-                    )
-                  ) : sidebarView === "ci-cd" ? (
-                    lazyPanel(<CiCdDialog inline />, "CI/CD")
-                  ) : sidebarView === "terraform" ? (
-                    lazyPanel(<TerraformView inline />, "Terraform")
-                  ) : sidebarView === "docker" ? (
-                    lazyPanel(
-                      <DockerView
-                        inline
-                        onInspectResource={(sel) => setSelectedDockerResource(sel)}
-                      />,
-                      "Docker",
-                    )
-                  ) : sidebarView === "tailscale" ? (
-                    lazyPanel(
-                      <TailscaleView
-                        inline
-                        onConnect={(device) => {
-                          const sshUser = device.user || "root";
-                          const cmd = `ssh ${sshUser}@${device.ipv4}`;
-                          typeInActiveTerminal(cmd);
-                        }}
-                      />,
-                      "Tailscale",
-                    )
-                  ) : sidebarView === "vault" ? (
-                    lazyPanel(
-                      <BookmarksView
-                        inline
-                        onTypeCommand={(cmd) => {
-                          typeInActiveTerminal(cmd);
-                        }}
-                        onOpenFile={(path) => {
-                          const name = path.split("/").pop() || path;
-                          openFile(path, name);
-                        }}
-                        onOpenDirectory={(path) => {
-                          typeInActiveTerminal(`cd "${path}"`);
-                        }}
-                      />,
-                      "Vault",
-                    )
-                  ) : null}
-                </div>
-                <SidebarRail
-                  view={sidebarView}
-                  onSelectView={(v) => cycleSidebarView(v)}
-                  onCommandPalette={() => setPaletteOpen(true)}
-                />
-              </div>
-              {/* Sidebar resize handle */}
-              <div
-                className={cn(
-                  "relative flex shrink-0 cursor-col-resize items-center justify-center bg-border/60 hover:bg-border",
-                  prefs.panelGaps > 0 ? "w-2" : "w-px",
-                )}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const startX = e.clientX;
-                  const startW = explorerWidth;
-                  let final = startW;
-                  const onMove = (ev: globalThis.MouseEvent) => {
-                    final = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startW + (ev.clientX - startX)));
-                    setExplorerWidth(final);
-                  };
-                  const onUp = () => {
-                    window.removeEventListener("mousemove", onMove);
-                    window.removeEventListener("mouseup", onUp);
-                    persistSidebarWidth(final);
-                  };
-                  window.addEventListener("mousemove", onMove);
-                  window.addEventListener("mouseup", onUp);
-                }}
-              />
-            </>
-          )}
-
-          {/* Workspace */}
-          <div
-            className={cn(
-              "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg",
-              prefs.panelShadows && "panel-shadow",
-              prefs.activePanelGlow && activeKind === "term" && "active-panel-glow active",
-            )}
-            style={{
-              marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
-              marginBottom: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-              marginLeft: prefs.panelGaps > 0 ? '0' : undefined,
-              marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-            }}
-          >
-            <div className="relative flex min-h-0 min-w-0 flex-1">
-              {/* Terminal layer */}
-              <div
-                className={cn(
-                  "absolute inset-0 flex flex-col",
-                  (activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null) && "invisible pointer-events-none",
-                  prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
-                )}
-                aria-hidden={activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null}
-              >
-                <div className="relative flex min-h-0 flex-1 flex-col">
-                  <ErrorBoundary
-                    fallback={
-                      <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-                        <div className="text-[13px] font-medium text-destructive">Terminal crashed</div>
-                        <div className="text-[11px] text-muted-foreground">
-                          Switch to another tab or restart the app to recover.
-                        </div>
-                      </div>
-                    }
-                  >
-                    <TerminalStack term={term} viewActive={activeKind === "term"} />
-                  </ErrorBoundary>
-                  {prefs.panelGaps > 0 && (
-                    <div
-                      className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
-                      style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
-                    />
-                  )}
-                  <TerminalAiComposer
-                    sessionId={tabSessionId(term.activeId)}
-                    onOpenInAiTab={() => setActiveKind("ai")}
-                    registerSend={true}
-                  />
-                </div>
-                <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
-              </div>
-
-              {/* Kubernetes resource detail layer */}
-              {selectedK8sResource && (
-                <div
-                  className={cn(
-                    "absolute inset-0 z-10 flex flex-col",
-                    prefs.neonBorderGlow && "neon-glow",
-                  )}
-                  aria-hidden={!selectedK8sResource}
-                >
-                  <ErrorBoundary>
-                    {lazyPanel(<K8sResourceDetailPanel selection={selectedK8sResource} onClose={() => setSelectedK8sResource(null)} />, "Kubernetes")}
-                  </ErrorBoundary>
-                </div>
-              )}
-
-              {/* Docker resource detail layer */}
-              {selectedDockerResource && (
-                <div
-                  className={cn(
-                    "absolute inset-0 z-10 flex flex-col",
-                    prefs.neonBorderGlow && "neon-glow",
-                  )}
-                  aria-hidden={!selectedDockerResource}
-                >
-                  <ErrorBoundary>
-                    {lazyPanel(
-                      <DockerDetailPanel
-                        selection={selectedDockerResource}
-                        onClose={() => setSelectedDockerResource(null)}
-                        onAction={async (fn, label) => {
-                          await fn();
-                          toast({ title: label, variant: "success" });
-                        }}
-                      />,
-                      "Docker",
-                    )}
-                  </ErrorBoundary>
-                </div>
-              )}
-
-              {/* Editor + AI pane row — AI panel overlays editor so nothing
-                  resizes when the panel toggles.  No flex/grid reflow, no
-                  Monaco automaticLayout slide. */}
-              <div
-                className={cn(
-                  "relative min-h-0 min-w-0 flex-1",
-                  activeKind !== "file" && "invisible pointer-events-none",
-                  prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
-                )}
-                style={{
-                  padding: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
-                }}
-                aria-hidden={activeKind !== "file"}
-              >
-                {/* Editor layer */}
-                {openFiles.length > 0 ? (
-                  <div className={cn("flex h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
-                    <div className="flex-1 overflow-hidden">
-                      {lazyPanel(<EditorArea files={openFiles} activePath={activeFile} />, "Editor")}
-                    </div>
-                    {prefs.panelGaps > 0 && (
-                      <div
-                        className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
-                        style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
-                      />
-                    )}
-                    <TerminalAiComposer
-                      sessionId={tabSessionId(term.activeId)}
-                      onOpenInAiTab={() => setActiveKind("ai")}
-                      className="composer-editor"
-                    />
-                  </div>
-                ) : (
-                  <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
-                    <HugeiconsIcon icon={PencilEdit02Icon} size={32} strokeWidth={1.5} className="opacity-40" />
-                    <p className="text-sm font-medium">No files open</p>
-                    <p className="text-xs opacity-60">Open a file from the sidebar or press Ctrl+O</p>
-                  </div>
-                )}
-              </div>
-
-              {/* AI layer */}
-              {activeKind === "ai" && (
-                <div
-                  className={cn(
-                    "absolute inset-0 z-10",
-                    prefs.neonBorderGlow && "neon-glow",
-                  )}
-                  aria-hidden={activeKind !== "ai"}
-                >
-                  <ErrorBoundary>
-                    {lazyPanel(<AiTabPanel />, "Husk AI")}
-                  </ErrorBoundary>
-                </div>
-              )}
-
-              {/* Settings layer */}
-              {settingsOpen ? (
-                <div
-                  className={cn(
-                    "absolute inset-0",
-                    prefs.frostedGlass && bgDataUrl
-                      ? "bg-background/80 backdrop-blur-xl"
-                      : "bg-background/95",
-                    activeKind !== "settings" && "invisible pointer-events-none",
-                    prefs.animationsEnabled && "transition-all duration-200 ease-out",
-                    activeKind !== "settings" && prefs.animationsEnabled && "scale-95 opacity-0",
-                    prefs.neonBorderGlow && activeKind === "settings" && "neon-glow",
-                  )}
-                  aria-hidden={activeKind !== "settings"}
-                >
-                  {lazyPanel(<SettingsPage onClose={closeSettings} />, "Settings")}
-                </div>
-              ) : null}
-              {/* Git Graph layer */}
-              {openPanel === "git-graph" && (
-                <div
-                  className={cn(
-                    "absolute inset-0",
-                    activeKind !== "git-graph" && "invisible pointer-events-none",
-                    prefs.neonBorderGlow && activeKind === "git-graph" && "neon-glow",
-                  )}
-                  aria-hidden={activeKind !== "git-graph"}
-                >
-                  <ErrorBoundary>
-                    {lazyPanel(<GitGraphPanel onClose={closeGitGraph} />, "Git Graph")}
-                  </ErrorBoundary>
-                </div>
-              )}
-              {/* Issues layer */}
-              {openPanel === "issues" && (
-                <div
-                  className={cn(
-                    "absolute inset-0",
-                    activeKind !== "issues" && "invisible pointer-events-none",
-                    prefs.neonBorderGlow && activeKind === "issues" && "neon-glow",
-                  )}
-                  aria-hidden={activeKind !== "issues"}
-                >
-                  <ErrorBoundary>
-                    {lazyPanel(<IssuesPanel onClose={closeIssues} />, "Issues")}
-                  </ErrorBoundary>
-                </div>
-              )}
-              {/* SFTP layers — one per tab, only active one visible */}
-              {term.tabs.map((tab) =>
-                tab.sftpHost ? (
-                  <div
-                    key={tab.id}
-                    className={cn(
-                      "absolute inset-0",
-                      (term.activeId !== tab.id || activeKind !== "sftp") && "invisible pointer-events-none",
-                      prefs.neonBorderGlow && term.activeId === tab.id && activeKind === "sftp" && "neon-glow",
-                    )}
-                    aria-hidden={term.activeId !== tab.id || activeKind !== "sftp"}
-                  >
-                    <ErrorBoundary>
-                      {lazyPanel(<SftpView host={tab.sftpHost!} onClose={closeSftp} />, "SFTP")}
-                    </ErrorBoundary>
-                  </div>
-                ) : null
-              )}
-            </div>
-          </div>
-
+          <SidebarHost
+            explorerOpen={explorerOpen}
+            explorerWidth={explorerWidth}
+            sidebarView={sidebarView}
+            prefs={prefs}
+            bgDataUrl={bgDataUrl}
+            activeFile={activeFile}
+            remoteHost={remoteHost}
+            openFile={openFile}
+            openGitGraph={openGitGraph}
+            openIssues={openIssues}
+            openSftp={openSftp}
+            setSelectedK8sResource={setSelectedK8sResource}
+            setSelectedDockerResource={setSelectedDockerResource}
+            persistSidebarView={persistSidebarView}
+            cycleSidebarView={cycleSidebarView}
+            setPaletteOpen={setPaletteOpen}
+            setExplorerWidth={setExplorerWidth}
+            persistSidebarWidth={persistSidebarWidth}
+            sidebarMinWidth={SIDEBAR_MIN_WIDTH}
+            sidebarMaxWidth={SIDEBAR_MAX_WIDTH}
+            typeInActiveTerminal={typeInActiveTerminal}
+          />
+          <WorkspacePanels
+            term={term}
+            activeKind={activeKind}
+            setActiveKind={setActiveKind}
+            selectedK8sResource={selectedK8sResource}
+            setSelectedK8sResource={setSelectedK8sResource}
+            selectedDockerResource={selectedDockerResource}
+            setSelectedDockerResource={setSelectedDockerResource}
+            prefs={prefs}
+            bgDataUrl={bgDataUrl}
+            openFiles={openFiles}
+            activeFile={activeFile}
+            settingsOpen={settingsOpen}
+            openPanel={openPanel}
+            closeSettings={closeSettings}
+            closeGitGraph={closeGitGraph}
+            closeIssues={closeIssues}
+            closeSftp={closeSftp}
+          />
         </main>
 
         {/* ── Status bar ─────────────────────────────────────────── */}
