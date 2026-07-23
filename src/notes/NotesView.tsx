@@ -371,7 +371,13 @@ export function NotesView({
 
   const renderNode = (node: FileNode, depth: number) => {
     const isExpanded = expanded.has(node.path) || node.expanded;
-    const paddingLeft = depth * 12 + 4;
+    const indentGuides = depth > 0 ? (
+      <span className="flex shrink-0 self-stretch" style={{ width: `${depth * 12}px` }} aria-hidden="true">
+        {Array.from({ length: depth }).map((_, i) => (
+          <span key={i} className="h-full w-3 border-l border-muted-foreground/25" />
+        ))}
+      </span>
+    ) : null;
 
     return (
       <div key={node.path}>
@@ -380,8 +386,9 @@ export function NotesView({
             "group flex items-center gap-1 rounded-md py-1 pr-1 transition-colors hover:bg-muted/30",
             editingFile === node.path && "bg-muted/40"
           )}
-          style={{ paddingLeft: `${paddingLeft}px` }}
+          style={{ paddingLeft: "4px" }}
         >
+          {indentGuides}
           {node.isDirectory ? (
             <button
               type="button"
