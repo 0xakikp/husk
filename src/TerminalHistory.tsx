@@ -51,10 +51,6 @@ function highlightText(text: string, matches: number[]): React.ReactNode[] {
   return parts;
 }
 
-
-
-
-
 interface ScoredEntry {
   command: string;
   matchIndices: number[];
@@ -148,6 +144,96 @@ function computeScore(
   return null;
 }
 
+type CommandType =
+  | "comment"
+  | "git"
+  | "ssh"
+  | "fs"
+  | "pkg"
+  | "docker"
+  | "cargo"
+  | "python"
+  | "node"
+  | "default";
+
+function getCommandType(cmd: string): CommandType {
+  const trimmed = cmd.trimStart();
+  if (trimmed.startsWith("#")) return "comment";
+  const first = trimmed.split(/\s+/)[0].toLowerCase();
+  if (["git", "gh"].includes(first)) return "git";
+  if (["ssh", "scp", "sftp"].includes(first)) return "ssh";
+  if (["cd", "ls", "pwd", "mkdir", "rm", "cp", "mv", "find", "cat", "less", "touch"].includes(first)) return "fs";
+  if (["pnpm", "npm", "yarn", "bun"].includes(first)) return "pkg";
+  if (first === "docker") return "docker";
+  if (first === "cargo") return "cargo";
+  if (["python", "python3", "py"].includes(first)) return "python";
+  if (first === "node") return "node";
+  return "default";
+}
+
+const ICONS: Record<CommandType, React.ReactNode> = {
+  comment: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 17h10M7 12h10M7 7h10" />
+    </svg>
+  ),
+  git: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M6 9v6" />
+      <path d="M9 6a3 3 0 0 1 3-3h0a3 3 0 0 1 3 3v12a3 3 0 0 0 3 3h0a3 3 0 0 0 3-3" />
+    </svg>
+  ),
+  ssh: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  ),
+  fs: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  ),
+  pkg: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m7.5 4.27 9 5.15M21 8.24v7.52M3 8.24v7.52m9 5.27-9-5.15M12 21.11V12" />
+      <path d="M12 12 3 6.89 7.5 4.27 16.5 9.42 12 12z" />
+    </svg>
+  ),
+  docker: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 10h12M4 14h12M4 18h8M8 6h4" />
+      <rect x="2" y="10" width="20" height="8" rx="2" />
+    </svg>
+  ),
+  cargo: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  ),
+  python: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a5 5 0 0 1 5 5v2a5 5 0 0 1-5 5H9a5 5 0 0 0-5 5v2" />
+      <path d="M12 22a5 5 0 0 1-5-5v-2a5 5 0 0 1 5-5h3a5 5 0 0 0 5-5V3" />
+    </svg>
+  ),
+  node: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2 2 7v10l10 5 10-5V7l-10-5z" />
+      <path d="M12 22V12" />
+      <path d="m12 12-7-3.5" />
+      <path d="m12 12 7-3.5" />
+    </svg>
+  ),
+  default: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  ),
+};
+
 /**
  * Reverse-history picker (Ctrl+R): a filterable list of the shell's past
  * commands. Up/Down to move, Enter to drop the command at the prompt, Esc to
@@ -171,6 +257,7 @@ export function TerminalHistoryPanel({
   const [index, setIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Use user's chosen terminal font + size so the panel feels native
   const prefs = getPrefs();
@@ -269,39 +356,68 @@ export function TerminalHistoryPanel({
         ref={panelRef}
         style={{ fontFamily, fontSize: `${fontSize}px` }}
       >
+        <div className="term-hist-top-accent" />
         <div className="term-hist-header">
           <span className="term-hist-title">
-            <span style={{ color: 'var(--accent)', marginRight: 4 }}>❯</span>
+            <svg className="term-hist-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v5h5" />
+              <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
+              <path d="M12 7v5l4 2" />
+            </svg>
             History
           </span>
           <span className="term-hist-hint">Ctrl+R</span>
         </div>
-        <input
-          autoFocus
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          className="term-hist-input"
-          value={query}
-          placeholder={loading ? "Loading history…" : "Search history…"}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown" || (e.ctrlKey && e.key.toLowerCase() === "r")) {
-              e.preventDefault();
-              setIndex((i) => Math.min(Math.max(scored.length - 1, 0), i + 1));
-            } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key.toLowerCase() === "p")) {
-              e.preventDefault();
-              setIndex((i) => Math.max(0, i - 1));
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              choose(index);
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              onClose();
-            }
-          }}
-        />
+
+        <div className="term-hist-input-wrap">
+          <svg className="term-hist-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            ref={inputRef}
+            autoFocus
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            className="term-hist-input"
+            value={query}
+            placeholder={loading ? "Loading history…" : "Search history…"}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown" || (e.ctrlKey && e.key.toLowerCase() === "r")) {
+                e.preventDefault();
+                setIndex((i) => Math.min(Math.max(scored.length - 1, 0), i + 1));
+              } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key.toLowerCase() === "p")) {
+                e.preventDefault();
+                setIndex((i) => Math.max(0, i - 1));
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                choose(index);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+              }
+            }}
+          />
+          {query.length > 0 && (
+            <button
+              type="button"
+              className="term-hist-input-clear"
+              onClick={() => {
+                setQuery("");
+                inputRef.current?.focus();
+              }}
+              aria-label="Clear search"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
         <div className="term-hist-list" ref={listRef}>
           {scored.length === 0 ? (
             <div className="term-hist-empty">
@@ -312,15 +428,27 @@ export function TerminalHistoryPanel({
               const matchType =
                 score < 100 ? "prefix" : score < 200 ? "word" : score < 1000 ? "exact" : "fuzzy";
               const hasQuery = query.trim().length > 0;
+              const type = getCommandType(command);
+              const isComment = type === "comment";
               return (
                 <button
                   key={`${i}-${command}`}
                   type="button"
-                  className={`term-hist-item${i === index ? " active" : ""}${!hasQuery && i % 2 === 1 ? " alt" : ""}${matchType === "prefix" ? " prefix-match" : matchType === "word" ? " word-match" : ""}`}
+                  className={[
+                    "term-hist-item",
+                    i === index ? "active" : "",
+                    !hasQuery && i % 2 === 1 ? "alt" : "",
+                    matchType === "prefix" ? "prefix-match" : matchType === "word" ? "word-match" : "",
+                    isComment ? "comment" : "",
+                    `type-${type}`,
+                  ].join(" ")}
                   onMouseEnter={() => setIndex(i)}
                   onClick={() => choose(i)}
                   title={command} /* full text on hover */
                 >
+                  <span className="term-hist-item-icon" aria-hidden="true">
+                    {ICONS[type]}
+                  </span>
                   <span className="term-hist-command">
                     {matchIndices.length > 0
                       ? highlightText(command, matchIndices)
@@ -337,16 +465,20 @@ export function TerminalHistoryPanel({
           )}
         </div>
         <div className="term-hist-footer">
-          <span>
+          <span className="term-hist-footer-count">
             {scored.length > 0
               ? `${scored.length}${entries.length > 20 ? "+" : ""} result${scored.length === 1 ? "" : "s"}`
               : query.trim()
                 ? "0 results"
                 : ""}
           </span>
-          {scored.length > 0 && index >= 0 && (
-            <span>{`${index + 1} / ${scored.length}`}</span>
-          )}
+          <span className="term-hist-footer-hints">
+            <kbd>↑↓</kbd> navigate
+            <span className="term-hist-footer-divider" />
+            <kbd>↵</kbd> run
+            <span className="term-hist-footer-divider" />
+            <kbd>Esc</kbd> close
+          </span>
         </div>
       </div>
     </>

@@ -417,12 +417,15 @@ button {
    Terminal History Panel (Ctrl+R) — styled to match Husk's design tokens
    ═══════════════════════════════════════════════════════════════════════ */
 
+/* ── Terminal history picker (Ctrl+R) ─────────────────────────────────── */
+
 .term-hist-backdrop {
   position: fixed;
   inset: 0;
   z-index: 99;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.45);
   cursor: default;
+  backdrop-filter: blur(2px);
 }
 
 .term-hist {
@@ -435,24 +438,39 @@ button {
   z-index: 100;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.98);
-  color: #ffffff;
+  background: rgba(8, 8, 8, 0.98);
+  color: var(--text, #e5e5e5);
   font-family: inherit;
   font-size: calc(var(--terminal-font-size, 14px) + 1px);
   line-height: 1.45;
-  padding: 8px 12px 6px 12px;
+  padding: 8px 10px 6px 10px;
   overflow: hidden;
-  border: 1px solid #1a1a1a;
-  border-radius: 10px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.95);
-  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 24px 64px rgba(0, 0, 0, 0.85),
+    0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+}
+
+.term-hist-top-accent {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent, #11c700) 20%, var(--accent, #11c700) 80%, transparent);
+  opacity: 0.7;
+  border-radius: 0 0 2px 2px;
+  pointer-events: none;
 }
 
 .term-hist-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 0 2px 0;
+  padding: 2px 4px 6px 4px;
   margin-bottom: 2px;
   flex-shrink: 0;
 }
@@ -460,43 +478,105 @@ button {
 .term-hist-title {
   font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent, #11c700);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+}
+
+.term-hist-title-icon {
+  width: 11px;
+  height: 11px;
+  opacity: 0.95;
 }
 
 .term-hist-hint {
   font-size: 8px;
   color: var(--text-faint, #5a5a5a);
   letter-spacing: 0.04em;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* ── Search input with icon + clear button ── */
+.term-hist-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-bottom: 4px;
+}
+
+.term-hist-input-icon {
+  position: absolute;
+  left: 11px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint, #5a5a5a);
+  pointer-events: none;
+  transition: color 0.12s ease;
 }
 
 .term-hist-input {
   width: 100%;
   box-sizing: border-box;
-  background: #111111;
-  border: 1px solid #222222;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  color: #ffffff;
+  color: var(--text-strong, #ffffff);
   font-family: inherit;
-  font-size: 1.1em;
-  padding: 8px 12px;
-  margin-bottom: 4px;
+  font-size: 1.05em;
+  padding: 8px 32px 8px 32px;
   outline: none;
-  flex-shrink: 0;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .term-hist-input::placeholder {
-  color: #3a3a3a;
+  color: var(--text-faint, #5a5a5a);
 }
 
 .term-hist-input:focus {
-  border-color: var(--accent, #11c700);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #11c700) 20%, transparent);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-bottom-color: var(--accent, #11c700);
+  box-shadow: 0 2px 0 0 color-mix(in srgb, var(--accent, #11c700) 25%, transparent);
+}
+
+.term-hist-input-wrap:focus-within .term-hist-input-icon {
+  color: var(--accent, #11c700);
+}
+
+.term-hist-input-clear {
+  position: absolute;
+  right: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-faint, #5a5a5a);
+  cursor: pointer;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.term-hist-input-clear svg {
+  width: 12px;
+  height: 12px;
+}
+
+.term-hist-input-clear:hover {
+  color: var(--text-strong, #ffffff);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .term-hist-list {
@@ -505,7 +585,7 @@ button {
   overflow-x: hidden;
   min-height: 0;
   display: block;
-  padding: 0;
+  padding: 0 2px;
   min-width: 100%;
 }
 
@@ -516,12 +596,12 @@ button {
   text-align: left;
   border: none;
   background: transparent;
-  color: #e8e8e8;
+  color: var(--text, #c8c8c8);
   font-size: 1em;
   line-height: 1.45;
-  padding: 8px 12px 8px 10px;
-  margin: 0 0 2px 0;
-  border-radius: 8px;
+  padding: 7px 10px 7px 8px;
+  margin: 0 0 1px 0;
+  border-radius: 7px;
   border-left: 3px solid transparent;
   cursor: pointer;
   white-space: normal;
@@ -533,21 +613,62 @@ button {
 }
 
 .term-hist-item:hover {
-  background: #141414;
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-strong, #ffffff);
 }
 
 /* Alternating row tint */
 .term-hist-item.alt {
-  background: #0a0a0a;
+  background: rgba(255, 255, 255, 0.015);
 }
 
 .term-hist-item.active {
   border-left: 3px solid var(--accent, #11c700);
-  background: #132413;
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-strong, #ffffff);
   font-weight: 500;
 }
+
+/* Comment entries */
+.term-hist-item.comment {
+  color: var(--text-muted, #868686);
+  font-style: italic;
+}
+
+.term-hist-item.comment .term-hist-item-icon {
+  color: var(--text-faint, #5a5a5a);
+}
+
+.term-hist-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  margin-top: 1px;
+  color: var(--text-faint, #5a5a5a);
+  transition: color 0.08s ease;
+}
+
+.term-hist-item-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.term-hist-item:hover .term-hist-item-icon,
+.term-hist-item.active .term-hist-item-icon {
+  color: var(--text-muted, #868686);
+}
+
+/* Command type accent colors (subtle, only on icon) */
+.term-hist-item.type-git .term-hist-item-icon { color: #f472b6; }
+.term-hist-item.type-ssh .term-hist-item-icon { color: #22d3ee; }
+.term-hist-item.type-pkg .term-hist-item-icon { color: #fbbf24; }
+.term-hist-item.type-docker .term-hist-item-icon { color: #60a5fa; }
+.term-hist-item.type-python .term-hist-item-icon { color: #a78bfa; }
+.term-hist-item.type-node .term-hist-item-icon { color: #86efac; }
+.term-hist-item.type-cargo .term-hist-item-icon { color: #fca5a5; }
 
 .term-hist-command {
   display: block;
@@ -555,6 +676,7 @@ button {
   min-width: 0;
   white-space: pre-wrap;
   word-break: break-word;
+  padding-top: 1px;
 }
 
 /* ── Match highlight: subtle by default, stronger for prefix/word ── */
@@ -578,7 +700,7 @@ button {
 }
 
 .term-hist-item.active mark {
-  text-decoration-color: #4ade80;
+  color: var(--text-strong, #ffffff);
 }
 
 /* ── Badges: styled with Husk's muted tokens ── */
@@ -586,9 +708,12 @@ button {
   display: inline;
   font-size: 0.6em;
   letter-spacing: 0.3px;
-  color: #333333;
   margin-left: 8px;
   flex-shrink: 0;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 500;
 }
 
 .term-hist-match-badge.prefix {
@@ -617,14 +742,44 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 2px 0 2px;
-  border-top: 1px solid #0f0f0f;
-  font-size: 0.55em;
+  padding: 6px 4px 0 4px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.6em;
   color: var(--text-faint, #5a5a5a);
   background: transparent;
   flex-shrink: 0;
 }
 
+.term-hist-footer-count {
+  font-weight: 500;
+}
+
+.term-hist-footer-hints {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.term-hist-footer-divider {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-faint, #5a5a5a);
+  opacity: 0.5;
+}
+
+.term-hist-footer kbd {
+  font-family: inherit;
+  font-size: 0.9em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted, #868686);
+}
+
+/* Legacy helpers kept for compatibility */
 .term-hist-footer-action {
   background: transparent;
   border: none;
