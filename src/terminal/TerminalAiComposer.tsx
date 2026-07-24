@@ -1006,6 +1006,46 @@ export function TerminalAiComposer({
             const timeLabel = msg.timestamp
               ? new Date(msg.timestamp).toLocaleTimeString(undefined, { hour12: false })
               : "";
+            const isCompact =
+              codeBlocks.length === 0 &&
+              diffBlocks.length === 0 &&
+              !tree &&
+              !msg.content.includes("\n") &&
+              msg.content.trim().length <= 80;
+            if (isCompact) {
+              return (
+                <div
+                  key={i}
+                  className={cn("msg-block msg-block-compact", isUser ? "msg-block-user" : "msg-block-ai")}
+                >
+                  <span
+                    className={cn(
+                      "msg-role",
+                      isUser ? "msg-role-user" : "msg-role-ai",
+                      !isUser && activeAgent?.color && `composer-label-accent-${activeAgent.color}`
+                    )}
+                  >
+                    {isUser ? "you" : activeAgentName.toLowerCase()}
+                  </span>
+                  <span className="msg-compact-text">{msg.content}</span>
+                  {timeLabel && <span className="msg-meta">{timeLabel}</span>}
+                  <span className="msg-compact-actions">
+                    <button type="button" onClick={() => copyMessage(msg.content, i)} className="msg-act msg-act-sm">
+                      {msgCopiedIdx === i ? "✓" : "⧉"}
+                    </button>
+                    {isUser ? (
+                      <button type="button" onClick={() => editMessage(msg.content)} className="msg-act msg-act-sm">
+                        ✎
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => redoMessage(i)} className="msg-act msg-act-sm">
+                        ↻
+                      </button>
+                    )}
+                  </span>
+                </div>
+              );
+            }
             return (
               <div key={i} className={cn("msg-block", isUser ? "msg-block-user" : "msg-block-ai")}>
                 <div className="msg-block-head">

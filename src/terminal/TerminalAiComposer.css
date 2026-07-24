@@ -385,6 +385,66 @@
 .composer-message-accent-green .msg-block-ai .msg-block-body { border-left-color: #10b981; }
 .composer-message-accent-purple .msg-block-ai .msg-block-body { border-left-color: #a855f7; }
 
+/* ── Compact single-line message rows ───────────────────────────────────── */
+
+.msg-block-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-family: var(--wb-mono);
+  border-left-width: 3px;
+}
+
+.msg-block-compact.msg-block-ai {
+  border-left-color: var(--primary);
+}
+
+.msg-block-compact.msg-block-user {
+  border-left-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+}
+
+.composer-message-accent-amber .msg-block-compact.msg-block-ai { border-left-color: #f59e0b; }
+.composer-message-accent-blue .msg-block-compact.msg-block-ai { border-left-color: #3b82f6; }
+.composer-message-accent-red .msg-block-compact.msg-block-ai { border-left-color: #ef4444; }
+.composer-message-accent-green .msg-block-compact.msg-block-ai { border-left-color: #10b981; }
+.composer-message-accent-purple .msg-block-compact.msg-block-ai { border-left-color: #a855f7; }
+
+.msg-block-compact .msg-role {
+  flex-shrink: 0;
+}
+
+.msg-compact-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--foreground) 90%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-block-compact .msg-meta {
+  flex-shrink: 0;
+}
+
+.msg-compact-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.msg-block-compact:hover .msg-compact-actions {
+  opacity: 1;
+}
+
+.msg-act-sm {
+  padding: 1px 6px;
+  font-size: 9px;
+}
+
 /* ── Empty state ────────────────────────────────────────────────────────── */
 
 .composer-empty {
