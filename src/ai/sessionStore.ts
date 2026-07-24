@@ -6,6 +6,7 @@ export type AiMessage = {
   role: Role;
   content: string;
   streaming?: boolean;
+  timestamp?: number;
 };
 
 export type AiSession = {

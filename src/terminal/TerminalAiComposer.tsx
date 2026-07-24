@@ -440,8 +440,9 @@ export function TerminalAiComposer({
     abortCtrlRef.current?.abort();
     abortCtrlRef.current = new AbortController();
 
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setMessages((prev) => [...prev, { role: "assistant", content: "", streaming: true }]);
+    const now = Date.now();
+    setMessages((prev) => [...prev, { role: "user", content: text, timestamp: now }]);
+    setMessages((prev) => [...prev, { role: "assistant", content: "", streaming: true, timestamp: Date.now() }]);
 
     const cfg = loadConfig();
     const provider = getProvider(cfg.providerId);
@@ -931,10 +932,23 @@ export function TerminalAiComposer({
             const codeBlocks = isUser ? [] : parseCodeBlocks(msg.content);
             const diffBlocks = isUser ? [] : parseDiffBlocks(msg.content);
             const tree = isUser ? null : parseFileTree(msg.content);
+            const timeLabel = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
             return (
               <div key={i} className={cn("composer-message", isUser ? "composer-message-user" : "composer-message-ai")}>
-                {isUser && (
-                  <div className="composer-message-avatar" title="You">Y</div>
+                {isUser ? (
+                  <div className="composer-message-avatar composer-message-avatar-user" title="You">
+                    <HugeiconsIcon icon={CommandIcon} size={11} strokeWidth={1.75} />
+                  </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "composer-message-avatar",
+                      activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`
+                    )}
+                    title={activeAgentName}
+                  >
+                    {activeAgentIcon}
+                  </div>
                 )}
                 <div className="composer-message-body">
                   <div className="composer-message-label">
@@ -942,12 +956,14 @@ export function TerminalAiComposer({
                       <>
                         <span className="dot" />
                         <span>You</span>
+                        {timeLabel && <span className="composer-message-time">{timeLabel}</span>}
                       </>
                     ) : (
                       <>
-                        <span className={cn(activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
+                        <span className={cn("font-semibold", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
                           {activeAgentName}
                         </span>
+                        {timeLabel && <span className="composer-message-time">{timeLabel}</span>}
                       </>
                     )}
                   </div>

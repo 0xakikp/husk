@@ -275,12 +275,12 @@
 }
 
 .composer-message-user .composer-message-body {
-  background: linear-gradient(135deg, hsl(var(--primary) / 0.28), hsl(var(--primary) / 0.12));
-  border: 1px solid hsl(var(--primary) / 0.45);
-  border-radius: 14px 14px 4px 14px;
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.22), hsl(var(--primary) / 0.08));
+  border: 1px solid hsl(var(--primary) / 0.4);
+  border-radius: 16px 16px 4px 16px;
   color: hsl(var(--foreground));
-  padding: 8px 12px;
-  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.05), 0 3px 14px hsl(var(--primary) / 0.15);
+  padding: 10px 13px;
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.05), 0 3px 14px hsl(var(--primary) / 0.12);
 }
 
 .composer-message-ai {
@@ -289,35 +289,48 @@
 }
 
 .composer-message-ai .composer-message-body {
-  background: hsl(var(--muted) / 0.22);
-  border: 1px solid hsl(var(--border) / 0.55);
+  background: hsl(var(--muted) / 0.18);
+  border: 1px solid hsl(var(--border) / 0.45);
   border-left: 3px solid hsl(var(--primary) / 0.6);
-  border-radius: 14px 14px 14px 4px;
-  padding: 8px 12px;
-  color: hsl(var(--foreground) / 0.92);
-  box-shadow: 0 0 0 1px hsl(var(--border) / 0.05), 0 2px 10px rgba(0, 0, 0, 0.18);
+  border-radius: 16px 16px 16px 4px;
+  padding: 10px 13px;
+  color: hsl(var(--foreground) / 0.95);
+  box-shadow: 0 0 0 1px hsl(var(--border) / 0.03), 0 2px 12px rgba(0, 0, 0, 0.14);
 }
 
 .composer-message-avatar {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  background: hsl(var(--muted) / 0.4);
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.35);
   border: 1px solid hsl(var(--border) / 0.5);
-  font-size: 9px;
+  font-size: 10px;
   color: hsl(var(--primary));
   margin-top: 1px;
 }
 
+.composer-message-avatar svg {
+  width: 12px;
+  height: 12px;
+}
+
 .composer-message-user .composer-message-avatar {
-  background: hsl(var(--primary) / 0.15);
-  border-color: hsl(var(--primary) / 0.25);
+  background: hsl(var(--primary) / 0.12);
+  border-color: hsl(var(--primary) / 0.22);
   color: hsl(var(--primary));
-  border-radius: 50%;
+  border-radius: 8px;
+}
+
+.composer-message-time {
+  font-size: 9px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.5);
+  margin-left: 6px;
+  letter-spacing: 0.02em;
 }
 
 .composer-message-body {

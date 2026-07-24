@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PlusSignIcon, MessageMultiple02Icon, SparklesIcon, ComputerTerminal02Icon, Archive02Icon, Delete02Icon, Search01Icon, Settings01Icon } from "@hugeicons/core-free-icons";
+import {
+  PlusSignIcon,
+  MessageMultiple02Icon,
+  SparklesIcon,
+  ComputerTerminal02Icon,
+  Archive02Icon,
+  Delete02Icon,
+  Search01Icon,
+  Settings01Icon,
+  PencilEdit01Icon,
+} from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { TerminalAiComposer } from "../terminal/TerminalAiComposer";
 import { usePrefs } from "../settings/preferences";
@@ -18,14 +28,18 @@ import {
   isTabSessionId,
 } from "./sessionStore";
 
-function formatDate(ts: number): string {
+function groupDate(ts: number): string {
   const d = new Date(ts);
   const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  if (diff < 60000) return "just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86400000;
+  const startOfWeek = startOfToday - now.getDay() * 86400000;
+
+  if (ts >= startOfToday) return "Today";
+  if (ts >= startOfYesterday) return "Yesterday";
+  if (ts >= startOfWeek) return "This week";
+  if (d.getFullYear() === now.getFullYear()) return d.toLocaleDateString(undefined, { month: "long" });
+  return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
 function fuzzyMatch(query: string, text: string): boolean {
@@ -38,6 +52,13 @@ function fuzzyMatch(query: string, text: string): boolean {
     ti = idx + 1;
   }
   return true;
+}
+
+function sessionPreview(messages: { role: string; content: string }[]): string {
+  const last = [...messages].reverse().find((m) => m.content?.trim());
+  if (!last) return "No messages yet";
+  const text = last.content.trim().split("\n")[0].slice(0, 42);
+  return text.length < last.content.trim().length ? text + "…" : text;
 }
 
 export function AiTabPanel() {
@@ -64,11 +85,21 @@ export function AiTabPanel() {
   const filtered = useMemo(() => {
     const q = query.trim();
     if (!q) return sessions;
-    return sessions.filter((s) => fuzzyMatch(q, s.name));
+    return sessions.filter((s) => fuzzyMatch(q, s.name) || fuzzyMatch(q, sessionPreview(s.messages)));
   }, [sessions, query]);
 
   const activeList = filtered.filter((s) => !s.archived);
   const archivedList = filtered.filter((s) => s.archived);
+
+  const groupedActive = useMemo(() => {
+    const groups = new Map<string, typeof activeList>();
+    for (const s of activeList) {
+      const g = groupDate(s.updatedAt);
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g)!.push(s);
+    }
+    return Array.from(groups.entries());
+  }, [activeList]);
 
   const startRename = (id: string, name: string) => {
     setEditingId(id);
@@ -82,94 +113,116 @@ export function AiTabPanel() {
     setEditingId(null);
   };
 
-  const sessionRow = (s: typeof sessions[0], isArchived = false) => (
-    <div
-      key={s.id}
-      className={cn(
-        "group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] transition-colors",
-        activeSession.id === s.id
-          ? "bg-primary/15 text-primary"
-          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-      )}
-    >
-      {editingId === s.id ? (
-        <input
-          autoFocus
-          value={editName}
-          onChange={(e) => setEditName(e.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitRename();
-            if (e.key === "Escape") setEditingId(null);
-          }}
-          className="flex-1 min-w-0 bg-transparent text-foreground outline-none"
-        />
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => setActiveSessionId(s.id)}
-            className="flex flex-1 min-w-0 flex-col items-start text-left"
-          >
-            <span className="flex w-full items-center gap-2">
-              <HugeiconsIcon
-                icon={isTabSessionId(s.id) ? ComputerTerminal02Icon : SparklesIcon}
-                size={11}
-                strokeWidth={1.75}
-                className={cn("shrink-0", activeSession.id === s.id ? "text-primary" : "text-muted-foreground/60")}
-              />
-              <span className="truncate">{s.name}</span>
-            </span>
-            <span className="ml-[17px] text-[9px] text-muted-foreground/50">
-              {s.messages.length} msg{s.messages.length === 1 ? "" : "s"} · {formatDate(s.updatedAt)}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => startRename(s.id, s.name)}
-            className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
-            title="Rename"
-          >
-            ⋮
-          </button>
-          {isArchived ? (
-            <button
-              type="button"
-              onClick={() => unarchiveSession(s.id)}
-              className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
-              title="Unarchive"
-            >
-              <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => archiveSession(s.id)}
-              className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-muted hover:text-foreground"
-              title="Archive"
-            >
-              <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
-            </button>
+  const sessionRow = (s: typeof sessions[0], isArchived = false) => {
+    const isActive = activeSession.id === s.id;
+    const isTerminal = isTabSessionId(s.id);
+    const preview = sessionPreview(s.messages);
+    return (
+      <div
+        key={s.id}
+        className={cn(
+          "group relative flex items-start gap-2 rounded-lg px-2 py-1.5 text-[11px] transition-all",
+          isActive
+            ? "bg-primary/10 text-foreground"
+            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+        )}
+      >
+        {/* selection accent */}
+        <div
+          className={cn(
+            "absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full transition-all",
+            isActive ? "bg-primary opacity-100" : "bg-primary/0 opacity-0 group-hover:bg-primary/40 group-hover:opacity-100"
           )}
-          <button
-            type="button"
-            onClick={() => deleteSession(s.id)}
-            className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-60 transition-opacity hover:opacity-100 hover:bg-destructive/20 hover:text-destructive"
-            title="Delete"
-          >
-            <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
-          </button>
-        </>
-      )}
-    </div>
-  );
+        />
+
+        {editingId === s.id ? (
+          <input
+            autoFocus
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") setEditingId(null);
+            }}
+            className="flex-1 min-w-0 bg-transparent text-foreground outline-none"
+          />
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setActiveSessionId(s.id)}
+              className="flex flex-1 min-w-0 flex-col items-start text-left"
+            >
+              <span className="flex w-full items-center gap-2">
+                <HugeiconsIcon
+                  icon={isTerminal ? ComputerTerminal02Icon : SparklesIcon}
+                  size={12}
+                  strokeWidth={1.75}
+                  className={cn(
+                    "shrink-0 transition-colors",
+                    isActive
+                      ? isTerminal ? "text-emerald-400" : "text-violet-400"
+                      : "text-muted-foreground/50 group-hover:text-muted-foreground"
+                  )}
+                />
+                <span className="truncate font-medium">{s.name}</span>
+              </span>
+              <span className="ml-5 mt-0.5 text-[9px] text-muted-foreground/45 group-hover:text-muted-foreground/60 transition-colors line-clamp-1">
+                {preview}
+              </span>
+            </button>
+
+            {/* actions — hidden until hover/selected */}
+            <div className={cn("flex items-center gap-0.5 shrink-0", !isActive && "opacity-0 group-hover:opacity-100 transition-opacity")}>
+              <button
+                type="button"
+                onClick={() => startRename(s.id, s.name)}
+                className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+                title="Rename"
+              >
+                <HugeiconsIcon icon={PencilEdit01Icon} size={9} strokeWidth={1.75} />
+              </button>
+              {isArchived ? (
+                <button
+                  type="button"
+                  onClick={() => unarchiveSession(s.id)}
+                  className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+                  title="Unarchive"
+                >
+                  <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => archiveSession(s.id)}
+                  className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+                  title="Archive"
+                >
+                  <HugeiconsIcon icon={Archive02Icon} size={9} strokeWidth={1.75} />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => deleteSession(s.id)}
+                className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-destructive/15 hover:text-destructive"
+                title="Delete"
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={9} strokeWidth={1.75} />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Session sidebar */}
-      <div className="flex h-full w-56 shrink-0 flex-col border-r border-border/60 bg-background/95">
-        <div className="flex h-8 shrink-0 items-center justify-between border-b border-border/60 px-3">
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+      <div className="flex h-full w-60 shrink-0 flex-col border-r border-border/50 bg-background/95">
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/50 px-3">
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground tracking-tight">
             <HugeiconsIcon icon={MessageMultiple02Icon} size={13} strokeWidth={1.75} />
             AI Chats
           </span>
@@ -179,7 +232,7 @@ export function AiTabPanel() {
               const s = createSession({ source: "ai-tab" });
               setActiveSessionId(s.id);
             }}
-            className="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
             title="New chat"
           >
             <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={1.75} />
@@ -187,34 +240,47 @@ export function AiTabPanel() {
         </div>
         <div className="px-2 pt-2">
           <div className="relative">
-            <HugeiconsIcon icon={Search01Icon} size={11} strokeWidth={1.75} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+            <HugeiconsIcon icon={Search01Icon} size={11} strokeWidth={1.75} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/40" />
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search sessions..."
-              className="h-7 w-full box-border rounded-md border border-border/60 bg-muted/30 pl-7 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary/60 focus:bg-muted/50"
+              className="h-7 w-full box-border rounded-md border border-border/50 bg-muted/20 pl-7 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-primary/50 focus:bg-muted/40 transition-colors"
             />
           </div>
         </div>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-2">
-          <div className="flex flex-col gap-1">
-            {activeList.map((s) => sessionRow(s))}
-          </div>
+          {groupedActive.length === 0 ? (
+            <div className="px-2 py-6 text-center text-[10px] text-muted-foreground/40">
+              {query.trim() ? "No matching chats" : "No chats yet"}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {groupedActive.map(([group, items]) => (
+                <div key={group} className="flex flex-col gap-0.5">
+                  <div className="px-2 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/35">
+                    {group}
+                  </div>
+                  {items.map((s) => sessionRow(s))}
+                </div>
+              ))}
+            </div>
+          )}
 
           {archivedList.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-border/40">
+            <div className="mt-3 pt-2 border-t border-border/30">
               <button
                 type="button"
                 onClick={() => setShowArchived((v) => !v)}
-                className="flex w-full items-center justify-between px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground"
+                className="flex w-full items-center justify-between px-2 py-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
               >
                 <span>Archived ({archivedList.length})</span>
-                <span>{showArchived ? "▾" : "▸"}</span>
+                <span className="text-[8px]">{showArchived ? "▾" : "▸"}</span>
               </button>
               {showArchived && (
-                <div className="flex flex-col gap-1 mt-1">
+                <div className="flex flex-col gap-0.5 mt-1 opacity-70">
                   {archivedList.map((s) => sessionRow(s, true))}
                 </div>
               )}
@@ -239,7 +305,6 @@ export function AiTabPanel() {
             <button
               type="button"
               onClick={() => {
-                // Broadcast open settings from the AI tab. The App layer listens for this event.
                 window.dispatchEvent(new CustomEvent("husk:open-settings"));
               }}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/15"
