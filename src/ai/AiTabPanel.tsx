@@ -3,8 +3,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   PlusSignIcon,
   MessageMultiple02Icon,
-  SparklesIcon,
-  ComputerTerminal02Icon,
   Archive02Icon,
   Delete02Icon,
   Search01Icon,
@@ -121,20 +119,12 @@ export function AiTabPanel() {
       <div
         key={s.id}
         className={cn(
-          "group relative flex items-start gap-2 rounded-lg px-2 py-1.5 text-[11px] transition-all",
+          "group relative flex items-start gap-2 rounded-md border px-2 py-1.5 font-mono text-[11px] transition-all",
           isActive
-            ? "bg-primary/10 text-foreground"
-            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            ? "border-primary/40 bg-primary/[0.05] text-foreground"
+            : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
         )}
       >
-        {/* selection accent */}
-        <div
-          className={cn(
-            "absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full transition-all",
-            isActive ? "bg-primary opacity-100" : "bg-primary/0 opacity-0 group-hover:bg-primary/40 group-hover:opacity-100"
-          )}
-        />
-
         {editingId === s.id ? (
           <input
             autoFocus
@@ -154,21 +144,20 @@ export function AiTabPanel() {
               onClick={() => setActiveSessionId(s.id)}
               className="flex flex-1 min-w-0 flex-col items-start text-left"
             >
-              <span className="flex w-full items-center gap-2">
-                <HugeiconsIcon
-                  icon={isTerminal ? ComputerTerminal02Icon : SparklesIcon}
-                  size={12}
-                  strokeWidth={1.75}
+              <span className="flex w-full items-center gap-1.5">
+                <span
                   className={cn(
-                    "shrink-0 transition-colors",
+                    "shrink-0 text-[10px] transition-colors",
                     isActive
                       ? isTerminal ? "text-emerald-400" : "text-violet-400"
-                      : "text-muted-foreground/50 group-hover:text-muted-foreground"
+                      : "text-muted-foreground/40 group-hover:text-muted-foreground"
                   )}
-                />
+                >
+                  {isTerminal ? "▸" : "✦"}
+                </span>
                 <span className="truncate font-medium">{s.name}</span>
               </span>
-              <span className="ml-5 mt-0.5 text-[9px] text-muted-foreground/45 group-hover:text-muted-foreground/60 transition-colors line-clamp-1">
+              <span className="ml-4 mt-0.5 text-[9px] text-muted-foreground/45 group-hover:text-muted-foreground/60 transition-colors line-clamp-1">
                 {preview}
               </span>
             </button>
@@ -222,9 +211,9 @@ export function AiTabPanel() {
       {/* Session sidebar */}
       <div className="flex h-full w-60 shrink-0 flex-col border-r border-border/50 bg-background/95">
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/50 px-3">
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground tracking-tight">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] font-semibold text-foreground tracking-tight">
             <HugeiconsIcon icon={MessageMultiple02Icon} size={13} strokeWidth={1.75} />
-            AI Chats
+            ai-chats
           </span>
           <button
             type="button"
@@ -246,8 +235,8 @@ export function AiTabPanel() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search sessions..."
-              className="h-7 w-full box-border rounded-md border border-border/50 bg-muted/20 pl-7 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-primary/50 focus:bg-muted/40 transition-colors"
+              placeholder="/ search sessions…"
+              className="h-7 w-full box-border rounded-md border border-border/50 bg-muted/20 pl-7 pr-2 font-mono text-[11px] text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-primary/50 focus:bg-muted/40 transition-colors"
             />
           </div>
         </div>
@@ -260,7 +249,7 @@ export function AiTabPanel() {
             <div className="flex flex-col gap-3">
               {groupedActive.map(([group, items]) => (
                 <div key={group} className="flex flex-col gap-0.5">
-                  <div className="px-2 pb-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/35">
+                  <div className="px-2 pb-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/35">
                     {group}
                   </div>
                   {items.map((s) => sessionRow(s))}

@@ -13,7 +13,6 @@ import {
   StopIcon,
   Copy01Icon,
   TickDouble01Icon,
-  Files01Icon,
   VolumeHighIcon,
   VolumeOffIcon,
   ArrowDown01Icon,
@@ -702,6 +701,33 @@ export function TerminalAiComposer({
     }
   };
 
+  const [msgCopiedIdx, setMsgCopiedIdx] = useState<number | null>(null);
+
+  const copyMessage = async (content: string, idx: number) => {
+    try {
+      await writeText(content);
+      setMsgCopiedIdx(idx);
+      setTimeout(() => setMsgCopiedIdx((current) => (current === idx ? null : current)), 1500);
+    } catch {
+      // ignore
+    }
+  };
+
+  const editMessage = (content: string) => {
+    setInput(content);
+    setTimeout(() => textareaRef.current?.focus(), 40);
+  };
+
+  const redoMessage = (idx: number) => {
+    const msgs = getSession(sessionId).messages;
+    for (let j = idx - 1; j >= 0; j--) {
+      if (msgs[j].role === "user" && msgs[j].content.trim()) {
+        void handleSendRef.current(msgs[j].content);
+        return;
+      }
+    }
+  };
+
   const stopSpeaking = () => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -795,8 +821,6 @@ export function TerminalAiComposer({
           title="Drag to resize"
         />
       )}
-      <div className="composer-glow" />
-
       <div className="composer-header">
         <div className="flex items-center gap-2">
           <span className={cn("composer-avatar", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
@@ -848,8 +872,14 @@ export function TerminalAiComposer({
               </div>
             )}
           </div>
-          <span className="text-[10px] text-muted-foreground/60">·</span>
-          <span className="text-[10px] text-muted-foreground/70">{session.name}</span>
+          <span className="composer-crumb">
+            husk://
+            <span className={cn("composer-crumb-accent", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
+              {activeAgentName.toLowerCase().replace(/\s+/g, "-")}
+            </span>
+            <span className="composer-crumb-sep">/</span>
+            {session.name.toLowerCase().replace(/\s+/g, "-")}
+          </span>
           {fileName && (
             <>
               <span className="text-[10px] text-muted-foreground/60">·</span>
@@ -919,11 +949,9 @@ export function TerminalAiComposer({
       <div ref={scrollRef} className="composer-messages">
         {messages.length === 0 ? (
           <div className="composer-empty">
-            <div className={cn("composer-avatar-lg", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
-              {activeAgentIcon}
-            </div>
-            <p className="text-[12px] font-medium text-foreground">What should I do?</p>
-            <p className="text-[11px] text-muted-foreground/60">Ask about the open file, terminal output, or generate commands.</p>
+            <div className="wb-empty-glyph">❯</div>
+            <p className="wb-empty-title">what should i do?</p>
+            <p className="wb-empty-sub">ask about the open file, terminal output, or generate commands</p>
           </div>
         ) : (
           messages.map((msg, i) => {
@@ -932,49 +960,34 @@ export function TerminalAiComposer({
             const codeBlocks = isUser ? [] : parseCodeBlocks(msg.content);
             const diffBlocks = isUser ? [] : parseDiffBlocks(msg.content);
             const tree = isUser ? null : parseFileTree(msg.content);
-            const timeLabel = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+            const timeLabel = msg.timestamp
+              ? new Date(msg.timestamp).toLocaleTimeString(undefined, { hour12: false })
+              : "";
             return (
-              <div key={i} className={cn("composer-message", isUser ? "composer-message-user" : "composer-message-ai")}>
-                {isUser ? (
-                  <div className="composer-message-avatar composer-message-avatar-user" title="You">
-                    <HugeiconsIcon icon={CommandIcon} size={11} strokeWidth={1.75} />
-                  </div>
-                ) : (
-                  <div
+              <div key={i} className={cn("msg-block", isUser ? "msg-block-user" : "msg-block-ai")}>
+                <div className="msg-block-head">
+                  <span
                     className={cn(
-                      "composer-message-avatar",
-                      activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`
+                      "msg-role",
+                      isUser ? "msg-role-user" : "msg-role-ai",
+                      !isUser && activeAgent?.color && `composer-label-accent-${activeAgent.color}`
                     )}
-                    title={activeAgentName}
                   >
-                    {activeAgentIcon}
-                  </div>
-                )}
-                <div className="composer-message-body">
-                  <div className="composer-message-label">
-                    {isUser ? (
-                      <>
-                        <span className="dot" />
-                        <span>You</span>
-                        {timeLabel && <span className="composer-message-time">{timeLabel}</span>}
-                      </>
-                    ) : (
-                      <>
-                        <span className={cn("font-semibold", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
-                          {activeAgentName}
-                        </span>
-                        {timeLabel && <span className="composer-message-time">{timeLabel}</span>}
-                      </>
-                    )}
-                  </div>
+                    {isUser ? "you" : activeAgentName.toLowerCase()}
+                  </span>
+                  <span className="msg-meta">
+                    {isUser
+                      ? timeLabel
+                      : `${(cfg.model || provider.defaultModel).toLowerCase()}${timeLabel ? ` · ${timeLabel}` : ""}`}
+                  </span>
+                </div>
+                <div className="msg-block-body">
                   {isUser ? (
-                    <div className="whitespace-pre-wrap text-[12px] text-foreground">{msg.content}</div>
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
                   ) : (
                     <>
                       {textParts && (
-                        <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">
-                          {textParts}
-                        </div>
+                        <div className="whitespace-pre-wrap">{textParts}</div>
                       )}
                       {codeBlocks.length > 0 && (
                         <CodeBlockTabs
@@ -993,21 +1006,44 @@ export function TerminalAiComposer({
                     </>
                   )}
                 </div>
+                <div className="msg-block-foot">
+                  <button type="button" onClick={() => copyMessage(msg.content, i)} className="msg-act">
+                    {msgCopiedIdx === i ? "✓ copied" : "⧉ copy"}
+                  </button>
+                  {isUser ? (
+                    <button type="button" onClick={() => editMessage(msg.content)} className="msg-act">
+                      ✎ edit
+                    </button>
+                  ) : (
+                    <>
+                      {codeBlocks.length > 0 && (
+                        <button type="button" onClick={() => runCommand(codeBlocks[0].code)} className="msg-act msg-act-hot">
+                          ▸ run in terminal
+                        </button>
+                      )}
+                      <button type="button" onClick={() => redoMessage(i)} className="msg-act">
+                        ↻ redo
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             );
           })
         )}
 
         {busy && (
-          <div className="composer-message">
-            <div className={cn("composer-message-avatar", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
-              <span className="composer-pulse-dot" />
+          <div className="msg-block msg-block-ai">
+            <div className="msg-block-head">
+              <span className={cn("msg-role msg-role-ai", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
+                {activeAgentName.toLowerCase()}
+              </span>
+              <span className="msg-meta">streaming…</span>
             </div>
-            <div className="composer-message-body">
+            <div className="msg-block-body">
               <div className="composer-thinking">
-                <span className={cn("text-[12px]", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
-                  {status || "Husk is thinking"}
-                </span>
+                <span className="composer-pulse-dot" />
+                <span className="composer-thinking-text">{status || "thinking"}</span>
                 <span className="composer-blob composer-blob-1" />
                 <span className="composer-blob composer-blob-2" />
                 <span className="composer-blob composer-blob-3" />
@@ -1052,47 +1088,6 @@ export function TerminalAiComposer({
         </div>
       )}
 
-      {contextChips.length > 0 && (
-        <div className="composer-context-chips">
-          {contextChips.map((chip) => (
-            <div key={chip.id} className="composer-context-chip">
-              <span>{chip.icon}</span>
-              <span className="truncate max-w-[140px]">{chip.label}</span>
-              <button
-                type="button"
-                onClick={chip.onRemove}
-                className="composer-context-chip-remove"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {attachedFiles.length > 0 && (
-        <div className="composer-attached-files">
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
-            <HugeiconsIcon icon={Files01Icon} size={10} strokeWidth={1.75} />
-            <span>Attached:</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {attachedFiles.map((f, idx) => (
-              <button
-                key={`${f.name}-${idx}`}
-                type="button"
-                onClick={() => removeAttachedFile(idx)}
-                className="composer-attached-file-chip"
-                title="Click to remove"
-              >
-                <span className="truncate max-w-[140px]">{f.name}</span>
-                <span className="text-muted-foreground/50">×</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {pendingRun && (
         <div className="composer-pending-run">
           <div className="flex flex-col gap-0.5">
@@ -1109,27 +1104,6 @@ export function TerminalAiComposer({
           </div>
         </div>
       )}
-
-      <div className="composer-input-toolbar">
-        <button
-          type="button"
-          onClick={toggleVoice}
-          className={cn("composer-input-toolbar-btn", listening && "recording")}
-          title={listening ? "Stop listening" : "Voice input"}
-        >
-          <HugeiconsIcon icon={VoiceIcon} size={12} strokeWidth={1.75} />
-          {listening ? "Listening…" : "Voice"}
-        </button>
-        <button
-          type="button"
-          onClick={handleFileUpload}
-          className="composer-input-toolbar-btn"
-          title="Attach file"
-        >
-          <HugeiconsIcon icon={AttachmentSquareIcon} size={12} strokeWidth={1.75} />
-          Attach
-        </button>
-      </div>
 
       <div ref={slashPaletteRef} className="composer-input-wrapper">
         {slashOpen && (
@@ -1164,75 +1138,112 @@ export function TerminalAiComposer({
             )}
           </div>
         )}
-        <div className="composer-input-row">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (slashOpen) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setSlashIndex((i) => (i + 1) % filteredSlash.length);
-                  return;
-                }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setSlashIndex((i) => (i - 1 + filteredSlash.length) % filteredSlash.length);
-                  return;
-                }
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const cmd = filteredSlash[slashIndex];
-                  if (cmd) {
-                    cmd.run();
-                    setSlashOpen(false);
+        <div className="wb-composer">
+          {(contextChips.length > 0 || attachedFiles.length > 0) && (
+            <div className="wb-composer-head">
+              {contextChips.map((chip) => (
+                <span key={chip.id} className="wb-chip">
+                  <span>{chip.icon}</span>
+                  <span className="truncate max-w-[140px]">{chip.label}</span>
+                  <button type="button" onClick={chip.onRemove} className="wb-chip-x">
+                    ×
+                  </button>
+                </span>
+              ))}
+              {attachedFiles.map((f, idx) => (
+                <span key={`${f.name}-${idx}`} className="wb-chip">
+                  <span>📎</span>
+                  <span className="truncate max-w-[140px]">{f.name}</span>
+                  <button type="button" onClick={() => removeAttachedFile(idx)} className="wb-chip-x">
+                    ×
+                  </button>
+                </span>
+              ))}
+              <span className="wb-ctx-count">ctx: {contextChips.length + attachedFiles.length} attached</span>
+            </div>
+          )}
+          <div className="wb-composer-body">
+            <span className="wb-prompt">❯</span>
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (slashOpen) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setSlashIndex((i) => (i + 1) % filteredSlash.length);
+                    return;
                   }
-                  return;
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSlashIndex((i) => (i - 1 + filteredSlash.length) % filteredSlash.length);
+                    return;
+                  }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const cmd = filteredSlash[slashIndex];
+                    if (cmd) {
+                      cmd.run();
+                      setSlashOpen(false);
+                    }
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    setSlashOpen(false);
+                    return;
+                  }
                 }
-                if (e.key === "Escape") {
-                  setSlashOpen(false);
-                  return;
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
                 }
-              }
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-              if (e.key === "Escape" && variant === "docked") {
-                handleClose();
-              }
-            }}
-            placeholder="Ask Husk..."
-            rows={1}
-            className="composer-textarea"
-          />
-          <button
-            type="button"
-            onClick={() => handleSend()}
-            disabled={busy || !input.trim()}
-            className="composer-send-btn"
-          >
-            {busy ? "…" : "Ask"}
-          </button>
+                if (e.key === "Escape" && variant === "docked") {
+                  handleClose();
+                }
+              }}
+              placeholder="ask husk…"
+              rows={1}
+              className="composer-textarea"
+            />
+            <button
+              type="button"
+              onClick={toggleVoice}
+              className={cn("wb-icon-btn", listening && "recording")}
+              title={listening ? "Stop listening" : "Voice input"}
+            >
+              <HugeiconsIcon icon={VoiceIcon} size={12} strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              onClick={handleFileUpload}
+              className="wb-icon-btn"
+              title="Attach file"
+            >
+              <HugeiconsIcon icon={AttachmentSquareIcon} size={12} strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSend()}
+              disabled={busy || !input.trim()}
+              className="composer-send-btn"
+              title="Send"
+            >
+              {busy ? "…" : "⏎"}
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="composer-footer">
-        <div className="flex items-center gap-1.5">
-          <span className="text-primary/60">●</span>
-          <span>{provider.label} · {cfg.model || provider.defaultModel}</span>
-          {currentFile && (
-            <>
-              <span>·</span>
-              <span title={currentFile}>file context</span>
-            </>
-          )}
-        </div>
-        <div className="composer-footer-shortcut">
-          <span className="composer-footer-kbd">Esc</span> close
-          <span className="composer-footer-kbd">Ctrl+Shift+L</span> toggle
-        </div>
+        <span className="wb-status-left">
+          <span className="wb-status-dot">●</span>
+          {provider.label.toLowerCase()} · {(cfg.model || provider.defaultModel).toLowerCase()} · {busy ? "streaming" : "connected"}
+          {currentFile && includeFile ? " · file ctx" : ""}
+        </span>
+        <span className="wb-status-right">
+          ⌘⏎ send{variant === "docked" ? " · esc close · ctrl+shift+L toggle" : ""}
+        </span>
       </div>
     </div>
   );
