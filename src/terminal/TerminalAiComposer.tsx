@@ -815,7 +815,14 @@ export function TerminalAiComposer({
       : messages.length
         ? 'min(40vh, 280px)'
         : 'auto';
-  const panelStyle = variant === "full" ? { maxHeight: '100%', height: '100%' } : { maxHeight: computedHeight };
+  // Manual drag resize must force real height (not just a cap) so the
+  // flex-filled messages area actually grows/shrinks with the drag.
+  const panelStyle =
+    variant === "full"
+      ? { maxHeight: '100%', height: '100%' }
+      : height !== null
+        ? { height: `${height}px`, maxHeight: `${height}px` }
+        : { maxHeight: computedHeight };
 
   return (
     <div
