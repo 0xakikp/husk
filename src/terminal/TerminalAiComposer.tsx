@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Cancel01Icon,
@@ -109,6 +109,63 @@ function stripCodeBlocks(text: string): string {
   return text.replace(/```(\w*)\n?([\s\S]*?)```/g, "").trim();
 }
 
+function renderInline(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const regex = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+  let last = 0;
+  let key = 0;
+  for (const m of text.matchAll(regex)) {
+    const idx = m.index ?? 0;
+    if (idx > last) nodes.push(text.slice(last, idx));
+    const tok = m[0];
+    if (tok.startsWith("**")) {
+      nodes.push(<strong key={key++} className="wb-md-bold">{tok.slice(2, -2)}</strong>);
+    } else if (tok.startsWith("`")) {
+      nodes.push(<code key={key++} className="wb-inline-code">{tok.slice(1, -1)}</code>);
+    } else {
+      nodes.push(<em key={key++}>{tok.slice(1, -1)}</em>);
+    }
+    last = idx + tok.length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+function MarkdownText({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="wb-md">
+      {lines.map((line, i) => {
+        const trimmed = line.trim();
+        const bullet = trimmed.match(/^[-*]\s+(.*)$/);
+        const numbered = trimmed.match(/^(\d+)\.\s+(.*)$/);
+        if (bullet) {
+          return (
+            <div key={i} className="wb-md-li">
+              <span className="wb-md-marker">•</span>
+              <span className="wb-md-li-text">{renderInline(bullet[1])}</span>
+            </div>
+          );
+        }
+        if (numbered) {
+          return (
+            <div key={i} className="wb-md-li">
+              <span className="wb-md-marker">{numbered[1]}.</span>
+              <span className="wb-md-li-text">{renderInline(numbered[2])}</span>
+            </div>
+          );
+        }
+        if (!trimmed) return <div key={i} className="wb-md-gap" />;
+        return (
+          <div key={i} className="wb-md-p">
+            {renderInline(line)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function parseDiffBlocks(text: string): DiffBlockType[] {
   const blocks: DiffBlockType[] = [];
   const regex = /```diff\n?([\s\S]*?)```/g;
@@ -167,16 +224,6 @@ function extractCommandFromCode(code: string): string {
   return lines[0] || code;
 }
 
-function extractFollowups(text: string): string[] {
-  const regex = /(?:\n|^)(?:\d+\.\s*|-\s*|\*\s*)([^\n]{10,80})/g;
-  const out: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(text)) !== null && out.length < 3) {
-    out.push(m[1].trim().replace(/[:;\.]$/, ""));
-  }
-  return out;
-}
-
 export function TerminalAiComposer({
   sessionId,
   onOpenInAiTab,
@@ -215,7 +262,6 @@ export function TerminalAiComposer({
   const [expanded, setExpanded] = useState(false);
   const [pendingRun, setPendingRun] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [followups, setFollowups] = useState<string[]>([]);
   const abortRef = useRef(false);
   const abortCtrlRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -246,7 +292,6 @@ export function TerminalAiComposer({
 
   const newSession = useCallback(() => {
     updateSession(sessionId, () => ({ ...getSession(sessionId), messages: [], input: "" }));
-    setFollowups([]);
     setIncludeFile(true);
     setIncludeSelection(true);
     setIncludeTerminal(true);
@@ -434,7 +479,6 @@ export function TerminalAiComposer({
     setSlashOpen(false);
     setBusy(true);
     setStatus("💭 thinking…");
-    setFollowups([]);
     abortRef.current = false;
     abortCtrlRef.current?.abort();
     abortCtrlRef.current = new AbortController();
@@ -551,7 +595,6 @@ export function TerminalAiComposer({
       const finalMessages = getSession(sessionId).messages;
       const assistantMsg = [...finalMessages].reverse().find((m: AiMessage) => m.role === "assistant" && !m.streaming);
       if (assistantMsg?.content) {
-        setFollowups(extractFollowups(assistantMsg.content));
         speakText(assistantMsg.content);
       }
     }
@@ -986,9 +1029,7 @@ export function TerminalAiComposer({
                     <div className="whitespace-pre-wrap">{msg.content}</div>
                   ) : (
                     <>
-                      {textParts && (
-                        <div className="whitespace-pre-wrap">{textParts}</div>
-                      )}
+                      {textParts && <MarkdownText text={textParts} />}
                       {codeBlocks.length > 0 && (
                         <CodeBlockTabs
                           blocks={codeBlocks}
@@ -1068,21 +1109,6 @@ export function TerminalAiComposer({
             >
               <span>{t.icon}</span>
               <span>{t.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {followups.length > 0 && !busy && (
-        <div className="composer-followups">
-          {followups.map((f, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => handleSend(f)}
-              className="composer-followup-btn"
-            >
-              {f}
             </button>
           ))}
         </div>
