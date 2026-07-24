@@ -11,7 +11,7 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   border-top: 1px solid hsl(var(--border) / 0.7);
   background: linear-gradient(
     180deg,
@@ -213,7 +213,7 @@
 .composer-messages {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   overflow-y: auto;
   padding-right: 4px;
   min-height: 0;
@@ -226,6 +226,20 @@
   max-height: none;
   font-size: 13px;
   line-height: 1.6;
+  gap: 16px;
+}
+
+/* Centered readable column in the full AI tab */
+.composer-full .composer-messages,
+.composer-full .composer-input-wrapper,
+.composer-full .composer-footer,
+.composer-full .composer-followups,
+.composer-full .composer-prompt-templates,
+.composer-full .composer-pending-run {
+  width: 100%;
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .composer-messages::-webkit-scrollbar {
@@ -255,9 +269,9 @@
 /* ── Message blocks (Warp style) ────────────────────────────────────────── */
 
 .msg-block {
-  border: 1px solid hsl(var(--border) / 0.4);
+  border: 1px solid hsl(var(--border) / 0.55);
   border-radius: 8px;
-  background: hsl(var(--muted) / 0.14);
+  background: hsl(var(--muted) / 0.22);
   overflow: hidden;
   animation: message-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -266,9 +280,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px;
-  background: hsl(var(--muted) / 0.28);
-  border-bottom: 1px solid hsl(var(--border) / 0.3);
+  padding: 6px 12px;
+  background: hsl(var(--muted) / 0.42);
+  border-bottom: 1px solid hsl(var(--border) / 0.45);
   font-family: var(--wb-mono);
 }
 
@@ -297,7 +311,7 @@
 }
 
 .msg-block-body {
-  padding: 9px 12px;
+  padding: 11px 14px;
   font-size: 12px;
   line-height: 1.55;
   color: hsl(var(--foreground) / 0.92);
@@ -305,35 +319,36 @@
 }
 
 .composer-full .msg-block-body {
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.6;
+  padding: 12px 14px;
 }
 
 .msg-block-ai .msg-block-body {
-  border-left-color: hsl(var(--primary) / 0.65);
+  border-left-color: hsl(var(--primary) / 0.85);
 }
 
 .msg-block-user .msg-block-body {
-  border-left-color: hsl(var(--muted-foreground) / 0.3);
+  border-left-color: hsl(var(--muted-foreground) / 0.35);
 }
 
 .msg-block-foot {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-top: 1px solid hsl(var(--border) / 0.25);
-  background: hsl(var(--muted) / 0.12);
+  gap: 8px;
+  padding: 7px 12px;
+  border-top: 1px solid hsl(var(--border) / 0.35);
+  background: hsl(var(--muted) / 0.2);
 }
 
 .msg-act {
   font-family: var(--wb-mono);
-  font-size: 9px;
+  font-size: 9.5px;
   color: hsl(var(--muted-foreground) / 0.85);
-  background: hsl(var(--muted) / 0.25);
-  border: 1px solid hsl(var(--border) / 0.4);
+  background: hsl(var(--muted) / 0.35);
+  border: 1px solid hsl(var(--border) / 0.45);
   border-radius: 5px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   transition: all 0.15s ease;
 }
 
@@ -797,16 +812,16 @@
 /* ── Warp composer (input block) ────────────────────────────────────────── */
 
 .wb-composer {
-  border: 1px solid hsl(var(--primary) / 0.3);
+  border: 1px solid hsl(var(--primary) / 0.4);
   border-radius: 8px;
-  background: hsl(var(--muted) / 0.16);
+  background: hsl(var(--muted) / 0.22);
   overflow: hidden;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .wb-composer:focus-within {
-  border-color: hsl(var(--primary) / 0.7);
-  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.35), 0 6px 20px rgba(0, 0, 0, 0.25);
+  border-color: hsl(var(--primary) / 0.75);
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.4), 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 
 .wb-composer-head {
@@ -814,9 +829,9 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 5px 10px;
-  background: hsl(var(--muted) / 0.28);
-  border-bottom: 1px solid hsl(var(--border) / 0.3);
+  padding: 6px 12px;
+  background: hsl(var(--muted) / 0.42);
+  border-bottom: 1px solid hsl(var(--border) / 0.45);
   font-family: var(--wb-mono);
 }
 
@@ -827,10 +842,10 @@
   font-family: var(--wb-mono);
   font-size: 9px;
   color: hsl(var(--foreground) / 0.85);
-  background: hsl(var(--background) / 0.55);
-  border: 1px solid hsl(var(--border) / 0.45);
+  background: hsl(var(--background) / 0.7);
+  border: 1px solid hsl(var(--border) / 0.5);
   border-radius: 5px;
-  padding: 2px 7px;
+  padding: 3px 8px;
 }
 
 .wb-chip-x {
@@ -855,7 +870,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
+  padding: 10px 12px;
 }
 
 .wb-prompt {

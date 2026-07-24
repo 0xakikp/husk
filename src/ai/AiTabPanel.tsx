@@ -121,7 +121,7 @@ export function AiTabPanel() {
         className={cn(
           "group relative flex items-start gap-2 rounded-md border px-2 py-1.5 font-mono text-[11px] transition-all",
           isActive
-            ? "border-primary/40 bg-primary/[0.05] text-foreground"
+            ? "border-primary/60 bg-primary/[0.07] text-foreground"
             : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
         )}
       >
