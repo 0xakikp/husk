@@ -270,6 +270,7 @@
 /* ── Message blocks (Warp style) ────────────────────────────────────────── */
 
 .msg-block {
+  flex-shrink: 0; /* critical: overflow:hidden zeroes the flex min-size, so without this the column flex container shrinks blocks and clips bodies */
   border: 1px solid color-mix(in srgb, var(--border) 100%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--muted) 45%, transparent);
