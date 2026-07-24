@@ -111,6 +111,9 @@ export type Prefs = {
   aiComposerDock: "bottom" | "right";
   aiComposerSideWidth: number;
 
+  // AI talk-back (TTS) voice — empty = auto female
+  aiTtsVoice: string;
+
   // Setup assistant
   setupAssistantDismissed?: boolean;
 
@@ -237,6 +240,7 @@ const DEFAULT: Prefs = {
   aiSidebarWidth: 240,
   aiComposerDock: "bottom",
   aiComposerSideWidth: 380,
+  aiTtsVoice: "",
   setupAssistantDismissed: false,
 
   notesDirectory: "",

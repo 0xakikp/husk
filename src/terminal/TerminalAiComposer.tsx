@@ -823,19 +823,35 @@ export function TerminalAiComposer({
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     stopSpeaking();
     const clean = stripCodeBlocks(text).replace(/!\[.*?\]\(.*?\)/g, "[image]").slice(0, 4000);
-    const utterance = new SpeechSynthesisUtterance(clean);
+    const FEMALE_VOICE_RE =
+      /samantha|victoria|karen|joanna|kimberly|salli|emma|amy|catherine|moira|zira|zhiyu|laila|meijia|serena|allison|ava(?!lanche)|susan|kate|stephanie|melissa|nicky|joelle|fiona|tessa/i;
+    const speak = (voices: SpeechSynthesisVoice[]) => {
+      const utterance = new SpeechSynthesisUtterance(clean);
+      const prefName = prefs.aiTtsVoice;
+      let voice = prefName ? voices.find((v) => v.name === prefName) : undefined;
+      if (!voice) voice = voices.find((v) => FEMALE_VOICE_RE.test(v.name));
+      if (!voice) voice = voices.find((v) => /female/i.test(v.name));
+      if (voice) utterance.voice = voice;
+      utterance.rate = 1.05;
+      utterance.pitch = 1.1;
+      utterance.onend = () => setSpeaking(false);
+      utterance.onerror = () => setSpeaking(false);
+      speakUtteranceRef.current = utterance;
+      setSpeaking(true);
+      window.speechSynthesis.speak(utterance);
+    };
     const voices = window.speechSynthesis.getVoices();
-    const female = voices.find((v) =>
-      /samantha|victoria|karen|alex|joanna|kimberly|salli|emma|amy|catherine|moira|zira|zhiyu|laila|meijia/i.test(v.name)
-    );
-    if (female) utterance.voice = female;
-    utterance.rate = 1.05;
-    utterance.pitch = 1.1;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    speakUtteranceRef.current = utterance;
-    setSpeaking(true);
-    window.speechSynthesis.speak(utterance);
+    if (voices.length) {
+      speak(voices);
+    } else {
+      // Voices load asynchronously in some environments — wait once.
+      const onChanged = () => {
+        window.speechSynthesis.removeEventListener("voiceschanged", onChanged);
+        speak(window.speechSynthesis.getVoices());
+      };
+      window.speechSynthesis.addEventListener("voiceschanged", onChanged);
+      setTimeout(() => window.speechSynthesis.removeEventListener("voiceschanged", onChanged), 1500);
+    }
   };
 
   useEffect(() => {

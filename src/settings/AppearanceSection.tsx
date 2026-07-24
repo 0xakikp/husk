@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,29 @@ function SwitchRow({
 export function AppearanceSection() {
   const p = usePrefs();
   const bg = p.background;
+
+  // Available system TTS voices (loaded async in some environments)
+  const [ttsVoices, setTtsVoices] = useState<SpeechSynthesisVoice[]>([]);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const load = () => setTtsVoices(window.speechSynthesis.getVoices());
+    load();
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, []);
+
+  const testVoice = () => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance("Hi, I'm Husk — your AI assistant.");
+    const v =
+      ttsVoices.find((v) => v.name === p.aiTtsVoice) ??
+      ttsVoices.find((v) => /samantha|victoria|karen|moira|tessa|fiona|zira|serena/i.test(v.name));
+    if (v) u.voice = v;
+    u.rate = 1.05;
+    u.pitch = 1.1;
+    window.speechSynthesis.speak(u);
+  };
 
   const pickImage = useCallback(async () => {
     const selected = await open({
@@ -420,6 +443,33 @@ export function AppearanceSection() {
               onChange={(e) => setPrefs({ aiComposerBgColor: e.target.value })}
               className="h-7 w-full cursor-pointer rounded border border-border/40 bg-transparent p-0"
             />
+          </div>
+          <div className="flex flex-col gap-2 rounded border border-border/40 bg-muted/20 px-5 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[12.5px] font-medium text-foreground">Talk-back voice</span>
+                <span className="text-[10.5px] leading-relaxed text-muted-foreground">Voice used when reading AI replies aloud</span>
+              </div>
+              <button
+                type="button"
+                onClick={testVoice}
+                className="shrink-0 rounded border border-border/40 bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                ▶ test
+              </button>
+            </div>
+            <select
+              value={p.aiTtsVoice}
+              onChange={(e) => setPrefs({ aiTtsVoice: e.target.value })}
+              className="h-7 w-full rounded border border-border/40 bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary/50"
+            >
+              <option value="">Auto (female)</option>
+              {ttsVoices.map((v) => (
+                <option key={`${v.name}-${v.lang}`} value={v.name}>
+                  {v.name} ({v.lang})
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
