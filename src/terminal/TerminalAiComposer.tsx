@@ -16,9 +16,11 @@ import {
   VolumeHighIcon,
   VolumeOffIcon,
   ArrowDown01Icon,
+  PanelRightIcon,
+  PanelBottom as PanelBottomIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
-import { usePrefs } from "../settings/preferences";
+import { usePrefs, setPrefs } from "../settings/preferences";
 import { loadConfig, getKey } from "../ai/store";
 import { getProvider } from "../ai/providers";
 import { streamChat } from "../ai/client";
@@ -228,6 +230,7 @@ export function TerminalAiComposer({
   sessionId,
   onOpenInAiTab,
   variant = "docked",
+  dock = "bottom",
   registerToggle = true,
   registerOpen = true,
   registerSend = false,
@@ -236,6 +239,7 @@ export function TerminalAiComposer({
   sessionId: string;
   onOpenInAiTab?: () => void;
   variant?: "docked" | "full";
+  dock?: "bottom" | "right";
   registerToggle?: boolean;
   registerOpen?: boolean;
   registerSend?: boolean;
@@ -277,6 +281,14 @@ export function TerminalAiComposer({
   const startHeightRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const [codeTabMap, setCodeTabMap] = useState<Record<number, number>>({});
+
+  // Right-dock (side panel) state
+  const dockRight = dock === "right" && variant === "docked";
+  const sideDraggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(0);
+  const [sideWidth, setSideWidth] = useState(prefs.aiComposerSideWidth ?? 380);
+  const sideWidthRef = useRef(sideWidth);
 
   const session = getSession(sessionId);
   const messages = session.messages;
@@ -632,6 +644,35 @@ export function TerminalAiComposer({
     };
   }, [variant]);
 
+  // Side (right-dock) width resize
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!sideDraggingRef.current) return;
+      const delta = startXRef.current - e.clientX;
+      const next = Math.min(620, Math.max(280, Math.round(startWidthRef.current + delta)));
+      sideWidthRef.current = next;
+      setSideWidth(next);
+    };
+    const onUp = () => {
+      if (!sideDraggingRef.current) return;
+      sideDraggingRef.current = false;
+      setPrefs({ aiComposerSideWidth: sideWidthRef.current });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  const startSideResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    sideDraggingRef.current = true;
+    startXRef.current = e.clientX;
+    startWidthRef.current = panelRef.current?.clientWidth ?? sideWidthRef.current;
+  };
+
   const handleClose = () => {
     abortRef.current = true;
     abortCtrlRef.current?.abort();
@@ -820,9 +861,11 @@ export function TerminalAiComposer({
   const panelStyle =
     variant === "full"
       ? { maxHeight: '100%', height: '100%' }
-      : height !== null
-        ? { height: `${height}px`, maxHeight: `${height}px` }
-        : { maxHeight: computedHeight };
+      : dockRight
+        ? { width: sideWidth, height: '100%', maxHeight: 'none' as const, flexShrink: 0 }
+        : height !== null
+          ? { height: `${height}px`, maxHeight: `${height}px` }
+          : { maxHeight: computedHeight };
 
   return (
     <div
@@ -832,13 +875,14 @@ export function TerminalAiComposer({
         "composer-panel animate-composer-in",
         expanded && "composer-expanded",
         variant === "full" && "composer-full",
+        dockRight && "composer-dock-right",
         dragOver && "composer-drag-over",
         messageAccentClass,
         className
       )}
       style={{
         ...panelStyle,
-        borderRadius: gap && variant !== "full" ? '16px' : variant !== "full" ? '16px 16px 0 0' : '0',
+        borderRadius: dockRight ? undefined : gap && variant !== "full" ? '16px' : variant !== "full" ? '16px 16px 0 0' : '0',
         '--composer-opacity': prefs.aiMiniOpacity / 100,
         '--composer-font-size': `${prefs.aiMiniFontSize}px`,
         '--composer-bg-color': prefs.aiComposerBgColor,
@@ -864,10 +908,17 @@ export function TerminalAiComposer({
         if (paths.length) void attachFiles(paths);
       }}
     >
-      {variant !== "full" && (
+      {variant !== "full" && !dockRight && (
         <div
           className="composer-resize-handle"
           onMouseDown={startResize}
+          title="Drag to resize"
+        />
+      )}
+      {dockRight && (
+        <div
+          className="composer-resize-handle-side"
+          onMouseDown={startSideResize}
           title="Drag to resize"
         />
       )}
@@ -972,14 +1023,26 @@ export function TerminalAiComposer({
               <HugeiconsIcon icon={MessageMultiple02Icon} size={12} strokeWidth={1.75} />
             </button>
           )}
-          <button
-            type="button"
-            onClick={toggleExpand}
-            className="composer-icon-btn"
-            title={expanded ? "Collapse" : "Expand"}
-          >
-            <HugeiconsIcon icon={expanded ? ArrowDownIcon : FullScreenIcon} size={12} strokeWidth={1.75} />
-          </button>
+          {variant === "docked" && (
+            <button
+              type="button"
+              onClick={() => setPrefs({ aiComposerDock: dockRight ? "bottom" : "right" })}
+              className="composer-icon-btn"
+              title={dockRight ? "Dock to bottom" : "Dock to right"}
+            >
+              <HugeiconsIcon icon={dockRight ? PanelBottomIcon : PanelRightIcon} size={12} strokeWidth={1.75} />
+            </button>
+          )}
+          {!dockRight && (
+            <button
+              type="button"
+              onClick={toggleExpand}
+              className="composer-icon-btn"
+              title={expanded ? "Collapse" : "Expand"}
+            >
+              <HugeiconsIcon icon={expanded ? ArrowDownIcon : FullScreenIcon} size={12} strokeWidth={1.75} />
+            </button>
+          )}
           <button
             type="button"
             onClick={newSession}

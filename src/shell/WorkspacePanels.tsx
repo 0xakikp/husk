@@ -127,20 +127,22 @@ export function WorkspacePanels({
           )}
           aria-hidden={activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null}
         >
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            <ErrorBoundary
-              fallback={
-                <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-                  <div className="text-[13px] font-medium text-destructive">Terminal crashed</div>
-                  <div className="text-[11px] text-muted-foreground">
-                    Switch to another tab or restart the app to recover.
+          <div className={cn("relative flex min-h-0 flex-1", prefs.aiComposerDock === "right" ? "flex-row" : "flex-col")}>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <ErrorBoundary
+                fallback={
+                  <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+                    <div className="text-[13px] font-medium text-destructive">Terminal crashed</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Switch to another tab or restart the app to recover.
+                    </div>
                   </div>
-                </div>
-              }
-            >
-              <TerminalStack term={term} viewActive={activeKind === "term"} />
-            </ErrorBoundary>
-            {prefs.panelGaps > 0 && (
+                }
+              >
+                <TerminalStack term={term} viewActive={activeKind === "term"} />
+              </ErrorBoundary>
+            </div>
+            {prefs.panelGaps > 0 && prefs.aiComposerDock !== "right" && (
               <div
                 className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
                 style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
@@ -150,6 +152,7 @@ export function WorkspacePanels({
               sessionId={tabSessionId(term.activeId)}
               onOpenInAiTab={() => setActiveKind("ai")}
               registerSend={true}
+              dock={prefs.aiComposerDock}
             />
           </div>
           <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />

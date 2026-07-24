@@ -107,6 +107,10 @@ export type Prefs = {
   aiTabColor?: string;
   aiSidebarWidth: number;
 
+  // AI composer dock (terminal)
+  aiComposerDock: "bottom" | "right";
+  aiComposerSideWidth: number;
+
   // Setup assistant
   setupAssistantDismissed?: boolean;
 
@@ -231,6 +235,8 @@ const DEFAULT: Prefs = {
   aiTabPinned: false,
   aiTabColor: undefined,
   aiSidebarWidth: 240,
+  aiComposerDock: "bottom",
+  aiComposerSideWidth: 380,
   setupAssistantDismissed: false,
 
   notesDirectory: "",
