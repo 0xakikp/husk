@@ -11,7 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { TerminalAiComposer } from "../terminal/TerminalAiComposer";
-import { usePrefs } from "../settings/preferences";
+import { usePrefs, setPrefs } from "../settings/preferences";
 import {
   useSessions,
   useActiveSessionId,
@@ -69,6 +69,33 @@ export function AiTabPanel() {
   const [query, setQuery] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Resizable session sidebar
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const sidebarDragRef = useRef(false);
+  const sidebarWidthRef = useRef(prefs.aiSidebarWidth ?? 240);
+  const [sidebarWidth, setSidebarWidth] = useState(sidebarWidthRef.current);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!sidebarDragRef.current || !sidebarRef.current) return;
+      const left = sidebarRef.current.getBoundingClientRect().left;
+      const next = Math.min(380, Math.max(160, Math.round(e.clientX - left)));
+      sidebarWidthRef.current = next;
+      setSidebarWidth(next);
+    };
+    const onUp = () => {
+      if (!sidebarDragRef.current) return;
+      sidebarDragRef.current = false;
+      setPrefs({ aiSidebarWidth: sidebarWidthRef.current });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   // Ensure a global session exists for the AI tab itself
   useEffect(() => {
@@ -209,7 +236,20 @@ export function AiTabPanel() {
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Session sidebar */}
-      <div className="flex h-full w-60 shrink-0 flex-col border-r border-border/50 bg-background/95">
+      <div
+        ref={sidebarRef}
+        className="relative flex h-full shrink-0 flex-col border-r border-border/50 bg-background/95"
+        style={{ width: sidebarWidth }}
+      >
+        {/* drag-to-resize handle */}
+        <div
+          className="absolute -right-[2px] top-0 bottom-0 z-10 w-[5px] cursor-ew-resize transition-colors hover:bg-primary/40"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            sidebarDragRef.current = true;
+          }}
+          title="Drag to resize"
+        />
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/50 px-3">
           <span className="flex items-center gap-1.5 font-mono text-[11px] font-semibold text-foreground tracking-tight">
             <HugeiconsIcon icon={MessageMultiple02Icon} size={13} strokeWidth={1.75} />

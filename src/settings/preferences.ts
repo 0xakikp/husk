@@ -105,6 +105,7 @@ export type Prefs = {
   // AI tab
   aiTabPinned: boolean;
   aiTabColor?: string;
+  aiSidebarWidth: number;
 
   // Setup assistant
   setupAssistantDismissed?: boolean;
@@ -229,6 +230,7 @@ const DEFAULT: Prefs = {
   aiComposerBgColor: "#000000",
   aiTabPinned: false,
   aiTabColor: undefined,
+  aiSidebarWidth: 240,
   setupAssistantDismissed: false,
 
   notesDirectory: "",
