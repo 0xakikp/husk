@@ -298,28 +298,27 @@ export function TerminalView({
     const curCol = buf.cursorX;
     const curRow = buf.cursorY + buf.viewportY;
 
-    if (row < prompt.row || row > curRow) return;
+    // Only handle clicks on the cursor's own row. Moving between rows would
+    // require up/down arrow keys — but shells (zsh/bash/fish) interpret those
+    // as history navigation, which recalls a previously-run command onto the
+    // prompt and looks like a random paste of old text (phantom paste bug,
+    // typically triggered by clicking anywhere after the terminal sat idle).
+    if (row !== curRow) return;
     if (row === prompt.row && col < prompt.col) return;
     if (col < 0 || col >= term.cols) return;
 
     // Don't move right past the current input end: sending right arrows beyond
     // the typed command can cause zsh-autosuggestions/fish to accept a history
     // suggestion and paste a previous command (phantom paste bug).
-    if (row === curRow && col > curCol) {
-      const line = buf.getLine(curRow)?.translateToString(true) ?? "";
-      const inputEnd = Math.max(curCol, line.trimEnd().length);
-      col = Math.min(col, inputEnd);
-    }
+    const line = buf.getLine(curRow)?.translateToString(true) ?? "";
+    const inputEnd = Math.max(curCol, line.trimEnd().length);
+    col = Math.min(col, inputEnd);
 
-    if (col === curCol && row === curRow) return;
+    if (col === curCol) return;
 
-    const rowDelta = row - curRow;
     const colDelta = col - curCol;
 
     const arrows: string[] = [];
-    for (let i = 0; i < Math.abs(rowDelta); i++) {
-      arrows.push(rowDelta < 0 ? "\x1b[A" : "\x1b[B");
-    }
     for (let i = 0; i < Math.abs(colDelta); i++) {
       arrows.push(colDelta < 0 ? "\x1b[D" : "\x1b[C");
     }
