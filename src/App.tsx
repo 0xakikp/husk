@@ -25,10 +25,15 @@ import { openSettingsWindow } from "./settingsWindow";
 import type { Command } from "./command-palette/CommandPalette";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
 import { pickWorkspaceFolder } from "./workspace/store";
-import { useActiveSshHost } from "./remote/store";
+import { useActiveSshHost, setActiveSshHost } from "./remote/store";
 import { StatusBar } from "./statusbar/StatusBar";
 import type { OpenPanelKind } from "./git/types";
-import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId } from "./ai/terminalContext";
+import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId, runInActiveTerminal } from "./ai/terminalContext";
+import { useLauncherItems, type LauncherCtx } from "./command-palette/useLauncherItems";
+import { pinNote, unpinNote } from "./notes/store";
+import { useContext as k8sUseContext } from "./kubernetes/client";
+import { extractParams, composeCommand } from "./workflows/params";
+import type { Workflow } from "./workflows/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { SidebarViewId } from "./sidebar/SidebarRail";
 import { PathBar } from "./header/PathBar";
@@ -125,6 +130,15 @@ function App() {
       persistSidebarView(view);
     },
     [persistSidebarView, sidebarView, explorerOpen],
+  );
+
+  /** Show a sidebar view unconditionally (never toggles it closed). */
+  const showSidebarView = useCallback(
+    (view: SidebarViewId) => {
+      if (!explorerOpen) setExplorerOpen(true);
+      if (view !== sidebarView) persistSidebarView(view);
+    },
+    [explorerOpen, sidebarView, persistSidebarView],
   );
 
   const persistSidebarWidth = useCallback((next: number) => {
@@ -697,6 +711,48 @@ function App() {
     setActiveKind("file");
   };
 
+  // ── Launcher (Spotlight): merge static commands with live sources ──
+  const launcherCtx = useMemo<LauncherCtx>(
+    () => ({
+      openNote: (path, name) => {
+        showSidebarView("vault");
+        openFile(path, name);
+      },
+      pinNote: (path) => pinNote(path),
+      unpinNote: (path) => unpinNote(path),
+      openFile: (path, name) => openFile(path, name),
+      openDocker: () => setDockerOpen(true),
+      openK8s: () => setK8sOpen(true),
+      switchK8sContext: (name) => {
+        void k8sUseContext(name)
+          .then(() => toast({ title: `Switched to ${name}`, variant: "success", duration: 2000 }))
+          .catch((e: unknown) =>
+            toast({ title: "kubectl error", message: e instanceof Error ? e.message : String(e), variant: "error" }),
+          );
+        setK8sOpen(true);
+      },
+      runWorkflow: (wf: Workflow) => {
+        if (extractParams(wf.steps).length > 0) {
+          showSidebarView("workflows");
+          toast({ title: "Workflow needs parameters — run it from the workflows panel", variant: "info", duration: 2500 });
+          return;
+        }
+        const cmd = composeCommand(wf.steps, {}, { stopOnError: wf.stopOnError !== false });
+        if (cmd) runInActiveTerminal(cmd);
+      },
+      openWorkflows: () => showSidebarView("workflows"),
+      openJobs: () => setJobsOpen(true),
+      connectRemote: (host) => {
+        setActiveSshHost(host);
+        showSidebarView("remotes");
+      },
+      openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
+    }),
+    [showSidebarView, openFile, openFiles],
+  );
+
+  const launcherItems = useLauncherItems(paletteOpen, commands, launcherCtx);
+
   const closeFile = (path: string) => {
     const file = openFiles.find((f) => f.path === path);
     if (file?.pinned) return; // Cannot close pinned files
@@ -942,7 +998,7 @@ function App() {
           setCloudSyncOpen={setCloudSyncOpen}
           paletteOpen={paletteOpen}
           setPaletteOpen={setPaletteOpen}
-          commands={commands}
+          commands={launcherItems}
           clipboardOpen={clipboardOpen}
           setClipboardOpen={setClipboardOpen}
           clipboardButtonRef={clipboardButtonRef}

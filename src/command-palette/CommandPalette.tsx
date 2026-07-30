@@ -43,18 +43,50 @@ import {
   FolderCloudIcon,
   CommandIcon,
   DownloadCircle01Icon,
+  NotebookIcon,
+  Home01Icon,
 } from "@hugeicons/core-free-icons";
 import { recordCommandUse, getFrecencyScore, getCommandHistory } from "./history";
+import { cn } from "@/lib/utils";
+
+export type LauncherKind =
+  | "command"
+  | "note"
+  | "file"
+  | "container"
+  | "k8s"
+  | "workflow"
+  | "job"
+  | "remote";
 
 export type Command = {
   id: string;
   label: string;
   hint?: string;
   group?: string;
+  kind?: LauncherKind;
+  /** Extra text merged into the match value. */
+  keywords?: string;
+  /** Secondary action, triggered with Cmd/Ctrl+Enter. */
+  secondary?: { label: string; run: () => void };
   run: () => void;
 };
 
-const GROUP_ORDER = ["General", "View", "AI", "Tools", "Git", "Other"];
+const GROUP_ORDER = [
+  "Notes",
+  "Files",
+  "Workflows",
+  "Jobs",
+  "Docker",
+  "Kubernetes",
+  "Remotes",
+  "AI",
+  "General",
+  "View",
+  "Tools",
+  "Git",
+  "Other",
+];
 
 const ICON_MAP: Record<string, typeof Search01Icon> = {
   explorer: SidebarLeftIcon,
@@ -87,7 +119,6 @@ const ICON_MAP: Record<string, typeof Search01Icon> = {
   "sidebar-git": GitBranchIcon,
   "sidebar-ai": SparklesIcon,
   "sidebar-remotes": GlobalIcon,
-  "sidebar-docker": DatabaseIcon,
   aws: CloudIcon,
   "open-file": File01Icon,
   "new-tab": PlusSignIcon,
@@ -99,12 +130,25 @@ const ICON_MAP: Record<string, typeof Search01Icon> = {
   "open-authenticator": SecurityCheckIcon,
 };
 
-function getIcon(id: string): typeof Search01Icon {
-  if (ICON_MAP[id]) return ICON_MAP[id];
-  for (const [key, icon] of Object.entries(ICON_MAP)) {
-    if (id.includes(key)) return icon;
+const KIND_META: Record<LauncherKind, { icon: typeof Search01Icon; className: string }> = {
+  command: { icon: CommandIcon, className: "text-primary bg-primary/10" },
+  note: { icon: NotebookIcon, className: "text-amber-400 bg-amber-500/10" },
+  file: { icon: File01Icon, className: "text-sky-400 bg-sky-500/10" },
+  container: { icon: DatabaseIcon, className: "text-blue-400 bg-blue-500/10" },
+  k8s: { icon: Database01Icon, className: "text-violet-400 bg-violet-500/10" },
+  workflow: { icon: PlayIcon, className: "text-emerald-400 bg-emerald-500/10" },
+  job: { icon: TimeScheduleIcon, className: "text-orange-400 bg-orange-500/10" },
+  remote: { icon: Home01Icon, className: "text-cyan-400 bg-cyan-500/10" },
+};
+
+function getIcon(id: string, kind: LauncherKind): typeof Search01Icon {
+  if (kind === "command") {
+    if (ICON_MAP[id]) return ICON_MAP[id];
+    for (const [key, icon] of Object.entries(ICON_MAP)) {
+      if (id.includes(key)) return icon;
+    }
   }
-  return CommandIcon;
+  return KIND_META[kind].icon;
 }
 
 function getGroup(id: string, label: string): string {
@@ -117,6 +161,44 @@ function getGroup(id: string, label: string): string {
   return "Other";
 }
 
+/* Prefixes scope the search to one source. "> x" commands, "n " notes,
+   "f " files, "w " workflows, "d " docker, "k " k8s, "r " remotes, "j " jobs. */
+const PREFIX_KIND: Record<string, LauncherKind> = {
+  ">": "command",
+  n: "note",
+  f: "file",
+  w: "workflow",
+  d: "container",
+  k: "k8s",
+  r: "remote",
+  j: "job",
+};
+
+function parseQuery(raw: string): { kind: LauncherKind | null; query: string } {
+  if (raw.startsWith(">")) return { kind: "command", query: raw.slice(1).trimStart() };
+  const m = raw.match(/^([nfwdkrj])\s+(.*)$/);
+  if (m && PREFIX_KIND[m[1]]) return { kind: PREFIX_KIND[m[1]], query: m[2] };
+  return { kind: null, query: raw };
+}
+
+/** Small scoring fn used as cmdk filter. Returns 0 to hide, higher = better. */
+function scoreValue(value: string, query: string): number {
+  if (!query) return 1;
+  const v = value.toLowerCase();
+  const q = query.toLowerCase();
+  if (v.includes(q)) {
+    const label = value.split(" ")[0]?.toLowerCase() ?? v;
+    if (label.startsWith(q)) return 2;
+    return 1;
+  }
+  // Subsequence match (fuzzy)
+  let qi = 0;
+  for (let i = 0; i < v.length && qi < q.length; i++) {
+    if (v[i] === q[qi]) qi++;
+  }
+  return qi === q.length ? 0.4 : 0;
+}
+
 export function CommandPalette({
   open,
   commands,
@@ -126,7 +208,8 @@ export function CommandPalette({
   commands: Command[];
   onClose: () => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [rawInput, setRawInput] = useState("");
+  const [selectedValue, setSelectedValue] = useState("");
   const historyIndexRef = useRef(-1);
   const historyRef = useRef<string[]>([]);
 
@@ -136,23 +219,29 @@ export function CommandPalette({
     };
   }, []);
 
-  // Reset history index when query changes manually
+  // Reset input each time the palette opens
   useEffect(() => {
-    historyIndexRef.current = -1;
-  }, [query]);
+    if (open) {
+      setRawInput("");
+      historyIndexRef.current = -1;
+    }
+  }, [open]);
+
+  const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
 
   const enriched = useMemo(() => {
-    const list = commands.map((c) => ({
-      ...c,
-      group: c.group || getGroup(c.id, c.label),
-      score: getFrecencyScore(c.id),
-    }));
-    // Sort by frecency when no query; keep stable order otherwise (cmdk filters)
+    const list = commands
+      .filter((c) => !scopedKind || (c.kind ?? "command") === scopedKind)
+      .map((c) => ({
+        ...c,
+        group: c.group || getGroup(c.id, c.label),
+        score: getFrecencyScore(c.id),
+      }));
     if (!query.trim()) {
       list.sort((a, b) => b.score - a.score);
     }
     return list;
-  }, [commands, query]);
+  }, [commands, query, scopedKind]);
 
   const groups = useMemo(() => {
     const map = new Map<string, typeof enriched>();
@@ -171,7 +260,7 @@ export function CommandPalette({
     }));
   }, [groups]);
 
-  const showEmpty = query.trim().length > 0 && sortedGroups.length === 0;
+  const showEmpty = sortedGroups.length === 0 && rawInput.trim().length > 0;
 
   const handleSelect = (cmd: Command) => {
     recordCommandUse(cmd.id);
@@ -179,9 +268,24 @@ export function CommandPalette({
     onClose();
   };
 
+  const handleSecondary = () => {
+    const cmd = commands.find((c) => `${c.label} ${c.id}` === selectedValue || c.id === selectedValue);
+    if (cmd?.secondary) {
+      recordCommandUse(cmd.id);
+      cmd.secondary.run();
+      onClose();
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleSecondary();
+      return;
+    }
     if (e.key === "ArrowUp") {
-      // Cycle through command history when input is at top of list
+      // Only hijack history when the input is empty and no query results
+      if (rawInput) return;
       e.preventDefault();
       if (historyIndexRef.current === -1) {
         historyRef.current = getCommandHistory();
@@ -191,17 +295,17 @@ export function CommandPalette({
       historyIndexRef.current = Math.min(historyIndexRef.current + 1, hist.length - 1);
       const id = hist[hist.length - 1 - historyIndexRef.current];
       const cmd = commands.find((c) => c.id === id);
-      if (cmd) setQuery(cmd.label);
+      if (cmd) setRawInput(cmd.label);
     } else if (e.key === "ArrowDown" && historyIndexRef.current >= 0) {
       e.preventDefault();
       historyIndexRef.current = Math.max(historyIndexRef.current - 1, -1);
       if (historyIndexRef.current === -1) {
-        setQuery("");
+        setRawInput("");
       } else {
         const hist = historyRef.current;
         const id = hist[hist.length - 1 - historyIndexRef.current];
         const cmd = commands.find((c) => c.id === id);
-        if (cmd) setQuery(cmd.label);
+        if (cmd) setRawInput(cmd.label);
       }
     }
   };
@@ -209,17 +313,21 @@ export function CommandPalette({
   return (
     <CommandDialog
       open={open}
-      className="sm:max-w-[420px]"
+      className="sm:max-w-[520px]"
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
     >
-      <CommandRoot>
+      <CommandRoot
+        value={selectedValue}
+        onValueChange={setSelectedValue}
+        filter={(value, search) => scoreValue(value, parseQuery(search).query)}
+      >
         <CommandInput
           autoFocus
-          placeholder="Search commands, files, or actions..."
-          value={query}
-          onValueChange={setQuery}
+          placeholder="Search everything — notes, files, docker, k8s, workflows…"
+          value={rawInput}
+          onValueChange={setRawInput}
           onKeyDown={handleKeyDown}
         />
         <CommandList>
@@ -228,24 +336,25 @@ export function CommandPalette({
           {sortedGroups.map((group) => (
             <CommandGroup key={group.name} heading={group.name}>
               {group.items.map((cmd) => {
-                const Icon = getIcon(cmd.id);
+                const kind = cmd.kind ?? "command";
+                const Icon = getIcon(cmd.id, kind);
+                const meta = KIND_META[kind];
                 return (
                   <CommandItem
                     key={cmd.id}
                     value={`${cmd.label} ${cmd.id}`}
+                    keywords={[cmd.id, cmd.keywords ?? "", cmd.group ?? ""]}
                     onSelect={() => handleSelect(cmd)}
                   >
-                    <div className="flex size-5 shrink-0 items-center justify-center">
-                      <HugeiconsIcon
-                        icon={Icon}
-                        size={15}
-                        strokeWidth={1.5}
-                        className="text-muted-foreground"
-                      />
+                    <div className={cn("flex size-5 shrink-0 items-center justify-center rounded", meta.className)}>
+                      <HugeiconsIcon icon={Icon} size={13} strokeWidth={1.5} />
                     </div>
                     <span className="min-w-0 flex-1 truncate">{cmd.label}</span>
                     {cmd.hint ? (
-                      <CommandShortcut>{cmd.hint}</CommandShortcut>
+                      <span className="shrink-0 text-[10px] text-muted-foreground/60">{cmd.hint}</span>
+                    ) : null}
+                    {cmd.secondary ? (
+                      <CommandShortcut>⌘↵ {cmd.secondary.label}</CommandShortcut>
                     ) : null}
                   </CommandItem>
                 );
@@ -253,6 +362,11 @@ export function CommandPalette({
             </CommandGroup>
           ))}
         </CommandList>
+        <div className="flex items-center gap-3 border-t border-border/50 px-3 py-1.5 text-[9.5px] text-muted-foreground/50">
+          <span>↵ open</span>
+          <span>⌘↵ action</span>
+          <span className="ml-auto">&gt; cmd · n notes · f files · w workflows · d docker · k k8s · r remotes · j jobs</span>
+        </div>
       </CommandRoot>
     </CommandDialog>
   );
