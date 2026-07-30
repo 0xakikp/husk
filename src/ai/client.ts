@@ -79,8 +79,14 @@ export async function streamChat(
         onStatus?.(`✅ ${event.toolName}`);
         break;
       case "error":
-        onStatus?.(`⚠️ error`);
-        break;
+        // The AI SDK reports some failures as stream events instead of throws.
+        // Surface them so callers can render the error in the chat bubble.
+        {
+          const ev = event as { error?: unknown };
+          const err = ev.error;
+          const msg = err instanceof Error ? err.message : String(err || "Stream error");
+          throw new Error(msg);
+        }
       default:
         break;
     }

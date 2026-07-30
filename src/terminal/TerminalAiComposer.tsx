@@ -168,6 +168,19 @@ function MarkdownText({ text }: { text: string }) {
   );
 }
 
+function LoadingIndicator() {
+  return (
+    <span className="composer-loading">
+      <span className="composer-loading-dots">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span>thinking</span>
+    </span>
+  );
+}
+
 function parseDiffBlocks(text: string): DiffBlockType[] {
   const blocks: DiffBlockType[] = [];
   const regex = /```diff\n?([\s\S]*?)```/g;
@@ -1113,7 +1126,9 @@ export function TerminalAiComposer({
                   >
                     {isUser ? "you" : activeAgentName.toLowerCase()}
                   </span>
-                  <span className="msg-compact-text">{msg.content}</span>
+                  <span className="msg-compact-text">
+                    {msg.content.trim() ? msg.content : msg.streaming ? <LoadingIndicator /> : ""}
+                  </span>
                   {timeLabel && <span className="msg-meta">{timeLabel}</span>}
                   <span className="msg-compact-actions">
                     <button type="button" onClick={() => copyMessage(msg.content, i)} className="msg-act msg-act-sm">
@@ -1156,6 +1171,7 @@ export function TerminalAiComposer({
                   ) : (
                     <>
                       {textParts && <MarkdownText text={textParts} />}
+                      {msg.streaming && !textParts && codeBlocks.length === 0 && diffBlocks.length === 0 && !tree && <LoadingIndicator />}
                       {codeBlocks.length > 0 && (
                         <CodeBlockTabs
                           blocks={codeBlocks}

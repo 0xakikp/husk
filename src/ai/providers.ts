@@ -20,7 +20,7 @@ export type Provider = {
  * with just a base URL, so the list is easy to extend.
  */
 export const PROVIDERS: Provider[] = [
-  { id: "anthropic", label: "Anthropic (Claude)", kind: "anthropic", defaultModel: "claude-sonnet-4-6" },
+  { id: "anthropic", label: "Anthropic (Claude)", kind: "anthropic", defaultModel: "claude-sonnet-4" },
   { id: "openai", label: "OpenAI (GPT)", kind: "openai", defaultModel: "gpt-4.1" },
   { id: "google", label: "Google (Gemini)", kind: "google", defaultModel: "gemini-2.0-flash" },
   {
@@ -42,14 +42,14 @@ export const PROVIDERS: Provider[] = [
     label: "OpenRouter",
     kind: "openai-compatible",
     baseURL: "https://openrouter.ai/api/v1",
-    defaultModel: "openai/gpt-4.1-mini",
+    defaultModel: "openrouter-auto",
   },
   {
     id: "xai",
     label: "xAI (Grok)",
     kind: "openai-compatible",
     baseURL: "https://api.x.ai/v1",
-    defaultModel: "grok-2-latest",
+    defaultModel: "grok-3",
   },
   {
     id: "mistral",
@@ -70,7 +70,7 @@ export const PROVIDERS: Provider[] = [
     label: "Local / OpenAI-compatible",
     kind: "openai-compatible",
     baseURL: "http://localhost:1234/v1",
-    defaultModel: "",
+    defaultModel: "lmstudio-local",
     keyless: true,
     configurableBaseURL: true,
   },

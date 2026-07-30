@@ -460,6 +460,54 @@
   font-size: 9px;
 }
 
+/* ── Streaming loading indicator ────────────────────────────────────────── */
+
+.composer-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--wb-mono);
+  font-size: 10px;
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+}
+
+.composer-loading-dots {
+  display: flex;
+  gap: 3px;
+}
+
+.composer-loading-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--primary);
+  opacity: 0.4;
+  animation: composer-loading-dot 1.2s infinite ease-in-out both;
+}
+
+.composer-loading-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.composer-loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.composer-loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes composer-loading-dot {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
 /* ── Empty state ────────────────────────────────────────────────────────── */
 
 .composer-empty {
