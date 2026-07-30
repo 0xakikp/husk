@@ -1,354 +1,222 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, type ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import { Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Input } from "@/components/ui/input";
-import { GeneralSection } from "./GeneralSection";
-import { AppearanceSection } from "./AppearanceSection";
-import { AboutSection } from "./AboutSection";
-import { ModelsSection } from "./ModelsSection";
-import { McpSection } from "./McpSection";
-import { SetupAssistantDialog, SetupAssistantBanner, ToolsSetupCard } from "./SetupAssistantDialog";
-import { CloudSyncSection } from "./CloudSyncSection";
-import { CrashReportingSection } from "./CrashReportingSection";
+import { GeneralFile } from "./files/GeneralFile";
+import { AppearanceFile } from "./files/AppearanceFile";
+import { ModelsFile } from "./files/ModelsFile";
+import { AgentsFile } from "./files/AgentsFile";
+import { PromptsFile } from "./files/PromptsFile";
+import { McpFile } from "./files/McpFile";
+import { ToolsFile } from "./files/ToolsFile";
+import { SyncFile } from "./files/SyncFile";
+import { CrashFile } from "./files/CrashFile";
+import { ManifestFile } from "./files/ManifestFile";
+import "./config/config-theme.css";
 
-import { PromptTemplatesSection } from "./PromptTemplatesSection";
-import { AiAgentsSection } from "./AiAgentsSection";
-
-type SectionId =
-  | "about"
-  | "general"
+type FileId =
+  | "config"
   | "appearance"
   | "models"
-  | "ai"
+  | "agents"
+  | "prompts"
   | "mcp"
   | "tools"
-  | "cloudSync"
-  | "crash";
+  | "sync"
+  | "crash"
+  | "manifest";
 
-type SectionGroup = "husk.config" | "ai" | "mcp" | "other" | "manifest";
-
-type SectionDef = {
-  id: SectionId;
-  label: string;
-  /** File-like label shown in the config tree sidebar. */
-  treeLabel: string;
-  group: SectionGroup;
+type FileDef = {
+  id: FileId;
+  path: string;
+  dir?: "ai";
+  component: ComponentType;
   keywords: string[];
 };
 
-const SECTIONS: SectionDef[] = [
-  { id: "about", label: "Manifest", treeLabel: "manifest", group: "manifest", keywords: ["about", "version", "build", "license"] },
-  {
-    id: "general",
-    label: "General",
-    treeLabel: "general",
-    group: "husk.config",
-    keywords: ["terminal", "font", "size", "cursor", "blink", "theme"],
-  },
-  {
-    id: "appearance",
-    label: "Appearance",
-    treeLabel: "appearance",
-    group: "husk.config",
-    keywords: ["background", "image", "wallpaper", "opacity", "blur", "transparency", "dim"],
-  },
-  {
-    id: "models",
-    label: "Models",
-    treeLabel: "models",
-    group: "ai",
-    keywords: ["model", "provider", "api", "key", "ai", "anthropic", "openai", "local"],
-  },
-  {
-    id: "ai",
-    label: "AI Composer",
-    treeLabel: "composer",
-    group: "ai",
-    keywords: ["agent", "persona", "system", "prompt", "template", "composer", "refactor", "explain", "tests", "debug", "script"],
-  },
-  {
-    id: "mcp",
-    label: "MCP",
-    treeLabel: "servers",
-    group: "mcp",
-    keywords: ["mcp", "server", "tool", "context", "protocol", "external"],
-  },
-  {
-    id: "tools",
-    label: "Tools",
-    treeLabel: "tools",
-    group: "other",
-    keywords: ["tool", "cli", "install", "recommended"],
-  },
-  {
-    id: "cloudSync",
-    label: "Cloud Sync",
-    treeLabel: "cloud.sync",
-    group: "other",
-    keywords: ["sync", "backup", "export", "import", "transfer", "device"],
-  },
-  {
-    id: "crash",
-    label: "Crash Reporting",
-    treeLabel: "crash",
-    group: "other",
-    keywords: ["crash", "sentry", "error", "report", "telemetry"],
-  },
+const FILES: FileDef[] = [
+  { id: "config", path: "config.toml", component: GeneralFile, keywords: ["general", "editor", "terminal", "font", "cursor", "vim", "startup"] },
+  { id: "appearance", path: "appearance.toml", component: AppearanceFile, keywords: ["appearance", "theme", "wallpaper", "color", "opacity", "blur", "glow", "effects"] },
+  { id: "models", path: "ai/models.toml", dir: "ai", component: ModelsFile, keywords: ["models", "provider", "api", "key", "anthropic", "openai", "claude", "deepseek", "local"] },
+  { id: "agents", path: "ai/agents.toml", dir: "ai", component: AgentsFile, keywords: ["agents", "persona", "system", "prompt", "composer"] },
+  { id: "prompts", path: "ai/prompts.toml", dir: "ai", component: PromptsFile, keywords: ["prompts", "templates", "quick", "actions", "slash"] },
+  { id: "mcp", path: "mcp.toml", component: McpFile, keywords: ["mcp", "server", "tools", "marketplace", "protocol"] },
+  { id: "tools", path: "tools.toml", component: ToolsFile, keywords: ["tools", "cli", "install", "eza", "bat", "fzf", "setup"] },
+  { id: "sync", path: "sync.toml", component: SyncFile, keywords: ["sync", "cloud", "export", "import", "backup", "transfer"] },
+  { id: "crash", path: "crash.toml", component: CrashFile, keywords: ["crash", "sentry", "error", "report", "telemetry"] },
+  { id: "manifest", path: "manifest.toml", component: ManifestFile, keywords: ["manifest", "about", "version", "license", "github", "updates"] },
 ];
 
-const GROUPS: { id: SectionGroup; label: string; indentItems?: boolean }[] = [
-  { id: "husk.config", label: "husk.config" },
-  { id: "ai", label: "ai/", indentItems: true },
-  { id: "mcp", label: "mcp/", indentItems: true },
-  { id: "other", label: "other" },
-  { id: "manifest", label: "manifest" },
-];
-
-/** Map a section id to the DOM element id used to scroll to it. */
-function sectionElementId(id: SectionId): string {
-  if (id === "ai") return "ai";
-  if (id === "cloudSync") return "cloud-sync";
-  if (id === "crash") return "settings-section-crash";
-  return `settings-section-${id}`;
-}
-
-function scrollToSection(id: SectionId) {
-  document.getElementById(sectionElementId(id))?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function SettingsSidebar({
-  activeSection,
-  search,
-  setSearch,
+function TreeItem({
+  def,
+  depth,
+  active,
   onSelect,
-  visible,
 }: {
-  activeSection: SectionId;
-  search: string;
-  setSearch: (s: string) => void;
-  onSelect: (id: SectionId) => void;
-  visible: SectionDef[];
+  def: FileDef;
+  depth: number;
+  active: boolean;
+  onSelect: (id: FileId) => void;
 }) {
-  const visibleIds = useMemo(() => new Set(visible.map((s) => s.id)), [visible]);
-
+  const name = def.path.split("/").pop() ?? def.path;
   return (
-    <div className="flex w-56 shrink-0 flex-col border-r border-border bg-background">
-      <div className="p-3">
-        <div className="relative">
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={14}
-            strokeWidth={1.5}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            placeholder="Find setting…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-7 rounded border-border/40 bg-muted/40 py-0 pl-8 pr-3 text-[11.5px]"
-          />
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-2 pb-3 font-mono text-[11px]">
-        {GROUPS.map((g) => {
-          const groupSections = SECTIONS.filter((s) => s.group === g.id && visibleIds.has(s.id));
-          if (groupSections.length === 0) return null;
-
-          return (
-            <div key={g.id} className="mb-4">
-              <div className="px-2 py-1 text-[9px] uppercase tracking-wider text-muted-foreground/50">
-                {g.label}
-              </div>
-              <div className={cn("flex flex-col gap-0.5", g.indentItems && "ml-2.5 border-l border-border/50 pl-2.5")}>
-                {groupSections.map((s) => {
-                  const active = activeSection === s.id;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => onSelect(s.id)}
-                      className={cn(
-                        "group relative flex w-full items-center rounded-md px-2 py-1 text-left transition-colors",
-                        active
-                          ? "bg-primary/[0.08] text-foreground"
-                          : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "absolute left-0 top-1/2 -translate-y-1/2 h-3.5 w-[2px] rounded-r-full transition-opacity",
-                          active ? "bg-primary opacity-100" : "bg-primary/0 opacity-0",
-                        )}
-                      />
-                      <span className="pl-2">{s.treeLabel}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-
-        {visible.length === 0 ? (
-          <div className="px-2 py-4 text-[10px] text-muted-foreground/60">
-            No settings match “{search}”
-          </div>
-        ) : null}
-      </div>
-
-      <div className="border-t border-border px-3 py-2 font-mono text-[9px] text-muted-foreground/50">
-        active: {SECTIONS.find((s) => s.id === activeSection)?.treeLabel ?? "…"}
-      </div>
-    </div>
+    <button
+      type="button"
+      className={cn("cfgx-tree-item", active && "active")}
+      style={{ paddingLeft: 8 + depth * 14 }}
+      onClick={() => onSelect(def.id)}
+    >
+      <span className="text-muted-foreground/50">{name.endsWith(".toml") ? "◦" : "▸"}</span>
+      <span>{name}</span>
+    </button>
   );
 }
 
 export function SettingsPage({ onClose }: { onClose: () => void }) {
+  const [active, setActive] = useState<FileId>("config");
+  const [open, setOpen] = useState<FileId[]>(["config"]);
   const [search, setSearch] = useState("");
-  const [activeSection, setActiveSection] = useState<SectionId>("about");
-  const [setupOpen, setSetupOpen] = useState(false);
-  const mainRef = useRef<HTMLElement>(null);
 
-  // Track which section is currently in view.
-  useEffect(() => {
-    const main = mainRef.current;
-    if (!main) return;
+  const openFile = (id: FileId) => {
+    setOpen((o) => (o.includes(id) ? o : [...o, id]));
+    setActive(id);
+  };
 
-    const updateActive = () => {
-      const mainRect = main.getBoundingClientRect();
-      const threshold = mainRect.top + 80;
-      let current: SectionId = "about";
-      let lastVisible: SectionId | null = null;
-      for (const s of SECTIONS) {
-        const el = document.getElementById(sectionElementId(s.id));
-        if (!el) continue;
-        const rect = el.getBoundingClientRect();
-        if (rect.top <= threshold) {
-          current = s.id;
-        }
-        if (rect.bottom > mainRect.top && rect.top < mainRect.bottom) {
-          lastVisible = s.id;
-        }
+  const closeTab = (id: FileId) => {
+    setOpen((o) => {
+      const next = o.filter((f) => f !== id);
+      if (id === active) {
+        setActive(next[next.length - 1] ?? FILES[0].id);
+        if (next.length === 0) return [FILES[0].id];
       }
-      const nearBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 100;
-      if (nearBottom && lastVisible === "crash") {
-        current = "crash";
-      }
-      setActiveSection(current);
-    };
-
-    main.addEventListener("scroll", updateActive, { passive: true });
-    updateActive();
-    const t = setTimeout(updateActive, 400);
-    return () => {
-      main.removeEventListener("scroll", updateActive);
-      clearTimeout(t);
-    };
-  }, []);
+      return next.length === 0 ? [FILES[0].id] : next;
+    });
+  };
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return SECTIONS;
-    return SECTIONS.filter(
-      (s) => s.label.toLowerCase().includes(q) || s.keywords.some((k) => k.includes(q)) || s.treeLabel.includes(q),
+    if (!q) return FILES;
+    return FILES.filter(
+      (f) => f.path.toLowerCase().includes(q) || f.keywords.some((k) => k.includes(q)),
     );
   }, [search]);
-  const show = (id: SectionId) => visible.some((s) => s.id === id);
+
+  const visibleIds = useMemo(() => new Set(visible.map((f) => f.id)), [visible]);
+  const searching = search.trim().length > 0;
+  const activeDef = FILES.find((f) => f.id === active) ?? FILES[0];
+  const ActiveComponent = activeDef.component;
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background text-foreground select-none">
-      {/* Top bar: config path + close */}
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-4">
-        <span className="font-mono text-[11px] text-muted-foreground">~/.husk/config</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close settings"
-          className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
-        </button>
+      {/* ── Tab bar ── */}
+      <div className="flex h-9 shrink-0 items-stretch border-b border-border bg-muted/20 font-mono">
+        <div className="flex items-stretch overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {open.map((id) => {
+            const def = FILES.find((f) => f.id === id);
+            if (!def) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={cn("cfgx-tab", id === active && "active")}
+                onClick={() => setActive(id)}
+              >
+                <span>{def.path.split("/").pop()}</span>
+                {open.length > 1 ? (
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    className="cfgx-tab-close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(id);
+                    }}
+                  >
+                    ✕
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex-1" />
+        <div className="flex items-center gap-2 px-3">
+          <span className="text-[10px] text-muted-foreground/50">~/.husk/{activeDef.path}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close settings"
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.75} />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <SettingsSidebar
-          activeSection={activeSection}
-          search={search}
-          setSearch={setSearch}
-          onSelect={scrollToSection}
-          visible={visible}
-        />
-
-        <main
-          ref={mainRef}
-          className="min-h-0 flex-1 overflow-y-auto bg-background px-10 py-8 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <div className="mx-auto w-full max-w-3xl space-y-12">
-            {visible.length === 0 ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                No settings match “{search}”
-              </div>
-            ) : null}
-
-            {show("about") ? (
-              <div id={sectionElementId("about")} className="scroll-mt-8">
-                <AboutSection />
-              </div>
-            ) : null}
-
-            {show("general") ? (
-              <div id={sectionElementId("general")} className="scroll-mt-8">
-                <GeneralSection />
-              </div>
-            ) : null}
-
-            {show("appearance") ? (
-              <div id={sectionElementId("appearance")} className="scroll-mt-8">
-                <AppearanceSection />
-              </div>
-            ) : null}
-
-            {show("models") ? (
-              <div id={sectionElementId("models")} className="scroll-mt-8">
-                <ModelsSection />
-              </div>
-            ) : null}
-
-            {show("ai") ? (
-              <div id={sectionElementId("ai")} className="scroll-mt-8 flex flex-col gap-6">
-                <AiAgentsSection />
-                <PromptTemplatesSection />
-              </div>
-            ) : null}
-
-            {show("mcp") ? (
-              <div id={sectionElementId("mcp")} className="scroll-mt-8">
-                <McpSection />
-              </div>
-            ) : null}
-
-            {show("tools") ? (
-              <div id={sectionElementId("tools")} className="scroll-mt-8 space-y-4">
-                <ToolsSetupCard onOpen={() => setSetupOpen(true)} />
-                <SetupAssistantBanner onOpen={() => setSetupOpen(true)} />
-                <SetupAssistantDialog open={setupOpen} onOpenChange={setSetupOpen} />
-              </div>
-            ) : null}
-
-            {show("cloudSync") ? (
-              <div id={sectionElementId("cloudSync")} className="scroll-mt-8">
-                <CloudSyncSection />
-              </div>
-            ) : null}
-
-            {show("crash") ? (
-              <div id={sectionElementId("crash")} className="scroll-mt-8">
-                <CrashReportingSection />
-              </div>
-            ) : null}
+        {/* ── Explorer ── */}
+        <aside className="flex w-52 shrink-0 flex-col border-r border-border bg-muted/10 font-mono">
+          <div className="p-2.5">
+            <div className="relative">
+              <HugeiconsIcon
+                icon={Search01Icon}
+                size={12}
+                strokeWidth={1.5}
+                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/50"
+              />
+              <Input
+                placeholder="grep settings…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-7 rounded border-border/40 bg-muted/40 py-0 pl-7 pr-2 font-mono text-[11px]"
+              />
+            </div>
           </div>
+
+          <div className="flex-1 overflow-y-auto px-1.5 pb-3">
+            <div className="px-2 py-1 text-[9px] uppercase tracking-widest text-muted-foreground/40">
+              ~/.husk
+            </div>
+
+            {searching ? (
+              visible.length === 0 ? (
+                <div className="px-2 py-3 text-[10px] text-muted-foreground/60">
+                  no matches for “{search}”
+                </div>
+              ) : (
+                visible.map((def) => (
+                  <TreeItem key={def.id} def={def} depth={def.dir === "ai" ? 1 : 0} active={def.id === active} onSelect={openFile} />
+                ))
+              )
+            ) : (
+              <>
+                {FILES.filter((f) => !f.dir && (f.id === "config" || f.id === "appearance")).map((def) => (
+                  <TreeItem key={def.id} def={def} depth={0} active={def.id === active} onSelect={openFile} />
+                ))}
+
+                <div className="px-2 py-0.5 text-[11px] text-muted-foreground/70">▾ ai/</div>
+                {FILES.filter((f) => f.dir === "ai").map((def) => (
+                  visibleIds.has(def.id) ? (
+                    <TreeItem key={def.id} def={def} depth={1} active={def.id === active} onSelect={openFile} />
+                  ) : null
+                ))}
+
+                {FILES.filter((f) => !f.dir && f.id !== "config" && f.id !== "appearance").map((def) => (
+                  <TreeItem key={def.id} def={def} depth={0} active={def.id === active} onSelect={openFile} />
+                ))}
+              </>
+            )}
+          </div>
+
+          <div className="border-t border-border px-3 py-2 text-[9px] text-muted-foreground/50">
+            utf-8 · toml · {FILES.length} files
+          </div>
+        </aside>
+
+        {/* ── Editor ── */}
+        <main className="min-w-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <ActiveComponent />
         </main>
       </div>
     </div>
