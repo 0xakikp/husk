@@ -45,7 +45,9 @@ impl BoundedRingBuffer {
         self.next_offset = self.next_offset.saturating_add(data.len() as u64);
         if data.len() >= self.cap {
             let keep_from = data.len() - self.cap;
-            self.dropped = self.dropped.saturating_add((self.buf.len() + keep_from) as u64);
+            self.dropped = self
+                .dropped
+                .saturating_add((self.buf.len() + keep_from) as u64);
             self.buf.clear();
             self.buf.extend(&data[keep_from..]);
             return;
@@ -157,25 +159,31 @@ impl Drop for BackgroundProc {
     }
 }
 
-fn build_command(program: &str, args: &[String]) -> Command {
+fn build_command(program: &Path, args: &[String]) -> Command {
     let mut c = Command::new(program);
     c.args(args);
     c
 }
 
-fn spawn(program: String, args: Vec<String>, cwd: Option<String>) -> Result<Arc<BackgroundProc>, String> {
-    validate_program(&program)?;
+fn spawn(
+    program: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+) -> Result<Arc<BackgroundProc>, String> {
+    let resolved_program = validate_program(&program)?;
     if let Some(ref dir) = cwd {
         if !Path::new(dir).is_dir() {
             return Err(format!("cwd is not a directory: {dir}"));
         }
     }
 
-    let mut cmd = build_command(&program, &args);
+    let mut cmd = build_command(&resolved_program, &args);
     if let Some(ref dir) = cwd {
         cmd.current_dir(dir);
     }
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     let shared = SharedChild::spawn(&mut cmd).map_err(|e| e.to_string())?;
     let stdout_pipe = shared.take_stdout().ok_or("no stdout pipe")?;
@@ -257,7 +265,11 @@ pub fn shell_bg_spawn(
 ) -> Result<u32, String> {
     let proc = spawn(program, args, cwd)?;
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    state.procs.write().map_err(|e| e.to_string())?.insert(id, proc);
+    state
+        .procs
+        .write()
+        .map_err(|e| e.to_string())?
+        .insert(id, proc);
     Ok(id)
 }
 
@@ -279,7 +291,13 @@ pub fn shell_bg_logs(
 
 #[tauri::command]
 pub fn shell_bg_kill(state: tauri::State<JobsState>, handle: u32) -> Result<(), String> {
-    if let Some(proc) = state.procs.read().map_err(|e| e.to_string())?.get(&handle).cloned() {
+    if let Some(proc) = state
+        .procs
+        .read()
+        .map_err(|e| e.to_string())?
+        .get(&handle)
+        .cloned()
+    {
         proc.kill();
     }
     Ok(())
@@ -288,7 +306,11 @@ pub fn shell_bg_kill(state: tauri::State<JobsState>, handle: u32) -> Result<(), 
 /// Remove a handle entirely (kills it via Drop if still running).
 #[tauri::command]
 pub fn shell_bg_remove(state: tauri::State<JobsState>, handle: u32) -> Result<(), String> {
-    state.procs.write().map_err(|e| e.to_string())?.remove(&handle);
+    state
+        .procs
+        .write()
+        .map_err(|e| e.to_string())?
+        .remove(&handle);
     Ok(())
 }
 

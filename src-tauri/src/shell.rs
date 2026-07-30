@@ -37,15 +37,35 @@ fn program_has_metachar(program: &str) -> bool {
     program.chars().any(|c| {
         matches!(
             c,
-            ';' | '|' | '&' | '$' | '(' | ')' | '`' | '<' | '>' | '*' | '?' | '[' | ']' | '{'
-                | '}' | '~' | ' ' | '\n' | '\t' | '"' | '\''
+            ';' | '|'
+                | '&'
+                | '$'
+                | '('
+                | ')'
+                | '`'
+                | '<'
+                | '>'
+                | '*'
+                | '?'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '~'
+                | ' '
+                | '\n'
+                | '\t'
+                | '"'
+                | '\''
         )
     })
 }
 
-/// Validate that `program` is a real executable and not a shell interpreter.
-/// Absolute paths must exist; relative names must be found on PATH.
-pub fn validate_program(program: &str) -> Result<&str, String> {
+/// Resolve a binary name or absolute path to an executable path.
+/// Uses the current process PATH first, then falls back to the user's
+/// login shell so PATH modifications from .zshrc/.bash_profile are honored.
+/// This lets GUI-launched apps find Homebrew, OrbStack, and other tools.
+fn resolve_binary_path(program: &str) -> Result<PathBuf, String> {
     if program.is_empty() {
         return Err("program is empty".to_string());
     }
@@ -54,34 +74,57 @@ pub fn validate_program(program: &str) -> Result<&str, String> {
     }
 
     let path = Path::new(program);
-    let base = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(program);
+    let base = path.file_stem().and_then(|s| s.to_str()).unwrap_or(program);
     let base_lower = base.to_lowercase();
     if SHELL_NAMES.iter().any(|s| *s == base_lower) {
-        return Err(format!("'{program}' is a shell interpreter and is not allowed"));
+        return Err(format!(
+            "'{program}' is a shell interpreter and is not allowed"
+        ));
     }
 
+    // Absolute path: use as-is if it exists.
     if path.is_absolute() {
         if !path.exists() {
             return Err(format!("program does not exist: {program}"));
         }
-    } else {
-        let found = std::env::var_os("PATH")
-            .map(|paths| {
-                std::env::split_paths(&paths).any(|dir| {
-                    let candidate = dir.join(program);
-                    candidate.exists()
-                })
-            })
-            .unwrap_or(false);
-        if !found {
-            return Err(format!("program not found on PATH: {program}"));
+        return Ok(path.to_path_buf());
+    }
+
+    // Search current process PATH.
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let candidate = dir.join(program);
+            if candidate.exists() {
+                return Ok(candidate);
+            }
         }
     }
 
-    Ok(program)
+    // Fall back to login shell resolution (macOS GUI apps inherit a minimal PATH).
+    let script = format!("command -v {}", shell_quote(program));
+    let output = Command::new("sh")
+        .arg("-lc")
+        .arg(&script)
+        .output()
+        .map_err(|e| format!("failed to resolve program via login shell: {e}"))?;
+
+    if output.status.success() {
+        let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !line.is_empty() {
+            let candidate = PathBuf::from(line);
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    Err(format!("program not found on PATH: {program}"))
+}
+
+/// Validate that `program` is a real executable and not a shell interpreter.
+/// Returns the resolved absolute path so the caller can use it directly.
+pub fn validate_program(program: &str) -> Result<PathBuf, String> {
+    resolve_binary_path(program)
 }
 
 /// Quote a single token for safe interpolation into a POSIX shell command.
@@ -106,12 +149,12 @@ pub fn shell_run_command(
     cwd: Option<String>,
     timeout_secs: Option<u64>,
 ) -> Result<ShellOutput, String> {
-    validate_program(&program)?;
+    let resolved_program = validate_program(&program)?;
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(20));
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        let mut c = Command::new(&program);
+        let mut c = Command::new(&resolved_program);
         c.args(&args);
         if let Some(dir) = cwd {
             c.current_dir(dir);
