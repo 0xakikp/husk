@@ -15,7 +15,11 @@ export function SectionHeader({ title, description }: { title: string; descripti
 }
 
 export function Label({ children }: { children: ReactNode }) {
-  return <span className="text-[11px] font-medium tracking-tight text-muted-foreground">{children}</span>;
+  return (
+    <span className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground/70">
+      {children}
+    </span>
+  );
 }
 
 export function Group({ label, children }: { label?: string; children: ReactNode }) {

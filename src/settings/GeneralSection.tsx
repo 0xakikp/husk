@@ -1,4 +1,3 @@
-import { type ReactNode } from "react";
 import { Switch } from "@/components/ui/switch";
 import { usePrefs, setPrefs } from "./preferences";
 import type {
@@ -13,14 +12,7 @@ import { FONT_FAMILIES, type FontFamilyId } from "../styles/fonts";
 import { TERMINAL_THEME_PRESETS, type TerminalThemePreset } from "../styles/terminalTheme";
 import { SectionHeader } from "./components/SectionHeader";
 import { SettingRow } from "./components/SettingRow";
-
-/* husk v1 settings vocabulary: every control sits inside a bordered card
-   (rounded border border-border/40 bg-muted/20). SectionHeader labels the
-   group, Label gives a subsection title, and SettingRow is the row. */
-
-function Label({ children }: { children: ReactNode }) {
-  return <span className="text-[11px] font-medium tracking-tight text-muted-foreground">{children}</span>;
-}
+import { SettingsGroup } from "./components/SettingsGroup";
 
 function Pick<T extends string | number>({
   value,
@@ -38,7 +30,7 @@ function Pick<T extends string | number>({
         const o = options.find((x) => String(x.value) === e.target.value);
         if (o) onChange(o.value);
       }}
-      className="h-7 rounded-md border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary"
+      className="h-7 min-w-[110px] rounded-md border border-border bg-background px-2 text-[11.5px] text-foreground outline-none focus:border-primary"
     >
       {options.map((o) => (
         <option key={String(o.value)} value={String(o.value)}>
@@ -65,9 +57,8 @@ export function GeneralSection() {
         description="Editor, terminal, and startup."
       />
 
-      <div className="flex flex-col gap-2">
+      <SettingsGroup label="AI">
         <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
           title="AI enabled"
           description="Toggle all AI features on or off. When disabled, the AI chat, agent traces, and AI shortcuts are hidden."
         >
@@ -76,353 +67,231 @@ export function GeneralSection() {
             onCheckedChange={(v) => setPrefs({ aiEnabled: v })}
           />
         </SettingRow>
-      </div>
+      </SettingsGroup>
 
-      <div className="flex flex-col gap-2">
-        <Label>Editor</Label>
-        <div className="grid grid-cols-2 gap-2">
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Vim mode"
-            description="Enable Vim keybindings in the code editor."
-          >
-            <Switch
-              checked={p.vimMode}
-              onCheckedChange={(v) => setPrefs({ vimMode: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Cursor blink"
-            description="Animate the cursor or keep it solid."
-          >
-            <Switch
-              checked={p.editorCursorBlink}
-              onCheckedChange={(v) => setPrefs({ editorCursorBlink: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Minimap"
-            description="Show a zoomed-out code overview on the right."
-          >
-            <Switch
-              checked={p.editorMinimap}
-              onCheckedChange={(v) => setPrefs({ editorMinimap: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Sticky scroll"
-            description="Pin the current function or class name at the top while scrolling."
-          >
-            <Switch
-              checked={p.editorStickyScroll}
-              onCheckedChange={(v) => setPrefs({ editorStickyScroll: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Font size"
-            description="Code editor text size."
-          >
-            <Pick<number>
-              value={p.editorFontSize}
-              onChange={(editorFontSize) => setPrefs({ editorFontSize })}
-              options={px([11, 12, 13, 14, 16, 18, 20])}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Tab size"
-            description="Spaces per indent."
-          >
-            <Pick<number>
-              value={p.editorTabSize}
-              onChange={(editorTabSize) => setPrefs({ editorTabSize })}
-              options={[2, 4, 8].map((n) => ({ value: n, label: `${n} spaces` }))}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Word wrap"
-            description="Wrap long lines."
-          >
-            <Pick<WordWrap>
-              value={p.editorWordWrap}
-              onChange={(editorWordWrap) => setPrefs({ editorWordWrap })}
-              options={[
-                { value: "off", label: "Off" },
-                { value: "on", label: "On" },
-                { value: "bounded", label: "Bounded" },
-              ]}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Cursor style"
-            description="Caret shape."
-          >
-            <Pick<EditorCursorStyle>
-              value={p.editorCursorStyle}
-              onChange={(editorCursorStyle) => setPrefs({ editorCursorStyle })}
-              options={[
-                { value: "line", label: "Line" },
-                { value: "block", label: "Block" },
-                { value: "underline", label: "Underline" },
-              ]}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Line highlight"
-            description="Highlight the current editor line."
-          >
-            <Pick<LineHighlight>
-              value={p.editorLineHighlight}
-              onChange={(editorLineHighlight) => setPrefs({ editorLineHighlight })}
-              options={[
-                { value: "none", label: "None" },
-                { value: "line", label: "Line" },
-                { value: "gutter", label: "Gutter" },
-                { value: "all", label: "All" },
-              ]}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Line numbers"
-            description="Show line numbers in editor."
-          >
-            <Pick<LineNumbers>
-              value={p.editorLineNumbers}
-              onChange={(editorLineNumbers) => setPrefs({ editorLineNumbers })}
-              options={[
-                { value: "on", label: "On" },
-                { value: "off", label: "Off" },
-                { value: "relative", label: "Relative" },
-              ]}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Whitespace"
-            description="Render whitespace characters."
-          >
-            <Pick<RenderWhitespace>
-              value={p.editorWhitespace}
-              onChange={(editorWhitespace) => setPrefs({ editorWhitespace })}
-              options={[
-                { value: "none", label: "None" },
-                { value: "boundary", label: "Boundary" },
-                { value: "all", label: "All" },
-              ]}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Ligatures"
-            description="Enable font ligatures for nicer operators."
-          >
-            <Switch
-              checked={p.editorLigatures}
-              onCheckedChange={(v) => setPrefs({ editorLigatures: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Bracket colors"
-            description="Color matching bracket pairs."
-          >
-            <Switch
-              checked={p.editorBracketColors}
-              onCheckedChange={(v) => setPrefs({ editorBracketColors: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Smooth scroll"
-            description="Animated editor scrolling."
-          >
-            <Switch
-              checked={p.editorSmoothScroll}
-              onCheckedChange={(v) => setPrefs({ editorSmoothScroll: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Format on paste"
-            description="Auto-format code when pasting."
-          >
-            <Switch
-              checked={p.editorFormatOnPaste}
-              onCheckedChange={(v) => setPrefs({ editorFormatOnPaste: v })}
-            />
-          </SettingRow>
-        </div>
-      </div>
+      <SettingsGroup label="Editor">
+        <SettingRow title="Vim mode" description="Enable Vim keybindings in the code editor.">
+          <Switch
+            checked={p.vimMode}
+            onCheckedChange={(v) => setPrefs({ vimMode: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Cursor blink" description="Animate the cursor or keep it solid.">
+          <Switch
+            checked={p.editorCursorBlink}
+            onCheckedChange={(v) => setPrefs({ editorCursorBlink: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Minimap" description="Show a zoomed-out code overview on the right.">
+          <Switch
+            checked={p.editorMinimap}
+            onCheckedChange={(v) => setPrefs({ editorMinimap: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Sticky scroll" description="Pin the current function or class name at the top while scrolling.">
+          <Switch
+            checked={p.editorStickyScroll}
+            onCheckedChange={(v) => setPrefs({ editorStickyScroll: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Font size" description="Code editor text size.">
+          <Pick<number>
+            value={p.editorFontSize}
+            onChange={(editorFontSize) => setPrefs({ editorFontSize })}
+            options={px([11, 12, 13, 14, 16, 18, 20])}
+          />
+        </SettingRow>
+        <SettingRow title="Tab size" description="Spaces per indent.">
+          <Pick<number>
+            value={p.editorTabSize}
+            onChange={(editorTabSize) => setPrefs({ editorTabSize })}
+            options={[2, 4, 8].map((n) => ({ value: n, label: `${n} spaces` }))}
+          />
+        </SettingRow>
+        <SettingRow title="Word wrap" description="Wrap long lines.">
+          <Pick<WordWrap>
+            value={p.editorWordWrap}
+            onChange={(editorWordWrap) => setPrefs({ editorWordWrap })}
+            options={[
+              { value: "off", label: "Off" },
+              { value: "on", label: "On" },
+              { value: "bounded", label: "Bounded" },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow title="Cursor style" description="Caret shape.">
+          <Pick<EditorCursorStyle>
+            value={p.editorCursorStyle}
+            onChange={(editorCursorStyle) => setPrefs({ editorCursorStyle })}
+            options={[
+              { value: "line", label: "Line" },
+              { value: "block", label: "Block" },
+              { value: "underline", label: "Underline" },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow title="Line highlight" description="Highlight the current editor line.">
+          <Pick<LineHighlight>
+            value={p.editorLineHighlight}
+            onChange={(editorLineHighlight) => setPrefs({ editorLineHighlight })}
+            options={[
+              { value: "none", label: "None" },
+              { value: "line", label: "Line" },
+              { value: "gutter", label: "Gutter" },
+              { value: "all", label: "All" },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow title="Line numbers" description="Show line numbers in editor.">
+          <Pick<LineNumbers>
+            value={p.editorLineNumbers}
+            onChange={(editorLineNumbers) => setPrefs({ editorLineNumbers })}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+              { value: "relative", label: "Relative" },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow title="Whitespace" description="Render whitespace characters.">
+          <Pick<RenderWhitespace>
+            value={p.editorWhitespace}
+            onChange={(editorWhitespace) => setPrefs({ editorWhitespace })}
+            options={[
+              { value: "none", label: "None" },
+              { value: "boundary", label: "Boundary" },
+              { value: "all", label: "All" },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow title="Ligatures" description="Enable font ligatures for nicer operators.">
+          <Switch
+            checked={p.editorLigatures}
+            onCheckedChange={(v) => setPrefs({ editorLigatures: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Bracket colors" description="Color matching bracket pairs.">
+          <Switch
+            checked={p.editorBracketColors}
+            onCheckedChange={(v) => setPrefs({ editorBracketColors: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Smooth scroll" description="Animated editor scrolling.">
+          <Switch
+            checked={p.editorSmoothScroll}
+            onCheckedChange={(v) => setPrefs({ editorSmoothScroll: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Format on paste" description="Auto-format code when pasting.">
+          <Switch
+            checked={p.editorFormatOnPaste}
+            onCheckedChange={(v) => setPrefs({ editorFormatOnPaste: v })}
+          />
+        </SettingRow>
+      </SettingsGroup>
 
-      <div className="flex flex-col gap-2">
-        <Label>Explorer</Label>
-        <div className="grid grid-cols-2 gap-2">
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Show hidden files"
-            description="Include dot-prefixed files & folders in the tree."
-          >
-            <Switch
-              checked={p.showHidden}
-              onCheckedChange={(v) => setPrefs({ showHidden: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Restore session"
-            description="Remember open terminal tabs and their working directories between launches."
-          >
-            <Switch
-              checked={p.sessionRestoreEnabled}
-              onCheckedChange={(v) => setPrefs({ sessionRestoreEnabled: v })}
-            />
-          </SettingRow>
-        </div>
-      </div>
+      <SettingsGroup label="Explorer">
+        <SettingRow title="Show hidden files" description="Include dot-prefixed files & folders in the tree.">
+          <Switch
+            checked={p.showHidden}
+            onCheckedChange={(v) => setPrefs({ showHidden: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Restore session" description="Remember open terminal tabs and their working directories between launches.">
+          <Switch
+            checked={p.sessionRestoreEnabled}
+            onCheckedChange={(v) => setPrefs({ sessionRestoreEnabled: v })}
+          />
+        </SettingRow>
+      </SettingsGroup>
 
-      <div className="flex flex-col gap-2">
-        <Label>Terminal</Label>
-        <div className="grid grid-cols-2 gap-2">
+      <SettingsGroup label="Terminal">
+        <SettingRow title="Cursor blink" description="Blink the terminal cursor.">
+          <Switch
+            checked={p.cursorBlink}
+            onCheckedChange={(v) => setPrefs({ cursorBlink: v })}
+          />
+        </SettingRow>
+        <SettingRow title="Font size" description="Terminal text size.">
+          <Pick<number>
+            value={p.terminalFontSize}
+            onChange={(terminalFontSize) => setPrefs({ terminalFontSize })}
+            options={px([11, 12, 13, 14, 16, 18])}
+          />
+        </SettingRow>
+        <SettingRow title="Scrollback" description="Lines of history kept.">
+          <Pick<number>
+            value={p.terminalScrollback}
+            onChange={(terminalScrollback) => setPrefs({ terminalScrollback })}
+            options={[1000, 5000, 10000, 50000].map((n) => ({
+              value: n,
+              label: `${n.toLocaleString()} lines`,
+            }))}
+          />
+        </SettingRow>
+        <SettingRow title="Cursor style" description="Terminal cursor shape.">
+          <Pick<TerminalCursorStyle>
+            value={p.terminalCursorStyle}
+            onChange={(terminalCursorStyle) => setPrefs({ terminalCursorStyle })}
+            options={[
+              { value: "block", label: "Block" },
+              { value: "bar", label: "Bar" },
+              { value: "underline", label: "Underline" },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow title="Theme" description="Terminal color preset.">
+          <Pick<TerminalThemePreset>
+            value={p.terminalTheme}
+            onChange={(terminalTheme) => setPrefs({ terminalTheme })}
+            options={(Object.keys(TERMINAL_THEME_PRESETS) as TerminalThemePreset[]).map((preset) => ({
+              value: preset,
+              label: TERMINAL_THEME_PRESETS[preset].name,
+            }))}
+          />
+        </SettingRow>
+        <SettingRow title="Font family" description="Monospace font for terminal and editor.">
+          <Pick<FontFamilyId>
+            value={p.fontFamily}
+            onChange={(fontFamily) => setPrefs({ fontFamily })}
+            options={fontOptions}
+          />
+        </SettingRow>
+        {p.aiEnabled && (
           <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Cursor blink"
-            description="Blink the terminal cursor."
+            title="Error assistance"
+            description="When a command fails, show a toast with an Explain button that opens the AI assistant with the error context."
           >
             <Switch
-              checked={p.cursorBlink}
-              onCheckedChange={(v) => setPrefs({ cursorBlink: v })}
+              checked={p.terminalAiErrorAssist}
+              onCheckedChange={(v) => setPrefs({ terminalAiErrorAssist: v })}
             />
           </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Font size"
-            description="Terminal text size."
-          >
-            <Pick<number>
-              value={p.terminalFontSize}
-              onChange={(terminalFontSize) => setPrefs({ terminalFontSize })}
-              options={px([11, 12, 13, 14, 16, 18])}
+        )}
+        <SettingRow
+          title="Notes directory"
+          description="Where your notes are stored. Leave empty to use ~/.husk/notes/"
+        >
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={p.notesDirectory}
+              onChange={(e) => setPrefs({ notesDirectory: e.target.value })}
+              placeholder="~/.husk/notes"
+              className="h-7 w-52 rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary"
             />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Scrollback"
-            description="Lines of history kept."
-          >
-            <Pick<number>
-              value={p.terminalScrollback}
-              onChange={(terminalScrollback) => setPrefs({ terminalScrollback })}
-              options={[1000, 5000, 10000, 50000].map((n) => ({
-                value: n,
-                label: `${n.toLocaleString()} lines`,
-              }))}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Cursor style"
-            description="Terminal cursor shape."
-          >
-            <Pick<TerminalCursorStyle>
-              value={p.terminalCursorStyle}
-              onChange={(terminalCursorStyle) => setPrefs({ terminalCursorStyle })}
-              options={[
-                { value: "block", label: "Block" },
-                { value: "bar", label: "Bar" },
-                { value: "underline", label: "Underline" },
-              ]}
-            />
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Theme"
-            description="Terminal color preset."
-          >
-            <select
-              value={p.terminalTheme}
-              onChange={(e) => setPrefs({ terminalTheme: e.target.value as TerminalThemePreset })}
-              className="h-8 appearance-none rounded-none border border-border bg-background px-2.5 pr-6 text-[12px] text-primary outline-none focus:border-primary"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 8px center",
-              }}
-            >
-              {(Object.keys(TERMINAL_THEME_PRESETS) as TerminalThemePreset[]).map((preset) => (
-                <option key={preset} value={preset}>
-                  {TERMINAL_THEME_PRESETS[preset].name}
-                </option>
-              ))}
-            </select>
-          </SettingRow>
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Font family"
-            description="Monospace font for terminal and editor."
-          >
-            <select
-              value={p.fontFamily}
-              onChange={(e) => setPrefs({ fontFamily: e.target.value as FontFamilyId })}
-              className="h-8 appearance-none rounded-none border border-border bg-background px-2.5 pr-6 text-[12px] text-primary outline-none focus:border-primary"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 8px center",
-              }}
-            >
-              {fontOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </SettingRow>
-          {p.aiEnabled && (
-            <SettingRow
-              className="rounded border border-border/40 bg-muted/20 py-2"
-              title="Error assistance"
-              description="When a command fails, show a toast with an Explain button that opens the AI assistant with the error context."
-            >
-              <Switch
-                checked={p.terminalAiErrorAssist}
-                onCheckedChange={(v) => setPrefs({ terminalAiErrorAssist: v })}
-              />
-            </SettingRow>
-          )}
-          <SettingRow
-            className="rounded border border-border/40 bg-muted/20 py-2"
-            title="Notes directory"
-            description="Where your notes are stored. Leave empty to use ~/.husk/notes/"
-          >
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={p.notesDirectory}
-                onChange={(e) => setPrefs({ notesDirectory: e.target.value })}
-                placeholder="~/.husk/notes"
-                className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary"
-              />
-              {p.notesDirectory && (
-                <button
-                  type="button"
-                  onClick={() => setPrefs({ notesDirectory: "" })}
-                  className="text-[10px] text-muted-foreground hover:text-foreground"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
-          </SettingRow>
-        </div>
-      </div>
+            {p.notesDirectory && (
+              <button
+                type="button"
+                onClick={() => setPrefs({ notesDirectory: "" })}
+                className="text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </SettingRow>
+      </SettingsGroup>
     </div>
   );
 }

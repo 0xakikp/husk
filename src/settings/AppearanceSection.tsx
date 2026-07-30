@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { usePrefs, setPrefs } from "./preferences";
 import { SectionHeader } from "./components/SectionHeader";
 import { SettingRow } from "./components/SettingRow";
+import { SettingsGroup } from "./components/SettingsGroup";
 import { open } from "@tauri-apps/plugin-dialog";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Image02Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
@@ -57,7 +58,7 @@ function SliderRow({
   );
 }
 
-/** A switch row inside the grid. */
+/** A switch row (placed inside a SettingsGroup). */
 function SwitchRow({
   title,
   description,
@@ -70,11 +71,7 @@ function SwitchRow({
   onCheckedChange: (v: boolean) => void;
 }) {
   return (
-    <SettingRow
-      className="rounded border border-border/40 bg-muted/20 py-2"
-      title={title}
-      description={description}
-    >
+    <SettingRow title={title} description={description}>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </SettingRow>
   );
@@ -145,42 +142,42 @@ export function AppearanceSection() {
       <div className="flex flex-col gap-2">
         <Label>Background</Label>
 
-        <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
-          title="Background image"
-          description="Show a custom image behind the terminal and editor."
-        >
-          <Switch checked={bg.enabled} onCheckedChange={(v) => patchBg({ enabled: v })} />
-        </SettingRow>
+        <SettingsGroup>
+          <SettingRow
+            title="Background image"
+            description="Show a custom image behind the terminal and editor."
+          >
+            <Switch checked={bg.enabled} onCheckedChange={(v) => patchBg({ enabled: v })} />
+          </SettingRow>
 
-        <SettingRow
-          className="rounded border border-border/40 bg-muted/20 py-2"
-          title="Image file"
-          description={fileName ?? "No image selected."}
-        >
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-              title="Pick image"
-              onClick={pickImage}
-            >
-              <HugeiconsIcon icon={Image02Icon} size={15} strokeWidth={1.75} />
-            </Button>
-            {bg.path && (
+          <SettingRow
+            title="Image file"
+            description={fileName ?? "No image selected."}
+          >
+            <div className="flex items-center gap-1.5">
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-7 rounded-md text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
-                title="Clear image"
-                onClick={clearImage}
+                className="size-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                title="Pick image"
+                onClick={pickImage}
               >
-                <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
+                <HugeiconsIcon icon={Image02Icon} size={15} strokeWidth={1.75} />
               </Button>
-            )}
-          </div>
-        </SettingRow>
+              {bg.path && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 rounded-md text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                  title="Clear image"
+                  onClick={clearImage}
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
+                </Button>
+              )}
+            </div>
+          </SettingRow>
+        </SettingsGroup>
 
         {/* Sliders in 2-column grid */}
         <div className="grid grid-cols-2 gap-2">
@@ -259,7 +256,7 @@ export function AppearanceSection() {
       {/* ── Effects ── */}
       <div className="flex flex-col gap-2">
         <Label>Effects</Label>
-        <div className="grid grid-cols-2 gap-2">
+        <SettingsGroup>
           <SwitchRow
             title="Animations"
             description="Smooth transitions"
@@ -278,7 +275,7 @@ export function AppearanceSection() {
             checked={p.neonBorderGlow}
             onCheckedChange={(v) => setPrefs({ neonBorderGlow: v })}
           />
-        </div>
+        </SettingsGroup>
       </div>
 
       {/* ── Layout ── */}
@@ -323,7 +320,7 @@ export function AppearanceSection() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <SettingsGroup>
           <SwitchRow
             title="Panel shadows"
             description="Floating depth effect"
@@ -336,7 +333,7 @@ export function AppearanceSection() {
             checked={p.activePanelGlow}
             onCheckedChange={(v) => setPrefs({ activePanelGlow: v })}
           />
-        </div>
+        </SettingsGroup>
       </div>
 
       {/* ── Custom CSS ── */}
@@ -478,5 +475,9 @@ export function AppearanceSection() {
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <span className="text-[11px] font-medium tracking-tight text-muted-foreground">{children}</span>;
+  return (
+    <span className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground/70">
+      {children}
+    </span>
+  );
 }
