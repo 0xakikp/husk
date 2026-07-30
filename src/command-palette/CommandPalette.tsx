@@ -212,6 +212,7 @@ export function CommandPalette({
   const [selectedValue, setSelectedValue] = useState("");
   const historyIndexRef = useRef(-1);
   const historyRef = useRef<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -225,6 +226,15 @@ export function CommandPalette({
       setRawInput("");
       historyIndexRef.current = -1;
     }
+  }, [open]);
+
+  // The palette is lazy-loaded behind Suspense and Radix's focus scope also
+  // claims focus on mount, so `autoFocus` alone can lose the race. Take focus on
+  // the next frame so Cmd+K always lands the caret in the search field.
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
   }, [open]);
 
   const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
@@ -277,36 +287,55 @@ export function CommandPalette({
     }
   };
 
+  const historyStep = (dir: 1 | -1) => {
+    if (dir === 1 && historyIndexRef.current === -1) {
+      historyRef.current = getCommandHistory();
+    }
+    const hist = historyRef.current;
+    if (hist.length === 0) return;
+    historyIndexRef.current =
+      dir === 1
+        ? Math.min(historyIndexRef.current + 1, hist.length - 1)
+        : Math.max(historyIndexRef.current - 1, -1);
+    if (historyIndexRef.current === -1) {
+      setRawInput("");
+      return;
+    }
+    const id = hist[hist.length - 1 - historyIndexRef.current];
+    const cmd = commands.find((c) => c.id === id);
+    if (cmd) setRawInput(cmd.label);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Mid-composition keys belong to the IME, not to us. cmdk skips these too.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
       handleSecondary();
       return;
     }
-    if (e.key === "ArrowUp") {
-      // Only hijack history when the input is empty and no query results
-      if (rawInput) return;
+
+    // Tab/Shift+Tab mirror ArrowDown/ArrowUp. cmdk has no Tab binding, so
+    // re-emit the arrow it does handle — going through cmdk's own next/prev is
+    // what scrolls the new selection into view.
+    if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
-      if (historyIndexRef.current === -1) {
-        historyRef.current = getCommandHistory();
-      }
-      const hist = historyRef.current;
-      if (hist.length === 0) return;
-      historyIndexRef.current = Math.min(historyIndexRef.current + 1, hist.length - 1);
-      const id = hist[hist.length - 1 - historyIndexRef.current];
-      const cmd = commands.find((c) => c.id === id);
-      if (cmd) setRawInput(cmd.label);
-    } else if (e.key === "ArrowDown" && historyIndexRef.current >= 0) {
+      e.currentTarget.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: e.shiftKey ? "ArrowUp" : "ArrowDown",
+          bubbles: true,
+        }),
+      );
+      return;
+    }
+
+    // Command history lives on Alt+Arrow. Plain arrows must stay with the result
+    // list: cmdk bails on defaultPrevented, so hijacking them here used to make
+    // the list unnavigable whenever the query was empty.
+    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
-      historyIndexRef.current = Math.max(historyIndexRef.current - 1, -1);
-      if (historyIndexRef.current === -1) {
-        setRawInput("");
-      } else {
-        const hist = historyRef.current;
-        const id = hist[hist.length - 1 - historyIndexRef.current];
-        const cmd = commands.find((c) => c.id === id);
-        if (cmd) setRawInput(cmd.label);
-      }
+      historyStep(e.key === "ArrowUp" ? 1 : -1);
     }
   };
 
@@ -324,10 +353,15 @@ export function CommandPalette({
         filter={(value, search) => scoreValue(value, parseQuery(search).query)}
       >
         <CommandInput
+          ref={inputRef}
           autoFocus
           placeholder="Search everything — notes, files, docker, k8s, workflows…"
           value={rawInput}
-          onValueChange={setRawInput}
+          onValueChange={(v) => {
+            // Typing leaves the history walk, so the cursor must not persist.
+            historyIndexRef.current = -1;
+            setRawInput(v);
+          }}
           onKeyDown={handleKeyDown}
         />
         <CommandList>

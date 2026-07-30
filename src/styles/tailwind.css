@@ -360,10 +360,14 @@ html *::-webkit-scrollbar {
   border-color: transparent !important;
 }
 
-/* Force cmdk items transparent (remove subtle card backgrounds) */
+/* Force cmdk items transparent (remove subtle card backgrounds). Skip the
+   selected row: this rule is unlayered !important, so it outranks the
+   data-[selected=true] highlight utility and would hide the selection. */
 [data-slot="command-item"] {
-  background: transparent !important;
   border-radius: 0 !important;
+}
+[data-slot="command-item"]:not([data-selected="true"]) {
+  background: transparent !important;
 }
 
 /* Accent-colored selection */
