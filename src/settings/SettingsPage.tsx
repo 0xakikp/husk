@@ -97,10 +97,10 @@ const SECTIONS: SectionDef[] = [
   },
 ];
 
-const GROUPS: { id: SectionGroup; label: string }[] = [
+const GROUPS: { id: SectionGroup; label: string; indentItems?: boolean }[] = [
   { id: "husk.config", label: "husk.config" },
-  { id: "ai", label: "ai/" },
-  { id: "mcp", label: "mcp/" },
+  { id: "ai", label: "ai/", indentItems: true },
+  { id: "mcp", label: "mcp/", indentItems: true },
   { id: "other", label: "other" },
   { id: "manifest", label: "manifest" },
 ];
@@ -157,45 +157,45 @@ function SettingsSidebar({
           if (groupSections.length === 0) return null;
 
           return (
-            <div key={g.id} className="mb-3">
+            <div key={g.id} className="mb-4">
               <div className="px-2 py-1 text-[9px] uppercase tracking-wider text-muted-foreground/50">
                 {g.label}
               </div>
-              {groupSections.map((s) => {
-                const active = activeSection === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => onSelect(s.id)}
-                    className={cn(
-                      "group flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors",
-                      active
-                        ? "bg-primary/10 text-foreground"
-                        : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
-                    )}
-                  >
-                    <span
+              <div className={cn("flex flex-col gap-0.5", g.indentItems && "ml-2.5 border-l border-border/50 pl-2.5")}>
+                {groupSections.map((s) => {
+                  const active = activeSection === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => onSelect(s.id)}
                       className={cn(
-                        "text-[9px]",
-                        active ? "text-primary" : "text-muted-foreground/40 group-hover:text-muted-foreground",
+                        "group relative flex w-full items-center rounded-md px-2 py-1 text-left transition-colors",
+                        active
+                          ? "bg-primary/[0.08] text-foreground"
+                          : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
                       )}
                     >
-                      {active ? "●" : "○"}
-                    </span>
-                    <span>{s.treeLabel}</span>
-                  </button>
-                );
-              })}
+                      <span
+                        className={cn(
+                          "absolute left-0 top-1/2 -translate-y-1/2 h-3.5 w-[2px] rounded-r-full transition-opacity",
+                          active ? "bg-primary opacity-100" : "bg-primary/0 opacity-0",
+                        )}
+                      />
+                      <span className="pl-2">{s.treeLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
 
-        {visible.length === 0 && (
+        {visible.length === 0 ? (
           <div className="px-2 py-4 text-[10px] text-muted-foreground/60">
             No settings match “{search}”
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="border-t border-border px-3 py-2 font-mono text-[9px] text-muted-foreground/50">
@@ -283,9 +283,9 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
 
         <main
           ref={mainRef}
-          className="min-h-0 flex-1 overflow-y-auto px-8 pt-6 pb-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="min-h-0 flex-1 overflow-y-auto bg-background px-10 py-8 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          <div className="mx-auto w-full max-w-160">
+          <div className="mx-auto w-full max-w-3xl space-y-12">
             {visible.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
                 No settings match “{search}”
@@ -293,100 +293,64 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             ) : null}
 
             {show("about") ? (
-              <div id={sectionElementId("about")} className="scroll-mt-6">
+              <div id={sectionElementId("about")} className="scroll-mt-8">
                 <AboutSection />
               </div>
             ) : null}
 
             {show("general") ? (
-              <>
-                <SectionDivider />
-                <div id={sectionElementId("general")} className="scroll-mt-6">
-                  <GeneralSection />
-                </div>
-              </>
+              <div id={sectionElementId("general")} className="scroll-mt-8">
+                <GeneralSection />
+              </div>
             ) : null}
 
             {show("appearance") ? (
-              <>
-                <SectionDivider />
-                <div id={sectionElementId("appearance")} className="scroll-mt-6">
-                  <AppearanceSection />
-                </div>
-              </>
+              <div id={sectionElementId("appearance")} className="scroll-mt-8">
+                <AppearanceSection />
+              </div>
             ) : null}
 
             {show("models") ? (
-              <>
-                <SectionDivider />
-                <div id={sectionElementId("models")} className="scroll-mt-6">
-                  <ModelsSection />
-                </div>
-              </>
+              <div id={sectionElementId("models")} className="scroll-mt-8">
+                <ModelsSection />
+              </div>
             ) : null}
 
             {show("ai") ? (
-              <>
-                <SectionDivider />
-                <div id={sectionElementId("ai")} className="scroll-mt-6 flex flex-col gap-6">
-                  <AiAgentsSection />
-                  <PromptTemplatesSection />
-                </div>
-              </>
+              <div id={sectionElementId("ai")} className="scroll-mt-8 flex flex-col gap-6">
+                <AiAgentsSection />
+                <PromptTemplatesSection />
+              </div>
             ) : null}
 
             {show("mcp") ? (
-              <>
-                <SectionDivider />
-                <div id={sectionElementId("mcp")} className="scroll-mt-6">
-                  <McpSection />
-                </div>
-              </>
+              <div id={sectionElementId("mcp")} className="scroll-mt-8">
+                <McpSection />
+              </div>
             ) : null}
 
             {show("tools") ? (
-              <>
-                <SectionDivider />
-                <div id={sectionElementId("tools")} className="scroll-mt-6 space-y-4">
-                  <ToolsSetupCard onOpen={() => setSetupOpen(true)} />
-                  <SetupAssistantBanner onOpen={() => setSetupOpen(true)} />
-                </div>
+              <div id={sectionElementId("tools")} className="scroll-mt-8 space-y-4">
+                <ToolsSetupCard onOpen={() => setSetupOpen(true)} />
+                <SetupAssistantBanner onOpen={() => setSetupOpen(true)} />
                 <SetupAssistantDialog open={setupOpen} onOpenChange={setSetupOpen} />
-              </>
+              </div>
             ) : null}
 
             {show("cloudSync") ? (
-              <>
-                <SectionDivider />
-                <div id={sectionElementId("cloudSync")} className="scroll-mt-6">
-                  <CloudSyncSection />
-                </div>
-              </>
+              <div id={sectionElementId("cloudSync")} className="scroll-mt-8">
+                <CloudSyncSection />
+              </div>
             ) : null}
 
             {show("crash") ? (
-              <>
-                <SectionDivider />
-                <div id={sectionElementId("crash")} className="scroll-mt-6">
-                  <CrashReportingSection />
-                </div>
-              </>
+              <div id={sectionElementId("crash")} className="scroll-mt-8">
+                <CrashReportingSection />
+              </div>
             ) : null}
-
-            <SectionDivider />
           </div>
         </main>
       </div>
-    </div>
-  );
-}
-
-function SectionDivider() {
-  return (
-    <div className="my-10 flex items-center gap-4">
-      <div className="h-[2px] flex-1 rounded-full bg-primary/20" />
-      <div className="size-1 rotate-45 bg-primary/30" />
-      <div className="h-[2px] flex-1 rounded-full bg-primary/20" />
     </div>
   );
 }
