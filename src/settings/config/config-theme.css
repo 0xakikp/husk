@@ -4,36 +4,54 @@
 
 .cfg-file {
   counter-reset: cfgl;
-  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 2;
-  padding: 10px 20px 40px 0;
+  font-family: "Fira Code Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-feature-settings: "liga" 1, "calt" 1;
+  font-size: 13.5px;
+  line-height: 2.2;
+  padding: 14px 24px 48px 0;
+  background:
+    radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, var(--primary) 4%, transparent), transparent 60%),
+    transparent;
 }
 
 .cfg-line {
   counter-increment: cfgl;
   display: flex;
   align-items: baseline;
-  min-height: 1.7em;
+  min-height: 1.8em;
 }
 
 .cfg-line::before {
   content: counter(cfgl);
-  flex: 0 0 2.6rem;
+  flex: 0 0 3rem;
   text-align: right;
-  padding-right: 0.9rem;
-  margin-right: 0.9rem;
+  padding-right: 1rem;
+  margin-right: 1.1rem;
   border-right: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  background: rgba(255, 255, 255, 0.014);
-  color: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
-  font-size: 10px;
+  background: rgba(255, 255, 255, 0.016);
+  color: color-mix(in srgb, var(--muted-foreground) 32%, transparent);
+  font-size: 11px;
   user-select: none;
+}
+
+/* Subtle row highlight when hovering editable lines */
+.cfg-kv {
+  border-radius: 6px;
+  transition: background 0.12s ease;
+}
+.cfg-kv:hover {
+  background: rgba(255, 255, 255, 0.025);
 }
 
 /* ── Syntax colors ──────────────────────────────────────────────────────── */
 
 .cfg-comment { color: #52525b; white-space: pre-wrap; }
-.cfg-sec { color: var(--primary); font-weight: 600; }
+.cfg-sec {
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 1.05em;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--primary) 45%, transparent);
+}
 .cfg-key { color: #7dd3fc; }
 .cfg-punct { color: #71717a; }
 .cfg-str { color: #bef264; }
@@ -50,8 +68,8 @@
   color: #f87171;
   background: rgba(248, 113, 113, 0.10);
   border: none;
-  border-radius: 4px;
-  padding: 0 7px;
+  border-radius: 5px;
+  padding: 1px 9px;
   cursor: pointer;
   transition: background 0.12s ease;
 }
@@ -89,9 +107,9 @@
 .cfg-range {
   -webkit-appearance: none;
   appearance: none;
-  width: 140px;
-  height: 2px;
-  border-radius: 1px;
+  width: 160px;
+  height: 3px;
+  border-radius: 2px;
   background: #27272a;
   outline: none;
   vertical-align: middle;
@@ -179,10 +197,10 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 2px 8px;
+  padding: 3px 8px;
   border-radius: 4px;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   text-align: left;
   color: var(--muted-foreground);
   cursor: pointer;
