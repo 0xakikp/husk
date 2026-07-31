@@ -421,10 +421,18 @@ function App() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
+  /* Registered in the CAPTURE phase on window. These are global shortcuts, so
+     they must fire before anything downstream can swallow the event: xterm's
+     custom key handler, a React onKeyDown calling stopPropagation (React listens
+     on the root container, so a synthetic stopPropagation kills the native event
+     before it ever reaches a bubble-phase window listener), or a focused input.
+     As a bubble listener this was reachable by window.dispatchEvent but not
+     always by a real keypress — which is exactly the asymmetry we hit. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        e.stopPropagation();
         setPaletteOpen(true);
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
         if (!prefs.aiEnabled) return;
@@ -439,8 +447,8 @@ function App() {
         focusActiveTerminal();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [prefs.aiEnabled]);
 
   const remoteHost = useActiveSshHost();

@@ -444,12 +444,31 @@ export function CommandPalette({
   onInputChange?: (value: string) => void;
   onClose: () => void;
 }) {
-  const [internalInput, setInternalInput] = useState("");
-  const rawInput = inputValue ?? internalInput;
+  /* Local state is authoritative for what the field displays.
+     It used to be `inputValue ?? internalInput`, i.e. the parent's state drove the
+     value. That froze the field: `??` only falls back on null/undefined, never on
+     a string, so any stale `inputValue` (an empty string, or the first character)
+     pinned the display there and every later keystroke was discarded on the next
+     render — you could type exactly one character.
+     The parent is still notified via onInputChange, because it needs the query to
+     assemble launcher items, but it no longer dictates the value. Externally
+     driven rewrites (a scope row calling ctx.setQuery) are adopted by the effect
+     below; the echo of our own keystrokes is ignored via lastPushedRef. */
+  const [internalInput, setInternalInput] = useState(inputValue ?? "");
+  const rawInput = internalInput;
+  const lastPushedRef = useRef(inputValue ?? "");
   const setRawInput = (v: string) => {
+    lastPushedRef.current = v;
     setInternalInput(v);
     onInputChange?.(v);
   };
+
+  useEffect(() => {
+    if (inputValue === undefined) return;
+    if (inputValue === lastPushedRef.current) return; // our own change coming back
+    lastPushedRef.current = inputValue;
+    setInternalInput(inputValue);
+  }, [inputValue]);
   const [selectedValue, setSelectedValue] = useState("");
   const [actionTarget, setActionTarget] = useState<Command | null>(null);
   const preActionInputRef = useRef("");
