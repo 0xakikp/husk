@@ -461,7 +461,7 @@ button {
   right: 12px;
   height: 2px;
   background: linear-gradient(90deg, transparent, var(--accent, #11c700) 20%, var(--accent, #11c700) 80%, transparent);
-  opacity: 0.7;
+  opacity: 0.35;
   border-radius: 0 0 2px 2px;
   pointer-events: none;
 }
@@ -480,7 +480,7 @@ button {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent, #11c700);
+  color: var(--text-muted, #868686);
   display: flex;
   align-items: center;
   gap: 5px;
@@ -639,6 +639,9 @@ button {
   color: var(--text-faint, #5a5a5a);
 }
 
+/* Command-type icons are intentionally monochrome: the glyph identifies the
+   type, so colouring seven categories only added noise. The single accent is
+   reserved for selection and focus. */
 .term-hist-item-icon {
   display: inline-flex;
   align-items: center;
@@ -662,14 +665,6 @@ button {
 }
 
 /* Command type accent colors (subtle, only on icon) */
-.term-hist-item.type-git .term-hist-item-icon { color: #f472b6; }
-.term-hist-item.type-ssh .term-hist-item-icon { color: #22d3ee; }
-.term-hist-item.type-pkg .term-hist-item-icon { color: #fbbf24; }
-.term-hist-item.type-docker .term-hist-item-icon { color: #60a5fa; }
-.term-hist-item.type-python .term-hist-item-icon { color: #a78bfa; }
-.term-hist-item.type-node .term-hist-item-icon { color: #86efac; }
-.term-hist-item.type-cargo .term-hist-item-icon { color: #fca5a5; }
-
 .term-hist-command {
   display: block;
   flex: 1 1 auto;
@@ -695,8 +690,8 @@ button {
 .term-hist-item.prefix-match mark,
 .term-hist-item.word-match mark {
   text-decoration-color: var(--accent, #11c700);
-  text-decoration-thickness: 3px;
-  font-weight: 700;
+  text-decoration-thickness: 2px;
+  font-weight: 600;
 }
 
 .term-hist-item.active mark {
@@ -717,11 +712,11 @@ button {
 }
 
 .term-hist-match-badge.prefix {
-  color: #22d3ee;
+  color: var(--text-muted, #868686);
 }
 
 .term-hist-match-badge.word {
-  color: #fbbf24;
+  color: var(--text-muted, #868686);
 }
 
 .term-hist-match-badge.fuzzy {
