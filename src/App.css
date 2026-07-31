@@ -2336,6 +2336,16 @@ button {
   box-shadow: none !important;
 }
 
+/* Fuzzy-match highlight inside command palette rows */
+.cmdk-match {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+  font-weight: 700;
+}
+
 /* ── Inactive settings window dimming ── */
 .settings-unfocused #root {
   opacity: 0.85;

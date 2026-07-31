@@ -72,14 +72,20 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  leftSlot,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & {
+  leftSlot?: React.ReactNode;
+}) {
   return (
     <div data-slot="command-input-wrapper" className="p-2.5">
-      <div className="command-capsule group relative flex h-11 items-center gap-2.5 rounded-full border border-accent/20 bg-white/[0.03] px-2.5 focus-within:border-accent/60">
+      <div className="command-capsule group relative flex h-11 items-center gap-2 rounded-full border border-accent/20 bg-white/[0.03] px-2.5 focus-within:border-accent/60">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent transition-colors duration-200 group-focus-within:bg-accent/20">
           <HugeiconsIcon icon={SearchIcon} strokeWidth={2} className="size-4" />
         </span>
+        {leftSlot ? (
+          <div className="flex shrink-0 items-center">{leftSlot}</div>
+        ) : null}
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(

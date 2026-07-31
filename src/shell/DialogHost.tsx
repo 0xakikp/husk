@@ -67,6 +67,8 @@ export function DialogHost({
   setCloudSyncOpen,
   paletteOpen,
   setPaletteOpen,
+  paletteInput,
+  setPaletteInput,
   commands,
   clipboardOpen,
   setClipboardOpen,
@@ -118,6 +120,8 @@ export function DialogHost({
   setCloudSyncOpen: Setter<boolean>;
   paletteOpen: boolean;
   setPaletteOpen: Setter<boolean>;
+  paletteInput: string;
+  setPaletteInput: Setter<string>;
   commands: Command[];
   clipboardOpen: boolean;
   setClipboardOpen: Setter<boolean>;
@@ -200,7 +204,13 @@ export function DialogHost({
       </DialogLayer>
       {!hasSeenWelcome ? <WelcomeDialog /> : null}
       {paletteOpen && lazyPanel(
-        <CommandPalette open commands={commands} onClose={() => setPaletteOpen(false)} />,
+        <CommandPalette
+          open
+          commands={commands}
+          inputValue={paletteInput}
+          onInputChange={setPaletteInput}
+          onClose={() => setPaletteOpen(false)}
+        />,
         "Command Palette",
       )}
       {clipboardOpen && lazyPanel(

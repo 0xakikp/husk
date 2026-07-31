@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CommandDialog,
   Command as CommandRoot,
@@ -57,7 +57,10 @@ export type LauncherKind =
   | "k8s"
   | "workflow"
   | "job"
-  | "remote";
+  | "remote"
+  | "clipboard"
+  | "bookmark"
+  | "grep";
 
 export type Command = {
   id: string;
@@ -75,6 +78,8 @@ export type Command = {
 const GROUP_ORDER = [
   "Notes",
   "Files",
+  "Clipboard",
+  "Bookmarks",
   "Workflows",
   "Jobs",
   "Docker",
@@ -139,7 +144,44 @@ const KIND_META: Record<LauncherKind, { icon: typeof Search01Icon; className: st
   workflow: { icon: PlayIcon, className: "text-emerald-400 bg-emerald-500/10" },
   job: { icon: TimeScheduleIcon, className: "text-orange-400 bg-orange-500/10" },
   remote: { icon: Home01Icon, className: "text-cyan-400 bg-cyan-500/10" },
+  clipboard: { icon: ClipboardIcon, className: "text-pink-400 bg-pink-500/10" },
+  bookmark: { icon: Folder01Icon, className: "text-yellow-400 bg-yellow-500/10" },
+  grep: { icon: ZoomInAreaIcon, className: "text-lime-400 bg-lime-500/10" },
 };
+
+const SCOPE_LABELS: Record<Exclude<LauncherKind, "command"> | "command", { label: string; className: string }> = {
+  command: { label: "Command", className: "text-primary bg-primary/15 border-primary/20" },
+  note: { label: "Notes", className: "text-amber-400 bg-amber-500/15 border-amber-500/20" },
+  file: { label: "Files", className: "text-sky-400 bg-sky-500/15 border-sky-500/20" },
+  container: { label: "Docker", className: "text-blue-400 bg-blue-500/15 border-blue-500/20" },
+  k8s: { label: "Kubernetes", className: "text-violet-400 bg-violet-500/15 border-violet-500/20" },
+  workflow: { label: "Workflows", className: "text-emerald-400 bg-emerald-500/15 border-emerald-500/20" },
+  job: { label: "Jobs", className: "text-orange-400 bg-orange-500/15 border-orange-500/20" },
+  remote: { label: "Remotes", className: "text-cyan-400 bg-cyan-500/15 border-cyan-500/20" },
+  clipboard: { label: "Clipboard", className: "text-pink-400 bg-pink-500/15 border-pink-500/20" },
+  bookmark: { label: "Bookmarks", className: "text-yellow-400 bg-yellow-500/15 border-yellow-500/20" },
+  grep: { label: "Grep", className: "text-lime-400 bg-lime-500/15 border-lime-500/20" },
+};
+
+function ScopePill({ kind, onClear }: { kind: LauncherKind; onClear: () => void }) {
+  const meta = SCOPE_LABELS[kind];
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClear();
+      }}
+      className={cn(
+        "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors hover:opacity-90",
+        meta.className,
+      )}
+    >
+      <span>{meta.label}</span>
+      <span className="opacity-50">×</span>
+    </button>
+  );
+}
 
 function getIcon(id: string, kind: LauncherKind): typeof Search01Icon {
   if (kind === "command") {
@@ -162,7 +204,8 @@ function getGroup(id: string, label: string): string {
 }
 
 /* Prefixes scope the search to one source. "> x" commands, "n " notes,
-   "f " files, "w " workflows, "d " docker, "k " k8s, "r " remotes, "j " jobs. */
+   "f " files, "w " workflows, "d " docker, "k " k8s, "r " remotes, "j " jobs,
+   "c " clipboard, "b " bookmarks, "g " grep (file contents). */
 const PREFIX_KIND: Record<string, LauncherKind> = {
   ">": "command",
   n: "note",
@@ -172,43 +215,157 @@ const PREFIX_KIND: Record<string, LauncherKind> = {
   k: "k8s",
   r: "remote",
   j: "job",
+  c: "clipboard",
+  b: "bookmark",
+  g: "grep",
 };
 
-function parseQuery(raw: string): { kind: LauncherKind | null; query: string } {
+export function parseQuery(raw: string): { kind: LauncherKind | null; query: string } {
   if (raw.startsWith(">")) return { kind: "command", query: raw.slice(1).trimStart() };
-  const m = raw.match(/^([nfwdkrj])\s+(.*)$/);
+  const m = raw.match(/^([nfwdkrjcbg])\s+(.*)$/);
   if (m && PREFIX_KIND[m[1]]) return { kind: PREFIX_KIND[m[1]], query: m[2] };
   return { kind: null, query: raw };
 }
 
-/** Small scoring fn used as cmdk filter. Returns 0 to hide, higher = better. */
-function scoreValue(value: string, query: string): number {
+/** Match scoring for the cmdk filter. Higher = better; 0 hides the item. */
+function rankText(text: string, query: string): number {
   if (!query) return 1;
-  const v = value.toLowerCase();
+  const t = text.toLowerCase();
   const q = query.toLowerCase();
-  if (v.includes(q)) {
-    const label = value.split(" ")[0]?.toLowerCase() ?? v;
-    if (label.startsWith(q)) return 2;
-    return 1;
-  }
-  // Subsequence match (fuzzy)
+  if (t === q) return 100;
+  if (t.startsWith(q)) return 80;
+  // Word-boundary match: each query char begins a word.
+  let ti = 0;
   let qi = 0;
-  for (let i = 0; i < v.length && qi < q.length; i++) {
-    if (v[i] === q[qi]) qi++;
+  let wordStart = true;
+  let wordMatched = 0;
+  while (ti < t.length && qi < q.length) {
+    if (t[ti] === q[qi]) {
+      if (!wordStart) {
+        // Not a word start; abort boundary match.
+        wordMatched = -1;
+        break;
+      }
+      wordMatched++;
+      qi++;
+      ti++;
+      wordStart = false;
+    } else {
+      ti++;
+      if (!/[a-z0-9]/.test(t[ti - 1] ?? "")) wordStart = true;
+    }
   }
-  return qi === q.length ? 0.4 : 0;
+  if (wordMatched === q.length) return 60;
+  if (t.includes(q)) return 40;
+  // Fuzzy subsequence.
+  qi = 0;
+  for (let i = 0; i < t.length && qi < q.length; i++) {
+    if (t[i] === q[qi]) qi++;
+  }
+  return qi === q.length ? 20 : 0;
+}
+
+function rankMatch(value: string, query: string): number {
+  const q = parseQuery(query).query;
+  if (!q) return 1;
+  const [label, id, keywords] = value.split("\t");
+  const meta = `${id ?? ""} ${keywords ?? ""}`;
+  return Math.max(rankText(label ?? "", q), rankText(meta, q));
+}
+
+/** Returns the indices of characters in `text` that match the fuzzy query,
+ *  preferring exact substring, then prefix/word boundaries, then subsequence. */
+function getMatchIndices(text: string, query: string): number[] {
+  if (!query) return [];
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  const sub = t.indexOf(q);
+  if (sub !== -1) return Array.from({ length: q.length }, (_, i) => sub + i);
+  // Word-boundary greedy match.
+  let ti = 0;
+  let qi = 0;
+  let wordStart = true;
+  const wordIndices: number[] = [];
+  while (ti < t.length && qi < q.length) {
+    if (t[ti] === q[qi]) {
+      if (!wordStart) { wordIndices.length = 0; break; }
+      wordIndices.push(ti);
+      qi++;
+      ti++;
+      wordStart = false;
+    } else {
+      ti++;
+      if (!/[a-z0-9]/.test(t[ti - 1] ?? "")) wordStart = true;
+    }
+  }
+  if (wordIndices.length === q.length) return wordIndices;
+  // Fallback subsequence.
+  const indices: number[] = [];
+  qi = 0;
+  for (let i = 0; i < t.length && qi < q.length; i++) {
+    if (t[i] === q[qi]) { indices.push(i); qi++; }
+  }
+  return indices;
+}
+
+function HighlightLabel({ text, indices }: { text: string; indices: number[] }) {
+  if (!indices.length) return <span className="truncate">{text}</span>;
+  const set = new Set(indices);
+  const parts: { char: string; match: boolean }[] = [];
+  for (let i = 0; i < text.length; i++) {
+    parts.push({ char: text[i], match: set.has(i) });
+  }
+  const nodes: ReactNode[] = [];
+  let buf = "";
+  let bufMatch = false;
+  for (const p of parts) {
+    if (p.match === bufMatch) {
+      buf += p.char;
+    } else {
+      if (buf) {
+        nodes.push(
+          bufMatch ? (
+            <span key={nodes.length} className="cmdk-match">{buf}</span>
+          ) : (
+            <span key={nodes.length}>{buf}</span>
+          ),
+        );
+      }
+      buf = p.char;
+      bufMatch = p.match;
+    }
+  }
+  if (buf) {
+    nodes.push(
+      bufMatch ? (
+        <span key={nodes.length} className="cmdk-match">{buf}</span>
+      ) : (
+        <span key={nodes.length}>{buf}</span>
+      ),
+    );
+  }
+  return <span className="truncate">{nodes}</span>;
 }
 
 export function CommandPalette({
   open,
   commands,
+  inputValue,
+  onInputChange,
   onClose,
 }: {
   open: boolean;
   commands: Command[];
+  inputValue?: string;
+  onInputChange?: (value: string) => void;
   onClose: () => void;
 }) {
-  const [rawInput, setRawInput] = useState("");
+  const [internalInput, setInternalInput] = useState("");
+  const rawInput = inputValue ?? internalInput;
+  const setRawInput = (v: string) => {
+    setInternalInput(v);
+    onInputChange?.(v);
+  };
   const [selectedValue, setSelectedValue] = useState("");
   const historyIndexRef = useRef(-1);
   const historyRef = useRef<string[]>([]);
@@ -240,18 +397,28 @@ export function CommandPalette({
   const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
 
   const enriched = useMemo(() => {
+    const q = query.trim();
     const list = commands
       .filter((c) => !scopedKind || (c.kind ?? "command") === scopedKind)
-      .map((c) => ({
-        ...c,
-        group: c.group || getGroup(c.id, c.label),
-        score: getFrecencyScore(c.id),
-      }));
-    if (!query.trim()) {
-      list.sort((a, b) => b.score - a.score);
+      .map((c) => {
+        const rank = q ? rankMatch(`${c.label}\t${c.id}\t${c.keywords ?? ""}`, rawInput) : 0;
+        return {
+          ...c,
+          group: c.group || getGroup(c.id, c.label),
+          frecency: getFrecencyScore(c.id),
+          rank,
+        };
+      });
+    if (!q) {
+      list.sort((a, b) => b.frecency - a.frecency);
+    } else {
+      list.sort((a, b) => {
+        if (a.rank !== b.rank) return b.rank - a.rank;
+        return b.frecency - a.frecency;
+      });
     }
     return list;
-  }, [commands, query, scopedKind]);
+  }, [commands, query, scopedKind, rawInput]);
 
   const groups = useMemo(() => {
     const map = new Map<string, typeof enriched>();
@@ -279,7 +446,8 @@ export function CommandPalette({
   };
 
   const handleSecondary = () => {
-    const cmd = commands.find((c) => `${c.label} ${c.id}` === selectedValue || c.id === selectedValue);
+    const id = selectedValue.split("\t")[1] ?? selectedValue;
+    const cmd = commands.find((c) => c.id === id);
     if (cmd?.secondary) {
       recordCommandUse(cmd.id);
       cmd.secondary.run();
@@ -350,12 +518,13 @@ export function CommandPalette({
       <CommandRoot
         value={selectedValue}
         onValueChange={setSelectedValue}
-        filter={(value, search) => scoreValue(value, parseQuery(search).query)}
+        filter={(value, search) => rankMatch(value, search)}
       >
         <CommandInput
           ref={inputRef}
           autoFocus
-          placeholder="Search everything — notes, files, docker, k8s, workflows…"
+          leftSlot={scopedKind ? <ScopePill kind={scopedKind} onClear={() => setRawInput(query)} /> : undefined}
+          placeholder={scopedKind ? `Search ${SCOPE_LABELS[scopedKind].label.toLowerCase()}…` : "Search everything — notes, files, docker, k8s, workflows…"}
           value={rawInput}
           onValueChange={(v) => {
             // Typing leaves the history walk, so the cursor must not persist.
@@ -373,17 +542,18 @@ export function CommandPalette({
                 const kind = cmd.kind ?? "command";
                 const Icon = getIcon(cmd.id, kind);
                 const meta = KIND_META[kind];
+                const indices = getMatchIndices(cmd.label, query);
                 return (
                   <CommandItem
                     key={cmd.id}
-                    value={`${cmd.label} ${cmd.id}`}
+                    value={`${cmd.label}\t${cmd.id}\t${cmd.keywords ?? ""}`}
                     keywords={[cmd.id, cmd.keywords ?? "", cmd.group ?? ""]}
                     onSelect={() => handleSelect(cmd)}
                   >
                     <div className={cn("flex size-5 shrink-0 items-center justify-center rounded", meta.className)}>
                       <HugeiconsIcon icon={Icon} size={13} strokeWidth={1.5} />
                     </div>
-                    <span className="min-w-0 flex-1 truncate">{cmd.label}</span>
+                    <HighlightLabel text={cmd.label} indices={indices} />
                     {cmd.hint ? (
                       <span className="shrink-0 text-[10px] text-muted-foreground/60">{cmd.hint}</span>
                     ) : null}
@@ -399,7 +569,7 @@ export function CommandPalette({
         <div className="flex items-center gap-3 border-t border-border/50 px-3 py-1.5 text-[9.5px] text-muted-foreground/50">
           <span>↵ open</span>
           <span>⌘↵ action</span>
-          <span className="ml-auto">&gt; cmd · n notes · f files · w workflows · d docker · k k8s · r remotes · j jobs</span>
+          <span className="ml-auto">&gt; cmd · n notes · f files · g grep · b bookmarks · c clipboard · w workflows · d docker · k k8s · r remotes · j jobs</span>
         </div>
       </CommandRoot>
     </CommandDialog>

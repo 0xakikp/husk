@@ -155,6 +155,68 @@ async function runShell(program: string, args: string[], cwd: string): Promise<s
 
 export type WorkspaceFileEntry = { path: string; rel: string; name: string };
 
+export type GrepResult = { path: string; rel: string; line: number; text: string };
+
+export async function searchWorkspaceContents(
+  query: string,
+  maxResults = 50,
+): Promise<GrepResult[]> {
+  const root = getWorkspaceRoot();
+  if (!root || !query.trim()) return [];
+  const cacheKey = `grep:${query.trim().toLowerCase()}`;
+  return cached(cacheKey, 15_000, async () => {
+    try {
+      const out = await runShell(
+        "rg",
+        [
+          "-n",
+          "-i",
+          "--max-count",
+          "1",
+          "--max-columns",
+          "200",
+          "--glob",
+          "!node_modules",
+          "--glob",
+          "!.git",
+          "--glob",
+          "!dist",
+          "--glob",
+          "!target",
+          "--no-heading",
+          "-e",
+          query,
+          ".",
+        ],
+        root,
+      );
+      const results: GrepResult[] = [];
+      for (const line of out.split("\n")) {
+        const idx = line.indexOf(":");
+        if (idx === -1) continue;
+        const file = line.slice(0, idx);
+        const rest = line.slice(idx + 1);
+        const lnIdx = rest.indexOf(":");
+        if (lnIdx === -1) continue;
+        const ln = parseInt(rest.slice(0, lnIdx), 10);
+        if (!Number.isFinite(ln)) continue;
+        const text = rest.slice(lnIdx + 1).trim();
+        const rel = file.replace(/^\.\//, "");
+        results.push({
+          path: `${root.replace(/\/$/, "")}/${rel}`,
+          rel,
+          line: ln,
+          text,
+        });
+        if (results.length >= maxResults) break;
+      }
+      return results;
+    } catch {
+      return [];
+    }
+  });
+}
+
 export async function loadWorkspaceFiles(): Promise<WorkspaceFileEntry[]> {
   return cached("ws-files", 60_000, async () => {
     const root = getWorkspaceRoot();

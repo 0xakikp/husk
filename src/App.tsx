@@ -161,6 +161,7 @@ function App() {
   const [totpOpen, setTotpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteInput, setPaletteInput] = useState("");
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [aiSessionsOpen, setAiSessionsOpen] = useState(false);
   const aiSessionsButtonRef = useRef<HTMLDivElement>(null);
@@ -721,6 +722,9 @@ function App() {
       pinNote: (path) => pinNote(path),
       unpinNote: (path) => unpinNote(path),
       openFile: (path, name) => openFile(path, name),
+      typeInTerminal: (text) => {
+        if (text) typeInActiveTerminal(text);
+      },
       openDocker: () => setDockerOpen(true),
       openK8s: () => setK8sOpen(true),
       switchK8sContext: (name) => {
@@ -751,7 +755,7 @@ function App() {
     [showSidebarView, openFile, openFiles],
   );
 
-  const launcherItems = useLauncherItems(paletteOpen, commands, launcherCtx);
+  const launcherItems = useLauncherItems(paletteOpen, paletteInput, commands, launcherCtx);
 
   const closeFile = (path: string) => {
     const file = openFiles.find((f) => f.path === path);
@@ -998,6 +1002,8 @@ function App() {
           setCloudSyncOpen={setCloudSyncOpen}
           paletteOpen={paletteOpen}
           setPaletteOpen={setPaletteOpen}
+          paletteInput={paletteInput}
+          setPaletteInput={setPaletteInput}
           commands={launcherItems}
           clipboardOpen={clipboardOpen}
           setClipboardOpen={setClipboardOpen}
