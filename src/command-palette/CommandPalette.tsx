@@ -308,8 +308,8 @@ function getMatchIndices(text: string, query: string): number[] {
   return indices;
 }
 
-function HighlightLabel({ text, indices }: { text: string; indices: number[] }) {
-  if (!indices.length) return <span className="truncate">{text}</span>;
+function HighlightLabel({ text, indices, className }: { text: string; indices: number[]; className?: string }) {
+  if (!indices.length) return <span className={cn("truncate", className)}>{text}</span>;
   const set = new Set(indices);
   const parts: { char: string; match: boolean }[] = [];
   for (let i = 0; i < text.length; i++) {
@@ -344,7 +344,7 @@ function HighlightLabel({ text, indices }: { text: string; indices: number[] }) 
       ),
     );
   }
-  return <span className="truncate">{nodes}</span>;
+  return <span className={cn("truncate", className)}>{nodes}</span>;
 }
 
 export function CommandPalette({
@@ -553,7 +553,7 @@ export function CommandPalette({
                     <div className={cn("flex size-5 shrink-0 items-center justify-center rounded", meta.className)}>
                       <HugeiconsIcon icon={Icon} size={13} strokeWidth={1.5} />
                     </div>
-                    <HighlightLabel text={cmd.label} indices={indices} />
+                    <HighlightLabel text={cmd.label} indices={indices} className="min-w-0 flex-1" />
                     {cmd.hint ? (
                       <span className="shrink-0 text-[10px] text-muted-foreground/60">{cmd.hint}</span>
                     ) : null}
