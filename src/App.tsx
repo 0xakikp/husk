@@ -722,6 +722,12 @@ function App() {
       pinNote: (path) => pinNote(path),
       unpinNote: (path) => unpinNote(path),
       openFile: (path, name) => openFile(path, name),
+      openFileAtLine: (path, name, line) => {
+        openFile(path, name);
+        // EditorArea holds the reveal until the model for `path` is active, so
+        // this is safe to fire before the file has finished loading.
+        window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path, line } }));
+      },
       typeInTerminal: (text) => {
         if (text) typeInActiveTerminal(text);
       },
@@ -750,6 +756,7 @@ function App() {
         setActiveSshHost(host);
         showSidebarView("remotes");
       },
+      openBookmarks: () => showSidebarView("bookmarks"),
       askAi: (q) => openBubble(q),
       openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
     }),

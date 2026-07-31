@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { monaco, defineHuskTheme } from "./monacoEnv";
 import { initVimMode } from "monaco-vim";
 import { readFile, writeFile } from "../fs";
@@ -116,6 +116,35 @@ export function EditorArea({
   filesRef.current = files;
   const vimRef = useRef<{ dispose(): void } | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
+  /* Pending "reveal line N of file X" request, e.g. from a launcher grep hit.
+     Held until the model for that path is the active one, since the request
+     arrives before the file has finished loading. */
+  const pendingRevealRef = useRef<{ path: string; line: number } | null>(null);
+
+  const applyPendingReveal = useCallback(() => {
+    const target = pendingRevealRef.current;
+    const editor = editorRef.current;
+    if (!target || !editor) return;
+    if (activePathRef.current !== target.path) return;
+    const model = editor.getModel();
+    if (!model || model.uri.path !== monaco.Uri.file(target.path).path) return;
+    pendingRevealRef.current = null;
+    const line = Math.max(1, Math.min(target.line, model.getLineCount()));
+    editor.revealLineInCenter(line);
+    editor.setPosition({ lineNumber: line, column: 1 });
+    editor.focus();
+  }, []);
+
+  useEffect(() => {
+    const onReveal = (e: Event) => {
+      const detail = (e as CustomEvent<{ path?: string; line?: number }>).detail;
+      if (!detail?.path || !detail.line) return;
+      pendingRevealRef.current = { path: detail.path, line: detail.line };
+      applyPendingReveal();
+    };
+    window.addEventListener("husk:reveal-line", onReveal);
+    return () => window.removeEventListener("husk:reveal-line", onReveal);
+  }, [applyPendingReveal]);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -329,6 +358,7 @@ export function EditorArea({
       // Ensure we're setting the model on the current editor instance
       if (editorRef.current === editor) {
         editor.setModel(model);
+        applyPendingReveal();
         // Delay layout to allow container to reach full height after visibility change
         setTimeout(() => {
           if (editorRef.current === editor && !cancelled) {

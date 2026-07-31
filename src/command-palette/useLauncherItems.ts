@@ -15,11 +15,15 @@ import {
   type GrepResult,
 } from "./sources";
 import type { DockerContainer } from "../docker/client";
-import type { BgJob } from "../jobs/client";
+import { bgKill, type BgJob } from "../jobs/client";
 import type { Workflow } from "../workflows/store";
-import { useClipHistory } from "../clipboard/store";
-import { useBookmarks, type Bookmark } from "../bookmarks/store";
+import { composeCommand } from "../workflows/params";
+import { removeRecentNote } from "../notes/store";
+import { useClipHistory, deleteClip } from "../clipboard/store";
+import { useBookmarks, addBookmark, toggleBookmarkPin, type Bookmark } from "../bookmarks/store";
 import { parseQuery } from "./CommandPalette";
+
+const copy = (text: string) => void navigator.clipboard.writeText(text);
 
 /** Callbacks the launcher needs from the app shell. */
 export type LauncherCtx = {
@@ -27,6 +31,8 @@ export type LauncherCtx = {
   pinNote: (path: string) => void;
   unpinNote: (path: string) => void;
   openFile: (path: string, name: string) => void;
+  /** Open a file and scroll to a specific 1-based line (used by grep hits). */
+  openFileAtLine: (path: string, name: string, line: number) => void;
   typeInTerminal: (text: string) => void;
   openDocker: () => void;
   openK8s: () => void;
@@ -35,6 +41,7 @@ export type LauncherCtx = {
   openWorkflows: () => void;
   openJobs: () => void;
   connectRemote: (host: string) => void;
+  openBookmarks: () => void;
   /** Hand the raw query to the AI bubble so the launcher never dead-ends. */
   askAi: (query: string) => void;
   openFiles: { path: string; name: string }[];
@@ -80,21 +87,28 @@ export function useLauncherItems(
 
   const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
 
+  /* Each source lands on its own. Notes and files are local and near-instant;
+     docker, k8s and the ssh-config read shell out and can take seconds. A
+     Promise.all barrier made the fast ones wait for the slowest, so the palette
+     appeared to hang before showing anything. */
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setDyn((d) => ({ ...d, loaded: false }));
-    Promise.all([
-      loadNoteEntries(),
-      loadDockerContainers(),
-      loadK8sContexts(),
-      loadRunningJobs(),
-      loadSshHosts(),
-      loadWorkspaceFiles(),
-    ]).then(([notes, containers, k8s, jobs, sshHosts, wsFiles]) => {
-      if (cancelled) return;
-      setDyn({ notes, containers, k8s, jobs, sshHosts, wsFiles, loaded: true });
-    });
+    const merge = (patch: Partial<DynamicState>) => {
+      if (!cancelled) setDyn((d) => ({ ...d, ...patch }));
+    };
+
+    const loads: Promise<unknown>[] = [
+      loadNoteEntries().then((notes) => merge({ notes })),
+      loadWorkspaceFiles().then((wsFiles) => merge({ wsFiles })),
+      loadDockerContainers().then((containers) => merge({ containers })),
+      loadK8sContexts().then((k8s) => merge({ k8s })),
+      loadRunningJobs().then((jobs) => merge({ jobs })),
+      loadSshHosts().then((sshHosts) => merge({ sshHosts })),
+    ].map((p) => p.catch(() => {}));
+
+    void Promise.allSettled(loads).then(() => merge({ loaded: true }));
+
     return () => {
       cancelled = true;
     };
@@ -153,6 +167,11 @@ export function useLauncherItems(
           label: n.pinned ? "unpin" : "pin",
           run: () => (n.pinned ? ctx.unpinNote(n.path) : ctx.pinNote(n.path)),
         },
+        actions: [
+          { label: "Copy path", run: () => copy(n.path) },
+          { label: "Copy filename", run: () => copy(n.name) },
+          { label: "Remove from recents", run: () => removeRecentNote(n.path) },
+        ],
       });
     }
 
@@ -208,8 +227,16 @@ export function useLauncherItems(
         run: () => ctx.typeInTerminal(c.text),
         secondary: {
           label: "copy",
-          run: () => void navigator.clipboard.writeText(c.text),
+          run: () => copy(c.text),
         },
+        actions: [
+          {
+            label: "Save as bookmark",
+            run: () =>
+              void addBookmark({ type: "command", label: trunc(c.text, 40), command: c.text }),
+          },
+          { label: "Remove from history", run: () => deleteClip(c.id) },
+        ],
       });
     }
 
@@ -229,11 +256,16 @@ export function useLauncherItems(
           hint: `line ${r.line}`,
           keywords: r.text,
           group: "Files",
-          run: () => ctx.openFile(r.path, name),
+          run: () => ctx.openFileAtLine(r.path, name, r.line),
           secondary: {
             label: "copy path",
-            run: () => void navigator.clipboard.writeText(r.path),
+            run: () => copy(r.path),
           },
+          actions: [
+            { label: "Open file (no jump)", run: () => ctx.openFile(r.path, name) },
+            { label: "Copy file:line", run: () => copy(`${r.rel}:${r.line}`) },
+            { label: "Copy matching line", run: () => copy(r.text) },
+          ],
         });
       }
       if (grepBusy) {
@@ -268,6 +300,14 @@ export function useLauncherItems(
         group: "Workflows",
         run: () => ctx.runWorkflow(wf),
         secondary: { label: "edit", run: () => ctx.openWorkflows() },
+        actions: [
+          {
+            label: "Copy composed command",
+            run: () =>
+              copy(composeCommand(wf.steps, {}, { stopOnError: wf.stopOnError !== false })),
+          },
+          { label: "Copy name", run: () => copy(wf.name) },
+        ],
       });
     }
 
@@ -281,6 +321,11 @@ export function useLauncherItems(
         keywords: j.cwd ?? "",
         group: "Jobs",
         run: () => ctx.openJobs(),
+        secondary: { label: "copy cmd", run: () => copy(j.command) },
+        actions: [
+          { label: "Kill job", run: () => void bgKill(j.handle).catch(() => {}) },
+          { label: "Copy working directory", run: () => copy(j.cwd ?? "") },
+        ],
       });
     }
 
@@ -360,19 +405,25 @@ export function useLauncherItems(
 }
 
 function bookmarkToCommand(b: Bookmark, ctx: LauncherCtx): Command {
+  const target = b.path ?? b.command ?? "";
   const base = {
     id: `bookmark:${b.id}`,
     kind: "bookmark" as LauncherKind,
     label: b.label,
     keywords: `${b.path ?? ""} ${b.command ?? ""}`,
     group: "Bookmarks",
+    actions: [
+      { label: "Copy target", run: () => copy(target) },
+      { label: b.pinned ? "Unpin" : "Pin", run: () => void toggleBookmarkPin(b.id) },
+      { label: "Open bookmarks panel", run: () => ctx.openBookmarks() },
+    ],
   };
   if (b.type === "directory" && b.path) {
     return {
       ...base,
       hint: "dir",
       run: () => ctx.typeInTerminal(`cd "${b.path}"`),
-      secondary: { label: "copy path", run: () => void navigator.clipboard.writeText(b.path!) },
+      secondary: { label: "copy path", run: () => copy(b.path!) },
     };
   }
   if (b.type === "file" && b.path) {
@@ -380,13 +431,13 @@ function bookmarkToCommand(b: Bookmark, ctx: LauncherCtx): Command {
       ...base,
       hint: "file",
       run: () => ctx.openFile(b.path!, b.label),
-      secondary: { label: "copy path", run: () => void navigator.clipboard.writeText(b.path!) },
+      secondary: { label: "copy path", run: () => copy(b.path!) },
     };
   }
   return {
     ...base,
     hint: "cmd",
     run: () => ctx.typeInTerminal(b.command ?? ""),
-    secondary: { label: "copy", run: () => void navigator.clipboard.writeText(b.command ?? "") },
+    secondary: { label: "copy", run: () => copy(b.command ?? "") },
   };
 }

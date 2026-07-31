@@ -103,6 +103,9 @@ const GROUP_ORDER = [
   "Ask AI",
 ];
 
+const SCOPE_LEGEND =
+  "> cmd · n notes · f files · g grep · b bookmarks · c clipboard · w workflows · d docker · k k8s · r remotes · j jobs";
+
 const ICON_MAP: Record<string, typeof Search01Icon> = {
   explorer: SidebarLeftIcon,
   "open-folder": Folder01Icon,
@@ -451,7 +454,12 @@ export function CommandPalette({
     }));
   }, [groups]);
 
-  const showEmpty = sortedGroups.length === 0 && rawInput.trim().length > 0;
+  /* Only gate on "the user typed something". cmdk's Empty renders itself only
+     when its own filtered count is 0, so testing sortedGroups here was wrong:
+     Husk renders every in-scope item and lets cmdk filter, meaning sortedGroups
+     stays non-empty even when nothing matches — and the palette showed a blank
+     box instead of a message. */
+  const hasQuery = rawInput.trim().length > 0;
 
   const handleSelect = (cmd: Command) => {
     recordCommandUse(cmd.id);
@@ -620,7 +628,7 @@ export function CommandPalette({
           onKeyDown={handleKeyDown}
         />
         <CommandList>
-          {showEmpty && !actionTarget && <CommandEmpty>No results found.</CommandEmpty>}
+          {hasQuery && !actionTarget && <CommandEmpty>No results found.</CommandEmpty>}
           {/* cmdk only renders Empty when the filtered count is 0, so this needs
               no extra condition beyond being in action mode. */}
           {actionTarget && <CommandEmpty>No matching actions.</CommandEmpty>}
@@ -687,10 +695,26 @@ export function CommandPalette({
           ))}
         </CommandList>
         <div className="flex items-center gap-3 border-t border-border/50 px-3 py-1.5 text-[9.5px] text-muted-foreground/50">
-          <span>↵ open</span>
-          <span>⌘↵ action</span>
-          <span>{actionTarget ? "esc back" : "⌘. actions"}</span>
-          <span className="ml-auto">&gt; cmd · n notes · f files · g grep · b bookmarks · c clipboard · w workflows · d docker · k k8s · r remotes · j jobs</span>
+          <span className="shrink-0">↵ open</span>
+          {actionTarget ? (
+            <span className="shrink-0">esc back</span>
+          ) : (
+            <>
+              <span className="shrink-0">⌘↵ action</span>
+              <span className="shrink-0">⌘. actions</span>
+              <span className="shrink-0">⇥ next</span>
+            </>
+          )}
+          {/* Truncates rather than pushing the row wider than the 520px panel.
+              The scope legend only earns its space before you start typing —
+              once there's a query the pill already shows the active scope. */}
+          <span className="ml-auto min-w-0 truncate">
+            {actionTarget
+              ? `${actionsFor(actionTarget).length} actions`
+              : hasQuery
+                ? "⌥↑ history"
+                : SCOPE_LEGEND}
+          </span>
         </div>
       </CommandRoot>
     </CommandDialog>
