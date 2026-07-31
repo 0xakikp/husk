@@ -356,7 +356,6 @@ export function TerminalHistoryPanel({
         ref={panelRef}
         style={{ fontFamily, fontSize: `${fontSize}px` }}
       >
-        <div className="term-hist-top-accent" />
         <div className="term-hist-header">
           <span className="term-hist-title">
             <svg className="term-hist-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
