@@ -557,6 +557,9 @@ export function CommandPalette({
         new KeyboardEvent("keydown", {
           key: e.shiftKey ? "ArrowUp" : "ArrowDown",
           bubbles: true,
+          // Without this the event is uncancelable and cmdk's preventDefault()
+          // silently no-ops.
+          cancelable: true,
         }),
       );
       return;

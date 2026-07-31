@@ -58,7 +58,10 @@ function CommandDialog({
              below is unlayered and runs `forwards`, so any translate in it would
              silently outrank these classes. CommandList is capped to keep the
              bottom edge on screen. */
-          "top-[12vh] left-0 right-0 mx-auto translate-x-0 translate-y-0 overflow-hidden rounded-xl! border border-border/40 bg-background/70 p-0 shadow-lg backdrop-blur-xl",
+          /* w-auto is load-bearing: the base sets w-full, and left-0 + right-0 +
+             width:100% is over-constrained, so CSS drops `right` and resolves
+             mx-auto to 0 — pinning the panel to the left edge. */
+          "top-[12vh] left-0 right-0 w-auto mx-auto translate-x-0 translate-y-0 overflow-hidden rounded-xl! border border-border/40 bg-background/70 p-0 shadow-lg backdrop-blur-xl",
           "[&[data-state=open]]:animate-none", /* suppress radix default zoom */
           "animate-hyprland-enter",
           className
@@ -115,10 +118,10 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        /* The 7rem covers the search capsule row (~64px), footer and borders; 84vh
-           then leaves the palette ending under 96vh given its 12vh top anchor, so
-           a full list scrolls instead of running off the bottom. */
-        "no-scrollbar max-h-[min(60vh,calc(84vh_-_7rem))] scroll-py-1 overflow-x-hidden overflow-y-auto p-1.5 outline-none",
+        /* Plain vh on purpose: a nested min()/calc() arbitrary value silently
+           generated no rule at all, leaving the list uncapped. 60vh plus ~101px
+           of chrome still clears the bottom given the 12vh top anchor. */
+        "no-scrollbar max-h-[60vh] scroll-py-1 overflow-x-hidden overflow-y-auto p-1.5 outline-none",
         className
       )}
       {...props}
