@@ -104,14 +104,28 @@ const GROUP_ORDER = [
   "Other",
   /* Deliberately near the end: cmdk auto-selects the first row, so putting scope
      suggestions on top would mean typing "doc" and pressing Enter scoped you to
-     Docker instead of opening the top result. The per-group "+N more — type
-     files:" hints teach the syntax inline, where it actually matters. */
+     Docker instead of opening the top result. The per-group "type files: for all"
+     rows teach the syntax inline, where it actually matters. */
   "Scopes",
   "Ask AI",
 ];
 
 /** Rows shown per source before the rest is folded behind its scope token. */
 const GROUP_CAP = 8;
+
+/** Groups that correspond to exactly one scope, so "type x: for all" is true.
+   "AI"/"Tools"/"General" hold assorted commands, so they get no token hint. */
+const GROUP_SCOPE_TOKEN: Record<string, string> = {
+  Notes: "notes",
+  Files: "files",
+  Clipboard: "clip",
+  Bookmarks: "bookmarks",
+  Workflows: "workflows",
+  Jobs: "jobs",
+  Docker: "docker",
+  Kubernetes: "k8s",
+  Remotes: "remotes",
+};
 
 const SCOPE_LEGEND =
   "scope with n: notes · f: files · g: grep · c: clip · b: bookmarks · w: workflows · d: docker · k: k8s · r: remotes · j: jobs · > cmd";
@@ -262,10 +276,6 @@ const SCOPE_CANONICAL: Partial<Record<LauncherKind, string>> = {
   remote: "remotes",
   job: "jobs",
 };
-
-export function scopeTokenFor(kind: LauncherKind): string | undefined {
-  return SCOPE_CANONICAL[kind];
-}
 
 /**
  * Scopes are only advertised in the footer, and that legend hides as soon as you
@@ -762,16 +772,23 @@ export function CommandPalette({
                   </CommandItem>
                 );
               })}
-              {group.hidden > 0 ? (
-                /* A plain div, not a CommandItem: it must not be filtered away,
-                   selectable, or reachable by arrow keys. */
-                <div className="px-2 py-1 pl-9 text-[10px] text-muted-foreground/40">
-                  +{group.hidden} more
-                  {(() => {
-                    const token = scopeTokenFor(group.items[0]?.kind ?? "command");
-                    return token ? ` — type “${token}:” to see all` : "";
-                  })()}
-                </div>
+              {group.hidden > 0 && GROUP_SCOPE_TOKEN[group.name] ? (
+                /* forceMount + disabled, not a plain div: cmdk re-appends item
+                   nodes to sort them, which would leave a bare div stranded above
+                   the rows. As a zero-scoring item it sorts to the end, and
+                   disabled keeps it out of keyboard navigation. No count — cmdk
+                   filters the surviving rows further, so any number we computed
+                   here would contradict what is on screen. */
+                <CommandItem
+                  key={`${group.name}:more`}
+                  value={`\tmore:${group.name}\t`}
+                  forceMount
+                  disabled
+                  className="pl-9 text-[10px] text-muted-foreground/40"
+                  onSelect={() => {}}
+                >
+                  type “{GROUP_SCOPE_TOKEN[group.name]}:” for all matches
+                </CommandItem>
               ) : null}
             </CommandGroup>
           ))}
