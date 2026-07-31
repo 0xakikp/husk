@@ -226,9 +226,10 @@ export function useLauncherItems(
       if (grepBusy) {
         items.push({
           id: "grep:searching",
-          kind: "command",
+          kind: "grep",
           label: "Searching…",
           group: "Files",
+          status: true,
           run: () => {},
         });
       }

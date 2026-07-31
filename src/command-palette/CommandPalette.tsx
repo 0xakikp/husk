@@ -72,6 +72,9 @@ export type Command = {
   keywords?: string;
   /** Secondary action, triggered with Cmd/Ctrl+Enter. */
   secondary?: { label: string; run: () => void };
+  /** Status row: always rendered (cmdk's filter would score it 0 and drop it)
+   *  and skipped by keyboard navigation. */
+  status?: boolean;
   run: () => void;
 };
 
@@ -537,7 +540,13 @@ export function CommandPalette({
           {showEmpty && <CommandEmpty>No results found.</CommandEmpty>}
 
           {sortedGroups.map((group) => (
-            <CommandGroup key={group.name} heading={group.name}>
+            /* A group is hidden unless one of its items scores > 0, which would
+               swallow a status row whose label never matches the query. */
+            <CommandGroup
+              key={group.name}
+              heading={group.name}
+              forceMount={group.items.some((i) => i.status) || undefined}
+            >
               {group.items.map((cmd) => {
                 const kind = cmd.kind ?? "command";
                 const Icon = getIcon(cmd.id, kind);
@@ -548,6 +557,8 @@ export function CommandPalette({
                     key={cmd.id}
                     value={`${cmd.label}\t${cmd.id}\t${cmd.keywords ?? ""}`}
                     keywords={[cmd.id, cmd.keywords ?? "", cmd.group ?? ""]}
+                    forceMount={cmd.status || undefined}
+                    disabled={cmd.status || undefined}
                     onSelect={() => handleSelect(cmd)}
                   >
                     <div className={cn("flex size-5 shrink-0 items-center justify-center rounded", meta.className)}>

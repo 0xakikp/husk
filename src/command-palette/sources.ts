@@ -171,6 +171,9 @@ export async function searchWorkspaceContents(
         [
           "-n",
           "-i",
+          // Fixed-string, not regex: launcher queries routinely contain ( [ { * +
+          // and rg would abort with a parse error that we'd silently swallow.
+          "-F",
           "--max-count",
           "1",
           "--max-columns",
