@@ -35,6 +35,8 @@ export type LauncherCtx = {
   openWorkflows: () => void;
   openJobs: () => void;
   connectRemote: (host: string) => void;
+  /** Hand the raw query to the AI bubble so the launcher never dead-ends. */
+  askAi: (query: string) => void;
   openFiles: { path: string; name: string }[];
 };
 
@@ -74,6 +76,7 @@ export function useLauncherItems(
   const [dyn, setDyn] = useState<DynamicState>(EMPTY);
   const [grepResults, setGrepResults] = useState<GrepResult[]>([]);
   const [grepBusy, setGrepBusy] = useState(false);
+  const [grepMissingTool, setGrepMissingTool] = useState(false);
 
   const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
 
@@ -102,15 +105,17 @@ export function useLauncherItems(
     if (!open || scopedKind !== "grep" || !query.trim()) {
       setGrepResults([]);
       setGrepBusy(false);
+      setGrepMissingTool(false);
       return;
     }
     const ac = new AbortController();
     const t = setTimeout(() => {
       setGrepBusy(true);
       searchWorkspaceContents(query, 50)
-        .then((results) => {
+        .then(({ results, missingTool }) => {
           if (ac.signal.aborted) return;
           setGrepResults(results);
+          setGrepMissingTool(missingTool);
         })
         .finally(() => {
           if (!ac.signal.aborted) setGrepBusy(false);
@@ -232,6 +237,15 @@ export function useLauncherItems(
           status: true,
           run: () => {},
         });
+      } else if (grepMissingTool) {
+        items.push({
+          id: "grep:no-rg",
+          kind: "grep",
+          label: "ripgrep not found — install rg for content search",
+          group: "Files",
+          status: true,
+          run: () => {},
+        });
       }
     }
 
@@ -304,8 +318,21 @@ export function useLauncherItems(
       });
     }
 
+    // Last resort: never dead-end on a query. Rendered as a status row so cmdk's
+    // fuzzy filter can't score it away, since its label never matches the query.
+    if (!scopedKind && query.trim()) {
+      items.push({
+        id: "ai:ask",
+        kind: "ai",
+        label: `Ask AI about “${trunc(query.trim(), 48)}”`,
+        group: "Ask AI",
+        alwaysShow: true,
+        run: () => ctx.askAi(query.trim()),
+      });
+    }
+
     return items;
-  }, [commands, ctx, dyn, openPaths, clips, bookmarks, scopedKind, grepResults, grepBusy]);
+  }, [commands, ctx, dyn, openPaths, clips, bookmarks, scopedKind, query, grepResults, grepBusy, grepMissingTool]);
 }
 
 function bookmarkToCommand(b: Bookmark, ctx: LauncherCtx): Command {

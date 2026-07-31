@@ -12,23 +12,57 @@ import {
 } from "../notes/store";
 import { loadWorkflows, type Workflow } from "../workflows/store";
 import { getWorkspaceRoot } from "../workspace/store";
+import { detectInstalled } from "../tools";
 
 /* Async data loaders for the launcher, with small TTL caches so opening the
    palette doesn't re-spawn CLI calls on every keystroke. */
 
 type CacheEntry<T> = { at: number; data: T };
 const cache = new Map<string, CacheEntry<unknown>>();
+const inflight = new Map<string, Promise<unknown>>();
 
+/**
+ * Stale-while-revalidate. A fresh entry is returned as-is; a stale one is still
+ * returned immediately while a refresh runs in the background, so an expired TTL
+ * never makes the caller wait on a CLI round-trip (kubectl alone can take 15s).
+ * Only a cold miss awaits, and concurrent misses for one key share a single load
+ * rather than each spawning their own subprocess.
+ */
 async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const refresh = (): Promise<T> => {
+    const existing = inflight.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+    const p = load()
+      .then((data) => {
+        cache.set(key, { at: Date.now(), data });
+        return data;
+      })
+      .finally(() => {
+        inflight.delete(key);
+      });
+    inflight.set(key, p);
+    return p;
+  };
+
   const hit = cache.get(key) as CacheEntry<T> | undefined;
-  if (hit && Date.now() - hit.at < ttlMs) return hit.data;
-  const data = await load();
-  cache.set(key, { at: Date.now(), data });
-  return data;
+  if (hit) {
+    if (Date.now() - hit.at >= ttlMs) void refresh().catch(() => {});
+    return hit.data;
+  }
+  return refresh();
 }
 
 export function invalidateLauncherCache() {
   cache.clear();
+  inflight.clear();
+}
+
+/* ── Tool availability ──────────────────────────────────────────────────────
+   fd and rg are optional. Probing once lets us skip a spawn that is certain to
+   fail, and lets the launcher say so instead of silently returning nothing. */
+
+export async function loadAvailableTools(): Promise<Set<string>> {
+  return cached("tools", 300_000, () => detectInstalled(["rg", "fd"]));
 }
 
 /* ── Notes ──────────────────────────────────────────────────────────────── */
@@ -157,67 +191,84 @@ export type WorkspaceFileEntry = { path: string; rel: string; name: string };
 
 export type GrepResult = { path: string; rel: string; line: number; text: string };
 
+export type GrepOutcome = {
+  results: GrepResult[];
+  /** ripgrep is not installed, so content search cannot run at all. */
+  missingTool: boolean;
+};
+
+/** Deliberately uncached: the caller debounces, rg is fast, and caching by query
+ *  string grows a key space that nothing ever evicts. */
 export async function searchWorkspaceContents(
   query: string,
   maxResults = 50,
-): Promise<GrepResult[]> {
+): Promise<GrepOutcome> {
   const root = getWorkspaceRoot();
-  if (!root || !query.trim()) return [];
-  const cacheKey = `grep:${query.trim().toLowerCase()}`;
-  return cached(cacheKey, 15_000, async () => {
-    try {
-      const out = await runShell(
-        "rg",
-        [
-          "-n",
-          "-i",
-          // Fixed-string, not regex: launcher queries routinely contain ( [ { * +
-          // and rg would abort with a parse error that we'd silently swallow.
-          "-F",
-          "--max-count",
-          "1",
-          "--max-columns",
-          "200",
-          "--glob",
-          "!node_modules",
-          "--glob",
-          "!.git",
-          "--glob",
-          "!dist",
-          "--glob",
-          "!target",
-          "--no-heading",
-          "-e",
-          query,
-          ".",
-        ],
-        root,
-      );
-      const results: GrepResult[] = [];
-      for (const line of out.split("\n")) {
-        const idx = line.indexOf(":");
-        if (idx === -1) continue;
-        const file = line.slice(0, idx);
-        const rest = line.slice(idx + 1);
-        const lnIdx = rest.indexOf(":");
-        if (lnIdx === -1) continue;
-        const ln = parseInt(rest.slice(0, lnIdx), 10);
-        if (!Number.isFinite(ln)) continue;
-        const text = rest.slice(lnIdx + 1).trim();
-        const rel = file.replace(/^\.\//, "");
-        results.push({
-          path: `${root.replace(/\/$/, "")}/${rel}`,
-          rel,
-          line: ln,
-          text,
-        });
-        if (results.length >= maxResults) break;
-      }
-      return results;
-    } catch {
-      return [];
-    }
-  });
+  if (!root || !query.trim()) return { results: [], missingTool: false };
+
+  if (!(await loadAvailableTools()).has("rg")) {
+    return { results: [], missingTool: true };
+  }
+
+  let out: ShellOutput;
+  try {
+    out = await invoke<ShellOutput>("shell_run_command", {
+      program: "rg",
+      args: [
+        "-n",
+        "-i",
+        // Fixed-string, not regex: launcher queries routinely contain ( [ { * +
+        // and rg would abort with a parse error that we'd silently swallow.
+        "-F",
+        "--max-count",
+        "1",
+        "--max-columns",
+        "200",
+        "--glob",
+        "!node_modules",
+        "--glob",
+        "!.git",
+        "--glob",
+        "!dist",
+        "--glob",
+        "!target",
+        "--no-heading",
+        "-e",
+        query,
+        ".",
+      ],
+      cwd: root,
+      timeout_secs: 10,
+    });
+  } catch {
+    return { results: [], missingTool: true };
+  }
+
+  // rg exit codes: 0 = matches, 1 = no matches, 2 = error. Anything else (or a
+  // null code from a timeout) is a failure with nothing worth parsing.
+  if (out.exit_code !== 0) return { results: [], missingTool: false };
+
+  const results: GrepResult[] = [];
+  for (const line of out.stdout.split("\n")) {
+    const idx = line.indexOf(":");
+    if (idx === -1) continue;
+    const file = line.slice(0, idx);
+    const rest = line.slice(idx + 1);
+    const lnIdx = rest.indexOf(":");
+    if (lnIdx === -1) continue;
+    const ln = parseInt(rest.slice(0, lnIdx), 10);
+    if (!Number.isFinite(ln)) continue;
+    const text = rest.slice(lnIdx + 1).trim();
+    const rel = file.replace(/^\.\//, "");
+    results.push({
+      path: `${root.replace(/\/$/, "")}/${rel}`,
+      rel,
+      line: ln,
+      text,
+    });
+    if (results.length >= maxResults) break;
+  }
+  return { results, missingTool: false };
 }
 
 export async function loadWorkspaceFiles(): Promise<WorkspaceFileEntry[]> {
@@ -225,17 +276,30 @@ export async function loadWorkspaceFiles(): Promise<WorkspaceFileEntry[]> {
     const root = getWorkspaceRoot();
     if (!root) return [];
     let lines: string[] = [];
-    // Prefer fd (fast, respects .gitignore); fall back to git ls-files.
-    try {
-      const out = await runShell(
-        "fd",
-        ["--type", "f", "--hidden", "--exclude", ".git", "--max-results", "3000", "."],
-        root,
-      );
-      lines = out.split("\n");
-    } catch {
+    // Prefer fd (fast, respects .gitignore). Skip it entirely when it isn't
+    // installed rather than spawning a process that is certain to fail.
+    const hasFd = (await loadAvailableTools()).has("fd");
+    if (hasFd) {
       try {
-        const out = await runShell("git", ["ls-files"], root);
+        const out = await runShell(
+          "fd",
+          ["--type", "f", "--hidden", "--exclude", ".git", "--max-results", "3000", "."],
+          root,
+        );
+        lines = out.split("\n");
+      } catch {
+        /* fall through to git */
+      }
+    }
+    if (lines.length === 0) {
+      try {
+        // --others --exclude-standard adds untracked-but-not-ignored files, so a
+        // file you just created is still findable. Plain `ls-files` misses them.
+        const out = await runShell(
+          "git",
+          ["ls-files", "--cached", "--others", "--exclude-standard"],
+          root,
+        );
         lines = out.split("\n");
       } catch {
         return [];

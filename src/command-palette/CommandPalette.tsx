@@ -60,7 +60,8 @@ export type LauncherKind =
   | "remote"
   | "clipboard"
   | "bookmark"
-  | "grep";
+  | "grep"
+  | "ai";
 
 export type Command = {
   id: string;
@@ -72,8 +73,11 @@ export type Command = {
   keywords?: string;
   /** Secondary action, triggered with Cmd/Ctrl+Enter. */
   secondary?: { label: string; run: () => void };
-  /** Status row: always rendered (cmdk's filter would score it 0 and drop it)
-   *  and skipped by keyboard navigation. */
+  /** Rendered even when cmdk's fuzzy filter would score it 0 — for rows whose
+   *  label never matches the query but must stay reachable. */
+  alwaysShow?: boolean;
+  /** Non-interactive status row: implies alwaysShow, and is skipped by keyboard
+   *  navigation since cmdk's getValidItems excludes aria-disabled items. */
   status?: boolean;
   run: () => void;
 };
@@ -94,6 +98,7 @@ const GROUP_ORDER = [
   "Tools",
   "Git",
   "Other",
+  "Ask AI",
 ];
 
 const ICON_MAP: Record<string, typeof Search01Icon> = {
@@ -150,6 +155,7 @@ const KIND_META: Record<LauncherKind, { icon: typeof Search01Icon; className: st
   clipboard: { icon: ClipboardIcon, className: "text-pink-400 bg-pink-500/10" },
   bookmark: { icon: Folder01Icon, className: "text-yellow-400 bg-yellow-500/10" },
   grep: { icon: ZoomInAreaIcon, className: "text-lime-400 bg-lime-500/10" },
+  ai: { icon: SparklesIcon, className: "text-fuchsia-400 bg-fuchsia-500/10" },
 };
 
 const SCOPE_LABELS: Record<Exclude<LauncherKind, "command"> | "command", { label: string; className: string }> = {
@@ -164,6 +170,7 @@ const SCOPE_LABELS: Record<Exclude<LauncherKind, "command"> | "command", { label
   clipboard: { label: "Clipboard", className: "text-pink-400 bg-pink-500/15 border-pink-500/20" },
   bookmark: { label: "Bookmarks", className: "text-yellow-400 bg-yellow-500/15 border-yellow-500/20" },
   grep: { label: "Grep", className: "text-lime-400 bg-lime-500/15 border-lime-500/20" },
+  ai: { label: "AI", className: "text-fuchsia-400 bg-fuchsia-500/15 border-fuchsia-500/20" },
 };
 
 function ScopePill({ kind, onClear }: { kind: LauncherKind; onClear: () => void }) {
@@ -545,7 +552,7 @@ export function CommandPalette({
             <CommandGroup
               key={group.name}
               heading={group.name}
-              forceMount={group.items.some((i) => i.status) || undefined}
+              forceMount={group.items.some((i) => i.status || i.alwaysShow) || undefined}
             >
               {group.items.map((cmd) => {
                 const kind = cmd.kind ?? "command";
@@ -557,7 +564,7 @@ export function CommandPalette({
                     key={cmd.id}
                     value={`${cmd.label}\t${cmd.id}\t${cmd.keywords ?? ""}`}
                     keywords={[cmd.id, cmd.keywords ?? "", cmd.group ?? ""]}
-                    forceMount={cmd.status || undefined}
+                    forceMount={cmd.status || cmd.alwaysShow || undefined}
                     disabled={cmd.status || undefined}
                     onSelect={() => handleSelect(cmd)}
                   >

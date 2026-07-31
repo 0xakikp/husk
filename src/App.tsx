@@ -750,6 +750,7 @@ function App() {
         setActiveSshHost(host);
         showSidebarView("remotes");
       },
+      askAi: (q) => openBubble(q),
       openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
     }),
     [showSidebarView, openFile, openFiles],
