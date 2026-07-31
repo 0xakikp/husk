@@ -104,7 +104,7 @@ const GROUP_ORDER = [
 ];
 
 const SCOPE_LEGEND =
-  "> cmd · n notes · f files · g grep · b bookmarks · c clipboard · w workflows · d docker · k k8s · r remotes · j jobs";
+  "scope with n: notes · f: files · g: grep · c: clip · b: bookmarks · w: workflows · d: docker · k: k8s · r: remotes · j: jobs · > cmd";
 
 const ICON_MAP: Record<string, typeof Search01Icon> = {
   explorer: SidebarLeftIcon,
@@ -218,27 +218,36 @@ function getGroup(id: string, label: string): string {
   return "Other";
 }
 
-/* Prefixes scope the search to one source. "> x" commands, "n " notes,
-   "f " files, "w " workflows, "d " docker, "k " k8s, "r " remotes, "j " jobs,
-   "c " clipboard, "b " bookmarks, "g " grep (file contents). */
-const PREFIX_KIND: Record<string, LauncherKind> = {
-  ">": "command",
-  n: "note",
-  f: "file",
-  w: "workflow",
-  d: "container",
-  k: "k8s",
-  r: "remote",
-  j: "job",
-  c: "clipboard",
-  b: "bookmark",
-  g: "grep",
+/* Scope tokens are colon-terminated: "n: foo", "clip: foo". A colon never starts
+   natural text, so an ordinary query can never be hijacked — the previous
+   "<letter><space>" form silently swallowed anything beginning with a single
+   letter from the set, so "c program files" became a clipboard search for
+   "program files" and clipboard entries like "-n 5" were unsearchable.
+   Long aliases exist so you don't have to recall the letter. */
+const SCOPE_TOKENS: Record<string, LauncherKind> = {
+  cmd: "command", command: "command", commands: "command",
+  n: "note", note: "note", notes: "note",
+  f: "file", file: "file", files: "file",
+  g: "grep", grep: "grep", content: "grep", contents: "grep",
+  c: "clipboard", clip: "clipboard", clipboard: "clipboard",
+  b: "bookmark", bm: "bookmark", bookmark: "bookmark", bookmarks: "bookmark",
+  w: "workflow", wf: "workflow", workflow: "workflow", workflows: "workflow",
+  d: "container", docker: "container", container: "container", containers: "container",
+  k: "k8s", k8s: "k8s", kube: "k8s", kubernetes: "k8s",
+  r: "remote", remote: "remote", remotes: "remote", ssh: "remote",
+  j: "job", job: "job", jobs: "job",
 };
 
 export function parseQuery(raw: string): { kind: LauncherKind | null; query: string } {
   if (raw.startsWith(">")) return { kind: "command", query: raw.slice(1).trimStart() };
-  const m = raw.match(/^([nfwdkrjcbg])\s+(.*)$/);
-  if (m && PREFIX_KIND[m[1]]) return { kind: PREFIX_KIND[m[1]], query: m[2] };
+  // The (?![/\\]) guard keeps URLs and Windows-ish paths out: "https://x" and
+  // "c:\Users" are queries, not scopes. An unrecognised token also falls through
+  // with the query intact rather than being eaten.
+  const m = raw.match(/^([A-Za-z0-9]{1,10}):(?![/\\])\s*([\s\S]*)$/);
+  if (m) {
+    const kind = SCOPE_TOKENS[m[1].toLowerCase()];
+    if (kind) return { kind, query: m[2] };
+  }
   return { kind: null, query: raw };
 }
 
