@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CommandDialog,
   Command as CommandRoot,
@@ -490,22 +490,53 @@ export function CommandPalette({
     }
   }, [open]);
 
-  // The palette is lazy-loaded behind Suspense and Radix's focus scope also
-  // claims focus on mount, so `autoFocus` alone can lose the race. Take focus on
-  // the next frame so Cmd+K always lands the caret in the search field.
-  useEffect(() => {
+  /* Claim focus in a LAYOUT effect, which runs before passive effects — and
+     Radix's focus scope autofocuses from a passive effect (useEffect). Winning
+     that race matters for more than ordering: Radix's focus helper only calls
+     .select() when the element it focuses was not already the active element, so
+     if the input already has focus its autofocus becomes a no-op instead of
+     select-alling the query. Belt and braces: onOpenAutoFocus is also prevented,
+     and any selection we did not ask for is collapsed by handleSelectionChange. */
+  useLayoutEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() => {
-      const el = inputRef.current;
-      if (!el) return;
+    const el = inputRef.current;
+    if (el) {
       el.focus();
-      // Collapse to the end: Radix's focus helper select-alls when it focuses the
-      // field, and a selected value means the next keypress replaces it.
       const end = el.value.length;
       el.setSelectionRange(end, end);
+    }
+    // Second pass after paint: the palette is lazy-loaded behind Suspense, so on
+    // the very first open the ref can still be null during this layout pass.
+    const frame = requestAnimationFrame(() => {
+      const later = inputRef.current;
+      if (!later || document.activeElement === later) return;
+      later.focus();
+      const end = later.value.length;
+      later.setSelectionRange(end, end);
     });
     return () => cancelAnimationFrame(frame);
   }, [open]);
+
+  /* Radix's focus scope calls .select() from six places — mount autofocus, focus
+     re-entry, focus-out recovery, unmount, and its Tab loop. Suppressing only the
+     mount path left the others, and a select-alled query means the next keypress
+     REPLACES it rather than appending, so the field appears to accept just one
+     word. Collapse any full-value selection we did not initiate; a genuine Cmd+A
+     or mouse selection is preserved via the gesture timestamp. */
+  const userSelectAtRef = useRef(0);
+  const markUserSelection = () => {
+    userSelectAtRef.current = Date.now();
+  };
+  const handleSelectionChange = (e: React.SyntheticEvent<HTMLInputElement>) => {
+    if (Date.now() - userSelectAtRef.current < 500) return; // user asked for it
+    const el = e.currentTarget;
+    const whole = el.selectionStart === 0 && el.selectionEnd === el.value.length;
+    if (!whole || el.value.length === 0) return;
+    const end = el.value.length;
+    // Collapsing fires another select event, but it is no longer a full-value
+    // selection, so this does not recurse.
+    el.setSelectionRange(end, end);
+  };
 
   const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
 
@@ -648,6 +679,9 @@ export function CommandPalette({
     // Mid-composition keys belong to the IME, not to us. cmdk skips these too.
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
 
+    // A deliberate select-all must survive handleSelectionChange.
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") markUserSelection();
+
     // ⌘. toggles the action menu for the selected row. Deliberately not Tab
     // (navigation) nor → (moves the caret inside the query) nor ⌘K (opens the
     // palette itself).
@@ -739,6 +773,9 @@ export function CommandPalette({
             setRawInput(v);
           }}
           onKeyDown={handleKeyDown}
+          onSelect={handleSelectionChange}
+          onPointerDown={markUserSelection}
+          onDoubleClick={markUserSelection}
         />
         <CommandList>
           {hasQuery && !actionTarget && <CommandEmpty>No results found.</CommandEmpty>}
