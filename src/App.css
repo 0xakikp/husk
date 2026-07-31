@@ -423,9 +423,9 @@ button {
   position: fixed;
   inset: 0;
   z-index: 99;
-  background: rgba(0, 0, 0, 0.45);
+  /* Matches the command palette overlay: dim only, no backdrop blur. */
+  background: rgba(0, 0, 0, 0.3);
   cursor: default;
-  backdrop-filter: blur(2px);
 }
 
 .term-hist {

@@ -218,6 +218,20 @@ function nsFlag(namespace: string) {
   return namespace === "_all" ? "--all-namespaces" : `-n ${shq(namespace)}`;
 }
 
+/**
+ * kubectl only prints a NAMESPACE column with --all-namespaces, so the
+ * positional layout of `--no-headers` output differs between the two modes.
+ * Splitting a single-namespace line with the all-namespaces indices shifts every
+ * field by one — which is how a pod ended up "named" 1/1 (its READY column) and
+ * produced `kubectl get pod -n <podname> 1/1`, an error about resource/name form.
+ *
+ * Normalise both shapes to namespace-first so callers can use one index set.
+ */
+function nsCols(namespace: string, line: string): string[] {
+  const p = line.trim().split(/\s+/);
+  return namespace === "_all" ? p : [namespace, ...p];
+}
+
 function probeDesc(p: any): string {
   if (!p) return "none";
   const parts: string[] = [];
@@ -272,6 +286,46 @@ function parseResources(containerSpec: any[]): K8sContainerResources[] {
   });
 }
 
+/* ── Read-through cache for list calls ───────────────────────────────────────
+   Every kubectl invocation is a process spawn plus an API round trip, so
+   re-running one because the user flipped a tab and came back is pure latency.
+   A stale entry is served immediately and refreshed in the background; only a
+   cold miss waits. Concurrent misses for one key share a single call. */
+
+type K8sCacheEntry = { at: number; data: unknown };
+const k8sCache = new Map<string, K8sCacheEntry>();
+const k8sInflight = new Map<string, Promise<unknown>>();
+
+/** Called after any mutation (context switch, delete, scale) that invalidates reads. */
+export function invalidateK8sCache() {
+  k8sCache.clear();
+  k8sInflight.clear();
+}
+
+export async function k8sCached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const refresh = (): Promise<T> => {
+    const existing = k8sInflight.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+    const p = load()
+      .then((data) => {
+        k8sCache.set(key, { at: Date.now(), data });
+        return data;
+      })
+      .finally(() => {
+        k8sInflight.delete(key);
+      });
+    k8sInflight.set(key, p);
+    return p;
+  };
+
+  const hit = k8sCache.get(key) as { at: number; data: T } | undefined;
+  if (hit) {
+    if (Date.now() - hit.at >= ttlMs) void refresh().catch(() => {});
+    return hit.data;
+  }
+  return refresh();
+}
+
 export async function listNamespaces(): Promise<string[]> {
   const out = await shell("kubectl get namespaces --no-headers -o custom-columns=NAME:.metadata.name", 10).catch(() => "");
   return out.trim().split("\n").filter(Boolean);
@@ -297,23 +351,35 @@ export async function listContexts(): Promise<string[]> {
 
 export const useContext = (ctx: string) => shell(`kubectl config use-context ${shq(ctx)}`);
 
+/**
+ * Layout after nsCols(): NAMESPACE NAME READY STATUS RESTARTS… AGE
+ *
+ * RESTARTS is not always one token — kubectl renders a recent restart as
+ * "3 (26h ago)", which is three. Anchoring AGE to the end and treating
+ * everything between STATUS and AGE as the restart count keeps every field
+ * aligned regardless. Parsed from text rather than -o json on purpose: the Rust
+ * shell bridge truncates stdout at 256KB, and a busy namespace's pod JSON
+ * exceeds that, which would break JSON.parse outright.
+ */
+function parsePodLine(namespace: string, line: string): K8sPod {
+  const p = nsCols(namespace, line);
+  return {
+    namespace: p[0] ?? "",
+    name: p[1] ?? "",
+    ready: p[2] ?? "",
+    status: p[3] ?? "",
+    restarts: p.length > 5 ? p.slice(4, -1).join(" ") : (p[4] ?? ""),
+    age: p.length > 5 ? (p[p.length - 1] ?? "") : "",
+  };
+}
+
 export async function listPods(namespace: string): Promise<K8sPod[]> {
   const s = await shell(`kubectl get pods ${nsFlag(namespace)} --no-headers`, 8);
   return s
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => {
-      const p = line.split(/\s+/);
-      return {
-        namespace: p[0] ?? "",
-        name: p[1] ?? "",
-        ready: p[2] ?? "",
-        status: p[3] ?? "",
-        restarts: p[4] ?? "",
-        age: p[5] ?? "",
-      };
-    });
+    .map((line) => parsePodLine(namespace, line));
 }
 
 export async function describePod(namespace: string, name: string): Promise<K8sPodDetail> {
@@ -464,7 +530,7 @@ export async function listServices(namespace: string): Promise<K8sService[]> {
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return {
         namespace: p[0] ?? "",
         name: p[1] ?? "",
@@ -510,7 +576,7 @@ export async function listIngresses(namespace: string): Promise<K8sIngress[]> {
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return {
         namespace: p[0] ?? "",
         name: p[1] ?? "",
@@ -556,7 +622,7 @@ export async function listDeployments(namespace: string): Promise<K8sDeployment[
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return {
         namespace: p[0] ?? "",
         name: p[1] ?? "",
@@ -584,10 +650,7 @@ export async function describeDeployment(namespace: string, name: string): Promi
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => {
-      const p = line.split(/\s+/);
-      return { namespace: p[0] ?? "", name: p[1] ?? "", ready: p[2] ?? "", status: p[3] ?? "", restarts: p[4] ?? "", age: p[5] ?? "" };
-    });
+    .map((line) => parsePodLine(namespace, line));
   return {
     deployment: {
       name: d.metadata?.name || name,
@@ -613,7 +676,7 @@ export async function listReplicaSets(namespace: string): Promise<K8sReplicaSet[
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return { namespace: p[0] ?? "", name: p[1] ?? "", desired: parseInt(p[2] || "0", 10), current: parseInt(p[3] || "0", 10), ready: parseInt(p[4] || "0", 10), age: p[5] ?? "", owner: "" };
     });
 }
@@ -625,7 +688,7 @@ export async function listStatefulSets(namespace: string): Promise<K8sStatefulSe
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return { namespace: p[0] ?? "", name: p[1] ?? "", ready: p[2] ?? "", age: p[3] ?? "", replicas: parseInt(p[4] || "0", 10), serviceName: "" };
     });
 }
@@ -637,7 +700,7 @@ export async function listDaemonSets(namespace: string): Promise<K8sDaemonSet[]>
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return { namespace: p[0] ?? "", name: p[1] ?? "", desired: parseInt(p[2] || "0", 10), current: parseInt(p[3] || "0", 10), ready: parseInt(p[4] || "0", 10), upToDate: parseInt(p[5] || "0", 10), available: parseInt(p[6] || "0", 10), age: p[7] ?? "" };
     });
 }
@@ -649,7 +712,7 @@ export async function listJobs(namespace: string): Promise<K8sJob[]> {
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return { namespace: p[0] ?? "", name: p[1] ?? "", completions: p[2] ?? "", duration: p[3] ?? "", age: p[4] ?? "", status: p[5] ?? "" };
     });
 }
@@ -657,7 +720,10 @@ export async function listJobs(namespace: string): Promise<K8sJob[]> {
 export async function describeJob(namespace: string, name: string): Promise<{ job: K8sJob & { selector: Record<string, string> }; pods: K8sPod[]; yaml: string }> {
   const [json, podOut, yaml] = await Promise.all([
     shell(`kubectl get job -n ${shq(namespace)} ${shq(name)} -o json`, 15),
-    shell(`kubectl get pods ${nsFlag(namespace)} --no-headers | grep ${shq(name)}`, 10).catch(() => ""),
+    // No shell pipe here: shell() tokenises into program + args, so "| grep x"
+    // reached kubectl as literal arguments, always errored, and the catch
+    // silently produced an empty pod list. Filter client-side instead.
+    shell(`kubectl get pods ${nsFlag(namespace)} --no-headers`, 10).catch(() => ""),
     shell(`kubectl get job -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
   ]);
   const j = JSON.parse(json);
@@ -666,10 +732,8 @@ export async function describeJob(namespace: string, name: string): Promise<{ jo
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => {
-      const p = line.split(/\s+/);
-      return { namespace: p[0] ?? "", name: p[1] ?? "", ready: p[2] ?? "", status: p[3] ?? "", restarts: p[4] ?? "", age: p[5] ?? "" };
-    });
+    .map((line) => parsePodLine(namespace, line))
+    .filter((pod) => pod.name.includes(name));
   return {
     job: {
       name: j.metadata?.name || name,
@@ -692,7 +756,7 @@ export async function listConfigMaps(namespace: string): Promise<K8sConfigMap[]>
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return { namespace: p[0] ?? "", name: p[1] ?? "", dataKeys: (p[2] ?? "0").split(",").filter(Boolean), age: p[3] ?? "" };
     });
 }
@@ -723,7 +787,7 @@ export async function listSecrets(namespace: string): Promise<K8sSecret[]> {
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return { namespace: p[0] ?? "", name: p[1] ?? "", type: p[2] ?? "", dataKeys: (p[3] ?? "0").split(",").filter(Boolean), age: p[4] ?? "" };
     });
 }
@@ -755,7 +819,7 @@ export async function listPersistentVolumeClaims(namespace: string): Promise<K8s
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return { namespace: p[0] ?? "", name: p[1] ?? "", status: p[2] ?? "", volume: p[3] ?? "", capacity: p[4] ?? "", accessModes: p[5] ?? "", storageClass: p[6] ?? "", age: p[7] ?? "" };
     });
 }
@@ -788,7 +852,7 @@ export async function listResourceQuotas(namespace: string): Promise<K8sResource
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const p = line.split(/\s+/);
+      const p = nsCols(namespace, line);
       return { namespace: p[0] ?? "", name: p[1] ?? "", age: p[2] ?? "", scopes: p[3] ?? "", limits: p[4] ?? "" };
     });
 }

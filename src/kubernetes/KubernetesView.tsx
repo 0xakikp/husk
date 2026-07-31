@@ -17,6 +17,8 @@ import {
   listSecrets,
   listPersistentVolumeClaims,
   listResourceQuotas,
+  k8sCached,
+  invalidateK8sCache,
   type K8sPod,
   type K8sService,
   type K8sIngress,
@@ -120,28 +122,38 @@ export function KubernetesView({
     setNamespaces(ns);
   }, []);
 
+  /* 10s stale window: a tab you flip back to renders from cache immediately and
+     revalidates behind, instead of paying another process spawn + API round trip.
+     Keyed by namespace only — a context switch clears the cache outright. */
+  const cachedList = useCallback(
+    <T,>(key: string, load: () => Promise<T>) => k8sCached(`${key}:${namespace}`, 10_000, load),
+    [namespace],
+  );
+
+  /* Tab data only. Context/namespace discovery deliberately does NOT run here:
+     it costs four kubectl calls (one of them a full API round trip for
+     listNamespaces) and none of it changes when you switch tabs, yet it used to
+     be awaited before the tab's own request even started. */
   const refresh = useCallback(async () => {
     cancelledRef.current = false;
     setLoading(true);
     try {
-      await refreshContexts();
-      if (cancelledRef.current) return;
       switch (tab) {
         case "pods":
-          setPods(await listPods(namespace));
+          setPods(await cachedList("pods", () => listPods(namespace)));
           break;
         case "services":
-          setServices(await listServices(namespace));
+          setServices(await cachedList("services", () => listServices(namespace)));
           break;
         case "ingresses":
-          setIngresses(await listIngresses(namespace));
+          setIngresses(await cachedList("ingresses", () => listIngresses(namespace)));
           break;
         case "workloads": {
           const [d, r, s, ds] = await Promise.all([
-            listDeployments(namespace),
-            listReplicaSets(namespace),
-            listStatefulSets(namespace),
-            listDaemonSets(namespace),
+            cachedList("deployments", () => listDeployments(namespace)),
+            cachedList("replicasets", () => listReplicaSets(namespace)),
+            cachedList("statefulsets", () => listStatefulSets(namespace)),
+            cachedList("daemonsets", () => listDaemonSets(namespace)),
           ]);
           setDeployments(d);
           setReplicaSets(r);
@@ -150,19 +162,22 @@ export function KubernetesView({
           break;
         }
         case "config": {
-          const [cm, sec] = await Promise.all([listConfigMaps(namespace), listSecrets(namespace)]);
+          const [cm, sec] = await Promise.all([
+            cachedList("configmaps", () => listConfigMaps(namespace)),
+            cachedList("secrets", () => listSecrets(namespace)),
+          ]);
           setConfigMaps(cm);
           setSecrets(sec);
           break;
         }
         case "storage":
-          setPvcs(await listPersistentVolumeClaims(namespace));
+          setPvcs(await cachedList("pvcs", () => listPersistentVolumeClaims(namespace)));
           break;
         case "jobs":
-          setJobs(await listJobs(namespace));
+          setJobs(await cachedList("jobs", () => listJobs(namespace)));
           break;
         case "quotas":
-          setQuotas(await listResourceQuotas(namespace));
+          setQuotas(await cachedList("quotas", () => listResourceQuotas(namespace)));
           break;
       }
     } catch (e) {
@@ -170,7 +185,14 @@ export function KubernetesView({
     } finally {
       if (!cancelledRef.current) setLoading(false);
     }
-  }, [namespace, tab, refreshContexts]);
+  }, [namespace, tab, cachedList]);
+
+  // Contexts and namespaces: once on mount, and on an explicit refresh. They are
+  // independent of the active tab, so they run in parallel with the tab fetch
+  // rather than gating it.
+  useEffect(() => {
+    void refreshContexts();
+  }, [refreshContexts]);
 
   useEffect(() => {
     void refresh();
@@ -182,11 +204,20 @@ export function KubernetesView({
   const switchCtx = async (c: string) => {
     try {
       await useContext(c);
+      invalidateK8sCache();
       toast({ title: `Switched to ${c}`, variant: "success" });
-      await refresh();
+      // Namespaces are per-cluster, so the context list has to be reloaded too —
+      // it no longer rides along with refresh(). Both run concurrently.
+      await Promise.all([refreshContexts(), refresh()]);
     } catch (e) {
       toast({ title: "kubectl error", message: e instanceof Error ? e.message : String(e), variant: "error" });
     }
+  };
+
+  /** The explicit refresh action reloads both halves, unlike a tab switch. */
+  const refreshAll = () => {
+    invalidateK8sCache();
+    void Promise.all([refreshContexts(), refresh()]);
   };
 
   const headerActions = (
@@ -194,7 +225,7 @@ export function KubernetesView({
       type="button"
       aria-label="Refresh"
       title="Refresh"
-      onClick={() => void refresh()}
+      onClick={refreshAll}
       className="inline-flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
       <HugeiconsIcon icon={Refresh01Icon} size={16} strokeWidth={1.5} />
