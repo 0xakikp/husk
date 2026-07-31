@@ -476,7 +476,15 @@ export function CommandPalette({
   // the next frame so Cmd+K always lands the caret in the search field.
   useEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    const frame = requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      // Collapse to the end: Radix's focus helper select-alls when it focuses the
+      // field, and a selected value means the next keypress replaces it.
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    });
     return () => cancelAnimationFrame(frame);
   }, [open]);
 
@@ -670,6 +678,11 @@ export function CommandPalette({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
+      /* Radix's focus scope autofocuses the first tabbable element with
+         select:true, which select-alls the query — so the next character replaces
+         it instead of appending, and you can never type more than one letter. We
+         focus the input ourselves (without selecting), so suppress theirs. */
+      onOpenAutoFocus={(e) => e.preventDefault()}
       onEscapeKeyDown={(e) => {
         // First Escape backs out of the action menu; a second one closes.
         if (actionTarget) {

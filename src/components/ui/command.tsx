@@ -35,6 +35,7 @@ function CommandDialog({
   className,
   showCloseButton = false,
   onEscapeKeyDown,
+  onOpenAutoFocus,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
@@ -44,6 +45,10 @@ function CommandDialog({
   /** Forwarded to the content layer so Escape can be intercepted (e.g. to close
    *  a nested action menu) by calling preventDefault on the event. */
   onEscapeKeyDown?: React.ComponentProps<typeof DialogContent>["onEscapeKeyDown"]
+  /** Forwarded so the caller can suppress Radix's mount autofocus, which focuses
+   *  the first tabbable element with `select: true` and so select-alls the search
+   *  field. The palette focuses the input itself instead. */
+  onOpenAutoFocus?: React.ComponentProps<typeof DialogContent>["onOpenAutoFocus"]
 }) {
   return (
     <Dialog {...props}>
@@ -71,6 +76,7 @@ function CommandDialog({
         overlayClassName="supports-backdrop-filter:backdrop-blur-none"
         showCloseButton={showCloseButton}
         onEscapeKeyDown={onEscapeKeyDown}
+        onOpenAutoFocus={onOpenAutoFocus}
       >
         {children}
       </DialogContent>
