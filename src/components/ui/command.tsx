@@ -34,12 +34,16 @@ function CommandDialog({
   children,
   className,
   showCloseButton = false,
+  onEscapeKeyDown,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
   className?: string
   showCloseButton?: boolean
+  /** Forwarded to the content layer so Escape can be intercepted (e.g. to close
+   *  a nested action menu) by calling preventDefault on the event. */
+  onEscapeKeyDown?: React.ComponentProps<typeof DialogContent>["onEscapeKeyDown"]
 }) {
   return (
     <Dialog {...props}>
@@ -63,6 +67,7 @@ function CommandDialog({
            the panel keeps its own frosted backdrop. */
         overlayClassName="supports-backdrop-filter:backdrop-blur-none"
         showCloseButton={showCloseButton}
+        onEscapeKeyDown={onEscapeKeyDown}
       >
         {children}
       </DialogContent>

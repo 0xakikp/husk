@@ -73,6 +73,8 @@ export type Command = {
   keywords?: string;
   /** Secondary action, triggered with Cmd/Ctrl+Enter. */
   secondary?: { label: string; run: () => void };
+  /** Extra verbs listed in the ⌘. action menu, after run() and secondary. */
+  actions?: { label: string; hint?: string; run: () => void }[];
   /** Rendered even when cmdk's fuzzy filter would score it 0 — for rows whose
    *  label never matches the query but must stay reachable. */
   alwaysShow?: boolean;
@@ -377,6 +379,8 @@ export function CommandPalette({
     onInputChange?.(v);
   };
   const [selectedValue, setSelectedValue] = useState("");
+  const [actionTarget, setActionTarget] = useState<Command | null>(null);
+  const preActionInputRef = useRef("");
   const historyIndexRef = useRef(-1);
   const historyRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -455,14 +459,54 @@ export function CommandPalette({
     onClose();
   };
 
-  const handleSecondary = () => {
+  const resolveSelected = (): Command | null => {
     const id = selectedValue.split("\t")[1] ?? selectedValue;
-    const cmd = commands.find((c) => c.id === id);
+    return commands.find((c) => c.id === id) ?? null;
+  };
+
+  const handleSecondary = () => {
+    const cmd = resolveSelected();
     if (cmd?.secondary) {
       recordCommandUse(cmd.id);
       cmd.secondary.run();
       onClose();
     }
+  };
+
+  /* ── Action menu (⌘.) ───────────────────────────────────────────────────
+     Entering clears the query so cmdk's fuzzy filter doesn't score every action
+     to zero against the old search text; typing then filters the actions. The
+     original query is restored on exit. */
+  const openActions = () => {
+    const cmd = resolveSelected();
+    if (!cmd || cmd.status) return;
+    preActionInputRef.current = rawInput;
+    setActionTarget(cmd);
+    setRawInput("");
+  };
+
+  const closeActions = () => {
+    setActionTarget(null);
+    setRawInput(preActionInputRef.current);
+    preActionInputRef.current = "";
+  };
+
+  const actionsFor = (cmd: Command) => {
+    const list: { label: string; hint?: string; run: () => void }[] = [
+      { label: (cmd.kind ?? "command") === "command" ? "Run" : "Open", hint: "↵", run: cmd.run },
+    ];
+    if (cmd.secondary) {
+      const l = cmd.secondary.label;
+      list.push({ label: l.charAt(0).toUpperCase() + l.slice(1), hint: "⌘↵", run: cmd.secondary.run });
+    }
+    if (cmd.actions) list.push(...cmd.actions);
+    return list;
+  };
+
+  const runAction = (cmd: Command, action: { run: () => void }) => {
+    recordCommandUse(cmd.id);
+    action.run();
+    onClose();
   };
 
   const historyStep = (dir: 1 | -1) => {
@@ -487,6 +531,16 @@ export function CommandPalette({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Mid-composition keys belong to the IME, not to us. cmdk skips these too.
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+
+    // ⌘. toggles the action menu for the selected row. Deliberately not Tab
+    // (navigation) nor → (moves the caret inside the query) nor ⌘K (opens the
+    // palette itself).
+    if ((e.metaKey || e.ctrlKey) && e.key === ".") {
+      e.preventDefault();
+      if (actionTarget) closeActions();
+      else openActions();
+      return;
+    }
 
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
@@ -524,6 +578,13 @@ export function CommandPalette({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
+      onEscapeKeyDown={(e) => {
+        // First Escape backs out of the action menu; a second one closes.
+        if (actionTarget) {
+          e.preventDefault();
+          closeActions();
+        }
+      }}
     >
       <CommandRoot
         value={selectedValue}
@@ -533,8 +594,20 @@ export function CommandPalette({
         <CommandInput
           ref={inputRef}
           autoFocus
-          leftSlot={scopedKind ? <ScopePill kind={scopedKind} onClear={() => setRawInput(query)} /> : undefined}
-          placeholder={scopedKind ? `Search ${SCOPE_LABELS[scopedKind].label.toLowerCase()}…` : "Search everything — notes, files, docker, k8s, workflows…"}
+          leftSlot={
+            actionTarget ? (
+              <ScopePill kind={actionTarget.kind ?? "command"} onClear={closeActions} />
+            ) : scopedKind ? (
+              <ScopePill kind={scopedKind} onClear={() => setRawInput(query)} />
+            ) : undefined
+          }
+          placeholder={
+            actionTarget
+              ? `Filter actions for ${actionTarget.label}…`
+              : scopedKind
+                ? `Search ${SCOPE_LABELS[scopedKind].label.toLowerCase()}…`
+                : "Search everything — notes, files, docker, k8s, workflows…"
+          }
           value={rawInput}
           onValueChange={(v) => {
             // Typing leaves the history walk, so the cursor must not persist.
@@ -544,9 +617,35 @@ export function CommandPalette({
           onKeyDown={handleKeyDown}
         />
         <CommandList>
-          {showEmpty && <CommandEmpty>No results found.</CommandEmpty>}
+          {showEmpty && !actionTarget && <CommandEmpty>No results found.</CommandEmpty>}
+          {/* cmdk only renders Empty when the filtered count is 0, so this needs
+              no extra condition beyond being in action mode. */}
+          {actionTarget && <CommandEmpty>No matching actions.</CommandEmpty>}
 
-          {sortedGroups.map((group) => (
+          {actionTarget ? (
+            <CommandGroup heading={`Actions — ${actionTarget.label}`}>
+              {actionsFor(actionTarget).map((action, i) => (
+                <CommandItem
+                  key={`${action.label}:${i}`}
+                  value={`${action.label}\taction:${i}\t`}
+                  onSelect={() => runAction(actionTarget, action)}
+                >
+                  <div
+                    className={cn(
+                      "flex size-5 shrink-0 items-center justify-center rounded",
+                      KIND_META[actionTarget.kind ?? "command"].className,
+                    )}
+                  >
+                    <HugeiconsIcon icon={FlashIcon} size={13} strokeWidth={1.5} />
+                  </div>
+                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                  {action.hint ? <CommandShortcut>{action.hint}</CommandShortcut> : null}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ) : null}
+
+          {!actionTarget && sortedGroups.map((group) => (
             /* A group is hidden unless one of its items scores > 0, which would
                swallow a status row whose label never matches the query. */
             <CommandGroup
@@ -587,6 +686,7 @@ export function CommandPalette({
         <div className="flex items-center gap-3 border-t border-border/50 px-3 py-1.5 text-[9.5px] text-muted-foreground/50">
           <span>↵ open</span>
           <span>⌘↵ action</span>
+          <span>{actionTarget ? "esc back" : "⌘. actions"}</span>
           <span className="ml-auto">&gt; cmd · n notes · f files · g grep · b bookmarks · c clipboard · w workflows · d docker · k k8s · r remotes · j jobs</span>
         </div>
       </CommandRoot>

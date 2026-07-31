@@ -185,6 +185,14 @@ export function useLauncherItems(
           label: "copy path",
           run: () => void navigator.clipboard.writeText(f.path),
         },
+        actions: [
+          { label: "Copy filename", run: () => void navigator.clipboard.writeText(f.name) },
+          { label: "Type path in terminal", run: () => ctx.typeInTerminal(f.path) },
+          {
+            label: "cd to containing folder",
+            run: () => ctx.typeInTerminal(`cd "${f.path.replace(/\/[^/]*$/, "")}"`),
+          },
+        ],
       });
     }
 
@@ -290,6 +298,11 @@ export function useLauncherItems(
           label: "copy name",
           run: () => void navigator.clipboard.writeText(c.name),
         },
+        actions: [
+          { label: "Tail logs", run: () => ctx.typeInTerminal(`docker logs -f ${c.name}`) },
+          { label: "Shell into container", run: () => ctx.typeInTerminal(`docker exec -it ${c.name} sh`) },
+          { label: "Restart", run: () => ctx.typeInTerminal(`docker restart ${c.name}`) },
+        ],
       });
     }
 
@@ -303,6 +316,13 @@ export function useLauncherItems(
         group: "Kubernetes",
         run: () => ctx.switchK8sContext(k.name),
         secondary: { label: "open", run: () => ctx.openK8s() },
+        actions: [
+          {
+            label: "Type use-context command",
+            run: () => ctx.typeInTerminal(`kubectl config use-context ${k.name}`),
+          },
+          { label: "Copy context name", run: () => void navigator.clipboard.writeText(k.name) },
+        ],
       });
     }
 
@@ -315,6 +335,10 @@ export function useLauncherItems(
         keywords: "ssh remote host",
         group: "Remotes",
         run: () => ctx.connectRemote(h),
+        actions: [
+          { label: "Type ssh command", run: () => ctx.typeInTerminal(`ssh ${h}`) },
+          { label: "Copy host", run: () => void navigator.clipboard.writeText(h) },
+        ],
       });
     }
 
