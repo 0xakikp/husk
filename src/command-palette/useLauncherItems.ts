@@ -119,7 +119,9 @@ export function useLauncherItems(
   // Live ripgrep search when the user scopes to "g".
   useEffect(() => {
     if (!open || scopedKind !== "grep" || !query.trim()) {
-      setGrepResults([]);
+      // Reuse the existing array when it is already empty: a fresh [] is never
+      // reference-equal, so it would re-run the item memo on every keystroke.
+      setGrepResults((r) => (r.length ? [] : r));
       setGrepBusy(false);
       setGrepMissingTool(false);
       return;
@@ -147,7 +149,12 @@ export function useLauncherItems(
   const clips = useClipHistory();
   const bookmarks = useBookmarks();
 
-  return useMemo(() => {
+  /* The base list is every item from every source — on a large workspace that is
+     thousands of objects with fresh closures. It must NOT depend on the query
+     text, or each keystroke rebuilds all of it and cmdk then re-scores and
+     re-sorts the lot, which makes typing visibly lag. Query-dependent rows are
+     appended in a second, cheap memo below. */
+  const base = useMemo(() => {
     const items: Command[] = [];
 
     // Commands (static)
@@ -389,28 +396,34 @@ export function useLauncherItems(
       });
     }
 
+    return items;
+  }, [commands, ctx, dyn, openPaths, clips, bookmarks, scopedKind, grepResults, grepBusy, grepMissingTool]);
+
+  /* Cheap per-keystroke layer: a handful of rows appended to a stable base. */
+  return useMemo(() => {
+    if (scopedKind) return base;
+    const extra: Command[] = [];
+
     /* Typing a source name offers the scope as a row. The footer legend hides as
-       soon as you type, so this is how the "x:" syntax is discoverable at the
+       soon as you type, so this is how the "x:" syntax stays discoverable at the
        moment it is relevant. keepOpen rewrites the input instead of dismissing. */
-    if (!scopedKind) {
-      for (const { token, kind } of matchScopeTokens(query)) {
-        items.push({
-          id: `scope:${token}`,
-          kind,
-          label: `Search ${token} only`,
-          hint: `${token}:`,
-          group: "Scopes",
-          alwaysShow: true,
-          keepOpen: true,
-          run: () => ctx.setQuery(`${token}: `),
-        });
-      }
+    for (const { token, kind } of matchScopeTokens(query)) {
+      extra.push({
+        id: `scope:${token}`,
+        kind,
+        label: `Search ${token} only`,
+        hint: `${token}:`,
+        group: "Scopes",
+        alwaysShow: true,
+        keepOpen: true,
+        run: () => ctx.setQuery(`${token}: `),
+      });
     }
 
-    // Last resort: never dead-end on a query. Rendered as a status row so cmdk's
-    // fuzzy filter can't score it away, since its label never matches the query.
-    if (!scopedKind && query.trim()) {
-      items.push({
+    // Last resort: never dead-end on a query. alwaysShow so cmdk's fuzzy filter
+    // can't score it away, since its label never matches the query.
+    if (query.trim()) {
+      extra.push({
         id: "ai:ask",
         kind: "ai",
         label: `Ask AI about “${trunc(query.trim(), 48)}”`,
@@ -420,8 +433,8 @@ export function useLauncherItems(
       });
     }
 
-    return items;
-  }, [commands, ctx, dyn, openPaths, clips, bookmarks, scopedKind, query, grepResults, grepBusy, grepMissingTool]);
+    return extra.length ? [...base, ...extra] : base;
+  }, [base, scopedKind, query, ctx]);
 }
 
 function bookmarkToCommand(b: Bookmark, ctx: LauncherCtx): Command {
