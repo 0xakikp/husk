@@ -758,6 +758,7 @@ function App() {
       },
       openBookmarks: () => showSidebarView("bookmarks"),
       askAi: (q) => openBubble(q),
+      setQuery: (v) => setPaletteInput(v),
       openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
     }),
     [showSidebarView, openFile, openFiles],

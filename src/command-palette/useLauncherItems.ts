@@ -21,7 +21,7 @@ import { composeCommand } from "../workflows/params";
 import { removeRecentNote } from "../notes/store";
 import { useClipHistory, deleteClip } from "../clipboard/store";
 import { useBookmarks, addBookmark, toggleBookmarkPin, type Bookmark } from "../bookmarks/store";
-import { parseQuery } from "./CommandPalette";
+import { parseQuery, matchScopeTokens } from "./CommandPalette";
 
 const copy = (text: string) => void navigator.clipboard.writeText(text);
 
@@ -44,6 +44,8 @@ export type LauncherCtx = {
   openBookmarks: () => void;
   /** Hand the raw query to the AI bubble so the launcher never dead-ends. */
   askAi: (query: string) => void;
+  /** Rewrite the launcher input, e.g. to apply a scope token. */
+  setQuery: (value: string) => void;
   openFiles: { path: string; name: string }[];
 };
 
@@ -385,6 +387,24 @@ export function useLauncherItems(
           { label: "Copy host", run: () => void navigator.clipboard.writeText(h) },
         ],
       });
+    }
+
+    /* Typing a source name offers the scope as a row. The footer legend hides as
+       soon as you type, so this is how the "x:" syntax is discoverable at the
+       moment it is relevant. keepOpen rewrites the input instead of dismissing. */
+    if (!scopedKind) {
+      for (const { token, kind } of matchScopeTokens(query)) {
+        items.push({
+          id: `scope:${token}`,
+          kind,
+          label: `Search ${token} only`,
+          hint: `${token}:`,
+          group: "Scopes",
+          alwaysShow: true,
+          keepOpen: true,
+          run: () => ctx.setQuery(`${token}: `),
+        });
+      }
     }
 
     // Last resort: never dead-end on a query. Rendered as a status row so cmdk's

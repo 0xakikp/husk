@@ -78,6 +78,8 @@ export type Command = {
   /** Rendered even when cmdk's fuzzy filter would score it 0 — for rows whose
    *  label never matches the query but must stay reachable. */
   alwaysShow?: boolean;
+  /** Runs without dismissing the palette — for rows that rewrite the query. */
+  keepOpen?: boolean;
   /** Non-interactive status row: implies alwaysShow, and is skipped by keyboard
    *  navigation since cmdk's getValidItems excludes aria-disabled items. */
   status?: boolean;
@@ -100,8 +102,16 @@ const GROUP_ORDER = [
   "Tools",
   "Git",
   "Other",
+  /* Deliberately near the end: cmdk auto-selects the first row, so putting scope
+     suggestions on top would mean typing "doc" and pressing Enter scoped you to
+     Docker instead of opening the top result. The per-group "+N more — type
+     files:" hints teach the syntax inline, where it actually matters. */
+  "Scopes",
   "Ask AI",
 ];
+
+/** Rows shown per source before the rest is folded behind its scope token. */
+const GROUP_CAP = 8;
 
 const SCOPE_LEGEND =
   "scope with n: notes · f: files · g: grep · c: clip · b: bookmarks · w: workflows · d: docker · k: k8s · r: remotes · j: jobs · > cmd";
@@ -237,6 +247,46 @@ const SCOPE_TOKENS: Record<string, LauncherKind> = {
   r: "remote", remote: "remote", remotes: "remote", ssh: "remote",
   j: "job", job: "job", jobs: "job",
 };
+
+/** The token shown when suggesting a scope, per kind. */
+const SCOPE_CANONICAL: Partial<Record<LauncherKind, string>> = {
+  command: "cmd",
+  note: "notes",
+  file: "files",
+  grep: "grep",
+  clipboard: "clip",
+  bookmark: "bookmarks",
+  workflow: "workflows",
+  container: "docker",
+  k8s: "k8s",
+  remote: "remotes",
+  job: "jobs",
+};
+
+export function scopeTokenFor(kind: LauncherKind): string | undefined {
+  return SCOPE_CANONICAL[kind];
+}
+
+/**
+ * Scopes are only advertised in the footer, and that legend hides as soon as you
+ * type — so typing a source name offers the scope as a row instead. Requires two
+ * characters so it does not fire on every keystroke.
+ */
+export function matchScopeTokens(raw: string): { token: string; kind: LauncherKind }[] {
+  const q = raw.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const seen = new Set<LauncherKind>();
+  const out: { token: string; kind: LauncherKind }[] = [];
+  for (const [alias, kind] of Object.entries(SCOPE_TOKENS)) {
+    if (seen.has(kind)) continue;
+    const label = SCOPE_LABELS[kind]?.label.toLowerCase() ?? "";
+    if (alias.startsWith(q) || label.startsWith(q)) {
+      seen.add(kind);
+      out.push({ token: SCOPE_CANONICAL[kind] ?? alias, kind });
+    }
+  }
+  return out;
+}
 
 export function parseQuery(raw: string): { kind: LauncherKind | null; query: string } {
   if (raw.startsWith(">")) return { kind: "command", query: raw.slice(1).trimStart() };
@@ -456,12 +506,19 @@ export function CommandPalette({
     return map;
   }, [enriched]);
 
+  /* Results are grouped by source and rendered in GROUP_ORDER, so a source with
+     hundreds of hits doesn't out-rank the others — it pushes them below the fold.
+     Searching "config" matches ~200 workspace files, and Files sits above
+     Clipboard, so a clipboard hit ends up hundreds of rows down. Each group shows
+     its best few unscoped and advertises the token that reveals the rest; a scope
+     means "I want this source", so caps are lifted there. */
   const sortedGroups = useMemo(() => {
-    return GROUP_ORDER.filter((g) => groups.has(g)).map((g) => ({
-      name: g,
-      items: groups.get(g)!,
-    }));
-  }, [groups]);
+    return GROUP_ORDER.filter((g) => groups.has(g)).map((g) => {
+      const all = groups.get(g)!;
+      if (scopedKind || all.length <= GROUP_CAP) return { name: g, items: all, hidden: 0 };
+      return { name: g, items: all.slice(0, GROUP_CAP), hidden: all.length - GROUP_CAP };
+    });
+  }, [groups, scopedKind]);
 
   /* Only gate on "the user typed something". cmdk's Empty renders itself only
      when its own filtered count is 0, so testing sortedGroups here was wrong:
@@ -471,6 +528,11 @@ export function CommandPalette({
   const hasQuery = rawInput.trim().length > 0;
 
   const handleSelect = (cmd: Command) => {
+    if (cmd.keepOpen) {
+      // Not a real command: don't record frecency and don't dismiss.
+      cmd.run();
+      return;
+    }
     recordCommandUse(cmd.id);
     cmd.run();
     onClose();
@@ -700,6 +762,17 @@ export function CommandPalette({
                   </CommandItem>
                 );
               })}
+              {group.hidden > 0 ? (
+                /* A plain div, not a CommandItem: it must not be filtered away,
+                   selectable, or reachable by arrow keys. */
+                <div className="px-2 py-1 pl-9 text-[10px] text-muted-foreground/40">
+                  +{group.hidden} more
+                  {(() => {
+                    const token = scopeTokenFor(group.items[0]?.kind ?? "command");
+                    return token ? ` — type “${token}:” to see all` : "";
+                  })()}
+                </div>
+              ) : null}
             </CommandGroup>
           ))}
         </CommandList>
