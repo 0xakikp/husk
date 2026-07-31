@@ -1,16 +1,13 @@
-import { useEffect, useRef, useState } from "react";
 import type * as React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Cancel01Icon,
   ClipboardIcon,
   LayoutThreeColumnIcon,
   MessageMultiple02Icon,
   Moon02Icon,
-  Search01Icon,
   Settings01Icon,
   SparklesIcon,
   Sun03Icon,
@@ -36,86 +33,6 @@ function ThemeToggle() {
     >
       <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} size={16} strokeWidth={1.75} />
     </Button>
-  );
-}
-
-function SearchInline() {
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const expanded = open;
-
-  useEffect(() => {
-    if (expanded && inputRef.current) inputRef.current.focus();
-  }, [expanded]);
-
-  useEffect(() => {
-    if (!expanded || !q) return;
-    import("../ai/terminalContext")
-      .then((m) => {
-        m.searchActiveTerminal(q);
-      })
-      .catch(() => {});
-  }, [q, expanded]);
-
-  return (
-    <div className={cn("relative h-6 shrink-0", expanded ? "w-48" : "w-6")}>
-      {expanded ? (
-        <div className="absolute inset-0 flex items-center">
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={12}
-            strokeWidth={1.75}
-            className="pointer-events-none absolute left-2 text-muted-foreground"
-          />
-          <input
-            ref={inputRef}
-            value={q}
-            placeholder="Search terminal…"
-            className="h-6 w-full rounded-md border-0 bg-muted/80 py-0 pr-7 pl-7 text-[13px] text-foreground placeholder:text-muted-foreground/70 outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onChange={(e) => setQ(e.target.value)}
-            onBlur={() => {
-              if (!q) setOpen(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setQ("");
-                setOpen(false);
-              } else if (e.key === "Enter") {
-                import("../ai/terminalContext")
-                  .then((m) => {
-                    m.searchActiveTerminal(q);
-                  })
-                  .catch(() => {});
-              }
-            }}
-          />
-          {q && (
-            <button
-              type="button"
-              onClick={() => {
-                setQ("");
-                inputRef.current?.focus();
-              }}
-              className="absolute right-1.5 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
-            </button>
-          )}
-        </div>
-      ) : (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          title="Search terminal scrollback"
-          onClick={() => setOpen(true)}
-        >
-          <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.75} />
-        </Button>
-      )}
-    </div>
   );
 }
 
@@ -278,7 +195,6 @@ export function AppHeader({
       </div>
 
       {/* Right: search + actions */}
-      <SearchInline />
 
       <div className="flex items-center gap-0.5">
         <ThemeToggle />
