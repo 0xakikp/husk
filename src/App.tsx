@@ -582,10 +582,13 @@ function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      const target = e.target as HTMLElement;
-      const tag = target.tagName.toLowerCase();
-      const isEditing = tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
-      const isTerminalFocused = target.closest(".xterm") !== null;
+      // e.target is not always an Element — a programmatically dispatched event
+      // targets window, and reading .tagName off that threw out of a
+      // capture-phase listener.
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      const tag = target?.tagName.toLowerCase() ?? "";
+      const isEditing = tag === "input" || tag === "textarea" || tag === "select" || !!target?.isContentEditable;
+      const isTerminalFocused = !!target?.closest(".xterm");
       // Allow terminal shortcuts even when xterm's textarea is focused;
       // skip only for genuine form inputs outside the terminal.
       if (isEditing && !isTerminalFocused) return;
