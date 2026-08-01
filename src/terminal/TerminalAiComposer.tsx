@@ -26,7 +26,7 @@ import { getProvider } from "../ai/providers";
 import { streamChat } from "../ai/client";
 import type { Tool } from "ai";
 import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
-import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
+import { readActiveTerminal, runInActiveTerminal, getRecentCommandRuns, type CommandRun } from "../ai/terminalContext";
 import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
@@ -266,6 +266,10 @@ export function TerminalAiComposer({
   const [dragOver, setDragOver] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string; isImage?: boolean }[]>([]);
   const [previewChipId, setPreviewChipId] = useState<string | null>(null);
+  /* A specific command's output, chosen from history. Far more precise than the
+     whole-scrollback chip, which mixes unrelated commands together. */
+  const [attachedRuns, setAttachedRuns] = useState<CommandRun[]>([]);
+  const [runPickerOpen, setRunPickerOpen] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const speakUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -383,6 +387,16 @@ export function TerminalAiComposer({
         onRemove: () => setIncludeSelection(false),
       });
     }
+    for (const run of attachedRuns) {
+      const label = run.command.trim() || "(command)";
+      chips.push({
+        id: `run:${run.at}`,
+        icon: "▶",
+        label: `${label.length > 26 ? `${label.slice(0, 25)}…` : label} · ${Math.round(run.output.length / 102.4) / 10} KB`,
+        onRemove: () => setAttachedRuns((rs) => rs.filter((r) => r.at !== run.at)),
+        preview: `$ ${run.command}\n${run.output}`,
+      });
+    }
     if (includeTerminal) {
       /* Show the size. Terminal scrollback routinely contains echoed API keys,
          kubectl output, connection strings and internal hostnames, and all of it
@@ -399,7 +413,7 @@ export function TerminalAiComposer({
       });
     }
     return chips;
-  }, [currentFile, fileName, selection, includeFile, includeSelection, includeTerminal]);
+  }, [currentFile, fileName, selection, includeFile, includeSelection, includeTerminal, attachedRuns]);
 
   const previewChip = contextChips.find((c) => c.id === previewChipId && c.preview);
 
@@ -410,6 +424,7 @@ export function TerminalAiComposer({
       { id: "/clear", label: "/clear", desc: "Clear context and start fresh", icon: "🧹", run: () => newSession() },
       { id: "/agent", label: "/agent", desc: "Switch AI agent", icon: "🤖", run: () => setAgentDropdownOpen(true) },
       { id: "/attach", label: "/attach", desc: "Attach a file", icon: "📎", run: () => handleFileUpload() },
+      { id: "/output", label: "/output", desc: "Attach one command's output", icon: "▶", run: () => setRunPickerOpen(true) },
     ];
     templates.forEach((t) => {
       base.push({
@@ -1359,6 +1374,39 @@ export function TerminalAiComposer({
                 </span>
               ))}
               <span className="wb-ctx-count">ctx: {contextChips.length + attachedFiles.length} attached</span>
+            </div>
+          )}
+          {runPickerOpen && (
+            <div className="wb-ctx-preview">
+              <div className="wb-ctx-preview-head">
+                <span>Attach a command's output</span>
+                <button type="button" onClick={() => setRunPickerOpen(false)}>close</button>
+              </div>
+              {getRecentCommandRuns().length === 0 ? (
+                <div className="wb-run-empty">
+                  Nothing recorded yet — run a command in the terminal first.
+                </div>
+              ) : (
+                getRecentCommandRuns().map((run) => (
+                  <button
+                    key={run.at}
+                    type="button"
+                    className="wb-run-item"
+                    onClick={() => {
+                      setAttachedRuns((rs) => (rs.some((r) => r.at === run.at) ? rs : [...rs, run]));
+                      setRunPickerOpen(false);
+                    }}
+                  >
+                    <span className="wb-run-cmd">{run.command || "(command)"}</span>
+                    <span className={run.exitCode === 0 ? "wb-run-ok" : "wb-run-bad"}>
+                      exit {run.exitCode ?? "?"}
+                    </span>
+                    <span className="wb-run-size">
+                      {Math.round(run.output.length / 102.4) / 10} KB
+                    </span>
+                  </button>
+                ))
+              )}
             </div>
           )}
           {previewChip && (

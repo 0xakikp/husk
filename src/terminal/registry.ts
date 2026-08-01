@@ -18,6 +18,8 @@ import {
   setTerminalTyping,
   setCurrentCommand,
   clearCurrentCommand,
+  recordCommandRun,
+  getCurrentCommand,
   markCommandStart,
   setPromptPosition,
   setFocusTerminalFn,
@@ -107,6 +109,8 @@ type Session = {
   historyOpen: boolean;
   menuOpen: boolean;
   isRemoteShell: boolean;
+  /** Absolute buffer row where the running command's output began (OSC 133 C). */
+  cmdStartRow: number | null;
 };
 
 const sessions = new Map<number, Session>();
@@ -203,6 +207,7 @@ export async function createSession(
     historyOpen: false,
     menuOpen: false,
     isRemoteShell: false,
+    cmdStartRow: null,
   };
   sessions.set(leafId, session);
 
@@ -229,12 +234,38 @@ export async function createSession(
     if (data.startsWith("D")) {
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
       setActiveTerminalExit(Number.isNaN(code) ? null : code);
+      /* Harvest just this command's output, using the row marked at C. Bounded on
+         both axes: a build can emit tens of thousands of rows, and this runs on
+         every prompt. */
+      if (session.cmdStartRow != null) {
+        const b = term.buffer.active;
+        const endRow = b.baseY + b.cursorY;
+        const startRow = Math.max(session.cmdStartRow, endRow - 500);
+        const lines: string[] = [];
+        let chars = 0;
+        for (let i = startRow; i < endRow && chars < 8192; i += 1) {
+          const line = b.getLine(i)?.translateToString(true) ?? "";
+          lines.push(line);
+          chars += line.length + 1;
+        }
+        recordCommandRun({
+          command: getCurrentCommand(),
+          output: lines.join("\n").replace(/\s+$/, ""),
+          exitCode: Number.isNaN(code) ? null : code,
+          at: Date.now(),
+        });
+        session.cmdStartRow = null;
+      }
       clearCurrentCommand();
       // Interactive SSH/Mosh sessions are local commands that start a remote
       // shell. When the session ends, the shell is local again.
       session.isRemoteShell = false;
     }
-    if (data.startsWith("C")) markCommandStart();
+    if (data.startsWith("C")) {
+      const b = term.buffer.active;
+      session.cmdStartRow = b.baseY + b.cursorY;
+      markCommandStart();
+    }
     return true;
   });
 

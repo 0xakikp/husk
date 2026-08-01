@@ -264,3 +264,34 @@ export function useCommandStartTime(): number {
 export function useCommandRunning(): boolean {
   return useSyncExternalStore(subscribeCommandState, isCommandRunning);
 }
+
+/* ── Per-command output ────────────────────────────────────────────────────
+   The shell emits OSC 133 C at command start and D at command end, so the rows
+   between them are exactly one command's output. Capturing that gives the AI a
+   precise attachment instead of readActiveTerminal's blind 8KB scrollback tail,
+   which mixes unrelated commands together and silently truncates mid-line. */
+
+export type CommandRun = {
+  command: string;
+  output: string;
+  exitCode: number | null;
+  at: number;
+};
+
+/** Small ring: enough to pick from, bounded so long sessions cannot grow it. */
+const MAX_RUNS = 10;
+let recentRuns: CommandRun[] = [];
+
+export function recordCommandRun(run: CommandRun): void {
+  if (!run.command.trim() && !run.output.trim()) return;
+  recentRuns = [run, ...recentRuns].slice(0, MAX_RUNS);
+}
+
+/** Most recent first. */
+export function getRecentCommandRuns(): CommandRun[] {
+  return [...recentRuns];
+}
+
+export function clearRecentCommandRuns(): void {
+  recentRuns = [];
+}
