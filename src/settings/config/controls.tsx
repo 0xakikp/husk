@@ -9,6 +9,26 @@ export function ConfigEditor({ children }: { children: ReactNode }) {
   return <div className="cfg-file">{children}</div>;
 }
 
+/**
+ * ASCII banner rows. Kept as real file lines so the gutter keeps numbering and
+ * the "it's a config file" fiction holds, but the file's 2.2 line-height would
+ * shred block art, so these rows opt into a tight one.
+ */
+export function CfgArt({ lines }: { lines: string[] }) {
+  return (
+    <>
+      {lines.map((line, i) => (
+        <div key={i} className="cfg-line cfg-line--art">
+          <span className="cfg-art">
+            <span className="cfg-art-hash"># </span>
+            {line}
+          </span>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export function CfgComment({ children }: { children: ReactNode }) {
   return (
     <div className="cfg-line">

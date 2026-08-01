@@ -250,3 +250,22 @@
   opacity: 0.5;
 }
 .cfgx-tab-close:hover { opacity: 1; background: rgba(255, 255, 255, 0.08); }
+
+/* ASCII banner rows in the manifest. .cfg-file sets line-height: 2.2, which would
+   leave gaps between block-drawing rows and break the letterforms, so art rows
+   pin their own tight leading. white-space: pre (not pre-wrap) so a narrow window
+   never wraps the art and shears it. The glyph width is predictable because
+   .cfg-file pins its own monospace stack rather than the user's terminal font. */
+.cfg-line--art {
+  min-height: 0;
+  line-height: 1.02;
+}
+
+.cfg-art {
+  white-space: pre;
+  color: var(--primary);
+}
+
+.cfg-art-hash {
+  color: #52525b;
+}
