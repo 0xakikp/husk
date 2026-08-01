@@ -513,14 +513,34 @@ function App() {
               openBubble(`Find and fix the bug in ${file ?? "current file"}${sel ? ` (lines ${sel.startLine}-${sel.endLine})` : ""}.\n${sel ? `\n\`\`\`\n${sel.text}\n\`\`\`` : ""}`);
             }},
             { id: "ai-accept-edits", label: "AI: Accept all pending edits", run: () => {
-              import("./ai/pendingEdits").then(({ getPendingEdits, removePendingEdit }) => {
+              /* This used to be identical to Reject: it dropped the queue and
+                 toasted "Accepted" without writing anything, so the AI reported
+                 edits it had never made. It now actually applies them, and only
+                 removes an edit from the queue once its write succeeded. */
+              void import("./ai/pendingEdits").then(async ({ getPendingEdits, removePendingEdit, applyPendingEdit }) => {
                 const edits = getPendingEdits();
                 if (edits.length === 0) {
                   toast({ title: "No pending edits", variant: "error", duration: 2000 });
                   return;
                 }
-                edits.forEach((e) => removePendingEdit(e.id));
-                toast({ title: `Accepted ${edits.length} edit${edits.length > 1 ? "s" : ""}`, variant: "success", duration: 2000 });
+                const failures: string[] = [];
+                let applied = 0;
+                for (const e of edits) {
+                  const res = await applyPendingEdit(e);
+                  if (res.ok) {
+                    applied += 1;
+                    removePendingEdit(e.id);
+                  } else {
+                    failures.push(`${res.path.split("/").pop()}: ${res.reason}`);
+                  }
+                }
+                if (applied > 0) {
+                  toast({ title: `Applied ${applied} edit${applied > 1 ? "s" : ""}`, variant: "success", duration: 2500 });
+                }
+                if (failures.length > 0) {
+                  // Kept in the queue so they can be retried or inspected.
+                  toast({ title: `${failures.length} edit${failures.length > 1 ? "s" : ""} could not be applied`, message: failures.join("\n"), variant: "error", duration: 6000 });
+                }
               });
             }},
             { id: "ai-reject-edits", label: "AI: Reject all pending edits", run: () => {
@@ -531,7 +551,7 @@ function App() {
                   return;
                 }
                 edits.forEach((e) => removePendingEdit(e.id));
-                toast({ title: `Rejected ${edits.length} edit${edits.length > 1 ? "s" : ""}`, variant: "success", duration: 2000 });
+                toast({ title: `Discarded ${edits.length} edit${edits.length > 1 ? "s" : ""}`, variant: "info", duration: 2000 });
               });
             }},
             { id: "ai-clear-edits", label: "AI: Clear pending edits", run: () => {
