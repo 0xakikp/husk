@@ -43,15 +43,20 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
   }, []);
 
   useEffect(() => {
+    // The keydown listener used to be an inline arrow, so no reference survived
+    // for removeEventListener and the cleanup silently omitted it — one listener
+    // leaked per mount, forever.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClose();
+    };
     document.addEventListener("contextmenu", handleContextMenu);
     document.addEventListener("click", handleClose);
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") handleClose();
-    });
+    document.addEventListener("keydown", onKeyDown);
 
     return () => {
       document.removeEventListener("contextmenu", handleContextMenu);
       document.removeEventListener("click", handleClose);
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, [handleContextMenu, handleClose]);
 
