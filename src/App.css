@@ -244,6 +244,12 @@ button {
   position: relative;
   height: 100%;
   width: 100%;
+  /* Left inset so terminal text doesn't touch the pane edge. Goes on the
+     wrap, NOT on .terminal-host: fitAddon measures the inner container, so
+     padding there would corrupt the cols calculation. border-box keeps the
+     wrap from overflowing its pane by the padding amount. */
+  box-sizing: border-box;
+  padding-left: 8px;
 }
 
 .terminal-host {
