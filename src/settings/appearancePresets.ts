@@ -71,7 +71,7 @@ const BUILTIN: AppearancePreset[] = [
       aiMiniBgDim: 62,
       aiComposerBgStyle: "default",
     },
-    background: { enabled: true, opacity: 70, blur: 8, dim: 62 },
+    background: { enabled: true, opacity: 70, blur: 2, dim: 62 },
   },
   {
     id: "focus",
