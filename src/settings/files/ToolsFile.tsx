@@ -25,7 +25,7 @@ export function ToolsFile() {
         <CfgBlank />
 
         <CfgSection name="tools" />
-        <CfgRow name="setupAssistant">
+        <CfgRow name="setupAssistant" comment="Walk through installing the CLI tools Husk can use (rg, fd, eza, bat, fzf).">
           <CfgAct onClick={() => setSetupOpen(true)}>open setup assistant</CfgAct>
         </CfgRow>
       </ConfigEditor>

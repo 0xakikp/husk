@@ -48,16 +48,16 @@ function ProviderBlock({ provider }: { provider: Provider }) {
   return (
     <>
       <CfgSection name={`providers.${provider.id}`} />
-      <CfgRow name="label">
+      <CfgRow name="label" comment="Display name for this provider in the model picker.">
         <CfgStr>{provider.label}</CfgStr>
       </CfgRow>
       {provider.baseURL ? (
-        <CfgRow name="baseURL">
+        <CfgRow name="baseURL" comment="Override the API endpoint. Leave empty unless using a proxy or self-hosted gateway.">
           <CfgStr>{provider.baseURL}</CfgStr>
         </CfgRow>
       ) : null}
       {provider.keyless ? (
-        <CfgRow name="keyless">
+        <CfgRow name="keyless" comment="This provider needs no API key.">
           <CfgBool value={true} onChange={() => {}} />
         </CfgRow>
       ) : editing ? (
@@ -77,7 +77,7 @@ function ProviderBlock({ provider }: { provider: Provider }) {
           <CfgAct onClick={startEdit}>{apiKey ? "edit" : "add key"}</CfgAct>
         </CfgRow>
       )}
-      <CfgRow name="configured">
+      <CfgRow name="configured" comment="Whether a key is stored for this provider in your OS keychain.">
         <CfgBool value={provider.keyless || !!apiKey} onChange={() => {}} />
       </CfgRow>
       <CfgBlank />
@@ -120,7 +120,7 @@ export function ModelsFile() {
 
       <CfgSection name="providers.local" />
       <CfgComment>LM Studio, Ollama, or any OpenAI-compatible server. No key needed.</CfgComment>
-      <CfgRow name="baseURL">
+      <CfgRow name="baseURL" comment="Endpoint for the local server, e.g. http://localhost:11434 for Ollama.">
         <CfgText
           value={config.baseURL}
           onChange={(baseURL) => updateConfig({ baseURL })}
@@ -128,7 +128,7 @@ export function ModelsFile() {
           widthCh={30}
         />
       </CfgRow>
-      <CfgRow name="model">
+      <CfgRow name="model" comment="Model sent with each request. Must match a model the provider actually serves.">
         <CfgText
           value={config.providerId === "local" ? config.model : ""}
           onChange={(model) => updateConfig({ model, providerId: "local" })}

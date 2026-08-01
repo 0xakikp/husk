@@ -46,7 +46,7 @@ export function GeneralFile() {
       <CfgRow name="vimMode" comment="Vim keybindings in the code editor.">
         <CfgBool value={p.vimMode} onChange={(v) => setPrefs({ vimMode: v })} />
       </CfgRow>
-      <CfgRow name="cursorBlink">
+      <CfgRow name="cursorBlink" comment="Blink the editor caret.">
         <CfgBool value={p.editorCursorBlink} onChange={(v) => setPrefs({ editorCursorBlink: v })} />
       </CfgRow>
       <CfgRow name="minimap" comment="Zoomed-out code overview on the right.">
@@ -55,21 +55,21 @@ export function GeneralFile() {
       <CfgRow name="stickyScroll" comment="Pin the current function/class at the top while scrolling.">
         <CfgBool value={p.editorStickyScroll} onChange={(v) => setPrefs({ editorStickyScroll: v })} />
       </CfgRow>
-      <CfgRow name="fontSize">
+      <CfgRow name="fontSize" comment="Editor text size, in pixels.">
         <CfgEnum<number>
           value={p.editorFontSize}
           onChange={(editorFontSize) => setPrefs({ editorFontSize })}
           options={px([11, 12, 13, 14, 16, 18, 20])}
         />
       </CfgRow>
-      <CfgRow name="tabSize">
+      <CfgRow name="tabSize" comment="Spaces a Tab key inserts and displays as.">
         <CfgEnum<number>
           value={p.editorTabSize}
           onChange={(editorTabSize) => setPrefs({ editorTabSize })}
           options={[2, 4, 8].map((n) => ({ value: n, label: `${n} spaces` }))}
         />
       </CfgRow>
-      <CfgRow name="wordWrap">
+      <CfgRow name="wordWrap" comment="Where long lines wrap instead of scrolling sideways.">
         <CfgEnum<WordWrap>
           value={p.editorWordWrap}
           onChange={(editorWordWrap) => setPrefs({ editorWordWrap })}
@@ -80,7 +80,7 @@ export function GeneralFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="cursorStyle">
+      <CfgRow name="cursorStyle" comment="Shape of the editor caret.">
         <CfgEnum<EditorCursorStyle>
           value={p.editorCursorStyle}
           onChange={(editorCursorStyle) => setPrefs({ editorCursorStyle })}
@@ -91,7 +91,7 @@ export function GeneralFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="lineHighlight">
+      <CfgRow name="lineHighlight" comment="How the line your caret sits on is marked.">
         <CfgEnum<LineHighlight>
           value={p.editorLineHighlight}
           onChange={(editorLineHighlight) => setPrefs({ editorLineHighlight })}
@@ -103,7 +103,7 @@ export function GeneralFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="lineNumbers">
+      <CfgRow name="lineNumbers" comment="Gutter numbering: off, absolute, or relative to the caret (handy with vim).">
         <CfgEnum<LineNumbers>
           value={p.editorLineNumbers}
           onChange={(editorLineNumbers) => setPrefs({ editorLineNumbers })}
@@ -114,7 +114,7 @@ export function GeneralFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="whitespace">
+      <CfgRow name="whitespace" comment="Render spaces and tabs as faint dots.">
         <CfgEnum<RenderWhitespace>
           value={p.editorWhitespace}
           onChange={(editorWhitespace) => setPrefs({ editorWhitespace })}
@@ -125,16 +125,16 @@ export function GeneralFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="ligatures">
+      <CfgRow name="ligatures" comment="Combine character pairs like != and => into single glyphs. Needs a font that supports them.">
         <CfgBool value={p.editorLigatures} onChange={(v) => setPrefs({ editorLigatures: v })} />
       </CfgRow>
-      <CfgRow name="bracketColors">
+      <CfgRow name="bracketColors" comment="Colour matching bracket pairs so nesting is easier to follow.">
         <CfgBool value={p.editorBracketColors} onChange={(v) => setPrefs({ editorBracketColors: v })} />
       </CfgRow>
-      <CfgRow name="smoothScroll">
+      <CfgRow name="smoothScroll" comment="Animate scrolling instead of jumping.">
         <CfgBool value={p.editorSmoothScroll} onChange={(v) => setPrefs({ editorSmoothScroll: v })} />
       </CfgRow>
-      <CfgRow name="formatOnPaste">
+      <CfgRow name="formatOnPaste" comment="Reindent pasted code to match the surrounding file.">
         <CfgBool value={p.editorFormatOnPaste} onChange={(v) => setPrefs({ editorFormatOnPaste: v })} />
       </CfgRow>
       <CfgBlank />
@@ -149,10 +149,10 @@ export function GeneralFile() {
       <CfgBlank />
 
       <CfgSection name="terminal" />
-      <CfgRow name="cursorBlink">
+      <CfgRow name="cursorBlink" comment="Blink the terminal cursor.">
         <CfgBool value={p.cursorBlink} onChange={(v) => setPrefs({ cursorBlink: v })} />
       </CfgRow>
-      <CfgRow name="fontSize">
+      <CfgRow name="fontSize" comment="Terminal text size, in pixels.">
         <CfgEnum<number>
           value={p.terminalFontSize}
           onChange={(terminalFontSize) => setPrefs({ terminalFontSize })}
@@ -169,7 +169,7 @@ export function GeneralFile() {
           }))}
         />
       </CfgRow>
-      <CfgRow name="cursorStyle">
+      <CfgRow name="cursorStyle" comment="Shape of the terminal cursor.">
         <CfgEnum<TerminalCursorStyle>
           value={p.terminalCursorStyle}
           onChange={(terminalCursorStyle) => setPrefs({ terminalCursorStyle })}
@@ -180,7 +180,7 @@ export function GeneralFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="theme">
+      <CfgRow name="theme" comment="Terminal colour palette. Applies to output only, not the app chrome.">
         <CfgEnum<TerminalThemePreset>
           value={p.terminalTheme}
           onChange={(terminalTheme) => setPrefs({ terminalTheme })}
@@ -190,7 +190,7 @@ export function GeneralFile() {
           }))}
         />
       </CfgRow>
-      <CfgRow name="fontFamily">
+      <CfgRow name="fontFamily" comment="Terminal typeface. Ligature support varies by font.">
         <CfgEnum<FontFamilyId>
           value={p.fontFamily}
           onChange={(fontFamily) => setPrefs({ fontFamily })}

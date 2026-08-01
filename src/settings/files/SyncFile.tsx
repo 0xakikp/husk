@@ -57,7 +57,7 @@ export function SyncFile() {
       <CfgBlank />
 
       <CfgSection name="sync" />
-      <CfgRow name="mode">
+      <CfgRow name="mode" comment="Where synced settings are read from and written to.">
         <CfgEnum
           value={mode}
           onChange={setMode}

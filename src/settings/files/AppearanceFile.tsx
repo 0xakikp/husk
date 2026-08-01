@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePrefs, setPrefs } from "../preferences";
+import {
+  allPresets,
+  applyAppearancePreset,
+  saveCurrentAsPreset,
+  deleteCustomPreset,
+} from "../appearancePresets";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   ConfigEditor,
@@ -14,6 +20,7 @@ import {
   CfgRow,
   CfgSection,
   CfgSlider,
+  CfgText,
   CfgStr,
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
@@ -33,6 +40,11 @@ const PRESET_COLORS = [
 
 export function AppearanceFile() {
   const p = usePrefs();
+  /* Custom presets live in localStorage, so a tick forces the list to re-read
+     after a save or delete. */
+  const [presetTick, setPresetTick] = useState(0);
+  const [newPresetName, setNewPresetName] = useState("");
+  const presets = useMemo(() => allPresets(), [presetTick]);
   const bg = p.background;
 
   const [ttsVoices, setTtsVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -88,6 +100,46 @@ export function AppearanceFile() {
       <CfgArt lines={BANNERS.appearance} />
       <CfgBlank />
 
+      {/* Presets first: the fastest path is picking a look rather than tuning
+          seventeen individual knobs. Each one states what it does. */}
+      <CfgSection name="presets" />
+      <CfgComment>Apply a complete look in one click. Your wallpaper image is kept.</CfgComment>
+      {presets.map((preset) => (
+        <CfgRow key={preset.id} name={preset.name.toLowerCase().replace(/\s+/g, "_")} comment={preset.description}>
+          <CfgAct
+            onClick={() => {
+              applyAppearancePreset(preset);
+              setPresetTick((n) => n + 1);
+            }}
+          >
+            apply
+          </CfgAct>
+          {preset.custom ? (
+            <CfgAct
+              onClick={() => {
+                deleteCustomPreset(preset.id);
+                setPresetTick((n) => n + 1);
+              }}
+            >
+              delete
+            </CfgAct>
+          ) : null}
+        </CfgRow>
+      ))}
+      <CfgRow name="save_current" comment="Name your current settings so you can return to them later.">
+        <CfgText value={newPresetName} onChange={setNewPresetName} placeholder="preset name" />
+        <CfgAct
+          onClick={() => {
+            if (!saveCurrentAsPreset(newPresetName)) return;
+            setNewPresetName("");
+            setPresetTick((n) => n + 1);
+          }}
+        >
+          save
+        </CfgAct>
+      </CfgRow>
+      <CfgBlank />
+
       <CfgSection name="theme" />
       <CfgRow name="accent" comment="Primary accent color. Click a swatch to change.">
         <CfgColor
@@ -128,7 +180,7 @@ export function AppearanceFile() {
       <CfgBlank />
 
       <CfgSection name="effects" />
-      <CfgRow name="animations">
+      <CfgRow name="animations" comment="Panel and menu transitions. Turn off to reduce motion.">
         <CfgBool value={p.animationsEnabled} onChange={(v) => setPrefs({ animationsEnabled: v })} />
       </CfgRow>
       <CfgRow name="frostedGlass" comment="Backdrop blur on panels.">
@@ -156,10 +208,10 @@ export function AppearanceFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="panelShadows">
+      <CfgRow name="panelShadows" comment="Drop shadow under each panel. Only visible when panel gaps are above zero.">
         <CfgBool value={p.panelShadows} onChange={(v) => setPrefs({ panelShadows: v })} />
       </CfgRow>
-      <CfgRow name="activePanelGlow">
+      <CfgRow name="activePanelGlow" comment="Tint the gap around whichever panel has focus.">
         <CfgBool value={p.activePanelGlow} onChange={(v) => setPrefs({ activePanelGlow: v })} />
       </CfgRow>
       <CfgBlank />
@@ -168,16 +220,16 @@ export function AppearanceFile() {
       <CfgRow name="opacity" comment="Composer background transparency.">
         <CfgSlider value={p.aiMiniOpacity} min={10} max={100} step={5} onChange={(v) => setPrefs({ aiMiniOpacity: v })} />
       </CfgRow>
-      <CfgRow name="fontSize">
+      <CfgRow name="fontSize" comment="AI composer text size, in pixels.">
         <CfgSlider value={p.aiMiniFontSize} min={9} max={18} step={1} unit="px" onChange={(v) => setPrefs({ aiMiniFontSize: v })} />
       </CfgRow>
-      <CfgRow name="bgBlur">
+      <CfgRow name="bgBlur" comment="Blur behind the AI composer.">
         <CfgSlider value={p.aiMiniBgBlur} min={0} max={20} step={1} unit="px" onChange={(v) => setPrefs({ aiMiniBgBlur: v })} />
       </CfgRow>
-      <CfgRow name="bgDim">
+      <CfgRow name="bgDim" comment="Darken behind the AI composer so text stays readable over a wallpaper.">
         <CfgSlider value={p.aiMiniBgDim} min={0} max={90} step={5} onChange={(v) => setPrefs({ aiMiniBgDim: v })} />
       </CfgRow>
-      <CfgRow name="bgStyle">
+      <CfgRow name="bgStyle" comment="Composer background: follow the theme, a gradient, or a solid colour.">
         <CfgEnum
           value={p.aiComposerBgStyle}
           onChange={(aiComposerBgStyle) => setPrefs({ aiComposerBgStyle })}

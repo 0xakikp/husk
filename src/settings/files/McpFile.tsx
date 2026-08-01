@@ -185,7 +185,7 @@ export function McpFile() {
           {servers.map((server) => (
             <div key={server.id}>
               <CfgSection name="servers" array />
-              <CfgRow name="name">
+              <CfgRow name="name" comment="Server name, used to namespace its tools.">
                 <CfgStr>{server.name}</CfgStr>
                 {testResult?.id === server.id ? (
                   <span className={testResult.ok ? "cfg-num" : "cfg-hint"} style={testResult.ok ? undefined : { color: "#f87171" }}>
@@ -193,15 +193,15 @@ export function McpFile() {
                   </span>
                 ) : null}
               </CfgRow>
-              <CfgRow name="command">
+              <CfgRow name="command" comment="Executable that starts the server, e.g. npx or uvx.">
                 <CfgStr>{server.command}</CfgStr>
               </CfgRow>
-              <CfgRow name="args">
+              <CfgRow name="args" comment="Arguments passed to the command, one per line.">
                 <span className="cfg-punct">[</span>
                 <span className="cfg-str">{server.args.map((a) => `"${a}"`).join(", ")}</span>
                 <span className="cfg-punct">]</span>
               </CfgRow>
-              <CfgRow name="enabled">
+              <CfgRow name="enabled" comment="Load this server's tools into the AI. Disable to keep the config without running it.">
                 <Switch checked={server.enabled} onCheckedChange={(v) => void handleToggle(server.id, v)} />
               </CfgRow>
               <CfgRow>

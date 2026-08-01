@@ -75,11 +75,11 @@ export function PromptsFile() {
       {templates.map((t, i) => (
         <div key={t.id}>
           <CfgSection name="prompts" array />
-          <CfgRow name="label">
+          <CfgRow name="label" comment="Name shown in the slash-command list.">
             <span className="mr-1">{t.icon}</span>
             <CfgStr>{t.label}</CfgStr>
           </CfgRow>
-          <CfgRow name="prompt">
+          <CfgRow name="prompt" comment="Text inserted when the command runs. Supports the current file and selection as context.">
             <CfgStr>{t.prompt.split("\n")[0].slice(0, 70)}{t.prompt.length > 70 ? "…" : ""}</CfgStr>
           </CfgRow>
           <CfgRow>
@@ -96,13 +96,13 @@ export function PromptsFile() {
         <>
           <CfgSection name="prompts" array />
           <CfgComment>{editing ? "editing template" : "new template"}</CfgComment>
-          <CfgRow name="icon">
+          <CfgRow name="icon" comment="Emoji shown beside the command.">
             <CfgText value={form.icon} onChange={(icon) => setForm((f) => ({ ...f, icon }))} placeholder="✨" widthCh={4} />
           </CfgRow>
-          <CfgRow name="label">
+          <CfgRow name="label" comment="Name shown in the slash-command list.">
             <CfgText value={form.label} onChange={(label) => setForm((f) => ({ ...f, label }))} placeholder="Label" widthCh={16} />
           </CfgRow>
-          <CfgRow name="prompt">
+          <CfgRow name="prompt" comment="Text inserted when the command runs.">
             <CfgBlock
               value={form.prompt}
               onChange={(prompt) => setForm((f) => ({ ...f, prompt }))}

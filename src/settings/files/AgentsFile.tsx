@@ -90,7 +90,7 @@ export function AgentsFile() {
       {agents.map((a) => (
         <div key={a.id}>
           <CfgSection name="agents" array />
-          <CfgRow name="name">
+          <CfgRow name="name" comment="Agent name, shown in the composer's agent picker.">
             <span className="mr-1">{a.icon}</span>
             <CfgStr>{a.name}</CfgStr>
             {a.id === p.activeAgentId ? (
@@ -98,7 +98,7 @@ export function AgentsFile() {
             ) : null}
             {a.builtIn ? <span className="cfg-hint">built-in</span> : null}
           </CfgRow>
-          <CfgRow name="prompt">
+          <CfgRow name="prompt" comment="System prompt that defines this agent's behaviour and tone.">
             <CfgStr>{a.systemPrompt.split("\n")[0].slice(0, 70)}{a.systemPrompt.length > 70 ? "…" : ""}</CfgStr>
           </CfgRow>
           <CfgRow>
@@ -119,13 +119,13 @@ export function AgentsFile() {
         <>
           <CfgSection name="agents" array />
           <CfgComment>{editing ? "editing agent" : "new agent"}</CfgComment>
-          <CfgRow name="icon">
+          <CfgRow name="icon" comment="Emoji shown beside the agent name.">
             <CfgText value={form.icon} onChange={(icon) => setForm((f) => ({ ...f, icon }))} placeholder="🤖" widthCh={4} />
           </CfgRow>
-          <CfgRow name="name">
+          <CfgRow name="name" comment="Agent name, shown in the composer's agent picker.">
             <CfgText value={form.name} onChange={(name) => setForm((f) => ({ ...f, name }))} placeholder="Agent name" widthCh={18} />
           </CfgRow>
-          <CfgRow name="systemPrompt">
+          <CfgRow name="systemPrompt" comment="System prompt that defines this agent's behaviour and tone.">
             <CfgBlock
               value={form.systemPrompt}
               onChange={(systemPrompt) => setForm((f) => ({ ...f, systemPrompt }))}
