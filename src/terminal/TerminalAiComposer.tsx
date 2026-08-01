@@ -29,6 +29,7 @@ import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal, getRecentCommandRuns, type CommandRun } from "../ai/terminalContext";
 import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
+import { projectMemoryBlock } from "../ai/projectMemory";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -574,7 +575,9 @@ export function TerminalAiComposer({
     const agent = getActiveAgent();
     let system =
       agent.systemPrompt +
-      "\n\nYou are a helpful coding/terminal assistant inside Husk. Respond concisely. If you suggest a shell command, wrap it in a code block.";
+      "\n\nYou are a helpful coding/terminal assistant inside Husk. Respond concisely. If you suggest a shell command, wrap it in a code block." +
+      // Per-workspace background, so the stack does not need re-explaining each session.
+      projectMemoryBlock();
 
     if (currentFile && includeFile) {
       try {

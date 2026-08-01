@@ -14,6 +14,8 @@ import {
   CfgText,
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
+import { getProjectMemory, setProjectMemory, MAX_MEMORY_CHARS } from "../../ai/projectMemory";
+import { getWorkspaceRoot } from "../../workspace/store";
 
 function nextId() {
   return `agent-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
@@ -23,6 +25,11 @@ const BUILT_IN_IDS = new Set(["architect", "code", "ask", "debug", "orchestrator
 
 export function AgentsFile() {
   const p = usePrefs();
+  /* Per-workspace background prepended to every AI request, so the stack does not
+     need re-explaining in each new session. Hand-written on purpose — a wrong
+     auto-summary would be silently attached to everything. */
+  const [memory, setMemory] = useState(() => getProjectMemory());
+  const workspace = getWorkspaceRoot();
   const [editing, setEditing] = useState<AiAgent | null>(null);
   const [form, setForm] = useState({ name: "", icon: "", systemPrompt: "" });
   const [showForm, setShowForm] = useState(false);
@@ -143,6 +150,29 @@ export function AgentsFile() {
           <CfgAct onClick={() => setShowForm(true)}>+ add agent</CfgAct>
         </CfgRow>
       )}
+
+      <CfgBlank />
+      <CfgSection name="project_memory" />
+      <CfgRow
+        name="notes"
+        comment={
+          workspace
+            ? `Background sent with every AI request in ${workspace.split("/").pop()}. What the project is, its stack, its conventions.`
+            : "Open a folder to give it project notes."
+        }
+      >
+        <CfgBlock
+          value={memory}
+          onChange={(v) => {
+            const capped = v.slice(0, MAX_MEMORY_CHARS);
+            setMemory(capped);
+            setProjectMemory(capped);
+          }}
+          placeholder={workspace ? "e.g. Tauri + React 19 desktop app. Prefer pnpm. Rust backend in src-tauri." : ""}
+          rows={4}
+          readOnly={!workspace}
+        />
+      </CfgRow>
     </ConfigEditor>
   );
 }
