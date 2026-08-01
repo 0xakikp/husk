@@ -476,6 +476,7 @@ function App() {
   const commands: Command[] = useMemo(
     () => [
       { id: "explorer", label: "Toggle file explorer", run: () => toggleSidebar() },
+      { id: "browser", label: "Open browser", keywords: "web internet page url chrome", run: () => openBrowser() },
       { id: "open-folder", label: "Open folder…", run: () => void pickWorkspaceFolder() },
       { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
       { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
@@ -632,6 +633,14 @@ function App() {
   const openIssues = () => {
     setActiveKind("issues");
     setOpenPanel("issues");
+  };
+  const openBrowser = () => {
+    setActiveKind("web");
+    setOpenPanel("web");
+  };
+  const closeBrowser = () => {
+    setOpenPanel((p) => (p === "web" ? null : p));
+    setActiveKind((k) => (k === "web" ? "term" : k));
   };
   const closeIssues = () => {
     setOpenPanel(null);
@@ -918,6 +927,8 @@ function App() {
             closeGitGraph={closeGitGraph}
             closeIssues={closeIssues}
             closeSftp={closeSftp}
+            closeBrowser={closeBrowser}
+            chromeOccluded={paletteOpen || switcherOpen}
           />
         </main>
 

@@ -6,4 +6,4 @@ export type ActiveTab =
   | { kind: "issues" }
   | { kind: "ai" };
 
-export type ActiveKind = "term" | "file" | "settings" | "git-graph" | "issues" | "sftp" | "ai";
+export type ActiveKind = "term" | "file" | "settings" | "git-graph" | "issues" | "sftp" | "ai" | "web";

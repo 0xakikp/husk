@@ -1,4 +1,5 @@
 mod fs;
+mod browser;
 mod jobs;
 mod mcp;
 mod pty;
@@ -63,6 +64,12 @@ pub fn run() {
             fs::create_dir,
             fs::rename_path,
             fs::delete_path,
+            browser::browser_create,
+            browser::browser_navigate,
+            browser::browser_go,
+            browser::browser_set_bounds,
+            browser::browser_set_visible,
+            browser::browser_close,
             remote::ssh_read_dir,
             remote::ssh_read_file,
             remote::ssh_write_file,

@@ -34,6 +34,7 @@ const GitGraphPanel = lazy(() => import("../git/GitGraphPanel").then((m) => ({ d
 const IssuesPanel = lazy(() => import("../git/IssuesPanel").then((m) => ({ default: m.IssuesPanel })));
 const SftpView = lazy(() => import("../remotes/SftpView").then((m) => ({ default: m.SftpView })));
 const AiTabPanel = lazy(() => import("../ai/AiTabPanel").then((m) => ({ default: m.AiTabPanel })));
+const BrowserPanel = lazy(() => import("../browser/BrowserPanel").then((m) => ({ default: m.BrowserPanel })));
 
 function K8sResourceDetailPanel({
   selection,
@@ -84,6 +85,8 @@ export function WorkspacePanels({
   closeGitGraph,
   closeIssues,
   closeSftp,
+  closeBrowser,
+  chromeOccluded,
 }: {
   term: TerminalTabsApi;
   activeKind: ActiveKind;
@@ -102,6 +105,10 @@ export function WorkspacePanels({
   closeGitGraph: () => void;
   closeIssues: () => void;
   closeSftp: () => void;
+  closeBrowser: () => void;
+  /** True when a React surface (palette, switcher, settings, detail panels)
+      can cover the browser — the native webview must be parked. */
+  chromeOccluded: boolean;
 }) {
   return (
     <div
@@ -293,6 +300,36 @@ export function WorkspacePanels({
           >
             <ErrorBoundary>
               {lazyPanel(<IssuesPanel onClose={closeIssues} />, "Issues")}
+            </ErrorBoundary>
+          </div>
+        )}
+
+        {/* Browser layer — native child webview parked over the placeholder.
+            The panel itself decides visibility: active tab AND nothing
+            covering it (settings, palette, detail panels). */}
+        {openPanel === "web" && (
+          <div
+            className={cn(
+              "absolute inset-0",
+              activeKind !== "web" && "invisible pointer-events-none",
+              prefs.neonBorderGlow && activeKind === "web" && "neon-glow",
+            )}
+            aria-hidden={activeKind !== "web"}
+          >
+            <ErrorBoundary>
+              {lazyPanel(
+                <BrowserPanel
+                  visible={
+                    activeKind === "web" &&
+                    !chromeOccluded &&
+                    !settingsOpen &&
+                    !selectedK8sResource &&
+                    !selectedDockerResource
+                  }
+                  onClose={closeBrowser}
+                />,
+                "Browser",
+              )}
             </ErrorBoundary>
           </div>
         )}
