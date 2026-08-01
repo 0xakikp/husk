@@ -1,7 +1,7 @@
 {
   "name": "huskv2",
   "private": true,
-  "version": "0.4.78",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
