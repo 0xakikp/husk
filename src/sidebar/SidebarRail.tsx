@@ -108,7 +108,7 @@ export function SidebarRail({
                   <HugeiconsIcon
                     icon={slot.icon}
                     size={17}
-                    strokeWidth={isActive || isActionActive ? 2 : 1.75}
+                    strokeWidth={isActive || isActionActive ? 1.75 : 1.5}
                     color={isActive ? "var(--accent)" : undefined}
                     className="transition-[stroke-width] duration-150"
                   />

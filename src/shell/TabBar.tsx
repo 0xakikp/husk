@@ -131,7 +131,7 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
           onMouseDown={(e) => e.stopPropagation()}
           className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-60 hover:!opacity-100"
         >
-          <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
+          <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2.25} />
         </div>
       ) : null}
     </div>
@@ -272,7 +272,7 @@ export function TabBar({
               setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
             }}
           >
-            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} className="shrink-0" />
+            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">Husk AI</span>
           </TabChip>
         )}
@@ -416,7 +416,7 @@ export function TabBar({
               }}
               isMouseDragging={mouseDrag?.kind === "term" && mouseDrag.fromIndex === index}
             >
-              <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={2} className="shrink-0" />
+              <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={1.75} className="shrink-0" />
               <span className="truncate">{t.title}</span>
             </TabChip>
           ),
@@ -488,7 +488,7 @@ export function TabBar({
             onClose={onCloseSettings}
             animate={animationsEnabled}
           >
-            <HugeiconsIcon icon={Settings01Icon} size={13} strokeWidth={2} className="shrink-0" />
+            <HugeiconsIcon icon={Settings01Icon} size={13} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">Settings</span>
           </TabChip>
         ) : null}
@@ -504,7 +504,7 @@ export function TabBar({
               setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
             }}
           >
-            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} className="shrink-0" />
+            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">Husk AI</span>
           </TabChip>
         )}
@@ -515,7 +515,7 @@ export function TabBar({
           title="New tab"
           onClick={onNewTerm}
         >
-          <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
+          <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={1.75} />
         </Button>
 
         {/* Sliding active tab indicator */}

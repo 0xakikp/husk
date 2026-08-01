@@ -31,7 +31,7 @@ function ThemeToggle() {
       onClick={() => setPrefs({ theme: isDark ? "light" : "dark" })}
       title={isDark ? "Switch to light theme" : "Switch to dark theme"}
     >
-      <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} size={16} strokeWidth={1.75} />
+      <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} size={16} strokeWidth={1.5} />
     </Button>
   );
 }
@@ -154,7 +154,7 @@ export function AppHeader({
           size="icon"
           className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
         >
-          <HugeiconsIcon icon={LayoutThreeColumnIcon} size={16} strokeWidth={1.75} />
+          <HugeiconsIcon icon={LayoutThreeColumnIcon} size={16} strokeWidth={1.5} />
         </Button>
         {prefs.aiEnabled && (
           <div className="relative" ref={aiSessionsButtonRef}>
@@ -173,7 +173,7 @@ export function AppHeader({
                   : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
-              <HugeiconsIcon icon={MessageMultiple02Icon} size={15} strokeWidth={1.75} />
+              <HugeiconsIcon icon={MessageMultiple02Icon} size={15} strokeWidth={1.5} />
             </Button>
             <AiSessionsPanel
               open={aiSessionsOpen}
@@ -216,7 +216,7 @@ export function AppHeader({
           onClick={onToggleClipboard}
           className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground"
         >
-          <HugeiconsIcon icon={ClipboardIcon} size={16} strokeWidth={1.75} />
+          <HugeiconsIcon icon={ClipboardIcon} size={16} strokeWidth={1.5} />
         </button>
 
         {prefs.aiEnabled && (
@@ -227,7 +227,7 @@ export function AppHeader({
             title="Toggle AI composer (Ctrl+Shift+L)"
             onClick={onToggleComposer}
           >
-            <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.75} />
+            <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.5} />
           </Button>
         )}
         <Button
@@ -241,7 +241,7 @@ export function AppHeader({
           title="Settings"
           onClick={onOpenSettings}
         >
-          <HugeiconsIcon icon={Settings01Icon} size={15} strokeWidth={1.75} />
+          <HugeiconsIcon icon={Settings01Icon} size={15} strokeWidth={1.5} />
         </Button>
       </div>
 
