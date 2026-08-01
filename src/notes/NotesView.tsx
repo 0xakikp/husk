@@ -577,7 +577,7 @@ export function NotesView({
 
       {/* Pinned & Recents */}
       {!searchIsActive && !loading && (
-        <div className="flex flex-col gap-2 mb-2">
+        <div className="flex flex-col gap-2 mb-2 pl-1.5">
           {pinnedInfo.length > 0 && (
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground/80 font-semibold">
@@ -623,7 +623,7 @@ export function NotesView({
       )}
 
       {/* Tree / Search results */}
-      <div className="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex-1 overflow-y-auto pl-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {loading || searching ? (
           <div className="py-4 text-center text-[11px] text-muted-foreground">{searching ? "Searching…" : "Loading…"}</div>
         ) : searchIsActive ? (
