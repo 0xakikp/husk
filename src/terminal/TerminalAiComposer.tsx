@@ -16,8 +16,6 @@ import {
   VolumeHighIcon,
   VolumeOffIcon,
   ArrowDown01Icon,
-  PanelRightIcon,
-  PanelBottom as PanelBottomIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs, setPrefs } from "../settings/preferences";
@@ -1089,17 +1087,7 @@ export function TerminalAiComposer({
               <HugeiconsIcon icon={MessageMultiple02Icon} size={12} strokeWidth={1.75} />
             </button>
           )}
-          {variant === "docked" && (
-            <button
-              type="button"
-              onClick={() => setPrefs({ aiComposerDock: dockRight ? "bottom" : "right" })}
-              className="composer-icon-btn"
-              title={dockRight ? "Dock to bottom" : "Dock to right"}
-            >
-              <HugeiconsIcon icon={dockRight ? PanelBottomIcon : PanelRightIcon} size={12} strokeWidth={1.75} />
-            </button>
-          )}
-          {!dockRight && (
+          {variant === "docked" && !dockRight && (
             <button
               type="button"
               onClick={toggleExpand}

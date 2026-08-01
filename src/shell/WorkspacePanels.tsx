@@ -127,7 +127,8 @@ export function WorkspacePanels({
           )}
           aria-hidden={activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null}
         >
-          <div className={cn("relative flex min-h-0 flex-1", prefs.aiComposerDock === "right" ? "flex-row" : "flex-col")}>
+          {/* AI chat is right-dock only: fixed flex-row, no bottom-mode gap spacer. */}
+          <div className="relative flex min-h-0 flex-1 flex-row">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <ErrorBoundary
                 fallback={
@@ -142,17 +143,11 @@ export function WorkspacePanels({
                 <TerminalStack term={term} viewActive={activeKind === "term"} />
               </ErrorBoundary>
             </div>
-            {prefs.panelGaps > 0 && prefs.aiComposerDock !== "right" && (
-              <div
-                className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
-                style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
-              />
-            )}
             <TerminalAiComposer
               sessionId={tabSessionId(term.activeId)}
               onOpenInAiTab={() => setActiveKind("ai")}
               registerSend={true}
-              dock={prefs.aiComposerDock}
+              dock="right"
             />
           </div>
           <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />

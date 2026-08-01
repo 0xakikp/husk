@@ -238,7 +238,7 @@ const DEFAULT: Prefs = {
   aiTabPinned: false,
   aiTabColor: undefined,
   aiSidebarWidth: 240,
-  aiComposerDock: "bottom",
+  aiComposerDock: "right",
   aiComposerSideWidth: 380,
   aiTtsVoice: "",
   setupAssistantDismissed: false,
