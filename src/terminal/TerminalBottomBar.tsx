@@ -503,8 +503,14 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
         <div className="h-4 w-px bg-border/40" />
       </div>
 
-      {/* Job pills — active state only */}
-      <div className={`transition-opacity duration-150 flex-1 min-w-0 ${isActive && hasJobs ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}`}>
+      {/* Job pills — active state only.
+          flex-1 only while jobs are actually showing. It used to be unconditional,
+          so with no jobs this empty wrapper still grew and, together with the
+          trailing spacer, centred the quick actions between two flexible gaps.
+          That also meant the pills shifted position whenever the set changed
+          (git actions vs project actions vs history), so they never had a stable
+          home to aim for. */}
+      <div className={`transition-opacity duration-150 ${isActive && hasJobs ? "flex-1 min-w-0 opacity-100" : "w-0 flex-none overflow-hidden opacity-0"}`}>
         {hasJobs && (
           <div className="flex min-w-0 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {jobs.map((j) => (
