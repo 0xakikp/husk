@@ -429,19 +429,28 @@ function App() {
      As a bubble listener this was reachable by window.dispatchEvent but not
      always by a real keypress — which is exactly the asymmetry we hit. */
   useEffect(() => {
+    /* Match the PHYSICAL key as well as e.key.
+       e.key is layout- and IME-dependent: on a non-US layout, or with an input
+       method active, the K key can report something other than "k" (an IME can
+       report "Process" or "Dead" outright), so a key-only test silently fails on
+       some machines while passing on others running identical code. e.code is the
+       physical position and does not vary. */
+    const hit = (e: KeyboardEvent, key: string, code: string) =>
+      e.key.toLowerCase() === key || e.code === code;
+
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if ((e.metaKey || e.ctrlKey) && hit(e, "k", "KeyK")) {
         e.preventDefault();
         e.stopPropagation();
         setPaletteOpen(true);
-      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && hit(e, "l", "KeyL")) {
         if (!prefs.aiEnabled) return;
         e.preventDefault();
         toggleComposer();
-      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && hit(e, "a", "KeyA")) {
         e.preventDefault();
         setSwitcherOpen((v) => !v);
-      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "t") {
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && hit(e, "t", "KeyT")) {
         e.preventDefault();
         setActiveKind("term");
         focusActiveTerminal();
