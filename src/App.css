@@ -429,6 +429,21 @@ button {
 }
 
 .term-hist {
+  /* Surface tokens so the panel follows the theme. The dark values are the
+     defaults and the light overrides live in one block below — the panel used to
+     hardcode a near-black background plus white-alpha fills, so in the light
+     theme it stayed dark and every hover/active fill was invisible. */
+  --hist-surface: rgba(8, 8, 8, 0.98);
+  --hist-line: rgba(255, 255, 255, 0.06);
+  --hist-line-soft: rgba(255, 255, 255, 0.05);
+  --hist-fill-1: rgba(255, 255, 255, 0.03);
+  --hist-fill-2: rgba(255, 255, 255, 0.05);
+  --hist-fill-alt: rgba(255, 255, 255, 0.015);
+  --hist-inset: rgba(255, 255, 255, 0.04);
+  --hist-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 24px 64px rgba(0, 0, 0, 0.85),
+    0 8px 24px rgba(0, 0, 0, 0.5);
   position: absolute;
   top: 8px;
   left: 8px;
@@ -438,19 +453,16 @@ button {
   z-index: 100;
   display: flex;
   flex-direction: column;
-  background: rgba(8, 8, 8, 0.98);
+  background: var(--hist-surface);
   color: var(--text, #e5e5e5);
   font-family: inherit;
   font-size: calc(var(--terminal-font-size, 14px) + 1px);
   line-height: 1.45;
   padding: 8px 10px 6px 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--hist-line);
   border-radius: 12px;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.5),
-    0 24px 64px rgba(0, 0, 0, 0.85),
-    0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--hist-shadow);
   backdrop-filter: blur(16px);
 }
 
@@ -487,8 +499,8 @@ button {
   font-weight: 500;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--hist-fill-1);
+  border: 1px solid var(--hist-line-soft);
 }
 
 /* ── Search input with icon + clear button ── */
@@ -505,8 +517,8 @@ button {
   margin-bottom: 6px;
   border: 1px solid color-mix(in srgb, var(--accent, #11c700) 20%, transparent);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  background: var(--hist-fill-1);
+  box-shadow: inset 0 1px 0 0 var(--hist-inset);
   transition: box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
@@ -515,7 +527,7 @@ button {
   box-shadow:
     0 0 24px -4px color-mix(in srgb, var(--accent, #11c700) 22%, transparent),
     0 0 0 1px color-mix(in srgb, var(--accent, #11c700) 18%, transparent),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+    inset 0 1px 0 0 var(--hist-inset);
 }
 
 .term-hist-input-chip {
@@ -594,7 +606,7 @@ button {
 
 .term-hist-input-clear:hover {
   color: var(--text-strong, #ffffff);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--hist-fill-2);
 }
 
 .term-hist-list {
@@ -631,18 +643,18 @@ button {
 }
 
 .term-hist-item:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--hist-fill-1);
   color: var(--text-strong, #ffffff);
 }
 
 /* Alternating row tint */
 .term-hist-item.alt {
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--hist-fill-alt);
 }
 
 .term-hist-item.active {
   border-left: 3px solid var(--accent, #11c700);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--hist-fill-2);
   color: var(--text-strong, #ffffff);
   font-weight: 500;
 }
@@ -725,7 +737,7 @@ button {
   flex-shrink: 0;
   padding: 1px 4px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hist-fill-1);
   font-weight: 500;
 }
 
@@ -757,7 +769,7 @@ button {
   justify-content: space-between;
   padding: 6px 4px 0 4px;
   margin-top: 2px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--hist-line-soft);
   font-size: 0.6em;
   color: var(--text-faint, #5a5a5a);
   background: transparent;
@@ -787,8 +799,8 @@ button {
   font-size: 0.9em;
   padding: 1px 4px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--hist-fill-2);
+  border: 1px solid var(--hist-line-soft);
   color: var(--text-muted, #868686);
 }
 
@@ -1021,6 +1033,21 @@ button {
 }
 
 /* Light-mode overrides for husk-popover */
+/* Light theme: the history panel only needs its surface tokens remapped, since
+   every rule above consumes them. Values mirror .husk-popover below so elevated
+   panels stay consistent. The active row picks up an accent tint rather than a
+   white-alpha fill, which would be invisible on a white surface. */
+:root[data-theme="light"] .term-hist {
+  --hist-surface: var(--bg-elev);
+  --hist-line: var(--border-2);
+  --hist-line-soft: var(--border);
+  --hist-fill-1: var(--bg-2);
+  --hist-fill-2: color-mix(in srgb, var(--accent) 12%, transparent);
+  --hist-fill-alt: rgba(0, 0, 0, 0.02);
+  --hist-inset: transparent;
+  --hist-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+}
+
 :root[data-theme="light"] .husk-popover {
   background: var(--bg-elev);
   color: var(--text);
