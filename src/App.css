@@ -448,8 +448,8 @@ button {
      defaults and the light overrides live in one block below — the panel used to
      hardcode a near-black background plus white-alpha fills, so in the light
      theme it stayed dark and every hover/active fill was invisible. */
-  --hist-surface: rgba(8, 8, 8, 0.98);
-  --hist-line: rgba(255, 255, 255, 0.06);
+  --hist-surface: rgba(10, 10, 10, 0.72);
+  --hist-line: color-mix(in srgb, var(--border, #1f1f1f) 55%, transparent);
   --hist-line-soft: rgba(255, 255, 255, 0.05);
   --hist-fill-1: rgba(255, 255, 255, 0.03);
   --hist-fill-2: rgba(255, 255, 255, 0.05);
@@ -475,7 +475,7 @@ button {
   border: 1px solid var(--hist-line);
   border-radius: 12px;
   box-shadow: var(--hist-shadow);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(24px);
 }
 
 .term-hist-header {
@@ -681,9 +681,9 @@ button {
   color: var(--text-faint, #5a5a5a);
 }
 
-/* Command-type icons are intentionally monochrome: the glyph identifies the
-   type, so colouring seven categories only added noise. The single accent is
-   reserved for selection and focus. */
+/* Command-type icons carry per-type accent colors, mirroring the spotlight
+   launcher's kind icons. Each type rule sets --hist-icon; hover/selection no
+   longer dims the glyph back to monochrome. */
 .term-hist-item-icon {
   display: inline-flex;
   align-items: center;
@@ -692,7 +692,7 @@ button {
   height: 15px;
   min-width: 15px;
   margin-top: 1px;
-  color: var(--text-faint, #5a5a5a);
+  color: var(--hist-icon, var(--text-faint, #5a5a5a));
   transition: color 0.08s ease;
 }
 
@@ -701,9 +701,16 @@ button {
   height: 100%;
 }
 
-.term-hist-item:hover .term-hist-item-icon,
-.term-hist-item.active .term-hist-item-icon {
-  color: var(--text-muted, #868686);
+.term-hist-item.type-git .term-hist-item-icon { --hist-icon: #b57edc; }    /* violet */
+.term-hist-item.type-ssh .term-hist-item-icon { --hist-icon: #4ec9e2; }    /* cyan */
+.term-hist-item.type-fs .term-hist-item-icon { --hist-icon: #e5b567; }     /* amber */
+.term-hist-item.type-pkg .term-hist-item-icon { --hist-icon: #e2556b; }    /* npm red */
+.term-hist-item.type-docker .term-hist-item-icon { --hist-icon: #4aa3f0; } /* docker blue */
+.term-hist-item.type-cargo .term-hist-item-icon { --hist-icon: #f08c4a; }  /* rust orange */
+.term-hist-item.type-python .term-hist-item-icon { --hist-icon: #d9c23c; } /* python yellow */
+.term-hist-item.type-node .term-hist-item-icon { --hist-icon: #7cc74f; }   /* node green */
+.term-hist-item.type-default .term-hist-item-icon {
+  --hist-icon: color-mix(in srgb, var(--accent, #11c700) 75%, transparent);
 }
 
 /* Command type accent colors (subtle, only on icon) */
@@ -754,15 +761,18 @@ button {
 }
 
 .term-hist-match-badge.prefix {
-  color: var(--text-muted, #868686);
+  color: var(--accent, #11c700);
+  background: color-mix(in srgb, var(--accent, #11c700) 10%, transparent);
 }
 
 .term-hist-match-badge.word {
-  color: var(--text-muted, #868686);
+  color: #4ec9e2;
+  background: rgba(78, 201, 226, 0.1);
 }
 
 .term-hist-match-badge.fuzzy {
-  color: var(--text-muted, #868686);
+  color: #b57edc;
+  background: rgba(181, 126, 220, 0.1);
 }
 
 /* No badge for exact or recent matches — they're self-evident */
