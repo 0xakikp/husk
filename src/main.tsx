@@ -6,10 +6,14 @@ import { getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getSentryEnabled } from "./settings/CrashReportingSection";
-import "./styles/tailwind.css?v=2";
-import "./styles/fonts.css?v=2";
-import "./styles/code-highlight.css?v=2";
-import "./App.css?v=2";
+/* No ?v=N cache-busting queries on these imports: the query becomes part of
+   the module id, so when Tailwind finishes its cold-start candidate scan and
+   invalidates the stylesheet by its plain id, the update misses this module —
+   leaving the page with a partial utility sheet until a manual reload. */
+import "./styles/tailwind.css";
+import "./styles/fonts.css";
+import "./styles/code-highlight.css";
+import "./App.css";
 
 // Initialize Sentry crash reporting only if user hasn't opted out
 if (getSentryEnabled()) {
