@@ -793,7 +793,9 @@ function App() {
             <img
               src={bgDataUrl}
               alt=""
-              className="pointer-events-none fixed inset-0 size-full object-cover"
+              className={`pointer-events-none fixed inset-0 size-full ${
+                prefs.background.fit === "contain" ? "object-contain" : "object-cover"
+              }`}
               style={{
                 zIndex: -2,
                 opacity: prefs.background.opacity / 100,

@@ -15,6 +15,8 @@ export type BackgroundSettings = {
   opacity: number;
   blur: number;
   dim: number;
+  /** cover = fill the window and crop overflow; contain = whole image visible. */
+  fit: "cover" | "contain";
 };
 
 export type AiAgent = {
@@ -217,6 +219,7 @@ const DEFAULT: Prefs = {
     opacity: 100,
     blur: 0,
     dim: 50,
+    fit: "cover",
   },
 
   accentColor: "#11c700",
@@ -250,7 +253,10 @@ const LS_KEY = "huskv2.prefs.v2";
 function load(): Prefs {
   try {
     const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}") as Partial<Prefs>;
+    /* Shallow merge alone would let a stored nested object (e.g. background)
+       permanently hide keys added to the defaults later — deep-merge those. */
     const merged = { ...DEFAULT, ...saved };
+    merged.background = { ...DEFAULT.background, ...(saved.background ?? {}) };
     return merged;
   } catch {
     return DEFAULT;

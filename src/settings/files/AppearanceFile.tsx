@@ -159,6 +159,16 @@ export function AppearanceFile() {
         <CfgAct onClick={pickImage}>pick</CfgAct>
         {bg.path ? <CfgAct onClick={clearImage} danger>clear</CfgAct> : null}
       </CfgRow>
+      <CfgRow name="fit" comment="cover fills the window and crops the overflow; contain shows the whole image, may leave empty edges.">
+        <CfgEnum
+          value={bg.fit}
+          options={[
+            { value: "cover" as const, label: "cover (fill)" },
+            { value: "contain" as const, label: "contain (fit)" },
+          ]}
+          onChange={(v) => patchBg({ fit: v })}
+        />
+      </CfgRow>
       <CfgRow name="opacity" comment="Wallpaper visibility.">
         <CfgSlider value={bg.opacity} min={10} max={100} step={5} onChange={(v) => patchBg({ opacity: v })} />
       </CfgRow>
