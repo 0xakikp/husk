@@ -85,3 +85,51 @@ export function sanitizeSubject(raw: string): string {
     .trim();
   return unquoted.length > 72 ? `${unquoted.slice(0, 71)}…` : unquoted;
 }
+
+/**
+ * Prompt for a pre-flight explanation of a shell command.
+ *
+ * The existing explainError is a post-mortem — it runs after something has already
+ * failed. This is the opposite: read an unfamiliar command BEFORE running it. The
+ * risk question is the point, since the commands worth asking about are usually
+ * the ones worth not running.
+ */
+export function explainCommandPrompt(command: string, cwd: string): string {
+  return (
+    `Explain this shell command before I run it.\n\n` +
+    `Command: ${command}\n` +
+    `Working directory: ${cwd || "(unknown)"}\n\n` +
+    `Cover, briefly:\n` +
+    `1. What it does, in one or two sentences.\n` +
+    `2. What each non-obvious flag means.\n` +
+    `3. Whether it is destructive or irreversible — deleting, overwriting, force-pushing, ` +
+    `changing credentials or remote state — and say so plainly if it is.`
+  );
+}
+
+/** Words that open a question, and are never the name of a binary. */
+const PROSE_STARTERS = new Set([
+  "how", "what", "whats", "why", "where", "when", "who", "which", "whose",
+  "can", "could", "should", "would", "will", "shall",
+  "is", "are", "was", "were", "am", "does", "did", "do",
+  "i", "my", "me", "we", "our", "you", "your",
+  "please", "help", "tell", "explain", "any", "there",
+]);
+
+/**
+ * Heuristic: does this look like a shell command rather than a question?
+ *
+ * A bare token test alone is not enough — "how do I reset a branch" starts with a
+ * perfectly valid binary-shaped word. The prose-starter set is the discriminator.
+ * A first word that is genuinely both (find, test, time) resolves as a command,
+ * which is the safer bias: offering the row on prose is noise, missing it on a real
+ * command loses the feature.
+ */
+export function looksLikeCommand(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 3 || !t.includes(" ")) return false;
+  if (/[?]$/.test(t)) return false;
+  const first = t.split(/\s+/)[0];
+  if (PROSE_STARTERS.has(first.toLowerCase())) return false;
+  return /^[a-z0-9][a-z0-9._+-]*$/i.test(first) || first.startsWith("./") || first.startsWith("/");
+}

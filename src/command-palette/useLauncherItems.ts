@@ -29,6 +29,7 @@ import {
   type SearchResult,
 } from "../ai/codebaseSearch";
 import { getWorkspaceRoot } from "../workspace/store";
+import { explainCommandPrompt, looksLikeCommand } from "../ai/assist";
 
 const copy = (text: string) => void navigator.clipboard.writeText(text);
 
@@ -502,6 +503,24 @@ export function useLauncherItems(
         alwaysShow: true,
         keepOpen: true,
         run: () => ctx.setQuery(`${token}: `),
+      });
+    }
+
+    /* Pre-flight explanation. explainError is a post-mortem; this reads an
+       unfamiliar command BEFORE it runs, and asks whether it is destructive —
+       which is the part worth knowing for the commands you would actually ask
+       about. Only offered when the query parses as a command, so prose keeps the
+       plain Ask AI row instead. */
+    if (looksLikeCommand(query)) {
+      const cmd = query.trim();
+      extra.push({
+        id: "ai:explain-command",
+        kind: "ai",
+        label: `Explain command “${trunc(cmd, 40)}”`,
+        hint: "before running",
+        group: "Ask AI",
+        alwaysShow: true,
+        run: () => ctx.askAi(explainCommandPrompt(cmd, getWorkspaceRoot() || "")),
       });
     }
 
