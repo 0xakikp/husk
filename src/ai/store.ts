@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { PROVIDERS } from "./providers";
+import { MODELS } from "./models";
 import { secretsSet, secretsDelete, secretsGetAll } from "../secrets";
 
 const LS_KEY = "huskv2.ai.config";
@@ -17,14 +18,29 @@ const DEFAULT: StoredConfig = {
   baseURL: PROVIDERS[0].baseURL ?? "",
 };
 
+/**
+ * A stored model id is only honoured if the app still offers it.
+ *
+ * Retiring a model from MODELS otherwise leaves existing users pinned to it
+ * forever — loadConfig returned `parsed.model` unchecked, so a saved
+ * "claude-sonnet-4" survived the model being removed and the composer kept
+ * reporting it, sending requests for an id the provider may no longer serve.
+ * Unknown ids fall back to the provider's own default.
+ */
+function knownModel(id: string | undefined, providerId: string): string {
+  if (id && MODELS.some((m) => m.id === id)) return id;
+  return PROVIDERS.find((p) => p.id === providerId)?.defaultModel ?? DEFAULT.model;
+}
+
 export function loadConfig(): StoredConfig {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return DEFAULT;
     const parsed = JSON.parse(raw) as Partial<StoredConfig>;
+    const providerId = parsed.providerId ?? DEFAULT.providerId;
     return {
-      providerId: parsed.providerId ?? DEFAULT.providerId,
-      model: parsed.model ?? DEFAULT.model,
+      providerId,
+      model: knownModel(parsed.model, providerId),
       baseURL: parsed.baseURL ?? DEFAULT.baseURL,
     };
   } catch {

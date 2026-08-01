@@ -20,7 +20,7 @@ export type Provider = {
  * with just a base URL, so the list is easy to extend.
  */
 export const PROVIDERS: Provider[] = [
-  { id: "anthropic", label: "Anthropic (Claude)", kind: "anthropic", defaultModel: "claude-sonnet-4" },
+  { id: "anthropic", label: "Anthropic (Claude)", kind: "anthropic", defaultModel: "claude-sonnet-5" },
   { id: "openai", label: "OpenAI (GPT)", kind: "openai", defaultModel: "gpt-4.1" },
   { id: "google", label: "Google (Gemini)", kind: "google", defaultModel: "gemini-2.0-flash" },
   {
