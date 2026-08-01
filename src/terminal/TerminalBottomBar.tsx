@@ -43,6 +43,13 @@ import { getActiveSshHost, subscribeSshHost } from "../remote/store";
 
 type ContextKind = "git-dirty" | "git-clean" | "docker" | "error" | null;
 
+/** Commands whose meaning depends on the directory you are in. */
+const PROJECT_RUNNERS = new Set([
+  "pnpm", "npm", "yarn", "bun", "npx",
+  "cargo", "go", "make", "mvn", "gradle", "./gradlew",
+  "poetry", "uv", "rake", "dotnet", "pytest", "tox",
+]);
+
 /* ── Small helpers ─────────────────────────────────────── */
 
 function animatedBlockBar(width = 8): string {
@@ -316,6 +323,11 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
           // read in a pill.
           if (cmd.length < 2 || cmd.length > 24) continue;
           if (["bash", "zsh", "sh", "clear", "exit", "ls", "ls -la"].includes(cmd)) continue;
+          // Shell history is global — zsh records no cwd — so a project runner from
+          // one repo would be offered in every other directory, where it is at best
+          // meaningless. Those commands are only valid with project context, which
+          // is what projectActions detects; anything needing it is excluded here.
+          if (PROJECT_RUNNERS.has(cmd.split(/\s+/)[0]) || cmd.startsWith("./")) continue;
           const key = cmd.toLowerCase();
           if (seen.has(key)) continue;
           seen.add(key);
@@ -550,7 +562,7 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
                   {cmd}
                 </button>
               ))}
-            {projectActions.length === 0 && recentCmds.length === 0 && (
+            {projectActions.length === 0 && (
               <button
                 type="button"
                 onClick={() => send("ls -la")}
