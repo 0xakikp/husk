@@ -259,10 +259,10 @@ export function TerminalHistoryPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Use user's chosen terminal font + size so the panel feels native
+  // Use the user's chosen terminal font so the panel feels native; sizing
+  // follows the spotlight palette (13px rows / 15px input), not the terminal.
   const prefs = getPrefs();
   const fontFamily = fontStack(prefs.fontFamily);
-  const fontSize = prefs.terminalFontSize;
 
   const scored = useMemo(() => {
     const q = query.trim();
@@ -354,20 +354,8 @@ export function TerminalHistoryPanel({
       <div
         className="term-hist"
         ref={panelRef}
-        style={{ fontFamily, fontSize: `${fontSize}px` }}
+        style={{ fontFamily }}
       >
-        <div className="term-hist-header">
-          <span className="term-hist-title">
-            <svg className="term-hist-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v5h5" />
-              <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
-              <path d="M12 7v5l4 2" />
-            </svg>
-            History
-          </span>
-          <span className="term-hist-hint">Ctrl+R</span>
-        </div>
-
         <div className="term-hist-input-wrap">
           <span className="term-hist-input-chip">
             <svg className="term-hist-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -417,6 +405,7 @@ export function TerminalHistoryPanel({
               </svg>
             </button>
           )}
+          <kbd className="term-hist-esc">esc</kbd>
         </div>
 
         <div className="term-hist-list" ref={listRef}>
