@@ -27,6 +27,7 @@ import { streamChat } from "../ai/client";
 import type { Tool } from "ai";
 import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
+import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
@@ -1324,6 +1325,7 @@ export function TerminalAiComposer({
             )}
           </div>
         )}
+        <PendingEditsReview />
         <div className="wb-composer">
           {(contextChips.length > 0 || attachedFiles.length > 0) && (
             <div className="wb-composer-head">

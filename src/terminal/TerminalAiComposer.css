@@ -1407,3 +1407,103 @@
   word-break: break-word;
   color: var(--text);
 }
+
+/* ── Pending edit review ──────────────────────────────────────────────────
+   Compact unified diff rather than Monaco's diff editor: this sits inline above
+   the composer, so it must stay light and read like the terminal it lives in.
+   Colours are semantic (added/removed), which is the one place hue carries real
+   meaning here. */
+.pe-wrap {
+  margin: 0 8px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 6px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.pe-head,
+.pe-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.pe-spacer { flex: 1; }
+
+.pe-path {
+  font-weight: 600;
+  color: var(--text-strong);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pe-stat { font-variant-numeric: tabular-nums; }
+.pe-add { color: #86efac; }
+.pe-del { color: #fca5a5; }
+
+.pe-btn {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 1px 6px;
+}
+
+.pe-btn:hover:not(:disabled) {
+  color: var(--text-strong);
+  background: var(--hover);
+}
+
+.pe-btn:disabled { opacity: 0.5; cursor: default; }
+
+.pe-btn-apply {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.pe-btn-apply:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.pe-card + .pe-card { border-top: 1px solid var(--border); }
+
+.pe-diff {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  padding: 4px 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.pe-line {
+  padding: 0 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pe-line.pe-del { background: rgba(239, 68, 68, 0.08); }
+.pe-line.pe-add { background: rgba(34, 197, 94, 0.08); }
+
+.pe-sign {
+  display: inline-block;
+  width: 1ch;
+  margin-right: 6px;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.pe-more {
+  padding: 1px 8px 1px 23px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
