@@ -32,4 +32,6 @@ src-tauri/tauri.key
 
 # Internal feature audit (Kelex Agent reference only)
 TERMINAL_AUDIT.md
-TERMINAL_AUDIT.md
+
+# Claude Code local settings (machine-specific permission allowlists)
+.claude/
