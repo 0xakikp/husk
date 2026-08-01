@@ -46,3 +46,42 @@ export async function explainError(
     prompt,
   );
 }
+
+/**
+ * A conventional-commit subject line describing a diff.
+ *
+ * The model is asked for one line and then held to it: replies routinely arrive
+ * wrapped in backticks, prefixed with "Here's a commit message:", or split over
+ * several lines, and any of those would be pasted verbatim into the user's shell.
+ * The caller stages the command for review rather than running it, but the message
+ * still has to be sane before it gets there.
+ */
+export async function suggestCommitMessage(diff: string): Promise<string> {
+  const text = await generateOnce(
+    currentConfig(),
+    "You write git commit subject lines. Reply with ONLY the subject line — no body, " +
+      "no quotes, no backticks, no markdown, no preamble. Use the conventional-commit " +
+      "form type(scope): summary, lower case after the colon, imperative mood, and keep " +
+      "it under 72 characters.",
+    `Describe this diff as a commit subject line:\n\n${diff}`,
+  );
+  return sanitizeSubject(text);
+}
+
+/** Collapse a model reply to a single safe subject line. */
+export function sanitizeSubject(raw: string): string {
+  const firstLine =
+    raw
+      .replace(/^```[\w]*\n?/, "")
+      .replace(/\n?```$/, "")
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? "";
+  const unquoted = firstLine
+    .replace(/^["'`]+/, "")
+    .replace(/["'`]+$/, "")
+    // Strip a conversational lead-in such as "Commit message: feat: ..."
+    .replace(/^(here'?s\s+)?(a|the)?\s*commit\s+(message|subject)\s*[:\-]\s*/i, "")
+    .trim();
+  return unquoted.length > 72 ? `${unquoted.slice(0, 71)}…` : unquoted;
+}

@@ -56,6 +56,23 @@ export const push = () => git("push");
 export const pull = () => git("pull");
 export const fetch = () => git("fetch");
 
+/**
+ * The diff a commit would capture: staged changes if anything is staged, else the
+ * unstaged working tree.
+ *
+ * Truncated deliberately. A large refactor produces a diff far past both the shell
+ * bridge's 256KB stdout cap and any model's context, and the first few thousand
+ * lines characterise a change well enough to describe it.
+ */
+export async function diffForCommit(cwd?: string | null, maxChars = 8000): Promise<string> {
+  const staged = await git("diff --staged --stat", cwd).catch(() => "");
+  const useStaged = staged.trim().length > 0;
+  const body = await git(`diff${useStaged ? " --staged" : ""}`, cwd).catch(() => "");
+  const text = body.trim();
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n… diff truncated at ${maxChars} characters`;
+}
+
 export function diffFile(p: string, staged: boolean): Promise<string> {
   return git(`diff ${staged ? "--cached " : ""}-- ${shq(p)}`).catch(() => "");
 }

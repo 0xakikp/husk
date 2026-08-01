@@ -21,6 +21,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { VitalStrip } from "./vitals/VitalStrip";
 import { getShellHistory } from "../shellHistory";
+import { diffForCommit } from "../git/client";
+import { suggestCommitMessage } from "../ai/assist";
+import { shq } from "../lib/shellQuote";
 import { cachedProjectActions, type ProjectAction } from "./projectActions";
 import { useSystemVitals } from "./vitals/useSystemVitals";
 import { isRepo, status as gitStatus, currentBranch, branchAheadBehind } from "../git/client";
@@ -247,6 +250,39 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
     [onSendToTerminal],
   );
 
+  const [committing, setCommitting] = useState(false);
+
+  /* Compose a commit from the actual diff, then stage it for review.
+     Staged rather than run: the subject comes from a model, so it must be read
+     before it becomes a commit — and it stays editable, which is the whole point
+     compared with the old hardcoded `git commit -m 'wip'`. */
+  const composeCommit = useCallback(async () => {
+    if (committing) return;
+    setCommitting(true);
+    try {
+      const diff = await diffForCommit(getActiveTerminalCwd() || null);
+      if (!diff.trim()) {
+        toast({ title: "Nothing to commit", variant: "error", duration: 2500 });
+        return;
+      }
+      const subject = await suggestCommitMessage(diff);
+      if (!subject) throw new Error("empty message");
+      // shq, not manual quoting: the subject is model output and may contain
+      // quotes, backticks or $ that would otherwise be interpreted by the shell.
+      stage(`git commit -m ${shq(subject)}`);
+    } catch (e) {
+      toast({
+        title: "Could not draft a message",
+        message: e instanceof Error ? e.message : String(e),
+        variant: "error",
+        duration: 5000,
+      });
+      stage("git commit -m ");
+    } finally {
+      setCommitting(false);
+    }
+  }, [committing]);
+
   /* Destructive or opinionated commands are TYPED at the prompt, not run. Pressing
      Enter is the confirmation, which needs no dialog and lets you edit the command
      first — the point for `git commit -m 'wip'`, where you almost always want a
@@ -264,7 +300,9 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
   const contextPills = (() => {
     if (ctx === "git-dirty") {
       return [
-        { label: "Commit", icon: GitCommitIcon, action: () => stage("git commit -m 'wip'"), risky: true },
+        prefs.aiEnabled
+          ? { label: committing ? "drafting…" : "Commit", icon: GitCommitIcon, action: () => void composeCommit(), risky: true }
+          : { label: "Commit", icon: GitCommitIcon, action: () => stage("git commit -m 'wip'"), risky: true },
         { label: "Diff", icon: GitPullRequestIcon, action: () => send("git diff") },
         { label: "Stash", icon: CancelCircleIcon, action: () => send("git stash") },
       ];
