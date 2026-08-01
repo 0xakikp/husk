@@ -1360,3 +1360,50 @@
 [data-theme="light"] .wb-empty-sub {
   color: var(--muted-foreground);
 }
+
+/* Context preview — shows exactly what a chip will send before you send it.
+   Scrollback can hold echoed keys, kubectl output and connection strings, so being
+   able to read it first is a safety feature, not a nicety. Uses the same elevation
+   and radius tokens as the rest of the app. */
+.wb-ctx-preview {
+  margin: 0 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.wb-ctx-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.wb-ctx-preview-head button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.wb-ctx-preview-head button:hover {
+  color: var(--text-strong);
+}
+
+.wb-ctx-preview pre {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}

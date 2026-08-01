@@ -27,6 +27,7 @@ import { streamChat } from "../ai/client";
 import type { Tool } from "ai";
 import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
+import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -263,6 +264,7 @@ export function TerminalAiComposer({
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string; isImage?: boolean }[]>([]);
+  const [previewChipId, setPreviewChipId] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState(false);
   const speakUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -356,7 +358,14 @@ export function TerminalAiComposer({
   const [includeTerminal, setIncludeTerminal] = useState(true);
 
   const contextChips = useMemo(() => {
-    const chips: { id: string; icon: string; label: string; onRemove: () => void }[] = [];
+    const chips: {
+      id: string;
+      icon: string;
+      label: string;
+      onRemove: () => void;
+      /** Exactly what this chip contributes to the request, for the preview. */
+      preview?: string;
+    }[] = [];
     if (currentFile && includeFile) {
       chips.push({
         id: "file",
@@ -374,15 +383,24 @@ export function TerminalAiComposer({
       });
     }
     if (includeTerminal) {
+      /* Show the size. Terminal scrollback routinely contains echoed API keys,
+         kubectl output, connection strings and internal hostnames, and all of it
+         leaves the machine on send — so how much is going is worth stating, and
+         the chip is clickable to see exactly what. */
+      const term = readActiveTerminal();
+      const { kb, capped } = getTerminalContextSize();
       chips.push({
         id: "terminal",
         icon: "🖥️",
-        label: "terminal output",
+        label: `terminal output · ${kb} KB${capped ? " (tail)" : ""}`,
         onRemove: () => setIncludeTerminal(false),
+        preview: term,
       });
     }
     return chips;
   }, [currentFile, fileName, selection, includeFile, includeSelection, includeTerminal]);
+
+  const previewChip = contextChips.find((c) => c.id === previewChipId && c.preview);
 
   // Slash palette commands
   const slashCommands = useMemo(() => {
@@ -1312,7 +1330,18 @@ export function TerminalAiComposer({
               {contextChips.map((chip) => (
                 <span key={chip.id} className="wb-chip">
                   <span>{chip.icon}</span>
-                  <span className="truncate max-w-[140px]">{chip.label}</span>
+                  {chip.preview ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewChipId((id) => (id === chip.id ? null : chip.id))}
+                      className="truncate max-w-[220px] underline decoration-dotted underline-offset-2"
+                      title="Show exactly what will be sent"
+                    >
+                      {chip.label}
+                    </button>
+                  ) : (
+                    <span className="truncate max-w-[140px]">{chip.label}</span>
+                  )}
                   <button type="button" onClick={chip.onRemove} className="wb-chip-x">
                     ×
                   </button>
@@ -1328,6 +1357,15 @@ export function TerminalAiComposer({
                 </span>
               ))}
               <span className="wb-ctx-count">ctx: {contextChips.length + attachedFiles.length} attached</span>
+            </div>
+          )}
+          {previewChip && (
+            <div className="wb-ctx-preview">
+              <div className="wb-ctx-preview-head">
+                <span>{previewChip.label}</span>
+                <button type="button" onClick={() => setPreviewChipId(null)}>close</button>
+              </div>
+              <pre>{previewChip.preview}</pre>
             </div>
           )}
           <div className="wb-composer-body">
