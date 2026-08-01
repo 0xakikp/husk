@@ -12,9 +12,10 @@ export type ModelInfo = {
 
 export const MODELS: ModelInfo[] = [
   // Anthropic
-  { id: "claude-sonnet-4", label: "Claude Sonnet 4", provider: getProvider("anthropic"), description: "Balanced speed & reasoning", contextWindow: "200K" },
-  { id: "claude-opus-4", label: "Claude Opus 4", provider: getProvider("anthropic"), description: "Highest reasoning quality", contextWindow: "200K" },
-  { id: "claude-haiku-4", label: "Claude Haiku 4", provider: getProvider("anthropic"), description: "Fastest, most affordable", contextWindow: "200K" },
+  { id: "claude-opus-5", label: "Claude Opus 5", provider: getProvider("anthropic"), description: "Highest reasoning quality", contextWindow: "200K" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5", provider: getProvider("anthropic"), description: "Balanced speed & reasoning", contextWindow: "200K" },
+  { id: "claude-fable-5", label: "Claude Fable 5", provider: getProvider("anthropic"), description: "Creative writing & long-form", contextWindow: "200K" },
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", provider: getProvider("anthropic"), description: "Fastest, most affordable", contextWindow: "200K" },
 
   // OpenAI
   { id: "gpt-4.1", label: "GPT-4.1", provider: getProvider("openai"), description: "Latest flagship model", contextWindow: "1M" },
