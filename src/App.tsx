@@ -433,8 +433,6 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         e.stopPropagation();
-        // TEMP DIAGNOSTIC — remove once the palette issue is resolved.
-        toast({ title: "Cmd+K received", message: "handler fired, opening palette", variant: "info", duration: 3000 });
         setPaletteOpen(true);
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
         if (!prefs.aiEnabled) return;
