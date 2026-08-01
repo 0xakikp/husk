@@ -9,7 +9,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  ArrowDown01Icon,
   PlusSignIcon,
   Delete02Icon,
   Search01Icon,
@@ -371,77 +370,42 @@ export function NotesView({
 
   const renderNode = (node: FileNode, depth: number) => {
     const isExpanded = expanded.has(node.path) || node.expanded;
-    const indentGuides = depth > 0 ? (
-      <span className="flex shrink-0 self-stretch" style={{ width: `${depth * 12}px` }} aria-hidden="true">
-        {Array.from({ length: depth }).map((_, i) => (
-          <span key={i} className="h-full w-3 border-l border-muted-foreground/25" />
-        ))}
-      </span>
-    ) : null;
+    /* Mirror the file explorer's row recipe: same .enode/.edir/.efile classes,
+       same ▾/▸ caret column, same 6 + depth*12 indent — so the notes tree
+       reads exactly like the Files section. */
+    const indent = { paddingLeft: 6 + depth * 12 };
 
     return (
       <div key={node.path}>
-        <div
-          className={cn(
-            "group flex items-center gap-1 rounded-md py-1 pr-1 transition-colors hover:bg-muted/30",
-            editingFile === node.path && "bg-muted/40"
-          )}
-          style={{ paddingLeft: "4px" }}
-        >
-          {indentGuides}
+        <div className="group relative">
           {node.isDirectory ? (
             <button
               type="button"
+              className="enode edir"
+              style={indent}
               onClick={() => toggleExpanded(node.path)}
-              className="inline-flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
             >
-              <HugeiconsIcon
-                icon={ArrowDown01Icon}
-                size={10}
-                className={cn("transition-transform", !isExpanded && "-rotate-90")}
-              />
+              <span className="enode-caret">{isExpanded ? "▾" : "▸"}</span>
+              <img src={folderIconUrl(node.name, !!isExpanded)} className="enode-img" alt="" draggable={false} />
+              <span className="truncate">{node.name}</span>
             </button>
           ) : (
-            <span className="inline-flex size-4 items-center justify-center">
-              <img
-                src={fileIconUrl(node.name)}
-                alt=""
-                className="size-3.5 object-contain"
-                draggable={false}
-              />
-            </span>
+            <button
+              type="button"
+              className={cn("enode efile", editingFile === node.path && "active")}
+              style={indent}
+              onClick={() => {
+                if (isNoteFile(node.name)) handleOpenNote(node.path);
+              }}
+              title={isNoteFile(node.name) ? "Open in editor" : node.name}
+            >
+              <span className="enode-caret" />
+              <img src={fileIconUrl(node.name)} className="enode-img" alt="" draggable={false} />
+              <span className="truncate">{node.name}</span>
+            </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => {
-              if (node.isDirectory) {
-                toggleExpanded(node.path);
-              } else if (isNoteFile(node.name)) {
-                handleOpenNote(node.path);
-              }
-            }}
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-1 text-left text-[11px]",
-              node.isDirectory
-                ? "font-medium text-foreground"
-                : isNoteFile(node.name)
-                  ? "text-foreground hover:text-primary"
-                  : "text-muted-foreground"
-            )}
-          >
-            {node.isDirectory && (
-              <img
-                src={folderIconUrl(node.name, !!isExpanded)}
-                alt=""
-                className="size-3.5 object-contain shrink-0"
-                draggable={false}
-              />
-            )}
-            <span className="truncate">{node.name}</span>
-          </button>
-
-          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
             {node.isDirectory && (
               <button
                 type="button"
@@ -451,7 +415,7 @@ export function NotesView({
                   setCreateDir(node.path);
                   setShowCreate(true);
                 }}
-                className="rounded p-0.5 hover:bg-foreground/10"
+                className="rounded p-0.5 bg-[var(--bg-2)] hover:bg-foreground/10"
                 title="New note"
               >
                 <HugeiconsIcon icon={PlusSignIcon} size={9} />
@@ -465,15 +429,12 @@ export function NotesView({
                   togglePin(node.path);
                 }}
                 className={cn(
-                  "rounded p-0.5 hover:bg-foreground/10",
+                  "rounded p-0.5 bg-[var(--bg-2)] hover:bg-foreground/10",
                   isNotePinned(node.path) && "text-primary opacity-100"
                 )}
                 title={isNotePinned(node.path) ? "Unpin note" : "Pin note"}
               >
-                <HugeiconsIcon
-                  icon={isNotePinned(node.path) ? PinIcon : PinIcon}
-                  size={9}
-                />
+                <HugeiconsIcon icon={PinIcon} size={9} />
               </button>
             )}
             <button
@@ -482,7 +443,7 @@ export function NotesView({
                 e.stopPropagation();
                 handleDelete(node.path, node.name);
               }}
-              className="rounded p-0.5 hover:bg-foreground/10 text-destructive"
+              className="rounded p-0.5 bg-[var(--bg-2)] hover:bg-foreground/10 text-destructive"
               title="Delete"
             >
               <HugeiconsIcon icon={Delete02Icon} size={9} />
