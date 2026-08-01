@@ -72,7 +72,7 @@ export function SidebarRail({
     <TooltipProvider delayDuration={300}>
       <div
         style={{ height: 40 }}
-        className="flex shrink-0 items-center justify-around bg-background px-1.5"
+        className="flex shrink-0 items-center justify-around px-1.5"
       >
         {slots.map((slot) => {
           const isActive = slot.kind === "view" && slot.id === view;
