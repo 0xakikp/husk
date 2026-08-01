@@ -28,6 +28,7 @@ import { checkDocker } from "../docker/client";
 import {
   getActiveTerminalExit,
   getActiveTerminalCwd,
+  typeInActiveTerminal,
   getTerminalTyping,
   subscribeTerminalTyping,
   subscribeTerminalState,
@@ -239,11 +240,24 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
     [onSendToTerminal],
   );
 
+  /* Destructive or opinionated commands are TYPED at the prompt, not run. Pressing
+     Enter is the confirmation, which needs no dialog and lets you edit the command
+     first — the point for `git commit -m 'wip'`, where you almost always want a
+     real message. `docker system prune -f` would otherwise delete every unused
+     image and volume from a single click with no warning. */
+  const stage = useCallback((cmd: string) => {
+    if (typeInActiveTerminal(cmd)) {
+      toast({ title: "Review, then press Enter", message: cmd, variant: "warning" });
+    } else {
+      toast({ title: "No active terminal", variant: "error" });
+    }
+  }, []);
+
   /* Context actions */
   const contextPills = (() => {
     if (ctx === "git-dirty") {
       return [
-        { label: "Commit", icon: GitCommitIcon, action: () => send("git commit -m 'wip'") },
+        { label: "Commit", icon: GitCommitIcon, action: () => stage("git commit -m 'wip'"), risky: true },
         { label: "Diff", icon: GitPullRequestIcon, action: () => send("git diff") },
         { label: "Stash", icon: CancelCircleIcon, action: () => send("git stash") },
       ];
@@ -257,7 +271,7 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
     if (ctx === "docker") {
       return [
         { label: "PS", icon: CommandIcon, action: () => send("docker ps") },
-        { label: "Prune", icon: CancelCircleIcon, action: () => send("docker system prune -f") },
+        { label: "Prune", icon: CancelCircleIcon, action: () => stage("docker system prune -f"), risky: true },
       ];
     }
     if (ctx === "error") {
@@ -453,9 +467,18 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
                 key={p.label}
                 type="button"
                 onClick={p.action}
-                className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+                title={
+                  "risky" in p && p.risky
+                    ? "Typed at the prompt for review — press Enter to run"
+                    : undefined
+                }
+                className={
+                  "risky" in p && p.risky
+                    ? "inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400 transition-colors hover:bg-amber-500/20"
+                    : "inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+                }
               >
-                <HugeiconsIcon icon={p.icon} size={11} strokeWidth={1.75} />
+                <HugeiconsIcon icon={p.icon} size={11} strokeWidth={2.25} />
                 {p.label}
               </button>
             ))}

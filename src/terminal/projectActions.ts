@@ -11,7 +11,7 @@ const JS_MANAGERS: [string, string][] = [
 ];
 
 /** Which package scripts are worth a one-click pill, in order of usefulness. */
-const SCRIPT_PRIORITY = ["dev", "start", "test", "build", "lint", "typecheck"];
+const SCRIPT_PRIORITY = ["dev", "start", "serve", "test", "build", "check", "lint", "typecheck"];
 
 function scriptCommand(manager: string, script: string): string {
   // pnpm and yarn accept a bare script name; npm and bun need an explicit `run`.
@@ -89,8 +89,10 @@ export async function detectProjectActions(cwd: string): Promise<ProjectAction[]
     actions.push({ label: "pip install", command: "pip install -r requirements.txt" });
   }
 
-  // Three is what fits beside the vitals strip without crowding it.
-  return actions.slice(0, 3);
+  /* Four fits comfortably: the widest label ("pip install") is ~101px, so four
+     pills plus gaps come to ~420px against roughly 1190px of free space between
+     the exit-code cluster and the vitals strip. */
+  return actions.slice(0, 4);
 }
 
 /* Detection is a directory read per cwd, so cache it. Terminals change directory
