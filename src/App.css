@@ -23,6 +23,15 @@
   --text-muted: #868686;
   --text-faint: #5a5a5a;
   --accent: #11c700;
+
+  /* Elevation scale. There were 11 bespoke drop shadows for what is really three
+     levels, several differing by 2px or an opacity step for no reason (.ectx-menu
+     10px/28px vs .ws-bm 10px/30px; .husk-popover 24px/64px/.9 vs .modal
+     24px/70px/.7). Accent glows and inset highlights are deliberately NOT part of
+     this — they signal focus, not height. */
+  --elev-1: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 10px 28px rgba(0, 0, 0, 0.45);
+  --elev-3: 0 24px 64px rgba(0, 0, 0, 0.7);
 }
 
 :root[data-theme="light"] {
@@ -39,6 +48,12 @@
   --text-muted: #78716c;
   --text-faint: #a8a29e;
   --accent: #22c55e;
+
+  /* Light needs far less shadow: a 0.7-opacity black under a white panel reads as
+     dirt. Same geometry, much lower opacity. */
+  --elev-1: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --elev-2: 0 10px 28px rgba(0, 0, 0, 0.1);
+  --elev-3: 0 24px 64px rgba(0, 0, 0, 0.18);
 }
 
 html,
@@ -384,7 +399,7 @@ button {
   border: 1px solid var(--border-2);
   border-radius: 8px;
   padding: 4px 4px 4px 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--elev-1);
 }
 
 .term-search input {
@@ -440,10 +455,7 @@ button {
   --hist-fill-2: rgba(255, 255, 255, 0.05);
   --hist-fill-alt: rgba(255, 255, 255, 0.015);
   --hist-inset: rgba(255, 255, 255, 0.04);
-  --hist-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.5),
-    0 24px 64px rgba(0, 0, 0, 0.85),
-    0 8px 24px rgba(0, 0, 0, 0.5);
+  --hist-shadow: var(--elev-3);
   position: absolute;
   top: 8px;
   left: 8px;
@@ -858,7 +870,7 @@ button {
   color: #e5e5e5;
   border: 1px solid #1a1a1a;
   border-radius: 12px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9);
+  box-shadow: var(--elev-3);
   padding: 10px;
   font-size: 13px;
   line-height: 1.45;
@@ -1045,14 +1057,12 @@ button {
   --hist-fill-2: color-mix(in srgb, var(--accent) 12%, transparent);
   --hist-fill-alt: rgba(0, 0, 0, 0.02);
   --hist-inset: transparent;
-  --hist-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
 }
 
 :root[data-theme="light"] .husk-popover {
   background: var(--bg-elev);
   color: var(--text);
   border: 1px solid var(--border-2);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
 }
 
 :root[data-theme="light"] .husk-popover-close {
@@ -1383,7 +1393,7 @@ button {
   background: var(--bg-elev);
   border: 1px solid var(--border-2);
   border-radius: 8px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--elev-2);
   display: flex;
   flex-direction: column;
 }
@@ -1679,7 +1689,7 @@ button {
   background: rgba(30, 30, 45, 0.48);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 10px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 16px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), var(--elev-2);
   overflow: hidden;
   backdrop-filter: blur(32px) saturate(1.5);
   -webkit-backdrop-filter: blur(32px) saturate(1.5);
@@ -2023,8 +2033,7 @@ button {
   background: var(--bg-elev);
   border-radius: 10px;
   border: 1px solid var(--border-2);
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.2),
-              0 8px 32px rgba(0,0,0,0.25);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), var(--elev-1);
   overflow: hidden;
 }
 
@@ -2294,7 +2303,7 @@ button {
   background: var(--bg-elev);
   border: 1px solid var(--border-2);
   border-radius: 12px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--elev-3);
   overflow: hidden;
   animation: modal-pop 0.13s ease-out;
 }
@@ -2911,7 +2920,7 @@ button {
   border-left: 3px solid var(--text-muted);
   border-radius: 8px;
   padding: 10px 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--elev-1);
 }
 
 .toast-info {
@@ -3012,7 +3021,7 @@ button {
   background: var(--bg-elev);
   border: 1px solid var(--border-2);
   border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--elev-3);
   overflow: hidden;
 }
 .palette-input {
@@ -3319,7 +3328,7 @@ button {
   background: var(--bg-elev);
   border: 1px solid var(--border-2);
   border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--elev-2);
   padding: 4px;
 }
 .ws-bm-add {
