@@ -10,6 +10,32 @@ import type { Tool } from "ai";
  * These run locally via Tauri FS APIs, no MCP server needed.
  */
 
+/**
+ * Writes are confined to the open workspace.
+ *
+ * The Rust side only rejects ".." and relative paths (fs.rs validate_path), so any
+ * absolute path was previously writable. Combined with writeFile treating a
+ * non-existent file as "safe" to create without review, that allowed silently
+ * creating files that execute later — ~/Library/LaunchAgents/*.plist at login,
+ * ~/.zshenv at every shell, ~/.ssh/authorized_keys — none of which needs "..",
+ * and none of which is an overwrite. "It did not exist yet" is not a safety
+ * property. This does not require a malicious model, only a confused one.
+ */
+function insideWorkspace(path: string): boolean {
+  const root = getWorkspaceRoot();
+  if (!root) return false;
+  const trim = (p: string) => p.replace(/\/+$/, "");
+  const r = trim(root);
+  return path === r || path.startsWith(`${r}/`);
+}
+
+function outsideWorkspaceMessage(path: string): string {
+  const root = getWorkspaceRoot();
+  return root
+    ? `Refused: ${path} is outside the open workspace (${root}). Ask the user to open that folder as a workspace, or choose a path inside it.`
+    : `Refused: no workspace is open, so there is nowhere safe to write. Ask the user to open a folder first.`;
+}
+
 export function buildBuiltinTools(): Record<string, Tool> {
   return {
     readFile: tool({
@@ -50,7 +76,9 @@ export function buildBuiltinTools(): Record<string, Tool> {
             addPendingEdit({ path, search: existing, replace: content });
             return `File ${path} already exists. Proposed overwrite queued for your review. Accept in the AI panel to apply.`;
           }
-          // New file — write directly (safe)
+          // New file. Only create it without review when it lands inside the
+          // workspace — see insideWorkspace above for why "new" is not "safe".
+          if (!insideWorkspace(path)) return outsideWorkspaceMessage(path);
           const lastSlash = path.lastIndexOf("/");
           if (lastSlash > 0) {
             await createDir(path.slice(0, lastSlash)).catch(() => {});
