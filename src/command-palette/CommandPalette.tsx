@@ -45,6 +45,7 @@ import {
   DownloadCircle01Icon,
   NotebookIcon,
   Home01Icon,
+  CodeIcon,
 } from "@hugeicons/core-free-icons";
 import { recordCommandUse, getFrecencyScore, getCommandHistory } from "./history";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,7 @@ export type LauncherKind =
   | "clipboard"
   | "bookmark"
   | "grep"
+  | "code"
   | "ai";
 
 export type Command = {
@@ -89,6 +91,7 @@ export type Command = {
 const GROUP_ORDER = [
   "Notes",
   "Files",
+  "Code",
   "Clipboard",
   "Bookmarks",
   "Workflows",
@@ -118,6 +121,7 @@ const GROUP_CAP = 8;
 const GROUP_SCOPE_TOKEN: Record<string, string> = {
   Notes: "notes",
   Files: "files",
+  Code: "code",
   Clipboard: "clip",
   Bookmarks: "bookmarks",
   Workflows: "workflows",
@@ -128,7 +132,7 @@ const GROUP_SCOPE_TOKEN: Record<string, string> = {
 };
 
 const SCOPE_LEGEND =
-  "scope with n: notes · f: files · g: grep · c: clip · b: bookmarks · w: workflows · d: docker · k: k8s · r: remotes · j: jobs · > cmd";
+  "scope with n: notes · f: files · code: code · g: grep · c: clip · b: bookmarks · w: workflows · d: docker · k: k8s · r: remotes · j: jobs · > cmd";
 
 const ICON_MAP: Record<string, typeof Search01Icon> = {
   explorer: SidebarLeftIcon,
@@ -184,6 +188,7 @@ const KIND_META: Record<LauncherKind, { icon: typeof Search01Icon; className: st
   clipboard: { icon: ClipboardIcon, className: "text-pink-400 bg-pink-500/10" },
   bookmark: { icon: Folder01Icon, className: "text-yellow-400 bg-yellow-500/10" },
   grep: { icon: ZoomInAreaIcon, className: "text-lime-400 bg-lime-500/10" },
+  code: { icon: CodeIcon, className: "text-teal-400 bg-teal-500/10" },
   ai: { icon: SparklesIcon, className: "text-fuchsia-400 bg-fuchsia-500/10" },
 };
 
@@ -199,6 +204,7 @@ const SCOPE_LABELS: Record<Exclude<LauncherKind, "command"> | "command", { label
   clipboard: { label: "Clipboard", className: "text-pink-400 bg-pink-500/15 border-pink-500/20" },
   bookmark: { label: "Bookmarks", className: "text-yellow-400 bg-yellow-500/15 border-yellow-500/20" },
   grep: { label: "Grep", className: "text-lime-400 bg-lime-500/15 border-lime-500/20" },
+  code: { label: "Code", className: "text-teal-400 bg-teal-500/15 border-teal-500/20" },
   ai: { label: "AI", className: "text-fuchsia-400 bg-fuchsia-500/15 border-fuchsia-500/20" },
 };
 
@@ -253,6 +259,7 @@ const SCOPE_TOKENS: Record<string, LauncherKind> = {
   n: "note", note: "note", notes: "note",
   f: "file", file: "file", files: "file",
   g: "grep", grep: "grep", content: "grep", contents: "grep",
+  code: "code", cs: "code", sym: "code", symbol: "code",
   c: "clipboard", clip: "clipboard", clipboard: "clipboard",
   b: "bookmark", bm: "bookmark", bookmark: "bookmark", bookmarks: "bookmark",
   w: "workflow", wf: "workflow", workflow: "workflow", workflows: "workflow",
@@ -268,6 +275,7 @@ const SCOPE_CANONICAL: Partial<Record<LauncherKind, string>> = {
   note: "notes",
   file: "files",
   grep: "grep",
+  code: "code",
   clipboard: "clip",
   bookmark: "bookmarks",
   workflow: "workflows",

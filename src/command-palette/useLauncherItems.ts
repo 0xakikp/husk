@@ -22,6 +22,13 @@ import { removeRecentNote } from "../notes/store";
 import { useClipHistory, deleteClip } from "../clipboard/store";
 import { useBookmarks, addBookmark, toggleBookmarkPin, type Bookmark } from "../bookmarks/store";
 import { parseQuery, matchScopeTokens } from "./CommandPalette";
+import {
+  searchCodebase,
+  buildCodebaseIndex,
+  getIndexedRoot,
+  type SearchResult,
+} from "../ai/codebaseSearch";
+import { getWorkspaceRoot } from "../workspace/store";
 
 const copy = (text: string) => void navigator.clipboard.writeText(text);
 
@@ -86,6 +93,8 @@ export function useLauncherItems(
   const [grepResults, setGrepResults] = useState<GrepResult[]>([]);
   const [grepBusy, setGrepBusy] = useState(false);
   const [grepMissingTool, setGrepMissingTool] = useState(false);
+  const [codeResults, setCodeResults] = useState<SearchResult[]>([]);
+  const [codeIndexing, setCodeIndexing] = useState(false);
 
   const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
 
@@ -138,6 +147,42 @@ export function useLauncherItems(
         .finally(() => {
           if (!ac.signal.aborted) setGrepBusy(false);
         });
+    }, 150);
+    return () => {
+      ac.abort();
+      clearTimeout(t);
+    };
+  }, [open, scopedKind, query]);
+
+  /* Ranked code search over the AI index. Unlike "g:" (a single literal string
+     through ripgrep) this splits the query into terms, drops stopwords and weights
+     filename over content — so a phrase like "pod name parsing" ranks sensibly.
+     It is keyword scoring, not embeddings: words that never appear in the code
+     will not find it. */
+  useEffect(() => {
+    if (!open || scopedKind !== "code" || !query.trim()) {
+      setCodeResults([]);
+      setCodeIndexing(false);
+      return;
+    }
+    const ac = new AbortController();
+    const t = setTimeout(() => {
+      void (async () => {
+        const root = getWorkspaceRoot();
+        if (!root) return;
+        if (getIndexedRoot() !== root) {
+          setCodeIndexing(true);
+          try {
+            await buildCodebaseIndex(root);
+          } catch {
+            /* leave results empty; the status row explains */
+          }
+          if (ac.signal.aborted) return;
+          setCodeIndexing(false);
+        }
+        if (ac.signal.aborted) return;
+        setCodeResults(searchCodebase(query, 30));
+      })();
     }, 150);
     return () => {
       ac.abort();
@@ -252,6 +297,46 @@ export function useLauncherItems(
     // Bookmarks
     for (const b of bookmarks) {
       items.push(bookmarkToCommand(b, ctx));
+    }
+
+    // Indexed code search (only in the "code" scope)
+    if (scopedKind === "code") {
+      for (const r of codeResults) {
+        const name = r.path.split("/").pop() ?? r.path;
+        const first = r.matches[0];
+        items.push({
+          id: `code:${r.path}`,
+          kind: "code",
+          label: r.path,
+          hint: first ? `line ${first.line}` : undefined,
+          keywords: r.snippet,
+          group: "Code",
+          run: () =>
+            first
+              ? ctx.openFileAtLine(r.path, name, first.line)
+              : ctx.openFile(r.path, name),
+          secondary: { label: "copy path", run: () => copy(r.path) },
+        });
+      }
+      if (codeIndexing) {
+        items.push({
+          id: "code:indexing",
+          kind: "code",
+          label: "Building codebase index…",
+          group: "Code",
+          status: true,
+          run: () => {},
+        });
+      } else if (codeResults.length === 0 && query.trim()) {
+        items.push({
+          id: "code:none",
+          kind: "code",
+          label: getWorkspaceRoot() ? "No indexed matches" : "Open a folder to search code",
+          group: "Code",
+          status: true,
+          run: () => {},
+        });
+      }
     }
 
     // Ripgrep results (only shown in the grep scope)
@@ -397,7 +482,7 @@ export function useLauncherItems(
     }
 
     return items;
-  }, [commands, ctx, dyn, openPaths, clips, bookmarks, scopedKind, grepResults, grepBusy, grepMissingTool]);
+  }, [commands, ctx, dyn, openPaths, clips, bookmarks, scopedKind, grepResults, grepBusy, grepMissingTool, codeResults, codeIndexing]);
 
   /* Cheap per-keystroke layer: a handful of rows appended to a stable base. */
   return useMemo(() => {
