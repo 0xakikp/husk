@@ -10,7 +10,7 @@ import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { openBubble, toggleComposer, sendToComposer } from "./ai/bubbleStore";
 import { setActiveSessionId } from "./ai/sessionStore";
-import { getEditorSelection, getEditorFile, closeEditorFindWidget } from "./ai/editorStore";
+import { closeEditorFindWidget } from "./ai/editorStore";
 import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
 import type { OpenFile } from "./editor/EditorArea";
@@ -481,90 +481,6 @@ function App() {
             { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
             { id: "explain", label: "Explain last error (AI)", run: explainLastError },
             { id: "ai-bubble", label: "Toggle AI composer", hint: "Ctrl/Cmd+Shift+A", run: () => toggleComposer() },
-            { id: "ai-explain-code", label: "AI: Explain selected code", run: () => {
-              const sel = getEditorSelection();
-              const file = getEditorFile();
-              if (!sel) {
-                toast({ title: "No code selected", variant: "error", duration: 2000 });
-                return;
-              }
-              openBubble(`Explain this code from ${file ?? "current file"} (lines ${sel.startLine}-${sel.endLine}):\n\n\`\`\`\n${sel.text}\n\`\`\``);
-            }},
-            { id: "ai-generate-test", label: "AI: Generate tests", run: () => {
-              const file = getEditorFile();
-              if (!file) {
-                toast({ title: "No file open", variant: "error", duration: 2000 });
-                return;
-              }
-              openBubble(`Generate unit tests for ${file}. Include edge cases and error handling.`);
-            }},
-            { id: "ai-refactor", label: "AI: Refactor code", run: () => {
-              const sel = getEditorSelection();
-              const file = getEditorFile();
-              if (!sel) {
-                toast({ title: "No code selected", variant: "error", duration: 2000 });
-                return;
-              }
-              openBubble(`Refactor this code from ${file ?? "current file"} (lines ${sel.startLine}-${sel.endLine}):\n\n\`\`\`\n${sel.text}\n\`\`\`\n\nMake it cleaner, more idiomatic, and better documented.`);
-            }},
-            { id: "ai-fix-error", label: "AI: Fix error / bug", run: () => {
-              const sel = getEditorSelection();
-              const file = getEditorFile();
-              openBubble(`Find and fix the bug in ${file ?? "current file"}${sel ? ` (lines ${sel.startLine}-${sel.endLine})` : ""}.\n${sel ? `\n\`\`\`\n${sel.text}\n\`\`\`` : ""}`);
-            }},
-            { id: "ai-accept-edits", label: "AI: Accept all pending edits", run: () => {
-              /* This used to be identical to Reject: it dropped the queue and
-                 toasted "Accepted" without writing anything, so the AI reported
-                 edits it had never made. It now actually applies them, and only
-                 removes an edit from the queue once its write succeeded. */
-              void import("./ai/pendingEdits").then(async ({ getPendingEdits, removePendingEdit, applyPendingEdit }) => {
-                const edits = getPendingEdits();
-                if (edits.length === 0) {
-                  toast({ title: "No pending edits", variant: "error", duration: 2000 });
-                  return;
-                }
-                const failures: string[] = [];
-                let applied = 0;
-                for (const e of edits) {
-                  const res = await applyPendingEdit(e);
-                  if (res.ok) {
-                    applied += 1;
-                    removePendingEdit(e.id);
-                  } else {
-                    failures.push(`${res.path.split("/").pop()}: ${res.reason}`);
-                  }
-                }
-                if (applied > 0) {
-                  toast({ title: `Applied ${applied} edit${applied > 1 ? "s" : ""}`, variant: "success", duration: 2500 });
-                }
-                if (failures.length > 0) {
-                  // Kept in the queue so they can be retried or inspected.
-                  toast({ title: `${failures.length} edit${failures.length > 1 ? "s" : ""} could not be applied`, message: failures.join("\n"), variant: "error", duration: 6000 });
-                }
-              });
-            }},
-            { id: "ai-reject-edits", label: "AI: Reject all pending edits", run: () => {
-              import("./ai/pendingEdits").then(({ getPendingEdits, removePendingEdit }) => {
-                const edits = getPendingEdits();
-                if (edits.length === 0) {
-                  toast({ title: "No pending edits", variant: "error", duration: 2000 });
-                  return;
-                }
-                edits.forEach((e) => removePendingEdit(e.id));
-                toast({ title: `Discarded ${edits.length} edit${edits.length > 1 ? "s" : ""}`, variant: "info", duration: 2000 });
-              });
-            }},
-            { id: "ai-clear-edits", label: "AI: Clear pending edits", run: () => {
-              import("./ai/pendingEdits").then(({ clearPendingEdits, getPendingEdits }) => {
-                const count = getPendingEdits().length;
-                if (count === 0) {
-                  toast({ title: "No pending edits", variant: "error", duration: 2000 });
-                  return;
-                }
-                clearPendingEdits();
-                toast({ title: `Cleared ${count} edit${count > 1 ? "s" : ""}`, variant: "success", duration: 2000 });
-              });
-            }},
             { id: "ai-rebuild-index", label: "AI: Rebuild codebase index", run: () => {
               import("./ai/codebaseSearch").then(({ buildCodebaseIndex }) => {
                 import("./workspace/store").then(({ getWorkspaceRoot }) => {
