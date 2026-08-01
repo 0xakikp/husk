@@ -20,6 +20,8 @@ import {
   CodeIcon,
 } from "@hugeicons/core-free-icons";
 import { VitalStrip } from "./vitals/VitalStrip";
+import { getShellHistory } from "../shellHistory";
+import { cachedProjectActions, type ProjectAction } from "./projectActions";
 import { useSystemVitals } from "./vitals/useSystemVitals";
 import { isRepo, status as gitStatus, currentBranch, branchAheadBehind } from "../git/client";
 import { checkDocker } from "../docker/client";
@@ -280,28 +282,59 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
   const wsName = workspace ? workspace.split("/").pop() || workspace : "";
 
   /* Recent commands — last 3 unique */
+  /* Recent commands, from the shell's own history — the same source Ctrl+R uses.
+     This previously scraped xterm's rendered text via
+     document.querySelector("[data-terminal]"), an attribute that exists nowhere in
+     the codebase, so the element was always null and the list was permanently
+     empty. That is why the idle bar only ever showed Clear and ls. It also kept
+     just the first word, turning "git status" into "git". */
   const [recentCmds, setRecentCmds] = useState<string[]>([]);
   useEffect(() => {
-    const unsub = subscribeTerminalState(() => {
-      const code = getActiveTerminalExit();
-      if (code !== null && code !== lastExitCode) {
-        // Try to get last command from terminal history
-        const term = document.querySelector("[data-terminal]");
-        const lines = term?.textContent?.split("\n") || [];
-        const lastLine = lines.slice(-5).find((l) => l.trim() && !l.includes("$") && !l.includes("✓") && !l.includes("✗"));
-        if (lastLine) {
-          const cmd = lastLine.trim().split(" ")[0];
-          if (cmd && cmd.length > 1 && !["bash", "zsh", "sh"].includes(cmd)) {
-            setRecentCmds((prev) => {
-              const next = [cmd, ...prev.filter((c) => c !== cmd)].slice(0, 3);
-              return next;
-            });
-          }
+    let cancelled = false;
+    void getShellHistory(200)
+      .then((rows) => {
+        if (cancelled) return;
+        const seen = new Set<string>();
+        const picked: string[] = [];
+        for (const { command } of rows) {
+          const cmd = command.trim();
+          // Skip noise: bare shells, one-off characters, and anything too long to
+          // read in a pill.
+          if (cmd.length < 2 || cmd.length > 24) continue;
+          if (["bash", "zsh", "sh", "clear", "exit", "ls", "ls -la"].includes(cmd)) continue;
+          const key = cmd.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          picked.push(cmd);
+          if (picked.length === 2) break;
         }
-      }
-    });
-    return unsub;
+        setRecentCmds(picked);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [lastExitCode]);
+
+  /* Actions that match the directory the terminal is in, so the idle bar offers
+     something specific to this project instead of two universal commands. */
+  const [projectActions, setProjectActions] = useState<ProjectAction[]>([]);
+  useEffect(() => {
+    const dir = getActiveTerminalCwd();
+    if (!dir) {
+      setProjectActions([]);
+      return;
+    }
+    let cancelled = false;
+    void cachedProjectActions(dir)
+      .then((a) => {
+        if (!cancelled) setProjectActions(a);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd]);
 
   return (
     <div
@@ -467,28 +500,44 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
               <HugeiconsIcon icon={Delete01Icon} size={11} strokeWidth={1.75} />
               Clear
             </button>
-            {/* Recent commands */}
-            {recentCmds.map((cmd) => (
+            {/* Project actions — what this directory can actually do */}
+            {projectActions.map((a) => (
               <button
-                key={cmd}
+                key={a.command}
                 type="button"
-                onClick={() => send(cmd)}
+                onClick={() => send(a.command)}
                 className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
-                title={`Run: ${cmd}`}
+                title={`Run: ${a.command}`}
               >
-                <HugeiconsIcon icon={CommandIcon} size={11} strokeWidth={1.75} />
-                {cmd}
+                <HugeiconsIcon icon={CodeIcon} size={11} strokeWidth={2.25} />
+                {a.label}
               </button>
             ))}
-            <button
-              type="button"
-              onClick={() => send("ls -la")}
-              className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
-              title="List directory"
-            >
-              <HugeiconsIcon icon={Folder01Icon} size={11} strokeWidth={1.75} />
-              ls
-            </button>
+            {/* Recent shell commands, only where a project offered nothing */}
+            {projectActions.length === 0 &&
+              recentCmds.map((cmd) => (
+                <button
+                  key={cmd}
+                  type="button"
+                  onClick={() => send(cmd)}
+                  className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+                  title={`Run: ${cmd}`}
+                >
+                  <HugeiconsIcon icon={CommandIcon} size={11} strokeWidth={2.25} />
+                  {cmd}
+                </button>
+              ))}
+            {projectActions.length === 0 && recentCmds.length === 0 && (
+              <button
+                type="button"
+                onClick={() => send("ls -la")}
+                className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+                title="List directory"
+              >
+                <HugeiconsIcon icon={Folder01Icon} size={11} strokeWidth={2.25} />
+                ls
+              </button>
+            )}
           </div>
         )}
       </div>
