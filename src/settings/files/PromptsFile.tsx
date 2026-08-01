@@ -2,6 +2,7 @@ import { useState } from "react";
 import { usePrefs, setPrefs, type PromptTemplate } from "../preferences";
 import {
   ConfigEditor,
+  CfgArt,
   CfgAct,
   CfgBlank,
   CfgBlock,
@@ -11,6 +12,7 @@ import {
   CfgStr,
   CfgText,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 function nextId() {
   return `template-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
@@ -65,9 +67,7 @@ export function PromptsFile() {
 
   return (
     <ConfigEditor>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
-      <CfgComment>ai/prompts.toml — quick-action prompts</CfgComment>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.prompts} />
       <CfgBlank />
       <CfgComment>shown as /slash commands in the AI composer, in order</CfgComment>
       <CfgBlank />

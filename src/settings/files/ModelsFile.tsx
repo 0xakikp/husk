@@ -4,6 +4,7 @@ import { PROVIDERS, type Provider } from "../../ai/providers";
 import { loadConfig, saveConfig, useKey, setKey } from "../../ai/store";
 import {
   ConfigEditor,
+  CfgArt,
   CfgAct,
   CfgBlank,
   CfgBool,
@@ -14,6 +15,7 @@ import {
   CfgStr,
   CfgText,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 function maskKey(k: string): string {
   if (!k) return "";
@@ -99,9 +101,7 @@ export function ModelsFile() {
 
   return (
     <ConfigEditor>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
-      <CfgComment>ai/models.toml — providers and API keys</CfgComment>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.models} />
       <CfgBlank />
 
       <CfgSection name="ai" />

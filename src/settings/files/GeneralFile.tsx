@@ -11,6 +11,7 @@ import { FONT_FAMILIES, type FontFamilyId } from "../../styles/fonts";
 import { TERMINAL_THEME_PRESETS, type TerminalThemePreset } from "../../styles/terminalTheme";
 import {
   ConfigEditor,
+  CfgArt,
   CfgBlank,
   CfgComment,
   CfgEnum,
@@ -19,6 +20,7 @@ import {
   CfgSection,
   CfgText,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 const px = (a: number[]) => a.map((n) => ({ value: n, label: `${n}px` }));
 
@@ -31,9 +33,7 @@ export function GeneralFile() {
 
   return (
     <ConfigEditor>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
-      <CfgComment>config.toml — editor, terminal, startup</CfgComment>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.config} />
       <CfgBlank />
 
       <CfgSection name="ai" />

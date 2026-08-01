@@ -3,6 +3,7 @@ import { usePrefs, setPrefs } from "../preferences";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   ConfigEditor,
+  CfgArt,
   CfgAct,
   CfgBlank,
   CfgBlock,
@@ -15,6 +16,7 @@ import {
   CfgSlider,
   CfgStr,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 const PRESET_COLORS = [
   "#11c700",
@@ -83,9 +85,7 @@ export function AppearanceFile() {
 
   return (
     <ConfigEditor>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
-      <CfgComment>appearance.toml — colors, effects, layout</CfgComment>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.appearance} />
       <CfgBlank />
 
       <CfgSection name="theme" />

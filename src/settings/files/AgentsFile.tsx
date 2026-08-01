@@ -2,6 +2,7 @@ import { useState } from "react";
 import { usePrefs, setPrefs, type AiAgent } from "../preferences";
 import {
   ConfigEditor,
+  CfgArt,
   CfgAct,
   CfgBlank,
   CfgBlock,
@@ -12,6 +13,7 @@ import {
   CfgStr,
   CfgText,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 function nextId() {
   return `agent-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
@@ -72,9 +74,7 @@ export function AgentsFile() {
 
   return (
     <ConfigEditor>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
-      <CfgComment>ai/agents.toml — composer personas</CfgComment>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.agents} />
       <CfgBlank />
 
       <CfgSection name="ai" />

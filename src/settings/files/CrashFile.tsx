@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { getSentryEnabled, setSentryEnabled } from "../CrashReportingSection";
 import {
   ConfigEditor,
+  CfgArt,
   CfgBlank,
   CfgBool,
-  CfgComment,
   CfgRow,
   CfgSection,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 export function CrashFile() {
   const [enabled, setEnabled] = useState(getSentryEnabled());
@@ -18,9 +19,7 @@ export function CrashFile() {
 
   return (
     <ConfigEditor>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
-      <CfgComment>crash.toml — error reporting</CfgComment>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.crash} />
       <CfgBlank />
 
       <CfgSection name="telemetry" />

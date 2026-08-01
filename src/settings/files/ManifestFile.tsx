@@ -7,22 +7,11 @@ import {
   CfgAct,
   CfgArt,
   CfgBlank,
-  CfgComment,
   CfgRow,
   CfgSection,
   CfgStr,
 } from "../config/controls";
-
-/* "ANSI Shadow" figlet style. All six rows are exactly 33 glyphs so the
-   letterforms line up; do not reflow them. */
-const WORDMARK = [
-  "██╗  ██╗██╗   ██╗███████╗██╗  ██╗",
-  "██║  ██║██║   ██║██╔════╝██║ ██╔╝",
-  "███████║██║   ██║███████╗█████╔╝ ",
-  "██╔══██║██║   ██║╚════██║██╔═██╗ ",
-  "██║  ██║╚██████╔╝███████║██║  ██╗",
-  "╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝",
-];
+import { BANNERS } from "../config/banners";
 
 const REPO_URL = "https://github.com/0xakikp/husk";
 const FEEDBACK_URL = "https://github.com/0xakikp/husk/issues/new";
@@ -46,10 +35,7 @@ export function ManifestFile() {
 
   return (
     <ConfigEditor>
-      <CfgArt lines={WORDMARK} />
-      <CfgBlank />
-      <CfgComment>Intelligence, stripped to the shell.</CfgComment>
-      <CfgComment>manifest.toml — about this build</CfgComment>
+      <CfgArt lines={BANNERS.manifest} />
       <CfgBlank />
 
       <CfgSection name="husk" />

@@ -3,6 +3,7 @@ import { toast } from "../../toast";
 import { exportSettings, importSettings } from "../cloudSync";
 import {
   ConfigEditor,
+  CfgArt,
   CfgAct,
   CfgBlank,
   CfgBlock,
@@ -12,6 +13,7 @@ import {
   CfgSection,
   CfgText,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 export function SyncFile() {
   const [mode, setMode] = useState<"export" | "import">("export");
@@ -48,9 +50,7 @@ export function SyncFile() {
 
   return (
     <ConfigEditor>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
-      <CfgComment>sync.toml — encrypted settings transfer</CfgComment>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.sync} />
       <CfgBlank />
       <CfgComment>data is encrypted locally with your passphrase —</CfgComment>
       <CfgComment>nothing leaves your device unencrypted.</CfgComment>

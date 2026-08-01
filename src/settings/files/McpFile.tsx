@@ -19,6 +19,7 @@ import { getMarketplaceItemById } from "@/mcp/marketplace";
 import { Switch } from "@/components/ui/switch";
 import {
   ConfigEditor,
+  CfgArt,
   CfgAct,
   CfgBlank,
   CfgComment,
@@ -26,6 +27,7 @@ import {
   CfgSection,
   CfgStr,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 export function McpFile() {
   const [servers, setServers] = useState<McpServerConfig[]>([]);
@@ -151,9 +153,7 @@ export function McpFile() {
 
   return (
     <ConfigEditor>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
-      <CfgComment>mcp.toml — Model Context Protocol servers</CfgComment>
-      <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.mcp} />
       <CfgBlank />
 
       {loading ? (

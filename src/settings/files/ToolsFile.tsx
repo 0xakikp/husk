@@ -2,12 +2,14 @@ import { useState } from "react";
 import { SetupAssistantBanner, SetupAssistantDialog } from "../SetupAssistantDialog";
 import {
   ConfigEditor,
+  CfgArt,
   CfgAct,
   CfgBlank,
   CfgComment,
   CfgRow,
   CfgSection,
 } from "../config/controls";
+import { BANNERS } from "../config/banners";
 
 export function ToolsFile() {
   const [setupOpen, setSetupOpen] = useState(false);
@@ -15,9 +17,7 @@ export function ToolsFile() {
   return (
     <>
       <ConfigEditor>
-        <CfgComment>──────────────────────────────────────────</CfgComment>
-        <CfgComment>tools.toml — optional CLI companions</CfgComment>
-        <CfgComment>──────────────────────────────────────────</CfgComment>
+      <CfgArt lines={BANNERS.tools} />
         <CfgBlank />
         <CfgComment>eza, bat, fzf, zoxide, lazygit, starship, and more.</CfgComment>
         <CfgComment>husk detects what you have and pastes install</CfgComment>
