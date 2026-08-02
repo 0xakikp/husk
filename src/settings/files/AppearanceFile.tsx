@@ -175,9 +175,6 @@ export function AppearanceFile() {
       <CfgRow name="blur" comment="Wallpaper softness.">
         <CfgSlider value={bg.blur} min={0} max={20} step={1} unit="px" onChange={(v) => patchBg({ blur: v })} />
       </CfgRow>
-      <CfgRow name="dim" comment="Dark overlay strength.">
-        <CfgSlider value={bg.dim} min={0} max={90} step={5} onChange={(v) => patchBg({ dim: v })} />
-      </CfgRow>
       <CfgRow name="editorOpacity" comment="Code area wallpaper transparency.">
         <CfgSlider
           value={p.editorWallpaperOpacity}
@@ -227,6 +224,16 @@ export function AppearanceFile() {
       <CfgBlank />
 
       <CfgSection name="composer" />
+      <CfgRow name="dock" comment="Which side the AI panel sits on, in both the terminal and editor.">
+        <CfgEnum<"left" | "right">
+          value={p.aiComposerDock}
+          onChange={(aiComposerDock) => setPrefs({ aiComposerDock })}
+          options={[
+            { value: "left", label: "Left" },
+            { value: "right", label: "Right" },
+          ]}
+        />
+      </CfgRow>
       <CfgRow name="opacity" comment="Composer background transparency.">
         <CfgSlider value={p.aiMiniOpacity} min={10} max={100} step={5} onChange={(v) => setPrefs({ aiMiniOpacity: v })} />
       </CfgRow>

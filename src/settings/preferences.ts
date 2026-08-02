@@ -14,7 +14,6 @@ export type BackgroundSettings = {
   path: string;
   opacity: number;
   blur: number;
-  dim: number;
   /** cover = fill the window and crop overflow; contain = whole image visible. */
   fit: "cover" | "contain";
 };
@@ -112,7 +111,8 @@ export type Prefs = {
   aiSidebarWidth: number;
 
   // AI composer dock (terminal)
-  aiComposerDock: "bottom" | "right";
+  /** Which side the AI panel docks to, in both the terminal and editor views. */
+  aiComposerDock: "left" | "right";
   aiComposerSideWidth: number;
 
   // AI talk-back (TTS) voice — empty = auto female
@@ -221,7 +221,6 @@ const DEFAULT: Prefs = {
     path: "",
     opacity: 100,
     blur: 0,
-    dim: 50,
     fit: "cover",
   },
 
@@ -244,7 +243,7 @@ const DEFAULT: Prefs = {
   aiTabPinned: false,
   aiTabColor: undefined,
   aiSidebarWidth: 240,
-  aiComposerDock: "right",
+  aiComposerDock: "left",
   aiComposerSideWidth: 380,
   aiTtsVoice: "",
   setupAssistantDismissed: false,
@@ -260,6 +259,20 @@ function load(): Prefs {
        permanently hide keys added to the defaults later — deep-merge those. */
     const merged = { ...DEFAULT, ...saved };
     merged.background = { ...DEFAULT.background, ...(saved.background ?? {}) };
+
+    /* `dim` was a second black overlay above the wallpaper, while `opacity`
+       faded the wallpaper toward the same black underneath it — so the two
+       multiplied out to one value, image x opacity x (1 - dim). Only `opacity`
+       remains; fold any stored dim into it so an existing wallpaper keeps the
+       brightness it had rather than jumping. */
+    const legacyDim = (saved.background as { dim?: number } | undefined)?.dim;
+    if (typeof legacyDim === "number" && legacyDim > 0) {
+      merged.background = {
+        ...merged.background,
+        opacity: Math.max(10, Math.round((merged.background.opacity * (100 - legacyDim)) / 100)),
+      };
+      delete (merged.background as { dim?: number }).dim;
+    }
     return merged;
   } catch {
     return DEFAULT;

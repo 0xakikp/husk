@@ -40,7 +40,8 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
     fontFamily: fontStack(p.fontFamily),
     fontLigatures: p.editorLigatures,
     minimap: { enabled: p.editorMinimap },
-    wordWrap: "on",
+    // Was hardcoded "on", so the wordWrap setting never reached Monaco.
+    wordWrap: p.editorWordWrap,
     wrappingStrategy: "advanced",
     scrollBeyondLastColumn: 0,
     lineNumbers: p.editorLineNumbers,

@@ -149,7 +149,6 @@
 
 :root {
   --app-zoom: 1;
-  --terminal-opacity: 1;
   --terminal-blur: 0px;
 }
 .zoom-content {

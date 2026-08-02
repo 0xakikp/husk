@@ -110,6 +110,7 @@ export function WorkspacePanels({
       can cover the browser — the native webview must be parked. */
   chromeOccluded: boolean;
 }) {
+  const aiLeft = prefs.aiComposerDock === "left";
   return (
     <div
       className={cn(
@@ -154,14 +155,16 @@ export function WorkspacePanels({
             className="relative flex min-h-0 flex-1 flex-row"
             style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
           >
-            {/* Composer first — AI panel to the LEFT of the terminal, matching
-                the editor tab so the panel does not swap sides between tabs. */}
-            <TerminalAiComposer
-              sessionId={tabSessionId(term.activeId)}
-              onOpenInAiTab={() => setActiveKind("ai")}
-              registerSend={true}
-              dock="left"
-            />
+            {/* Order follows the setting: a left dock has to come first in the
+                row, not just carry dock="left". */}
+            {aiLeft && (
+              <TerminalAiComposer
+                sessionId={tabSessionId(term.activeId)}
+                onOpenInAiTab={() => setActiveKind("ai")}
+                registerSend={true}
+                dock="left"
+              />
+            )}
             <div className={cn(
               "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)]",
               prefs.panelShadows && "panel-shadow",
@@ -179,6 +182,14 @@ export function WorkspacePanels({
                 <TerminalStack term={term} viewActive={activeKind === "term"} />
               </ErrorBoundary>
             </div>
+            {!aiLeft && (
+              <TerminalAiComposer
+                sessionId={tabSessionId(term.activeId)}
+                onOpenInAiTab={() => setActiveKind("ai")}
+                registerSend={true}
+                dock="right"
+              />
+            )}
           </div>
           <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
         </div>
@@ -244,19 +255,25 @@ export function WorkspacePanels({
               className="flex h-full w-full flex-row"
               style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
             >
-              {/* Composer first: on the file tab the AI panel sits to the LEFT
-                  of the editor, so the code stays against the same edge you
-                  read from and the panel lines up with the sidebar. */}
-              <TerminalAiComposer
-                sessionId={tabSessionId(term.activeId)}
-                onOpenInAiTab={() => setActiveKind("ai")}
-                dock="left"
-              />
+              {aiLeft && (
+                <TerminalAiComposer
+                  sessionId={tabSessionId(term.activeId)}
+                  onOpenInAiTab={() => setActiveKind("ai")}
+                  dock="left"
+                />
+              )}
               <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
                 <div className="flex-1 overflow-hidden">
                   {lazyPanel(<EditorArea files={openFiles} activePath={activeFile} />, "Editor")}
                 </div>
               </div>
+              {!aiLeft && (
+                <TerminalAiComposer
+                  sessionId={tabSessionId(term.activeId)}
+                  onOpenInAiTab={() => setActiveKind("ai")}
+                  dock="right"
+                />
+              )}
             </div>
           ) : (
             <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-muted-foreground">

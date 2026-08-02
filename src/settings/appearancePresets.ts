@@ -51,7 +51,7 @@ const BUILTIN: AppearancePreset[] = [
       aiMiniBgDim: 50,
       aiComposerBgStyle: "default",
     },
-    background: { enabled: false, opacity: 100, blur: 0, dim: 50 },
+    background: { enabled: false, opacity: 100, blur: 0 },
   },
   {
     id: "kath",
@@ -71,7 +71,7 @@ const BUILTIN: AppearancePreset[] = [
       aiMiniBgDim: 62,
       aiComposerBgStyle: "default",
     },
-    background: { enabled: true, opacity: 70, blur: 2, dim: 62 },
+    background: { enabled: true, opacity: 27, blur: 2 },
   },
 ];
 
@@ -154,7 +154,6 @@ export function saveCurrentAsPreset(name: string): AppearancePreset | null {
       enabled: p.background.enabled,
       opacity: p.background.opacity,
       blur: p.background.blur,
-      dim: p.background.dim,
     },
     custom: true,
   };

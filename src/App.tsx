@@ -814,13 +814,6 @@ function App() {
                 filter: `blur(${prefs.background.blur}px)`,
               }}
             />
-            <div
-              className="pointer-events-none fixed inset-0"
-              style={{
-                zIndex: -1,
-                backgroundColor: `rgba(0,0,0,${prefs.background.dim / 100})`,
-              }}
-            />
           </>
         )}
 
