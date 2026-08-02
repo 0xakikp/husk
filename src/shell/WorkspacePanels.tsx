@@ -117,10 +117,14 @@ export function WorkspacePanels({
         prefs.panelShadows && "panel-shadow",
         prefs.activePanelGlow && activeKind === "term" && "active-panel-glow active",
       )}
-      /* No margins at all: every edge of this panel is a window edge, and a gap
-         there just exposes the fixed wallpaper layer as a pale frame. The only
-         gaps kept are the ones between two panels -- the column `gap` below,
-         which separates the terminal from the breadcrumb and the command bar. */
+      style={{
+        marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
+        marginBottom: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+        marginLeft: prefs.panelGaps > 0 ? '0' : undefined,
+        /* No top gap: the breadcrumb panel directly above supplies the
+           separation, and doubling it would leave a wide band of wallpaper. */
+        marginTop: undefined,
+      }}
     >
       <div className="relative flex min-h-0 min-w-0 flex-1">
         {/* Terminal layer */}
@@ -216,10 +220,9 @@ export function WorkspacePanels({
             activeKind !== "file" && "invisible pointer-events-none",
             prefs.neonBorderGlow && activeKind === "file" && "neon-glow",
           )}
-          /* No padding: this framed the editor with bare wallpaper on all four
-             sides. It now fills the same box as the terminal layer, so the two
-             views are flush with the window the same way. The editor's gap from
-             the AI composer comes from the spacer inside the column below. */
+          style={{
+            padding: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
+          }}
           aria-hidden={activeKind !== "file"}
         >
           {openFiles.length > 0 ? (

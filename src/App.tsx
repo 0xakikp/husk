@@ -917,9 +917,10 @@ function App() {
                 prefs.neonBorderGlow && "neon-glow",
                 prefs.panelShadows && "panel-shadow",
               )}
-              /* No margins: top would open a wallpaper strip under the black
-                 title bar, right would open one along the window edge. The gap
-                 below this panel comes from the column's `gap`. */
+              style={{
+                marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+                marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : "8px",
+              }}
             >
               <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
             </div>
