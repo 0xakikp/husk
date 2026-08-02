@@ -410,7 +410,10 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
          through it is the intended look. The window-edge chrome (title bar,
          breadcrumb, status bar) is opaque instead. */
       className={cn(
-        "flex h-9 shrink-0 items-center gap-2 overflow-hidden rounded-lg border border-border/15 bg-background/50 px-2 transition-opacity duration-150",
+        /* h-7 + px-3 mirror the breadcrumb bar exactly (PathBar), so the two
+           strips bracketing the terminal are one size and their content starts
+           at the same x. Background stays translucent on purpose — see above. */
+        "flex h-7 shrink-0 items-center gap-2 overflow-hidden rounded-lg border border-border/15 bg-background/50 px-3 transition-opacity duration-150",
         prefs.panelShadows && "panel-shadow",
       )}
       onDrop={(e) => {
