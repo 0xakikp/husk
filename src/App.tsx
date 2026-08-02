@@ -866,31 +866,6 @@ function App() {
           onOpenSettings={openSettings}
           activeKind={activeKind}
         />
-        {/* ── Path bar (cwd / breadcrumb) ────────────────────────── */}
-        {/* Chrome, like the header: opaque and flush. The side margins left bands
-            beside the breadcrumb where the wallpaper showed through, and /85 let
-            another 15% through the bar itself. */}
-        {/* A panel in its own right, using the sidebar's recipe: same radius,
-            border, frosted surface and panel gap, so it reads as a third floating
-            panel rather than a bar laid across the two below it. */}
-        <div
-          className={cn(
-            "overflow-hidden rounded-lg border border-[var(--border)]",
-            prefs.frostedGlass && bgDataUrl
-              ? "bg-background/50 backdrop-blur-md"
-              : "bg-background/95",
-            prefs.neonBorderGlow && "neon-glow",
-            prefs.panelShadows && "panel-shadow",
-          )}
-          style={{
-            margin:
-              prefs.panelGaps > 0
-                ? `var(--panel-gaps) var(--panel-gaps) 0 var(--panel-gaps)`
-                : undefined,
-          }}
-        >
-          <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
-        </div>
 
         {/* ── Main workspace (manual layout, husk v1 visual) ─────── */}
         <main
@@ -923,6 +898,26 @@ function App() {
             sidebarMaxWidth={SIDEBAR_MAX_WIDTH}
             typeInActiveTerminal={typeInActiveTerminal}
           />
+          {/* Breadcrumb sits above the TERMINAL only, so the sidebar runs the
+              full height beside it. Right margin matches WorkspacePanels so the
+              two align; the row's own gap separates this column from the sidebar. */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div
+              className={cn(
+                "shrink-0 overflow-hidden rounded-lg border border-[var(--border)]",
+                prefs.frostedGlass && bgDataUrl
+                  ? "bg-background/50 backdrop-blur-md"
+                  : "bg-background/95",
+                prefs.neonBorderGlow && "neon-glow",
+                prefs.panelShadows && "panel-shadow",
+              )}
+              style={{
+                marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+                marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : "8px",
+              }}
+            >
+              <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
+            </div>
           <WorkspacePanels
             term={term}
             activeKind={activeKind}
@@ -944,6 +939,7 @@ function App() {
             closeBrowser={closeBrowser}
             chromeOccluded={paletteOpen || switcherOpen}
           />
+          </div>
         </main>
 
         {/* ── Status bar ─────────────────────────────────────────── */}

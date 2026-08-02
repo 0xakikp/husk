@@ -121,7 +121,9 @@ export function WorkspacePanels({
         marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
         marginBottom: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
         marginLeft: prefs.panelGaps > 0 ? '0' : undefined,
-        marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+        /* No top gap: the breadcrumb panel directly above supplies the
+           separation, and doubling it would leave a wide band of wallpaper. */
+        marginTop: undefined,
       }}
     >
       <div className="relative flex min-h-0 min-w-0 flex-1">
