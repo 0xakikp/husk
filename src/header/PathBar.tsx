@@ -33,13 +33,13 @@ export function PathBar({ activeFile }: { activeFile?: string | null }) {
   const segments = activeFile ? segmentFile(activeFile) : segmentPath(cwd, root);
 
   return (
-    <div className="flex h-5 shrink-0 items-center gap-0.5 border-b border-border/40 bg-background px-3 text-[9px] text-muted-foreground select-none">
+    <div className="flex h-5 shrink-0 items-center gap-0.5 border-b border-border/60 bg-background px-3 text-[10px] text-muted-foreground select-none">
       {segments.map((seg, i) => (
         <span key={`${seg}-${i}`} className="flex items-center gap-0.5">
           {i > 0 && (
-            <span className="text-muted-foreground/20 mx-0.5 text-[9px]">/</span>
+            <span className="text-muted-foreground/20 mx-0.5 text-[10px]">/</span>
           )}
-          <span className="inline-flex items-center rounded bg-muted/20 px-1.5 py-0 text-[9px] font-medium text-violet-400/90">
+          <span className="inline-flex items-center rounded bg-muted/20 px-1.5 py-0 text-[10px] font-medium text-violet-400/90">
             {seg}
           </span>
         </span>
