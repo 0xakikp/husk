@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { cn } from "@/lib/utils";
 import {
   GitCommitIcon,
   GitPullRequestIcon,
@@ -408,7 +409,10 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
          than at the window edge, so it reads as content and the wallpaper showing
          through it is the intended look. The window-edge chrome (title bar,
          breadcrumb, status bar) is opaque instead. */
-      className="flex h-9 shrink-0 items-center gap-2 overflow-hidden rounded-lg border border-border/15 bg-background/50 px-2 transition-opacity duration-150"
+      className={cn(
+        "flex h-9 shrink-0 items-center gap-2 overflow-hidden rounded-lg border border-border/15 bg-background/50 px-2 transition-opacity duration-150",
+        prefs.panelShadows && "panel-shadow",
+      )}
       onDrop={(e) => {
         e.preventDefault();
         const files = Array.from(e.dataTransfer.files);

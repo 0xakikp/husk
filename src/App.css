@@ -2252,10 +2252,11 @@ button {
 
 /* Panel shadows when gaps are enabled */
 .panel-shadow {
-  box-shadow: 
-    0 1px 2px rgba(0,0,0,0.3),
-    0 4px 8px rgba(0,0,0,0.2),
-    0 8px 16px rgba(0,0,0,0.1);
+  /* The elevation scale, so panels lift correctly in both themes. The old value
+     was three hardcoded rgba(0,0,0,…) layers, which on a #faf8f5 light surface
+     read as grime rather than as depth. --elev-1 is the panel level; menus and
+     overlays use 2 and 3. */
+  box-shadow: var(--elev-1);
 }
 
 /* Active panel glow in gaps */
