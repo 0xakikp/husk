@@ -929,13 +929,10 @@ function App() {
         </main>
 
         {/* ── Status bar ─────────────────────────────────────────── */}
-        <div
-          style={{
-            marginLeft: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-            marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-            marginBottom: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-          }}
-        >
+        {/* Chrome, so flush to the window edge like the header. The margins left
+            bands below and beside it where nothing paints, and the wallpaper sits
+            behind everything at z-index -2. */}
+        <div>
           <StatusBar onExplainError={prefs.aiEnabled ? explainLastError : undefined} />
         </div>
 

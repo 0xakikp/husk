@@ -404,7 +404,9 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
     <div
       data-command-bar
       data-shimmer={shimmer}
-      className="flex h-9 items-center gap-2 border-t border-border/15 bg-background/50 px-2 transition-opacity duration-150"
+      /* Opaque: this strip carries git state and vitals, which a wallpaper behind
+         them only makes harder to read. */
+      className="flex h-9 items-center gap-2 border-t border-border/15 bg-background px-2 transition-opacity duration-150"
       onDrop={(e) => {
         e.preventDefault();
         const files = Array.from(e.dataTransfer.files);
