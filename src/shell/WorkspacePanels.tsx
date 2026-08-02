@@ -154,6 +154,14 @@ export function WorkspacePanels({
             className="relative flex min-h-0 flex-1 flex-row"
             style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
           >
+            {/* Composer first — AI panel to the LEFT of the terminal, matching
+                the editor tab so the panel does not swap sides between tabs. */}
+            <TerminalAiComposer
+              sessionId={tabSessionId(term.activeId)}
+              onOpenInAiTab={() => setActiveKind("ai")}
+              registerSend={true}
+              dock="left"
+            />
             <div className={cn(
               "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)]",
               prefs.panelShadows && "panel-shadow",
@@ -171,12 +179,6 @@ export function WorkspacePanels({
                 <TerminalStack term={term} viewActive={activeKind === "term"} />
               </ErrorBoundary>
             </div>
-            <TerminalAiComposer
-              sessionId={tabSessionId(term.activeId)}
-              onOpenInAiTab={() => setActiveKind("ai")}
-              registerSend={true}
-              dock="right"
-            />
           </div>
           <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
         </div>
