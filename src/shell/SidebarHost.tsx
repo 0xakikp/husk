@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { FileExplorer } from "../explorer/FileExplorer";
 import { SidebarRail, type SidebarViewId } from "../sidebar/SidebarRail";
 import { lazyPanel } from "./lazy";
-import { SHEET_HOST_ID } from "../components/sheetHost";
+import { SHEET_HOST_ID, SidebarSheetContext } from "../components/sheetHost";
 import type { Prefs } from "../settings/preferences";
 import type { K8sResourceSelection } from "../kubernetes/KubernetesView";
 import type { DockerResourceSelection } from "../docker/DockerDetailPanel";
@@ -89,6 +89,9 @@ export function SidebarHost({
           margin: prefs.panelGaps > 0 ? `var(--panel-gaps) 0 var(--panel-gaps) var(--panel-gaps)` : undefined,
         }}
       >
+        {/* Everything in here is "inside the sidebar", so any Modal a view
+            opens renders as a panel sheet rather than a centred dialog. */}
+        <SidebarSheetContext.Provider value={true}>
         <div className="min-h-0 flex-1 overflow-hidden">
           {sidebarView === "explorer" ? (
             <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -159,6 +162,7 @@ export function SidebarHost({
             )
           ) : null}
         </div>
+        </SidebarSheetContext.Provider>
         <SidebarRail
           view={sidebarView}
           onSelectView={(v) => cycleSidebarView(v)}

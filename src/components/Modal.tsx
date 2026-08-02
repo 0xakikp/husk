@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
+import { SHEET_HOST_ID, sheetHost, useIsSidebarSheet } from "./sheetHost";
 
 /**
  * Shared modal built on Radix Dialog (focus trap, Esc, scroll-lock, a11y),
@@ -25,6 +26,7 @@ export function Modal({
   inline?: boolean;
   headerActions?: ReactNode;
 }) {
+  const isSheet = useIsSidebarSheet();
   // Safety net: Radix's modal Dialog sets `pointer-events: none` on <body>
   // while open. Because dialogs here render conditionally, an unmount-while-open
   // can skip Radix's cleanup and leave the whole window unclickable (can't drag
@@ -52,6 +54,11 @@ export function Modal({
       </div>
     );
   }
+  /* Opened from inside a sidebar view: fill the panel instead of floating over
+     the app. Radix's Portal takes a container, so this keeps the focus trap,
+     Esc handling and a11y wiring and only changes where it lands. */
+  const asSheet = isSheet && !!document.getElementById(SHEET_HOST_ID);
+
   return (
     <DialogPrimitive.Root
       open
@@ -64,25 +71,41 @@ export function Modal({
         if (!o) onClose?.();
       }}
     >
-      <DialogPrimitive.Portal>
+      <DialogPrimitive.Portal container={asSheet ? sheetHost() : undefined}>
         {/* No dim, no blur, and transparent to the pointer: the terminal behind
             stays readable and clickable so its output can be copied into this
             dialog. Kept (rather than deleted) only for the fade animation. */}
-        <DialogPrimitive.Overlay className="pointer-events-none fixed inset-0 z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+        <DialogPrimitive.Overlay className={asSheet ? "hidden" : "pointer-events-none fixed inset-0 z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0"} />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          data-movable
+          {...(asSheet ? {} : { "data-movable": true })}
           /* A click outside is now aimed at whatever is under it — usually the
              terminal — so it must not also mean cancel. */
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-80px)] w-[460px] max-w-[calc(100vw-40px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
-            className,
+            asSheet
+              ? "sidebar-sheet-panel"
+              : "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-80px)] w-[460px] max-w-[calc(100vw-40px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
+            // A sheet is the panel, so a caller's max-width/rounding would fight it.
+            !asSheet && className,
           )}
         >
-          <div data-drag-handle className="flex h-11 shrink-0 cursor-move items-center justify-between border-b border-border px-4">
-            <DialogPrimitive.Title className="font-[family-name:var(--font-heading)] text-sm font-medium">
+          <div
+            {...(asSheet ? {} : { "data-drag-handle": true })}
+            className={cn(
+              "flex shrink-0 items-center justify-between border-b border-border",
+              asSheet ? "h-8 px-3" : "h-11 cursor-move px-4",
+            )}
+          >
+            <DialogPrimitive.Title
+              className={cn(
+                "font-[family-name:var(--font-heading)] truncate",
+                // Matches the inline panel header, so drilling in does not change
+                // the weight and colour of the thing you are reading.
+                asSheet ? "text-xs font-semibold text-primary" : "text-sm font-medium",
+              )}
+            >
               {title}
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
@@ -92,7 +115,16 @@ export function Modal({
               <span className="text-lg leading-none">×</span>
             </DialogPrimitive.Close>
           </div>
-          <div className="no-scrollbar overflow-y-auto p-6">{children}</div>
+          <div
+            className={cn(
+              "no-scrollbar overflow-y-auto",
+              // flex-1/min-h-0 so the body scrolls inside the panel rather than
+              // pushing past it; p-6 is too generous for a 220px column.
+              asSheet ? "min-h-0 flex-1 p-3" : "p-6",
+            )}
+          >
+            {children}
+          </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

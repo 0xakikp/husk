@@ -2348,6 +2348,20 @@ button {
   cursor: default;
 }
 
+/* The same treatment for dialogs built on the shared <Modal> rather than a raw
+   portal — New SSH Connection, Port Forwards, Tailscale Settings and the rest.
+   Modal switches to this class when it is rendered inside a sidebar view. */
+.sidebar-sheet-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  animation: sheet-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 @keyframes sheet-in {
   from {
     opacity: 0;
