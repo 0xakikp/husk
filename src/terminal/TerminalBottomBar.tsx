@@ -404,9 +404,11 @@ export function TerminalBottomBar({ onSendToTerminal }: { onSendToTerminal: (tex
     <div
       data-command-bar
       data-shimmer={shimmer}
-      /* Opaque: this strip carries git state and vitals, which a wallpaper behind
-         them only makes harder to read. */
-      className="flex h-9 items-center gap-2 border-t border-border/15 bg-background px-2 transition-opacity duration-150"
+      /* Translucent on purpose: this strip sits INSIDE the terminal panel rather
+         than at the window edge, so it reads as content and the wallpaper showing
+         through it is the intended look. The window-edge chrome (title bar,
+         breadcrumb, status bar) is opaque instead. */
+      className="flex h-9 items-center gap-2 border-t border-border/15 bg-background/50 px-2 transition-opacity duration-150"
       onDrop={(e) => {
         e.preventDefault();
         const files = Array.from(e.dataTransfer.files);
