@@ -162,6 +162,12 @@ export function GeneralFile() {
           options={px([11, 12, 13, 14, 16, 18])}
         />
       </CfgRow>
+      <CfgRow name="boldFont" comment="Draw all terminal text bold. Bold output goes heavier still, so it stays distinct.">
+        <CfgBool
+          value={p.terminalBoldFont}
+          onChange={(terminalBoldFont) => setPrefs({ terminalBoldFont })}
+        />
+      </CfgRow>
       <CfgRow name="scrollback" comment="Lines of history kept.">
         <CfgEnum<number>
           value={p.terminalScrollback}

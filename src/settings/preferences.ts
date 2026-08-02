@@ -48,6 +48,8 @@ export type Prefs = {
   terminalFontSize: number;
   cursorBlink: boolean;
   terminalCursorStyle: TerminalCursorStyle;
+  /** Draw all terminal text at bold weight, not just text the program bolds. */
+  terminalBoldFont: boolean;
   terminalTheme: TerminalThemePreset;
   terminalScrollback: number;
 
@@ -132,6 +134,7 @@ const DEFAULT: Prefs = {
   terminalFontSize: 13,
   cursorBlink: true,
   terminalCursorStyle: "bar",
+  terminalBoldFont: false,
   terminalTheme: "husk",
   terminalScrollback: 1000,
 

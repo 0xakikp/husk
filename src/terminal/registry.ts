@@ -142,6 +142,11 @@ function buildTermOptions() {
   return {
     fontFamily: fontStack(p.fontFamily),
     fontSize: p.terminalFontSize,
+    /* Bold everything, and push what the program already bolds one step
+       further, so SGR-bold text stays distinguishable instead of collapsing
+       into the surrounding weight. */
+    fontWeight: p.terminalBoldFont ? ("bold" as const) : ("normal" as const),
+    fontWeightBold: p.terminalBoldFont ? ("900" as const) : ("bold" as const),
     cursorBlink: p.cursorBlink,
     cursorStyle: p.terminalCursorStyle,
     scrollback: p.terminalScrollback,
@@ -454,6 +459,8 @@ export async function createSession(
     const p = getPrefs();
     term.options.fontSize = p.terminalFontSize;
     term.options.fontFamily = fontStack(p.fontFamily);
+    term.options.fontWeight = p.terminalBoldFont ? "bold" : "normal";
+    term.options.fontWeightBold = p.terminalBoldFont ? "900" : "bold";
     term.options.cursorBlink = p.cursorBlink;
     term.options.cursorStyle = p.terminalCursorStyle;
     term.options.scrollback = p.terminalScrollback;
