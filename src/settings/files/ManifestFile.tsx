@@ -61,62 +61,6 @@ export function ManifestFile() {
       </CfgRow>
       <CfgBlank />
 
-      <CfgSection name="the_night_it_started" />
-      <CfgComment>It is late, and something is broken.</CfgComment>
-      <CfgBlank />
-      <CfgComment>You ssh in. The logs point at a pod that keeps restarting, so you</CfgComment>
-      <CfgComment>open a browser tab for the cluster — and the dashboard asks you to</CfgComment>
-      <CfgComment>pick the context you set in the terminal nine seconds ago. You find</CfgComment>
-      <CfgComment>the pod. It is unhappy about a config file, so you open an editor,</CfgComment>
-      <CfgComment>which has no idea where you have been, so you paste the path in by</CfgComment>
-      <CfgComment>hand. In a fourth window there is a chat box you are now describing</CfgComment>
-      <CfgComment>all of this to, because it cannot see any of it either.</CfgComment>
-      <CfgBlank />
-      <CfgComment>Four windows. One question.</CfgComment>
-      <CfgBlank />
-      <CfgComment>None of those tools are bad. They are just strangers to one</CfgComment>
-      <CfgComment>another — and you are the integration layer, carrying paths,</CfgComment>
-      <CfgComment>contexts and half-remembered output between them by hand, at 2am,</CfgComment>
-      <CfgComment>while the thing you were actually trying to fix waits.</CfgComment>
-      <CfgBlank />
-
-      <CfgSection name="so_we_started_elsewhere" />
-      <CfgComment>Husk begins from the other end. The shell is not a panel tucked</CfgComment>
-      <CfgComment>into a corner — it is the app. Everything else has to earn its</CfgComment>
-      <CfgComment>place beside it, and the price of admission is knowing where you</CfgComment>
-      <CfgComment>already are.</CfgComment>
-      <CfgBlank />
-      <CfgComment>So the cluster is a sidebar, already on your context. The file the</CfgComment>
-      <CfgComment>last command printed opens in a pane, not a new application. The AI</CfgComment>
-      <CfgComment>sits against the terminal and can read what is on screen, which</CfgComment>
-      <CfgComment>means you stop narrating output you could simply point at.</CfgComment>
-      <CfgBlank />
-      <CfgComment>Underneath it is Rust and Tauri, so the PTY is a real PTY and the</CfgComment>
-      <CfgComment>binary stays small. React sits on top, where it earns its keep.</CfgComment>
-      <CfgBlank />
-
-      <CfgSection name="what_it_refuses_to_do" />
-      <CfgComment>It will not make the terminal smaller for a feature nobody asked</CfgComment>
-      <CfgComment>for. It will not send your keys anywhere — they stay in the OS</CfgComment>
-      <CfgComment>keychain, and the AI reaches nothing outside your workspace unless</CfgComment>
-      <CfgComment>you say so. It will not touch a file before showing you the diff,</CfgComment>
-      <CfgComment>or run something dangerous without stopping to ask.</CfgComment>
-      <CfgBlank />
-      <CfgComment>And it will not decide how it should look. That part is yours.</CfgComment>
-      <CfgBlank />
-
-      <CfgSection name="what_came_of_it" />
-      <CfgComment>Tabs, splits and a history you can actually search. Monaco for when</CfgComment>
-      <CfgComment>you need a real editor, with vim mode if that is how you think.</CfgComment>
-      <CfgComment>Panels for Kubernetes, Docker, Terraform, CI/CD and Tailscale.</CfgComment>
-      <CfgComment>Saved SSH connections, SFTP and port forwards. Workflows, for the</CfgComment>
-      <CfgComment>five-command dance you rerun every week. One launcher over all of</CfgComment>
-      <CfgComment>it. And MCP, for the day you want the AI to reach a tool we have</CfgComment>
-      <CfgComment>never heard of.</CfgComment>
-      <CfgBlank />
-      <CfgComment>None of it is finished. That is rather the point of a manifest.</CfgComment>
-      <CfgBlank />
-
       <CfgSection name="links" />
       <CfgRow>
         <CfgAct onClick={() => void checkForUpdates(true)}>check for updates</CfgAct>
@@ -124,6 +68,70 @@ export function ManifestFile() {
         <CfgAct onClick={() => void openUrl(FEEDBACK_URL)}>feedback</CfgAct>
         <CfgAct onClick={() => void openUrl(BUY_ME_A_COFFEE_URL)}>support</CfgAct>
       </CfgRow>
+      <CfgBlank />
+
+      <CfgSection name="overview" />
+      <CfgComment>Husk is a terminal-first development environment for the desktop.</CfgComment>
+      <CfgComment>It combines a full terminal emulator, a code editor, an AI</CfgComment>
+      <CfgComment>assistant and infrastructure tooling in a single application, so</CfgComment>
+      <CfgComment>that work normally spread across a terminal, a browser dashboard,</CfgComment>
+      <CfgComment>an editor and a chat window happens in one place.</CfgComment>
+      <CfgBlank />
+      <CfgComment>Sessions run on a native PTY. The application is built with Rust</CfgComment>
+      <CfgComment>and Tauri with a React interface, and ships for macOS, Windows and</CfgComment>
+      <CfgComment>Linux.</CfgComment>
+      <CfgBlank />
+
+      <CfgSection name="designed_for" />
+      <CfgComment>Engineers who spend most of the working day in a shell — platform</CfgComment>
+      <CfgComment>and infrastructure teams, SREs, and backend developers whose work</CfgComment>
+      <CfgComment>runs through ssh, kubectl, docker, terraform and git.</CfgComment>
+      <CfgBlank />
+
+      <CfgSection name="capabilities" />
+      <CfgRow name="terminal">
+        <CfgStr>Tabs, splits, shell integration, searchable history</CfgStr>
+      </CfgRow>
+      <CfgRow name="ai">
+        <CfgStr>Assistant docked beside the shell, with terminal and file context</CfgStr>
+      </CfgRow>
+      <CfgRow name="editor">
+        <CfgStr>Monaco, with optional vim mode</CfgStr>
+      </CfgRow>
+      <CfgRow name="kubernetes">
+        <CfgStr>Contexts, workloads, logs and resource inspection</CfgStr>
+      </CfgRow>
+      <CfgRow name="containers">
+        <CfgStr>Docker images, containers and logs</CfgStr>
+      </CfgRow>
+      <CfgRow name="infrastructure">
+        <CfgStr>Terraform state, CI/CD pipelines, Tailscale devices</CfgStr>
+      </CfgRow>
+      <CfgRow name="remote">
+        <CfgStr>Saved SSH connections, SFTP, port forwarding</CfgStr>
+      </CfgRow>
+      <CfgRow name="automation">
+        <CfgStr>Multi-step workflows, runnable from any terminal</CfgStr>
+      </CfgRow>
+      <CfgRow name="search">
+        <CfgStr>One launcher across files, history, notes and actions</CfgStr>
+      </CfgRow>
+      <CfgRow name="extensibility">
+        <CfgStr>MCP servers, to give the assistant external tools</CfgStr>
+      </CfgRow>
+      <CfgBlank />
+
+      <CfgSection name="security" />
+      <CfgComment>API keys are stored in the operating system keychain, never in</CfgComment>
+      <CfgComment>application config. Assistant file access is confined to the open</CfgComment>
+      <CfgComment>workspace. File edits are presented as a diff for review before</CfgComment>
+      <CfgComment>they are applied, and commands identified as destructive require</CfgComment>
+      <CfgComment>explicit confirmation.</CfgComment>
+      <CfgBlank />
+
+      <CfgSection name="status" />
+      <CfgComment>Under active development. Issues and feature requests are welcome</CfgComment>
+      <CfgComment>on GitHub.</CfgComment>
     </ConfigEditor>
   );
 }
