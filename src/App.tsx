@@ -870,7 +870,7 @@ function App() {
         {/* Chrome, like the header: opaque and flush. The side margins left bands
             beside the breadcrumb where the wallpaper showed through, and /85 let
             another 15% through the bar itself. */}
-        <div className="bg-background">
+        <div>
           <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
         </div>
 
