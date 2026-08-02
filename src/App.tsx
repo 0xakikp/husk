@@ -870,7 +870,25 @@ function App() {
         {/* Chrome, like the header: opaque and flush. The side margins left bands
             beside the breadcrumb where the wallpaper showed through, and /85 let
             another 15% through the bar itself. */}
-        <div>
+        {/* A panel in its own right, using the sidebar's recipe: same radius,
+            border, frosted surface and panel gap, so it reads as a third floating
+            panel rather than a bar laid across the two below it. */}
+        <div
+          className={cn(
+            "overflow-hidden rounded-lg border border-[var(--border)]",
+            prefs.frostedGlass && bgDataUrl
+              ? "bg-background/50 backdrop-blur-md"
+              : "bg-background/95",
+            prefs.neonBorderGlow && "neon-glow",
+            prefs.panelShadows && "panel-shadow",
+          )}
+          style={{
+            margin:
+              prefs.panelGaps > 0
+                ? `var(--panel-gaps) var(--panel-gaps) 0 var(--panel-gaps)`
+                : undefined,
+          }}
+        >
           <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
         </div>
 
