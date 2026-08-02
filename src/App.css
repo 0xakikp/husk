@@ -2435,7 +2435,9 @@ button {
 
 .modal-actions button,
 .rb-new {
-  background: var(--bg-input);
+  /* Matches .rb-item above — it sits directly under those cards in the sidebar,
+     and leaving it opaque would make it the one solid slab left in the column. */
+  background: color-mix(in srgb, var(--bg-input) 55%, transparent);
   color: var(--text);
   border: 1px solid transparent;
   border-radius: 8px;
@@ -2448,7 +2450,8 @@ button {
 
 .modal-actions button:hover,
 .rb-new:hover {
-  background: var(--hover);
+  /* Translucent too, or hovering would flash the solid slab straight back in. */
+  background: color-mix(in srgb, var(--hover) 75%, transparent);
   color: var(--text-strong);
 }
 
@@ -2490,7 +2493,11 @@ button {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 8px;
-  background: var(--bg-2);
+  /* Translucent, not a solid fill. These cards sit in the sidebar, which is
+     itself semi-transparent over the wallpaper, so an opaque --bg-2 (#000000 in
+     dark) read as a rectangle punched out of the image. color-mix keeps the
+     theme token, so light theme stays on its cream rather than going grey. */
+  background: color-mix(in srgb, var(--bg-2) 55%, transparent);
 }
 
 .rb-run {
