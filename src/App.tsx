@@ -795,12 +795,30 @@ function App() {
   return (
     <TooltipProvider>
       <div className="relative flex h-screen flex-col overflow-hidden text-foreground">
-        {/* The background image is no longer painted here. As one fixed layer at
-            z-index -2 it sat below the entire app, so every panel gap became a
-            window onto it — a bright strip between the sidebar and the terminal
-            and a frame along the window edges. It is now drawn inside the
-            terminal panel (see PanelWallpaper), which leaves the gaps black and
-            clips the image to the panel's rounded corners. */}
+        {/* ── Background image (dark mode only) ─────────────────── */}
+        {prefs.theme === "dark" && bgDataUrl && (
+          <>
+            <img
+              src={bgDataUrl}
+              alt=""
+              className={`pointer-events-none fixed inset-0 size-full ${
+                prefs.background.fit === "contain" ? "object-contain" : "object-cover"
+              }`}
+              style={{
+                zIndex: -2,
+                opacity: prefs.background.opacity / 100,
+                filter: `blur(${prefs.background.blur}px)`,
+              }}
+            />
+            <div
+              className="pointer-events-none fixed inset-0"
+              style={{
+                zIndex: -1,
+                backgroundColor: `rgba(0,0,0,${prefs.background.dim / 100})`,
+              }}
+            />
+          </>
+        )}
 
         <AppHeader
           prefs={prefs}

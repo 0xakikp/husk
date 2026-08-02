@@ -10,7 +10,6 @@ import { runInActiveTerminal } from "../ai/terminalContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { toast } from "../toast";
 import { lazyPanel } from "./lazy";
-import { PanelWallpaper } from "./PanelWallpaper";
 import type { Prefs } from "../settings/preferences";
 import type { OpenFile } from "../editor/EditorArea";
 import type { TerminalTabsApi } from "../useTerminalTabs";
@@ -147,12 +146,9 @@ export function WorkspacePanels({
               seen against, which is why it read as square. Every other panel has
               one. */}
           <div className={cn(
-            "relative isolate flex min-h-0 flex-1 flex-row overflow-hidden rounded-lg border border-[var(--border)]",
+            "relative flex min-h-0 flex-1 flex-row overflow-hidden rounded-lg border border-[var(--border)]",
             prefs.panelShadows && "panel-shadow",
           )}>
-            {prefs.theme === "dark" && bgDataUrl && (
-              <PanelWallpaper src={bgDataUrl} background={prefs.background} />
-            )}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <ErrorBoundary
                 fallback={
