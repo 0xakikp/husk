@@ -109,9 +109,12 @@
 /* ── Right-dock (side panel) ────────────────────────────────────────────── */
 
 .composer-dock-right {
-  border-top: none;
-  border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: 10px 0 0 10px;
+  /* A standalone panel now, not a slab welded to the terminal's right edge:
+     border and radius on all four sides, matching every other panel. It used to
+     have only a left border and left-side corners because it sat inside the
+     terminal's own bordered, clipped box. */
+  border: 1px solid var(--border);
+  border-radius: 10px;
   box-shadow: -8px 0 28px rgba(0, 0, 0, 0.28);
   height: 100%;
   max-height: none !important;

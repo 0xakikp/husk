@@ -145,11 +145,19 @@ export function WorkspacePanels({
               panel — without an edge there is nothing for a rounded corner to be
               seen against, which is why it read as square. Every other panel has
               one. */}
-          <div className={cn(
-            "relative flex min-h-0 flex-1 flex-row overflow-hidden rounded-lg border border-[var(--border)]",
-            prefs.panelShadows && "panel-shadow",
-          )}>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* The border, radius and clip belong to the terminal alone, not to a
+              box wrapping both it and the AI dock. While they shared one, the
+              parent's overflow-hidden cut the dock's bottom corner off and its
+              own radius could only ever show on the left two corners. They are
+              two panels now, separated by the panel gap. */}
+          <div
+            className="relative flex min-h-0 flex-1 flex-row"
+            style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
+          >
+            <div className={cn(
+              "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)]",
+              prefs.panelShadows && "panel-shadow",
+            )}>
               <ErrorBoundary
                 fallback={
                   <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">

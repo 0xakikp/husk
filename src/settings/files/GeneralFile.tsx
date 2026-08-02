@@ -7,7 +7,7 @@ import type {
   LineNumbers,
   RenderWhitespace,
 } from "../preferences";
-import { FONT_FAMILIES, type FontFamilyId } from "../../styles/fonts";
+import { FONT_FAMILIES, isFamilyInstalled, type FontFamilyId } from "../../styles/fonts";
 import { TERMINAL_THEME_PRESETS, type TerminalThemePreset } from "../../styles/terminalTheme";
 import {
   ConfigEditor,
@@ -26,9 +26,12 @@ const px = (a: number[]) => a.map((n) => ({ value: n, label: `${n}px` }));
 
 export function GeneralFile() {
   const p = usePrefs();
+  /* Glass TTY VT220 has no bundled faces and no @fontsource package, so the
+     option only does anything once it is installed system-wide. Saying that in
+     the label beats letting the pick silently render as the next font. */
   const fontOptions = (Object.keys(FONT_FAMILIES) as FontFamilyId[]).map((id) => ({
     value: id,
-    label: FONT_FAMILIES[id].name,
+    label: isFamilyInstalled(id) ? FONT_FAMILIES[id].name : `${FONT_FAMILIES[id].name} (not installed)`,
   }));
 
   return (

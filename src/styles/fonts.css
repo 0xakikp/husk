@@ -8,6 +8,11 @@
 @import "@fontsource-variable/fira-code/index.css";
 @import "@fontsource-variable/source-code-pro/index.css";
 @import "@fontsource/cascadia-code/index.css";
+@import "@fontsource/ibm-plex-mono/index.css";
+@import "@fontsource/iosevka/index.css";
+/* Hack is not on @fontsource; the source-foundry package ships its own webfont
+   CSS with relative url()s that Vite rewrites at build time. */
+@import "hack-font/build/web/hack.css";
 
 /* MesloLGL Nerd Font Mono — bundled from the Nerd Fonts project (not on
    @fontsource), so the "MesloLGL Nerd Font" picker option works without a
