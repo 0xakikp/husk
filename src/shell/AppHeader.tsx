@@ -132,9 +132,13 @@ export function AppHeader({
       data-tauri-drag-region
       className={cn(
         "relative flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 select-none",
+        /* Opaque unless frosted glass is explicitly on. This is window chrome —
+           traffic lights, tab labels, window controls — and a wallpaper bleeding
+           through it costs legibility for no aesthetic gain. At the old /92 it
+           did not read as a deliberate effect, only as slightly murky black. */
         prefs.frostedGlass && bgDataUrl
           ? "bg-background/60 backdrop-blur-md"
-          : "bg-background/92",
+          : "bg-background",
         IS_MAC ? "pr-2 pl-[72px]" : "pr-0 pl-2",
       )}
       style={{
