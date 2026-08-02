@@ -2362,6 +2362,71 @@ button {
   animation: sheet-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ── Sheet form scale ───────────────────────────────────────────────────────
+   These forms were authored for a 460px centred dialog: 14px labels, ~40px
+   inputs, 16px gaps. Dropped into a 220px panel they tower over the 11–12px
+   everything else in the sidebar uses.
+
+   Scoped to sheets rather than edited into each dialog, so a form still looks
+   right when it opens centred outside the sidebar — and so the next dialog gets
+   it without anyone remembering to.
+
+   No !important needed: App.css is unlayered, so it outranks every Tailwind
+   utility these forms set inline. */
+.sidebar-sheet label,
+.sidebar-sheet-panel label {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.sidebar-sheet input:not([type="checkbox"]):not([type="radio"]),
+.sidebar-sheet select,
+.sidebar-sheet-panel input:not([type="checkbox"]):not([type="radio"]),
+.sidebar-sheet-panel select {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  border-radius: 6px;
+}
+
+.sidebar-sheet textarea,
+.sidebar-sheet-panel textarea {
+  padding: 6px 8px;
+  font-size: 11.5px;
+  border-radius: 6px;
+}
+
+/* Height is left alone for anything sized by a utility — colour swatches and
+   icon buttons are square, and forcing a height would turn them into ovals. */
+.sidebar-sheet button:not([class*="size-"]),
+.sidebar-sheet-panel button:not([class*="size-"]) {
+  font-size: 11.5px;
+}
+
+/* Swatch grids: 32px circles crowd a narrow panel two rows deep. */
+.sidebar-sheet [class*="size-8"],
+.sidebar-sheet-panel [class*="size-8"] {
+  width: 22px;
+  height: 22px;
+}
+
+/* Tailwind writes `gap` directly, so the field rhythm has to be matched by the
+   utility that set it. Substring match keeps this to the sheet only. */
+.sidebar-sheet [class*="gap-4"],
+.sidebar-sheet-panel [class*="gap-4"] {
+  gap: 8px;
+}
+
+.sidebar-sheet [class*="gap-3"],
+.sidebar-sheet-panel [class*="gap-3"] {
+  gap: 6px;
+}
+
+.sidebar-sheet [class*="space-y-4"] > * + *,
+.sidebar-sheet-panel [class*="space-y-4"] > * + * {
+  margin-top: 8px;
+}
+
 @keyframes sheet-in {
   from {
     opacity: 0;
