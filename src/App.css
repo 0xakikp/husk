@@ -2310,6 +2310,55 @@ button {
   pointer-events: auto;
 }
 
+/* ── Sidebar sheets ─────────────────────────────────────────────────────────
+   A form opened from a sidebar view belongs to that view, not to the window.
+   These portal into the sidebar panel (components/sheetHost) and fill it, so
+   "+ New bookmark" reads as drilling into the list rather than as the app being
+   interrupted by a card in the middle of the screen.
+
+   Absolute, not fixed: the panel is the containing block, and its
+   overflow-hidden + rounded corners clip the sheet for free. */
+.sidebar-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: sheet-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The card inside keeps its own header and body markup, but stops looking like
+   a floating card: it is the panel now, so no max-width, corners or shadow. */
+.sidebar-sheet > * {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* Dragging a sheet is meaningless — it is clipped to the panel — so the header
+   reads as a header again rather than as a grab handle. dialogDrag skips these. */
+.sidebar-sheet [data-drag-handle] {
+  cursor: default;
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(8%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* Grab anywhere on the title bar to move the dialog — see components/dialogDrag. */
 .modal-header {
   cursor: move;

@@ -38,6 +38,7 @@ import {
 } from "./store";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
+import { sheetHost } from "../components/sheetHost";
 import { NotesView } from "../notes/NotesView";
 
 export function BookmarksView({
@@ -386,7 +387,7 @@ export function BookmarksView({
       {showForm &&
         createPortal(
           <div
-            className="husk-modal-backdrop"
+            className="sidebar-sheet"
             onClick={() => resetForm()}
           >
             <div
@@ -483,13 +484,13 @@ export function BookmarksView({
               </div>
             </div>
           </div>,
-          document.body
+          sheetHost()
         )}
 
       {viewing &&
         createPortal(
           <div
-            className="husk-modal-backdrop"
+            className="sidebar-sheet"
             onClick={() => setViewing(null)}
           >
             <div
@@ -553,7 +554,7 @@ export function BookmarksView({
               </div>
             </div>
           </div>,
-          document.body
+          sheetHost()
         )}
       </div>
     </TooltipProvider>

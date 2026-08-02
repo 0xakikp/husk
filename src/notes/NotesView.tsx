@@ -56,6 +56,7 @@ import {
 } from "./store";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
+import { sheetHost } from "../components/sheetHost";
 
 export function NotesView({ 
   inline,
@@ -664,7 +665,7 @@ export function NotesView({
       {showCreate &&
         createPortal(
           <div
-            className="husk-modal-backdrop"
+            className="sidebar-sheet"
             onClick={() => setShowCreate(false)}
           >
             <div
@@ -728,14 +729,14 @@ export function NotesView({
               </div>
             </div>
           </div>,
-          document.body
+          sheetHost()
         )}
 
       {/* Template picker modal */}
       {showTemplatePicker &&
         createPortal(
           <div
-            className="husk-modal-backdrop"
+            className="sidebar-sheet"
             onClick={() => setShowTemplatePicker(false)}
           >
             <div
@@ -825,14 +826,14 @@ export function NotesView({
               </div>
             </div>
           </div>,
-          document.body
+          sheetHost()
         )}
 
       {/* Template editor modal */}
       {showTemplateEditor &&
         createPortal(
           <div
-            className="husk-modal-backdrop"
+            className="sidebar-sheet"
             onClick={() => setShowTemplateEditor(false)}
           >
             <div
@@ -900,7 +901,7 @@ export function NotesView({
               </div>
             </div>
           </div>,
-          document.body
+          sheetHost()
         )}
 
       {/* Editor modal */}

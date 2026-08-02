@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { FileExplorer } from "../explorer/FileExplorer";
 import { SidebarRail, type SidebarViewId } from "../sidebar/SidebarRail";
 import { lazyPanel } from "./lazy";
+import { SHEET_HOST_ID } from "../components/sheetHost";
 import type { Prefs } from "../settings/preferences";
 import type { K8sResourceSelection } from "../kubernetes/KubernetesView";
 import type { DockerResourceSelection } from "../docker/DockerDetailPanel";
@@ -68,8 +69,12 @@ export function SidebarHost({
   return (
     <>
       <div
+        /* Positioned + identified so sidebar-launched forms can portal in here
+           and fill the panel instead of floating over the app — see
+           components/sheetHost. */
+        id={SHEET_HOST_ID}
         className={cn(
-          "flex flex-col border-r border-[var(--border)] overflow-hidden rounded-lg",
+          "relative flex flex-col border-r border-[var(--border)] overflow-hidden rounded-lg",
           prefs.frostedGlass && bgDataUrl
             ? "bg-background/50 backdrop-blur-md"
             : "bg-background/95",

@@ -93,6 +93,10 @@ export function useDialogDrag() {
       const handle = target.closest<HTMLElement>("[data-drag-handle], .modal-header");
       if (!handle) return;
 
+      // Sidebar sheets are clipped to the panel they live in, so moving one
+      // could only ever push it out of sight.
+      if (handle.closest(".sidebar-sheet")) return;
+
       // A header holds the close button, tabs and tooltips. Dragging must not
       // swallow their clicks, and text in the title should stay selectable.
       if (target.closest("button, a, input, textarea, select, [role='button'], [role='tab']")) return;

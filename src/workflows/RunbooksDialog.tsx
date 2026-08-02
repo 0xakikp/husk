@@ -26,6 +26,18 @@ type Mode =
 export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inline?: boolean }) {
   const [workflows, setWorkflows] = useState<Workflow[]>(() => loadWorkflows());
   const [mode, setMode] = useState<Mode>({ kind: "list" });
+  const editing = mode.kind === "edit" && !!inline;
+
+  const saveWorkflow = (wf: Workflow) => {
+    setWorkflows((prev) => {
+      const i = prev.findIndex((w) => w.id === wf.id);
+      if (i === -1) return [...prev, wf];
+      const next = [...prev];
+      next[i] = wf;
+      return next;
+    });
+    setMode({ kind: "list" });
+  };
 
   useEffect(() => saveWorkflows(workflows), [workflows]);
 
@@ -56,6 +68,9 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
       <TooltipProvider delayDuration={200}>
         <Modal
           title={
+            editing ? (
+              mode.wf ? "Edit Workflow" : "New Workflow"
+            ) : (
             <div className="flex items-center gap-1.5">
               <span>Workflows</span>
               <Tooltip>
@@ -86,6 +101,7 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
                 </TooltipContent>
               </Tooltip>
             </div>
+            )
           }
           onClose={onClose}
           inline={inline}
@@ -101,8 +117,18 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
             />
           ) : mode.kind === "run" ? (
             <RunbookRunner wf={mode.wf} onCancel={() => setMode({ kind: "list" })} onRun={run} />
+          ) : editing ? (
+            /* In the sidebar the editor fills the panel, the same way the runner
+               above already does. It used to open as a centred popup while the
+               panel sat behind showing "Opening editor…", which is two surfaces
+               for one action. Outside the sidebar there is no panel to fill, so
+               the popup below still handles it. */
+            <RunbookEditor
+              initial={mode.wf}
+              onCancel={() => setMode({ kind: "list" })}
+              onSave={saveWorkflow}
+            />
           ) : (
-            /* placeholder when editor is shown as popup */
             <div className="flex flex-col items-center gap-3 py-10 text-center">
               <p className="text-[12px] text-muted-foreground">Opening editor…</p>
             </div>
@@ -110,8 +136,8 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
         </Modal>
       </TooltipProvider>
 
-      {/* Editor always as centered popup for full real estate */}
-      {mode.kind === "edit" && (
+      {/* Non-inline only: in the sidebar this renders in the panel above. */}
+      {mode.kind === "edit" && !inline && (
         <Modal
           title={mode.wf ? "Edit Workflow" : "New Workflow"}
           onClose={() => setMode({ kind: "list" })}
