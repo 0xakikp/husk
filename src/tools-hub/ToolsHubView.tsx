@@ -1,12 +1,13 @@
 import { cn } from "@/lib/utils";
-import {
-  ContainerIcon,
-  Database01Icon,
-  Rocket01Icon,
-  CloudIcon,
-  InformationCircleIcon,
-} from "@hugeicons/core-free-icons";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  SiKubernetes,
+  SiDocker,
+  SiTerraform,
+  SiTailscale,
+  SiGithubactions,
+} from "@icons-pack/react-simple-icons";
 import {
   Tooltip,
   TooltipContent,
@@ -15,11 +16,22 @@ import {
 } from "@/components/ui/tooltip";
 import type { SidebarViewId } from "../sidebar/SidebarRail";
 
+/**
+ * Real brand marks, from simple-icons via @icons-pack/react-simple-icons —
+ * the official paths rather than a generic glyph standing in for each tool
+ * (Kubernetes and Terraform were both showing the same database icon).
+ *
+ * SVG rather than PNG on purpose: these render at 15px in a sidebar, where a
+ * raster would soften on a HiDPI display and be stuck at one colour. Paths stay
+ * sharp at any size and take `brand` below as their fill.
+ */
 type ToolCard = {
   id: SidebarViewId;
   name: string;
   description: string;
-  icon: typeof Rocket01Icon;
+  Icon: typeof SiKubernetes;
+  /** Official brand colour, also tinting the icon tile behind it. */
+  brand: string;
   status: "ready" | "coming-soon";
 };
 
@@ -28,35 +40,42 @@ const TOOLS: ToolCard[] = [
     id: "kubernetes",
     name: "Kubernetes",
     description: "Switch contexts, view pods, and stream logs",
-    icon: Database01Icon,
+    Icon: SiKubernetes,
+    brand: "#326CE5",
     status: "ready",
   },
   {
     id: "ci-cd",
     name: "CI / CD",
     description: "Monitor GitHub Actions and GitLab pipelines",
-    icon: Rocket01Icon,
+    Icon: SiGithubactions,
+    brand: "#2088FF",
     status: "ready",
   },
   {
     id: "docker",
     name: "Docker",
     description: "Manage containers and images",
-    icon: ContainerIcon,
+    Icon: SiDocker,
+    brand: "#2496ED",
     status: "ready",
   },
   {
     id: "terraform",
     name: "Terraform",
     description: "View workspaces, state, and resources",
-    icon: Database01Icon,
+    Icon: SiTerraform,
+    brand: "#844FBA",
     status: "ready",
   },
   {
     id: "tailscale",
     name: "Tailscale",
+    /* Tailscale's mark is monochrome black-on-white, which disappears on a dark
+       sidebar, so it follows the theme's foreground instead of its brand hex. */
     description: "List tailnet devices and connect via SSH",
-    icon: CloudIcon,
+    Icon: SiTailscale,
+    brand: "currentColor",
     status: "ready",
   },
 ];
@@ -92,10 +111,14 @@ export function ToolsHubView({ onSelectView }: Props) {
             </Tooltip>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex flex-col gap-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* gap-1 and py-1.5: five rows of two lines each had gap-2 between
+              them plus py-2.5 inside, which spread the list over more height
+              than it had content for. */}
+          <div className="flex flex-col gap-1">
             {TOOLS.map((tool) => {
               const disabled = tool.status !== "ready";
+              const { Icon } = tool;
               return (
                 <button
                   key={tool.name}
@@ -103,23 +126,27 @@ export function ToolsHubView({ onSelectView }: Props) {
                   disabled={disabled}
                   onClick={() => onSelectView(tool.id)}
                   className={cn(
-                    "group flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                    "group flex items-start gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors",
                     disabled
                       ? "border-border/20 bg-card/20 opacity-50 cursor-not-allowed"
                       : "border-border/40 bg-card/30 hover:border-border/60 hover:bg-card/50",
                   )}
                 >
                   <div
-                    className={cn(
-                      "flex size-8 shrink-0 items-center justify-center rounded-md",
-                      disabled ? "bg-muted/20" : "bg-primary/10",
-                    )}
+                    className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md"
+                    /* Tile tinted from the mark's own colour, so each row reads
+                       as that product rather than as five identical green
+                       chips. color-mix keeps it subtle at 14%. */
+                    style={
+                      disabled
+                        ? undefined
+                        : { backgroundColor: `color-mix(in srgb, ${tool.brand} 14%, transparent)` }
+                    }
                   >
-                    <HugeiconsIcon
-                      icon={tool.icon}
-                      size={16}
-                      strokeWidth={1.5}
-                      className={disabled ? "text-muted-foreground" : "text-primary"}
+                    <Icon
+                      size={15}
+                      color={disabled ? "currentColor" : tool.brand}
+                      className={disabled ? "text-muted-foreground" : undefined}
                     />
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
