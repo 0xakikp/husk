@@ -61,48 +61,60 @@ export function ManifestFile() {
       </CfgRow>
       <CfgBlank />
 
-      <CfgSection name="about" />
-      <CfgComment>Husk is a terminal that happens to be an IDE, not an IDE with a</CfgComment>
-      <CfgComment>terminal bolted on. The shell is the main surface; the editor, the</CfgComment>
-      <CfgComment>file tree and the AI panel are things you pull up beside it.</CfgComment>
+      <CfgSection name="the_night_it_started" />
+      <CfgComment>It is late, and something is broken.</CfgComment>
       <CfgBlank />
-      <CfgComment>It is a desktop app — Tauri and a Rust core, so the PTY is a real</CfgComment>
-      <CfgComment>PTY and the binary stays small, with a React front end for the parts</CfgComment>
-      <CfgComment>that benefit from one.</CfgComment>
+      <CfgComment>You ssh in. The logs point at a pod that keeps restarting, so you</CfgComment>
+      <CfgComment>open a browser tab for the cluster — and the dashboard asks you to</CfgComment>
+      <CfgComment>pick the context you set in the terminal nine seconds ago. You find</CfgComment>
+      <CfgComment>the pod. It is unhappy about a config file, so you open an editor,</CfgComment>
+      <CfgComment>which has no idea where you have been, so you paste the path in by</CfgComment>
+      <CfgComment>hand. In a fourth window there is a chat box you are now describing</CfgComment>
+      <CfgComment>all of this to, because it cannot see any of it either.</CfgComment>
       <CfgBlank />
-
-      <CfgSection name="why" />
-      <CfgComment>The work that pays the bills happens in a shell: ssh, kubectl,</CfgComment>
-      <CfgComment>docker, terraform, git. Every tool around that shell assumes you</CfgComment>
-      <CfgComment>would rather be somewhere else — a browser tab for the cluster, a</CfgComment>
-      <CfgComment>desktop app for the containers, a second editor for the file you</CfgComment>
-      <CfgComment>just grepped. Each one is a context switch you did not ask for.</CfgComment>
+      <CfgComment>Four windows. One question.</CfgComment>
       <CfgBlank />
-      <CfgComment>Husk pulls those back to where the work already is. Inspect a pod</CfgComment>
-      <CfgComment>without leaving the prompt. Open the file the last command printed.</CfgComment>
-      <CfgComment>Ask about output that is still on screen, in the pane beside it.</CfgComment>
+      <CfgComment>None of those tools are bad. They are just strangers to one</CfgComment>
+      <CfgComment>another — and you are the integration layer, carrying paths,</CfgComment>
+      <CfgComment>contexts and half-remembered output between them by hand, at 2am,</CfgComment>
+      <CfgComment>while the thing you were actually trying to fix waits.</CfgComment>
       <CfgBlank />
 
-      <CfgSection name="principles" />
-      <CfgComment>Terminal first. If a feature makes the terminal smaller for no</CfgComment>
-      <CfgComment>reason, it does not ship.</CfgComment>
-      <CfgComment>Local by default. Your keys live in the OS keychain; the AI reaches</CfgComment>
-      <CfgComment>nothing outside the workspace without being told to.</CfgComment>
-      <CfgComment>No surprises. Destructive commands ask first. Edits are shown as a</CfgComment>
-      <CfgComment>diff before they are applied.</CfgComment>
-      <CfgComment>Yours to shape. Themes, fonts, gaps, docks and panels are settings,</CfgComment>
-      <CfgComment>not opinions.</CfgComment>
+      <CfgSection name="so_we_started_elsewhere" />
+      <CfgComment>Husk begins from the other end. The shell is not a panel tucked</CfgComment>
+      <CfgComment>into a corner — it is the app. Everything else has to earn its</CfgComment>
+      <CfgComment>place beside it, and the price of admission is knowing where you</CfgComment>
+      <CfgComment>already are.</CfgComment>
+      <CfgBlank />
+      <CfgComment>So the cluster is a sidebar, already on your context. The file the</CfgComment>
+      <CfgComment>last command printed opens in a pane, not a new application. The AI</CfgComment>
+      <CfgComment>sits against the terminal and can read what is on screen, which</CfgComment>
+      <CfgComment>means you stop narrating output you could simply point at.</CfgComment>
+      <CfgBlank />
+      <CfgComment>Underneath it is Rust and Tauri, so the PTY is a real PTY and the</CfgComment>
+      <CfgComment>binary stays small. React sits on top, where it earns its keep.</CfgComment>
       <CfgBlank />
 
-      <CfgSection name="inside" />
-      <CfgComment>terminal — tabs, splits, shell integration, searchable history</CfgComment>
-      <CfgComment>ai — chat docked beside the shell, with terminal and file context</CfgComment>
-      <CfgComment>editor — Monaco, with vim mode if you want it</CfgComment>
-      <CfgComment>infra — Kubernetes, Docker, Terraform, CI/CD and Tailscale panels</CfgComment>
-      <CfgComment>remotes — saved SSH connections, SFTP and port forwards</CfgComment>
-      <CfgComment>workflows — multi-step commands saved and run from any terminal</CfgComment>
-      <CfgComment>spotlight — one launcher over files, history, notes and actions</CfgComment>
-      <CfgComment>mcp — connect external tool servers to the AI</CfgComment>
+      <CfgSection name="what_it_refuses_to_do" />
+      <CfgComment>It will not make the terminal smaller for a feature nobody asked</CfgComment>
+      <CfgComment>for. It will not send your keys anywhere — they stay in the OS</CfgComment>
+      <CfgComment>keychain, and the AI reaches nothing outside your workspace unless</CfgComment>
+      <CfgComment>you say so. It will not touch a file before showing you the diff,</CfgComment>
+      <CfgComment>or run something dangerous without stopping to ask.</CfgComment>
+      <CfgBlank />
+      <CfgComment>And it will not decide how it should look. That part is yours.</CfgComment>
+      <CfgBlank />
+
+      <CfgSection name="what_came_of_it" />
+      <CfgComment>Tabs, splits and a history you can actually search. Monaco for when</CfgComment>
+      <CfgComment>you need a real editor, with vim mode if that is how you think.</CfgComment>
+      <CfgComment>Panels for Kubernetes, Docker, Terraform, CI/CD and Tailscale.</CfgComment>
+      <CfgComment>Saved SSH connections, SFTP and port forwards. Workflows, for the</CfgComment>
+      <CfgComment>five-command dance you rerun every week. One launcher over all of</CfgComment>
+      <CfgComment>it. And MCP, for the day you want the AI to reach a tool we have</CfgComment>
+      <CfgComment>never heard of.</CfgComment>
+      <CfgBlank />
+      <CfgComment>None of it is finished. That is rather the point of a manifest.</CfgComment>
       <CfgBlank />
 
       <CfgSection name="links" />
