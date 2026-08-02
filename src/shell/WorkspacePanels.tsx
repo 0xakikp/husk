@@ -140,7 +140,12 @@ export function WorkspacePanels({
           aria-hidden={activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null}
         >
           {/* AI chat is right-dock only: fixed flex-row, no bottom-mode gap spacer. */}
-          <div className="relative flex min-h-0 flex-1 flex-row overflow-hidden rounded-lg">
+          {/* The border is what makes the radius visible. The terminal itself is
+              transparent, so the wallpaper shows both inside and outside this
+              panel — without an edge there is nothing for a rounded corner to be
+              seen against, which is why it read as square. Every other panel has
+              one. */}
+          <div className="relative flex min-h-0 flex-1 flex-row overflow-hidden rounded-lg border border-[var(--border)]">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <ErrorBoundary
                 fallback={
