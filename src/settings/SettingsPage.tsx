@@ -41,7 +41,7 @@ const FILES: FileDef[] = [
   { id: "models", path: "ai/models.toml", dir: "ai", component: ModelsFile, keywords: ["models", "provider", "api", "key", "anthropic", "openai", "claude", "deepseek", "local"] },
   { id: "agents", path: "ai/agents.toml", dir: "ai", component: AgentsFile, keywords: ["agents", "persona", "system", "prompt", "composer"] },
   { id: "prompts", path: "ai/prompts.toml", dir: "ai", component: PromptsFile, keywords: ["prompts", "templates", "quick", "actions", "slash"] },
-  { id: "mcp", path: "mcp.toml", component: McpFile, keywords: ["mcp", "server", "tools", "marketplace", "protocol"] },
+  { id: "mcp", path: "mcp.toml", component: McpFile, keywords: ["mcp", "server", "tools", "protocol"] },
   { id: "tools", path: "tools.toml", component: ToolsFile, keywords: ["tools", "cli", "install", "eza", "bat", "fzf", "setup"] },
   { id: "sync", path: "sync.toml", component: SyncFile, keywords: ["sync", "cloud", "export", "import", "backup", "transfer"] },
   { id: "crash", path: "crash.toml", component: CrashFile, keywords: ["crash", "sentry", "error", "report", "telemetry"] },

@@ -14,8 +14,6 @@ import {
   updateMcpServer,
   type McpServerConfig,
 } from "@/mcp/store";
-import { McpMarketplaceDialog } from "@/mcp/McpMarketplaceDialog";
-import { getMarketplaceItemById } from "@/mcp/marketplace";
 import { Switch } from "@/components/ui/switch";
 import {
   ConfigEditor,
@@ -37,7 +35,6 @@ export function McpFile() {
   const [editing, setEditing] = useState<McpServerConfig | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; msg: string } | null>(null);
-  const [marketplaceOpen, setMarketplaceOpen] = useState(false);
 
   const reload = () => {
     setError(null);
@@ -126,31 +123,6 @@ export function McpFile() {
     setEditing(null);
   };
 
-  const handleMarketplaceInstall = async (
-    item: NonNullable<ReturnType<typeof getMarketplaceItemById>>,
-    envOverrides: Record<string, string>,
-  ) => {
-    const mcpItem = getMarketplaceItemById(item.id);
-    if (!mcpItem) return;
-    const added = await addMcpServer({
-      name: mcpItem.name,
-      command: mcpItem.command,
-      args: mcpItem.args,
-      env: { ...mcpItem.env, ...envOverrides },
-      enabled: true,
-    });
-    setServers((prev) => [...prev, added]);
-  };
-
-  const handleMarketplaceUninstall = async (id: string) => {
-    const server = servers.find((s) => s.id === id);
-    if (server) {
-      await disconnectMcpServer(id);
-      await removeMcpServer(id);
-      setServers((prev) => prev.filter((s) => s.id !== id));
-    }
-  };
-
   return (
     <ConfigEditor>
       <CfgArt lines={BANNERS.mcp} />
@@ -169,7 +141,6 @@ export function McpFile() {
         <>
           <CfgComment>no servers configured — add one to give the AI external tools</CfgComment>
           <CfgRow>
-            <CfgAct onClick={() => setMarketplaceOpen(true)}>browse marketplace</CfgAct>
             <CfgAct
               onClick={() => {
                 setEditing(null);
@@ -224,7 +195,6 @@ export function McpFile() {
             </div>
           ))}
           <CfgRow>
-            <CfgAct onClick={() => setMarketplaceOpen(true)}>marketplace</CfgAct>
             <CfgAct
               onClick={() => {
                 setEditing(null);
@@ -242,13 +212,6 @@ export function McpFile() {
         onOpenChange={setDialogOpen}
         editing={editing}
         onSave={handleSave}
-      />
-      <McpMarketplaceDialog
-        open={marketplaceOpen}
-        onOpenChange={setMarketplaceOpen}
-        installedIds={servers.map((s) => s.id)}
-        onInstall={handleMarketplaceInstall}
-        onUninstall={handleMarketplaceUninstall}
       />
     </ConfigEditor>
   );
