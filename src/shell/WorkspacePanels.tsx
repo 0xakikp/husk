@@ -234,20 +234,23 @@ export function WorkspacePanels({
           aria-hidden={activeKind !== "file"}
         >
           {openFiles.length > 0 ? (
-            <div className={cn("flex h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
-              <div className="flex-1 overflow-hidden">
-                {lazyPanel(<EditorArea files={openFiles} activePath={activeFile} />, "Editor")}
+            /* Row, matching the terminal view. The composer defaults to
+               dock="bottom", so leaving it in a flex-col put the AI panel under
+               the editor here while the terminal had it on the right — the same
+               panel in two places depending on which tab you were on. */
+            <div
+              className="flex h-full w-full flex-row"
+              style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
+            >
+              <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
+                <div className="flex-1 overflow-hidden">
+                  {lazyPanel(<EditorArea files={openFiles} activePath={activeFile} />, "Editor")}
+                </div>
               </div>
-              {prefs.panelGaps > 0 && (
-                <div
-                  className={prefs.panelGapStyle !== "none" ? `gap-pattern-${prefs.panelGapStyle}` : undefined}
-                  style={{ height: `var(--panel-gaps)`, flexShrink: 0 }}
-                />
-              )}
               <TerminalAiComposer
                 sessionId={tabSessionId(term.activeId)}
                 onOpenInAiTab={() => setActiveKind("ai")}
-                className="composer-editor"
+                dock="right"
               />
             </div>
           ) : (
