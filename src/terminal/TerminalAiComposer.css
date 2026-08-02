@@ -117,7 +117,12 @@
   border-radius: 10px;
   box-shadow: -8px 0 28px rgba(0, 0, 0, 0.28);
   height: 100%;
-  max-height: none !important;
+  /* Was `max-height: none !important`, which let the panel grow past the row it
+     sits in. Nothing showed while an ancestor clipped it; once the terminal got
+     its own box and the clip went away, the excess landed on top of the command
+     bar. min-height: 0 lets it shrink to the row instead of to its content. */
+  max-height: 100% !important;
+  min-height: 0;
   flex-shrink: 0;
 }
 

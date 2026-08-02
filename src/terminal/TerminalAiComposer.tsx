@@ -926,7 +926,11 @@ export function TerminalAiComposer({
     variant === "full"
       ? { maxHeight: '100%', height: '100%' }
       : dockRight
-        ? { width: sideWidth, height: '100%', maxHeight: 'none' as const, flexShrink: 0 }
+        /* maxHeight 100%, not none: the dock is a flex item whose automatic
+           minimum size is its content, so with no cap it grows past the row and
+           spills over the command bar below. The messages area scrolls, so
+           capping it costs nothing. */
+        ? { width: sideWidth, height: '100%', maxHeight: '100%' as const, minHeight: 0, flexShrink: 0 }
         : height !== null
           ? { height: `${height}px`, maxHeight: `${height}px` }
           : { maxHeight: computedHeight };
