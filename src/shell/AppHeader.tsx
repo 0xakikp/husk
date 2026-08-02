@@ -137,7 +137,11 @@ export function AppHeader({
            workspace panels, which are the surfaces where seeing the wallpaper is
            an actual choice. */
         "bg-background",
-        IS_MAC ? "pr-2 pl-[72px]" : "pr-0 pl-2",
+        /* 88px, not 72. The traffic lights end at x=66 (centres 20/40/60, 12px
+           across), so 72 left only 6px before the first icon button — at 24px
+           square they read as colliding with the window controls. 88 gives a 22px
+           gap, matching the spacing between the lights themselves. */
+        IS_MAC ? "pr-2 pl-[88px]" : "pr-0 pl-2",
       )}
       /* No panel-gap margins here. Gaps separate PANELS; the title bar is the
          window's own edge, and insetting it left a band above and beside the bar
