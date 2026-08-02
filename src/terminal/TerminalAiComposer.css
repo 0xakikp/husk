@@ -116,13 +116,18 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: -8px 0 28px rgba(0, 0, 0, 0.28);
-  height: 100%;
-  /* Was `max-height: none !important`, which let the panel grow past the row it
-     sits in. Nothing showed while an ancestor clipped it; once the terminal got
-     its own box and the clip went away, the excess landed on top of the command
-     bar. min-height: 0 lets it shrink to the row instead of to its content. */
-  max-height: 100% !important;
+  /* Sized by stretch, NOT by percentage. `height: 100%` measured 236px in a
+     216px row: a percentage height needs a definite containing block, and the
+     row gets its height from `flex: 1`, so the percentage resolved to auto and
+     fell back to content height. align-self: stretch has no such requirement --
+     it takes the flex line's cross size, which is exactly the row. */
+  align-self: stretch;
   min-height: 0;
+  max-height: 100%;
+  /* Last-resort guarantee: even if the content cannot shrink far enough, it is
+     clipped to this panel's own rounded box rather than painted over the
+     command bar below. */
+  overflow: hidden;
   flex-shrink: 0;
 }
 

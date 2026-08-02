@@ -926,11 +926,11 @@ export function TerminalAiComposer({
     variant === "full"
       ? { maxHeight: '100%', height: '100%' }
       : dockRight
-        /* maxHeight 100%, not none: the dock is a flex item whose automatic
-           minimum size is its content, so with no cap it grows past the row and
-           spills over the command bar below. The messages area scrolls, so
-           capping it costs nothing. */
-        ? { width: sideWidth, height: '100%', maxHeight: '100%' as const, minHeight: 0, flexShrink: 0 }
+        /* No height here — .composer-dock-right stretches to the row instead.
+           An inline `height: 100%` measured 236px inside a 216px row, because a
+           percentage height needs a definite containing block and the row's
+           comes from `flex: 1`. Only the width is this component's business. */
+        ? { width: sideWidth, flexShrink: 0 }
         : height !== null
           ? { height: `${height}px`, maxHeight: `${height}px` }
           : { maxHeight: computedHeight };
@@ -1263,27 +1263,32 @@ export function TerminalAiComposer({
             </div>
           </div>
         )}
+        {/* Inside the scroll area rather than pinned beside it. These render
+            only on an empty thread, so they are part of the empty state — but
+            as a sibling of .composer-messages they reserved ~60px of panel
+            height permanently. That is most of why the dock's non-scrolling
+            chrome (236px) could not fit the row it lives in (216px) and spilled
+            over the command bar. */}
+        {messages.length === 0 && (
+          <div className="composer-prompt-templates">
+            {prefs.aiPromptTemplates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setInput(t.prompt);
+                  textareaRef.current?.focus();
+                }}
+                className="composer-prompt-template-btn"
+                title={t.prompt}
+              >
+                <span>{t.icon}</span>
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-
-      {messages.length === 0 && (
-        <div className="composer-prompt-templates">
-          {prefs.aiPromptTemplates.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                setInput(t.prompt);
-                textareaRef.current?.focus();
-              }}
-              className="composer-prompt-template-btn"
-              title={t.prompt}
-            >
-              <span>{t.icon}</span>
-              <span>{t.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {pendingRun && (
         <div className="composer-pending-run">
