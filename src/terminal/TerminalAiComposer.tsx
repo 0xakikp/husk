@@ -253,7 +253,7 @@ export function TerminalAiComposer({
   sessionId: string;
   onOpenInAiTab?: () => void;
   variant?: "docked" | "full";
-  dock?: "bottom" | "right";
+  dock?: "bottom" | "right" | "left";
   registerToggle?: boolean;
   registerOpen?: boolean;
   registerSend?: boolean;
@@ -302,9 +302,16 @@ export function TerminalAiComposer({
   const [codeTabMap, setCodeTabMap] = useState<Record<number, number>>({});
 
   // Right-dock (side panel) state
+  /* Docked to either side. Everything about a side dock is shared except which
+     edge the resize handle sits on, which way the shadow falls, and the sign of
+     the resize delta — so the layout reads `dockSide` and only those three read
+     `dockLeft`. */
+  const dockLeft = dock === "left" && variant === "docked";
   const dockRight = dock === "right" && variant === "docked";
+  const dockSide = dockLeft || dockRight;
   const sideDraggingRef = useRef(false);
   const startXRef = useRef(0);
+  const sideSignRef = useRef(1);
   const startWidthRef = useRef(0);
   const [sideWidth, setSideWidth] = useState(prefs.aiComposerSideWidth ?? 380);
   const sideWidthRef = useRef(sideWidth);
@@ -696,7 +703,7 @@ export function TerminalAiComposer({
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!sideDraggingRef.current) return;
-      const delta = startXRef.current - e.clientX;
+      const delta = (startXRef.current - e.clientX) * sideSignRef.current;
       const next = Math.min(620, Math.max(280, Math.round(startWidthRef.current + delta)));
       sideWidthRef.current = next;
       setSideWidth(next);
@@ -717,6 +724,9 @@ export function TerminalAiComposer({
   const startSideResize = (e: React.MouseEvent) => {
     e.preventDefault();
     sideDraggingRef.current = true;
+    // Left dock: the handle is on the panel's right edge, so dragging right
+    // grows it — the opposite sign to a right dock.
+    sideSignRef.current = dockLeft ? -1 : 1;
     startXRef.current = e.clientX;
     startWidthRef.current = panelRef.current?.clientWidth ?? sideWidthRef.current;
   };
@@ -925,7 +935,7 @@ export function TerminalAiComposer({
   const panelStyle =
     variant === "full"
       ? { maxHeight: '100%', height: '100%' }
-      : dockRight
+      : dockSide
         /* No height here — .composer-dock-right stretches to the row instead.
            An inline `height: 100%` measured 236px inside a 216px row, because a
            percentage height needs a definite containing block and the row's
@@ -943,14 +953,15 @@ export function TerminalAiComposer({
         "composer-panel animate-composer-in",
         expanded && "composer-expanded",
         variant === "full" && "composer-full",
-        dockRight && "composer-dock-right",
+        dockSide && "composer-dock-side",
+        dockLeft && "composer-dock-left",
         dragOver && "composer-drag-over",
         messageAccentClass,
         className
       )}
       style={{
         ...panelStyle,
-        borderRadius: dockRight ? undefined : gap && variant !== "full" ? '16px' : variant !== "full" ? '16px 16px 0 0' : '0',
+        borderRadius: dockSide ? undefined : gap && variant !== "full" ? '16px' : variant !== "full" ? '16px 16px 0 0' : '0',
         '--composer-opacity': prefs.aiMiniOpacity / 100,
         '--composer-font-size': `${prefs.aiMiniFontSize}px`,
         '--composer-bg-color': prefs.aiComposerBgColor,
@@ -976,14 +987,14 @@ export function TerminalAiComposer({
         if (paths.length) void attachFiles(paths);
       }}
     >
-      {variant !== "full" && !dockRight && (
+      {variant !== "full" && !dockSide && (
         <div
           className="composer-resize-handle"
           onMouseDown={startResize}
           title="Drag to resize"
         />
       )}
-      {dockRight && (
+      {dockSide && (
         <div
           className="composer-resize-handle-side"
           onMouseDown={startSideResize}
@@ -1091,7 +1102,7 @@ export function TerminalAiComposer({
               <HugeiconsIcon icon={MessageMultiple02Icon} size={12} strokeWidth={1.75} />
             </button>
           )}
-          {variant === "docked" && !dockRight && (
+          {variant === "docked" && !dockSide && (
             <button
               type="button"
               onClick={toggleExpand}

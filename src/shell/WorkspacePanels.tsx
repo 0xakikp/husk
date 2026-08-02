@@ -242,16 +242,19 @@ export function WorkspacePanels({
               className="flex h-full w-full flex-row"
               style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
             >
+              {/* Composer first: on the file tab the AI panel sits to the LEFT
+                  of the editor, so the code stays against the same edge you
+                  read from and the panel lines up with the sidebar. */}
+              <TerminalAiComposer
+                sessionId={tabSessionId(term.activeId)}
+                onOpenInAiTab={() => setActiveKind("ai")}
+                dock="left"
+              />
               <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
                 <div className="flex-1 overflow-hidden">
                   {lazyPanel(<EditorArea files={openFiles} activePath={activeFile} />, "Editor")}
                 </div>
               </div>
-              <TerminalAiComposer
-                sessionId={tabSessionId(term.activeId)}
-                onOpenInAiTab={() => setActiveKind("ai")}
-                dock="right"
-              />
             </div>
           ) : (
             <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-muted-foreground">

@@ -108,7 +108,7 @@
 
 /* ── Right-dock (side panel) ────────────────────────────────────────────── */
 
-.composer-dock-right {
+.composer-dock-side {
   /* A standalone panel now, not a slab welded to the terminal's right edge:
      border and radius on all four sides, matching every other panel. It used to
      have only a left border and left-side corners because it sat inside the
@@ -129,6 +129,19 @@
      command bar below. */
   overflow: hidden;
   flex-shrink: 0;
+}
+
+/* Left dock: the panel is on the other side of the editor, so the shadow falls
+   the other way and the resize handle moves to its right edge. Everything else
+   about a side dock is identical. */
+.composer-dock-left {
+  border-left: 1px solid var(--border);
+  box-shadow: 8px 0 28px rgba(0, 0, 0, 0.28);
+}
+
+.composer-dock-left .composer-resize-handle-side {
+  left: auto;
+  right: -2px;
 }
 
 .composer-resize-handle-side {
