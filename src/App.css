@@ -2454,8 +2454,10 @@ button {
 
 .modal-actions button,
 .rb-new {
-  /* Matches .rb-item above — it sits directly under those cards in the sidebar,
-     and leaving it opaque would make it the one solid slab left in the column. */
+  /* Shared by the sidebar's "+ New workflow" and by dialog secondary buttons.
+     Translucent to match .rb-item: as a solid fill, .rb-new was the one opaque
+     slab left in a column of see-through cards. On a dialog's opaque card this
+     just reads as a slightly softer button, and .primary keeps its own fill. */
   background: color-mix(in srgb, var(--bg-input) 55%, transparent);
   color: var(--text);
   border: 1px solid transparent;

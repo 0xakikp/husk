@@ -11,49 +11,77 @@ import { useEffect } from "react";
  *
  * A drag handle is `[data-drag-handle]` or `.modal-header`. The card it moves is
  * the nearest `[data-movable]` or `.modal` ancestor, falling back to the
- * handle's parent — which is the card in every ad-hoc portal here, so those need
- * one attribute rather than two.
+ * handle's parent — which is the card in every ad-hoc portal here.
  *
- * Offsets go on **margin**, not transform. Radix centres its content with
- * `-translate-x-1/2 -translate-y-1/2`, and the `.modal` cards animate with a
- * transform on open; writing to `transform` would fight both. Margins are
- * untouched by either and shift a flex-centred or `left: 50%` box identically.
+ * ── Why transform, and why it matters ────────────────────────────────────────
+ * This first moved the card by writing `margin-left`/`margin-top`. That worked,
+ * but margin is a layout property: every pointer move invalidated layout and
+ * forced a reflow before the frame could paint, so the dialog visibly trailed
+ * the cursor no matter the display's refresh rate.
+ *
+ * `transform` is handled by the compositor — no layout, no repaint of the card's
+ * contents — so the move lands in the same frame as the pointer event. Chromium
+ * already dispatches pointermove aligned to the frame, so the write happens
+ * directly in the handler: batching into rAF would only add a frame of latency.
+ *
+ * The reason margin was chosen originally is real, though — Radix centres its
+ * content with `-translate-x-1/2 -translate-y-1/2` and `.modal` animates in with
+ * a transform, so a naive `transform` write would wipe both out. The fix is to
+ * capture whatever transform the card already has, once, and compose the drag
+ * offset in front of it.
  */
 export function useDialogDrag() {
   useEffect(() => {
     let card: HTMLElement | null = null;
-    let startRect: DOMRect | null = null;
+    let baseTransform = "";
     let startX = 0;
     let startY = 0;
-    let baseLeft = 0;
-    let baseTop = 0;
+    let originX = 0;
+    let originY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    let width = 0;
+    let captureEl: HTMLElement | null = null;
 
     /** Keep this much of the card on screen, so it can never be lost offscreen. */
     const KEEP_VISIBLE = 120;
 
+    const write = (x: number, y: number) => {
+      if (!card) return;
+      // translate3d rather than translate: promotes the card to its own
+      // compositor layer, so dragging never repaints what is behind it.
+      card.style.transform = `translate3d(${x}px, ${y}px, 0)${baseTransform}`;
+      card.dataset.dragX = String(x);
+      card.dataset.dragY = String(y);
+    };
+
     const onMove = (e: PointerEvent) => {
-      if (!card || !startRect) return;
+      if (!card) return;
 
-      // The card's position is (start + delta) because each move rewrites the
-      // margin absolutely from the base rather than accumulating.
-      const wantLeft = startRect.left + (e.clientX - startX);
-      const wantTop = startRect.top + (e.clientY - startY);
+      const wantX = originX + (e.clientX - startX);
+      const wantY = originY + (e.clientY - startY);
 
-      const left = Math.min(
-        Math.max(wantLeft, KEEP_VISIBLE - startRect.width),
+      // Clamp in viewport space: where the card's edges would land, given the
+      // position it had before this drag began.
+      const left = startLeft - originX + wantX;
+      const top = startTop - originY + wantY;
+      const clampedLeft = Math.min(
+        Math.max(left, KEEP_VISIBLE - width),
         window.innerWidth - KEEP_VISIBLE,
       );
       // Never above the top edge: the header is the only way to grab it back.
-      const top = Math.min(Math.max(wantTop, 0), window.innerHeight - 40);
+      const clampedTop = Math.min(Math.max(top, 0), window.innerHeight - 40);
 
-      card.style.marginLeft = `${baseLeft + (left - startRect.left)}px`;
-      card.style.marginTop = `${baseTop + (top - startRect.top)}px`;
+      write(wantX + (clampedLeft - left), wantY + (clampedTop - top));
     };
 
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
+      if (card) card.style.willChange = "";
+      captureEl?.releasePointerCapture?.(e.pointerId);
+      captureEl = null;
       card = null;
-      startRect = null;
       document.body.style.userSelect = "";
+      document.body.style.cursor = "";
       document.removeEventListener("pointermove", onMove);
     };
 
@@ -74,17 +102,40 @@ export function useDialogDrag() {
       if (!found) return;
 
       card = found;
-      startRect = card.getBoundingClientRect();
+
+      // Capture the card's own transform once and keep it: after the first drag
+      // the computed transform includes our offset, so re-reading it would
+      // compound. dragBase survives on the element for as long as it is mounted.
+      if (card.dataset.dragBase === undefined) {
+        const own = getComputedStyle(card).transform;
+        card.dataset.dragBase = own && own !== "none" ? ` ${own}` : "";
+      }
+      baseTransform = card.dataset.dragBase;
+
+      originX = Number(card.dataset.dragX ?? 0);
+      originY = Number(card.dataset.dragY ?? 0);
+      const rect = card.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop = rect.top;
+      width = rect.width;
       startX = e.clientX;
       startY = e.clientY;
-      const cs = getComputedStyle(card);
-      baseLeft = Number.parseFloat(cs.marginLeft) || 0;
-      baseTop = Number.parseFloat(cs.marginTop) || 0;
 
-      // Without this a drag across the dialog selects its label text.
+      // Hint the compositor before the first move so the layer is ready by then
+      // rather than being promoted mid-drag, which shows up as a hitch.
+      card.style.willChange = "transform";
+      // Without this a drag across the dialog selects its label text, and the
+      // cursor flickers whenever it crosses a child with its own cursor.
       document.body.style.userSelect = "none";
+      document.body.style.cursor = "move";
+      // Keeps the drag alive if the pointer outruns the header, which at speed
+      // it always does.
+      captureEl = handle;
+      handle.setPointerCapture?.(e.pointerId);
+
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp, { once: true });
+      document.addEventListener("pointercancel", onUp, { once: true });
     };
 
     document.addEventListener("pointerdown", onDown, true);
@@ -92,6 +143,7 @@ export function useDialogDrag() {
       document.removeEventListener("pointerdown", onDown, true);
       document.removeEventListener("pointermove", onMove);
       document.body.style.userSelect = "";
+      document.body.style.cursor = "";
     };
   }, []);
 }
