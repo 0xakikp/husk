@@ -901,7 +901,14 @@ function App() {
           {/* Breadcrumb sits above the TERMINAL only, so the sidebar runs the
               full height beside it. Right margin matches WorkspacePanels so the
               two align; the row's own gap separates this column from the sidebar. */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+            /* Panel gap between the breadcrumb and the terminal, so they float
+               apart like the sidebar does rather than sitting flush. Set on the
+               column rather than as a margin on either child, so the two cannot
+               double up. */
+            style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
+          >
             <div
               className={cn(
                 "shrink-0 overflow-hidden rounded-lg border border-[var(--border)]",
