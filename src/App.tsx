@@ -823,7 +823,6 @@ function App() {
 
         <AppHeader
           prefs={prefs}
-          bgDataUrl={bgDataUrl}
           toggleSidebar={toggleSidebar}
           aiSessionsOpen={aiSessionsOpen}
           setAiSessionsOpen={setAiSessionsOpen}
