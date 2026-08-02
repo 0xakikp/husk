@@ -81,7 +81,10 @@ export function SidebarHost({
           width: explorerWidth,
           minWidth: sidebarMinWidth,
           maxWidth: sidebarMaxWidth,
-          margin: prefs.panelGaps > 0 ? `var(--panel-gaps) 0 var(--panel-gaps) var(--panel-gaps)` : undefined,
+          /* No margin. The wallpaper is one fixed layer behind the whole window,
+             so any gap touching the window edge is not separation between two
+             panels -- it is a strip of bare wallpaper framing the app. Panel
+             gaps belong BETWEEN panels only. */
         }}
       >
         <div className="min-h-0 flex-1 overflow-hidden">
