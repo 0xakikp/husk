@@ -134,10 +134,13 @@ export function WorkspacePanels({
             (activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null) && "invisible pointer-events-none",
             prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
           )}
+          /* Gap on the column, not as a margin on either child, so the two cannot
+             stack into a double-width band. */
+          style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
           aria-hidden={activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null}
         >
           {/* AI chat is right-dock only: fixed flex-row, no bottom-mode gap spacer. */}
-          <div className="relative flex min-h-0 flex-1 flex-row">
+          <div className="relative flex min-h-0 flex-1 flex-row overflow-hidden rounded-lg">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <ErrorBoundary
                 fallback={
