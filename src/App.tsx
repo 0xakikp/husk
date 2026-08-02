@@ -867,13 +867,10 @@ function App() {
           activeKind={activeKind}
         />
         {/* ── Path bar (cwd / breadcrumb) ────────────────────────── */}
-        <div
-          className="bg-background/85"
-          style={{
-            marginLeft: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-            marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-          }}
-        >
+        {/* Chrome, like the header: opaque and flush. The side margins left bands
+            beside the breadcrumb where the wallpaper showed through, and /85 let
+            another 15% through the bar itself. */}
+        <div className="bg-background">
           <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
         </div>
 

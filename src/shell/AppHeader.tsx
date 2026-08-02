@@ -139,13 +139,11 @@ export function AppHeader({
         "bg-background",
         IS_MAC ? "pr-2 pl-[72px]" : "pr-0 pl-2",
       )}
-      style={{
-        marginLeft: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-        marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-        marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-        borderTopLeftRadius: prefs.panelGaps > 0 ? "0.375rem" : undefined,
-        borderTopRightRadius: prefs.panelGaps > 0 ? "0.375rem" : undefined,
-      }}
+      /* No panel-gap margins here. Gaps separate PANELS; the title bar is the
+         window's own edge, and insetting it left a band above and beside the bar
+         where nothing is painted — the wallpaper sits at fixed inset-0 / z-index -2
+         behind everything, so it showed through as a stray strip along the top of
+         the window. Chrome sits flush; gaps still apply to the workspace panels. */
     >
       {/* Left: sidebar toggle + AI sessions */}
       <div className="flex shrink-0 items-center gap-0.5">
