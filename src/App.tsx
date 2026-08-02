@@ -37,6 +37,7 @@ import type { Workflow } from "./workflows/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { SidebarViewId } from "./sidebar/SidebarRail";
 import { PathBar } from "./header/PathBar";
+import { useDialogDrag } from "./components/dialogDrag";
 import type { ActiveTab, ActiveKind } from "./shell/types";
 import type { K8sResourceSelection } from "./kubernetes/KubernetesView";
 import type { DockerResourceSelection } from "./docker/DockerDetailPanel";
@@ -81,6 +82,9 @@ function readSidebarView(): SidebarViewId {
 }
 
 function App() {
+  // One listener for every dialog in the app — drag any of them by its header.
+  useDialogDrag();
+
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [explorerWidth, setExplorerWidth] = useState(readSidebarWidth);
   const sidebarWidthWriteTimerRef = useRef(0);

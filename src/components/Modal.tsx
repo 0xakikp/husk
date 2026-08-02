@@ -55,20 +55,33 @@ export function Modal({
   return (
     <DialogPrimitive.Root
       open
+      /* Non-modal: Radix's modal mode traps focus, marks the rest of the app
+         aria-hidden and sets `pointer-events: none` on <body>, which is exactly
+         what stops you using the terminal while a dialog is open. Esc still
+         closes — Radix listens on the document either way. */
+      modal={false}
       onOpenChange={(o) => {
         if (!o) onClose?.();
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+        {/* No dim, no blur, and transparent to the pointer: the terminal behind
+            stays readable and clickable so its output can be copied into this
+            dialog. Kept (rather than deleted) only for the fade animation. */}
+        <DialogPrimitive.Overlay className="pointer-events-none fixed inset-0 z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
+          data-movable
+          /* A click outside is now aimed at whatever is under it — usually the
+             terminal — so it must not also mean cancel. */
+          onInteractOutside={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
           className={cn(
             "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-80px)] w-[460px] max-w-[calc(100vw-40px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
             className,
           )}
         >
-          <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
+          <div data-drag-handle className="flex h-11 shrink-0 cursor-move items-center justify-between border-b border-border px-4">
             <DialogPrimitive.Title className="font-[family-name:var(--font-heading)] text-sm font-medium">
               {title}
             </DialogPrimitive.Title>

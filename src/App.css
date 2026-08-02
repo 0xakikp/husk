@@ -2284,16 +2284,35 @@ button {
 .active-panel-glow.active::before {
   opacity: 1;
 }
-.modal-backdrop {
+/* Dialogs no longer black out the app. No dim and no blur, and the backdrop
+   ignores the pointer entirely, so the terminal stays readable and usable
+   underneath — you can select output and paste it straight into the dialog.
+   The card takes pointer events back.
+
+   The cost, deliberately accepted: click-outside-to-dismiss is gone. A click
+   outside is now meant for whatever is under it, so it cannot also mean cancel.
+   Esc and the × close. */
+.modal-backdrop,
+.husk-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(2px);
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  pointer-events: none;
   animation: modal-fade 0.12s ease-out;
+}
+
+.modal-backdrop > *,
+.husk-modal-backdrop > * {
+  pointer-events: auto;
+}
+
+/* Grab anywhere on the title bar to move the dialog — see components/dialogDrag. */
+.modal-header {
+  cursor: move;
 }
 @keyframes modal-fade {
   from { opacity: 0; }

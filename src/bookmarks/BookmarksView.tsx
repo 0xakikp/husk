@@ -386,15 +386,15 @@ export function BookmarksView({
       {showForm &&
         createPortal(
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-[2px] p-4"
+            className="husk-modal-backdrop"
             onClick={() => resetForm()}
           >
             <div
-              className="w-full max-w-sm rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden"
+              className="pointer-events-auto w-full max-w-sm rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+              <div data-drag-handle className="flex h-9 shrink-0 cursor-move items-center justify-between border-b border-border px-3">
                 <span className="text-xs font-medium">
                   {editingId ? "Edit Bookmark" : "New Bookmark"}
                 </span>
@@ -489,15 +489,15 @@ export function BookmarksView({
       {viewing &&
         createPortal(
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-[2px] p-4"
+            className="husk-modal-backdrop"
             onClick={() => setViewing(null)}
           >
             <div
-              className="w-full max-w-xs rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden"
+              className="pointer-events-auto w-full max-w-xs rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+              <div data-drag-handle className="flex h-9 shrink-0 cursor-move items-center justify-between border-b border-border px-3">
                 <div className="flex items-center gap-1.5">
                   <HugeiconsIcon
                     icon={getIcon(viewing)}
