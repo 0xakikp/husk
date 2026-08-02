@@ -27,11 +27,11 @@ function ThemeToggle() {
     <Button
       variant="ghost"
       size="icon"
-      className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+      className="size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
       onClick={() => setPrefs({ theme: isDark ? "light" : "dark" })}
       title={isDark ? "Switch to light theme" : "Switch to dark theme"}
     >
-      <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} size={16} strokeWidth={1.5} />
+      <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} size={14} strokeWidth={1.75} />
     </Button>
   );
 }
@@ -129,7 +129,10 @@ export function AppHeader({
     <header
       data-tauri-drag-region
       className={cn(
-        "relative flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 select-none",
+        /* h-8, not h-7. At 28px the 24px buttons had 2px of clearance while the
+           12px traffic lights had 8px — two vertical rhythms in one strip, which
+           is what made the OS controls look oversized beside the toolbar. */
+        "relative flex h-8 shrink-0 items-center gap-1.5 border-b border-border/60 select-none",
         /* Always opaque, frosted glass included. This is window chrome — traffic
            lights, tab labels, window controls — so it frames the content rather
            than being content, and a wallpaper showing through it costs legibility
@@ -156,9 +159,9 @@ export function AppHeader({
           title="Toggle sidebar"
           variant="ghost"
           size="icon"
-          className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
         >
-          <HugeiconsIcon icon={LayoutThreeColumnIcon} size={16} strokeWidth={1.5} />
+          <HugeiconsIcon icon={LayoutThreeColumnIcon} size={14} strokeWidth={1.75} />
         </Button>
         {prefs.aiEnabled && (
           <div className="relative" ref={aiSessionsButtonRef}>
@@ -171,13 +174,13 @@ export function AppHeader({
               variant="ghost"
               size="icon"
               className={cn(
-                "size-6 shrink-0 rounded-md",
+                "size-5 shrink-0 rounded-md",
                 aiSessionsOpen
                   ? "bg-accent text-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
-              <HugeiconsIcon icon={MessageMultiple02Icon} size={15} strokeWidth={1.5} />
+              <HugeiconsIcon icon={MessageMultiple02Icon} size={14} strokeWidth={1.75} />
             </Button>
             <AiSessionsPanel
               open={aiSessionsOpen}
@@ -205,7 +208,7 @@ export function AppHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="relative size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="relative size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Authenticator (2FA)"
           onClick={onOpenTotp}
         >
@@ -220,24 +223,24 @@ export function AppHeader({
           onClick={onToggleClipboard}
           className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground"
         >
-          <HugeiconsIcon icon={ClipboardIcon} size={16} strokeWidth={1.5} />
+          <HugeiconsIcon icon={ClipboardIcon} size={14} strokeWidth={1.75} />
         </button>
 
         {prefs.aiEnabled && (
           <Button
             variant="ghost"
             size="icon"
-            className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
             title="Toggle AI composer (Ctrl+Shift+L)"
             onClick={onToggleComposer}
           >
-            <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.5} />
+            <HugeiconsIcon icon={SparklesIcon} size={14} strokeWidth={1.75} />
           </Button>
         )}
         <Button
           size="icon"
           className={cn(
-            "size-6 shrink-0 rounded-md",
+            "size-5 shrink-0 rounded-md",
             activeKind === "settings"
               ? "bg-accent text-foreground"
               : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -245,7 +248,7 @@ export function AppHeader({
           title="Settings"
           onClick={onOpenSettings}
         >
-          <HugeiconsIcon icon={Settings01Icon} size={15} strokeWidth={1.5} />
+          <HugeiconsIcon icon={Settings01Icon} size={14} strokeWidth={1.75} />
         </Button>
       </div>
 
