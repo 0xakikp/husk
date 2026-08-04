@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Folder01Icon, GitBranchIcon, ArrowRight01Icon, AlertCircleIcon, LayoutThreeColumnIcon } from "@hugeicons/core-free-icons";
+import { Folder01Icon, GitBranchIcon, ArrowRight01Icon, AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { IS_MAC } from "@/lib/platform";
@@ -64,16 +64,20 @@ export function StatusBar({
                 type="button"
                 onClick={onToggleSidebar}
                 aria-pressed={sidebarOpen}
+                /* Plain text, no icon and no bordered kbd box. Everything else in
+                   this bar is plain text, and a glyph here sat immediately left of
+                   the workspace folder icon — two competing marks in a 24px strip.
+                   The bordered chip treatment belongs to the title bar, where it
+                   has room; down here it reads as furniture. */
                 className={cn(
-                  "flex items-center gap-1.5 rounded px-1 -mx-1 transition-colors hover:text-foreground",
-                  sidebarOpen && "text-foreground",
+                  "shrink-0 transition-colors hover:text-foreground",
+                  sidebarOpen ? "text-foreground" : "text-muted-foreground",
                 )}
               >
-                <HugeiconsIcon icon={LayoutThreeColumnIcon} size={12} strokeWidth={1.75} className="opacity-80" />
-                <span>Files</span>
-                <kbd className="rounded border border-border/50 bg-muted/30 px-1 font-mono text-[9px] leading-[13px] text-muted-foreground/70">
-                  {IS_MAC ? "\u2318B" : "Ctrl B"}
-                </kbd>
+                Files{" "}
+                {/* A hint, not a label — dimmed and mono so the eye skips it until
+                    it is looking for it. */}
+                <span className="font-mono opacity-55">{IS_MAC ? "\u2318B" : "Ctrl B"}</span>
               </button>
             </TooltipTrigger>
             <TooltipContent side="top" sideOffset={6} className="text-[10.5px]">
