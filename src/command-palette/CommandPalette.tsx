@@ -20,6 +20,7 @@ import {
   PuzzleIcon,
   Download01Icon,
   TimeScheduleIcon,
+  MessageMultiple02Icon,
   FlashIcon,
   AlertCircleIcon,
   DatabaseIcon,
@@ -64,6 +65,7 @@ export type LauncherKind =
   | "grep"
   | "code"
   | "totp"
+  | "session"
   | "ai";
 
 export type Command = {
@@ -191,6 +193,7 @@ const KIND_META: Record<LauncherKind, { icon: typeof Search01Icon; className: st
   grep: { icon: ZoomInAreaIcon, className: "text-lime-400 bg-lime-500/10" },
   code: { icon: CodeIcon, className: "text-teal-400 bg-teal-500/10" },
   totp: { icon: TimeScheduleIcon, className: "text-rose-400 bg-rose-500/10" },
+  session: { icon: MessageMultiple02Icon, className: "text-indigo-400 bg-indigo-500/10" },
   ai: { icon: SparklesIcon, className: "text-fuchsia-400 bg-fuchsia-500/10" },
 };
 
@@ -208,6 +211,7 @@ const SCOPE_LABELS: Record<Exclude<LauncherKind, "command"> | "command", { label
   grep: { label: "Grep", className: "text-lime-400 bg-lime-500/15 border-lime-500/20" },
   code: { label: "Code", className: "text-teal-400 bg-teal-500/15 border-teal-500/20" },
   totp: { label: "2FA", className: "text-rose-400 bg-rose-500/15 border-rose-500/20" },
+  session: { label: "Chats", className: "text-indigo-400 bg-indigo-500/15 border-indigo-500/20" },
   ai: { label: "AI", className: "text-fuchsia-400 bg-fuchsia-500/15 border-fuchsia-500/20" },
 };
 
@@ -271,6 +275,7 @@ const SCOPE_TOKENS: Record<string, LauncherKind> = {
   r: "remote", remote: "remote", remotes: "remote", ssh: "remote",
   j: "job", job: "job", jobs: "job",
   otp: "totp", totp: "totp", "2fa": "totp", auth: "totp", mfa: "totp",
+  chat: "session", chats: "session", session: "session", sessions: "session",
 };
 
 /** The token shown when suggesting a scope, per kind. */
@@ -288,6 +293,7 @@ const SCOPE_CANONICAL: Partial<Record<LauncherKind, string>> = {
   remote: "remotes",
   job: "jobs",
   totp: "otp",
+  session: "chats",
 };
 
 /**
