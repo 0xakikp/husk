@@ -68,7 +68,6 @@ export type LauncherKind =
   | "totp"
   | "session"
   | "wallpaper"
-  | "script"
   | "ai";
 
 export type Command = {
@@ -198,7 +197,6 @@ const KIND_META: Record<LauncherKind, { icon: typeof Search01Icon; className: st
   totp: { icon: TimeScheduleIcon, className: "text-rose-400 bg-rose-500/10" },
   session: { icon: MessageMultiple02Icon, className: "text-indigo-400 bg-indigo-500/10" },
   wallpaper: { icon: ImageIcon, className: "text-purple-400 bg-purple-500/10" },
-  script: { icon: CodeIcon, className: "text-emerald-400 bg-emerald-500/10" },
   ai: { icon: SparklesIcon, className: "text-fuchsia-400 bg-fuchsia-500/10" },
 };
 
@@ -218,7 +216,6 @@ const SCOPE_LABELS: Record<Exclude<LauncherKind, "command"> | "command", { label
   totp: { label: "2FA", className: "text-rose-400 bg-rose-500/15 border-rose-500/20" },
   session: { label: "Chats", className: "text-indigo-400 bg-indigo-500/15 border-indigo-500/20" },
   wallpaper: { label: "Wallpaper", className: "text-purple-400 bg-purple-500/15 border-purple-500/20" },
-  script: { label: "Scripts", className: "text-emerald-400 bg-emerald-500/15 border-emerald-500/20" },
   ai: { label: "AI", className: "text-fuchsia-400 bg-fuchsia-500/15 border-fuchsia-500/20" },
 };
 
@@ -284,7 +281,6 @@ const SCOPE_TOKENS: Record<string, LauncherKind> = {
   otp: "totp", totp: "totp", "2fa": "totp", auth: "totp", mfa: "totp",
   chat: "session", chats: "session", session: "session", sessions: "session",
   wall: "wallpaper", wallpaper: "wallpaper", wallpapers: "wallpaper", bg: "wallpaper",
-  sc: "script", script: "script", scripts: "script",
 };
 
 /** The token shown when suggesting a scope, per kind. */
@@ -304,7 +300,6 @@ const SCOPE_CANONICAL: Partial<Record<LauncherKind, string>> = {
   totp: "otp",
   session: "chats",
   wallpaper: "wall",
-  script: "scripts",
 };
 
 /**

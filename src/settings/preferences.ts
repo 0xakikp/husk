@@ -74,8 +74,6 @@ export type Prefs = {
 
   // Explorer
   showHidden: boolean;
-  /** Folder of runnable scripts surfaced in the Vault sidebar and the launcher. */
-  scriptsDir: string;
 
   // AI
   aiEnabled: boolean;
@@ -167,7 +165,6 @@ const DEFAULT: Prefs = {
   vimMode: false,
 
   showHidden: false,
-  scriptsDir: "",
 
   aiEnabled: true,
   terminalAiErrorAssist: false,
