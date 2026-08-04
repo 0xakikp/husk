@@ -405,11 +405,7 @@ export function WorkspacePanels({
           overlay. Sits outside the layer stack above, so it stays put whichever
           tab is active and never covers the terminal. */}
       {inspected && (
-        <Inspector
-          title={inspected.title}
-          height={prefs.inspectorHeight}
-          onClose={inspected.close}
-        >
+        <Inspector title={inspected.title} onClose={inspected.close}>
           <ErrorBoundary>{inspected.content}</ErrorBoundary>
         </Inspector>
       )}
