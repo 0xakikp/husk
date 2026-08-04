@@ -529,7 +529,7 @@ function App() {
         keywords: "totp otp 2fa mfa auth code token verification",
         run: () => setTotpOpen(true),
       },
-      { id: "tools", label: "Open integrations", run: () => { cycleSidebarView("tools-hub"); } },
+      { id: "tools", label: "Open plugins", keywords: "integrations plugins extensions tools kubernetes docker terraform", run: () => { cycleSidebarView("tools-hub"); } },
       { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
       { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
       { id: "open-clipboard", label: "Open clipboard history", hint: "Ctrl/Cmd+Shift+V", run: () => setClipboardOpen(true) },

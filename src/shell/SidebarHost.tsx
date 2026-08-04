@@ -110,7 +110,7 @@ export function SidebarHost({
           ) : sidebarView === "workflows" ? (
             lazyPanel(<RunbooksDialog inline />, "Workflows")
           ) : sidebarView === "tools-hub" ? (
-            lazyPanel(<ToolsHubView onSelectView={(v) => persistSidebarView(v)} />, "Integrations")
+            lazyPanel(<ToolsHubView onSelectView={(v) => persistSidebarView(v)} />, "Plugins")
           ) : sidebarView === "kubernetes" ? (
             lazyPanel(
               <KubernetesView

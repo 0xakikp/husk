@@ -64,7 +64,7 @@ export function SidebarRail({
     { kind: "view", id: "remotes", label: "Remotes", icon: DatabaseIcon },
     { kind: "view", id: "workflows", label: "Workflows", icon: WorkflowCircle01Icon },
     { kind: "view", id: "vault", label: "Notes", icon: NotebookIcon },
-    { kind: "view", id: "tools-hub", label: "Integrations", icon: PuzzleIcon },
+    { kind: "view", id: "tools-hub", label: "Plugins", icon: PuzzleIcon },
     { kind: "action", id: "command-palette", label: "Command Palette", icon: CommandIcon, onTrigger: onCommandPalette },
   ];
 

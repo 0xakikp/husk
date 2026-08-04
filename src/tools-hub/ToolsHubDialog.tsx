@@ -52,7 +52,7 @@ export function ToolsHubDialog({ onClose, inline }: { onClose?: () => void; inli
   };
 
   return (
-    <Modal title="Integrations" onClose={onClose} inline={inline}>
+    <Modal title="Plugins" onClose={onClose} inline={inline}>
           <p className="rb-empty" style={{ margin: 0 }}>
             Popular CLI tools — “Install” runs the Homebrew command in the active terminal.
           </p>

@@ -90,7 +90,7 @@ export function ToolsHubView({ onSelectView }: Props) {
       <div className="flex h-full flex-col">
         <div className="flex h-8 shrink-0 items-center border-b border-border/40 px-3">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-primary">Integrations</span>
+            <span className="text-xs font-semibold text-primary">Plugins</span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -106,7 +106,7 @@ export function ToolsHubView({ onSelectView }: Props) {
                 sideOffset={6}
                 className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
               >
-                Connect to infrastructure tools: Kubernetes, Docker, Terraform, CI/CD, and Tailscale.
+                Built-in plugins for infrastructure tools: Kubernetes, Docker, Terraform, CI/CD and Tailscale. Support for your own plugins is planned.
               </TooltipContent>
             </Tooltip>
           </div>
@@ -115,6 +115,13 @@ export function ToolsHubView({ onSelectView }: Props) {
           {/* gap-1 and py-1.5: five rows of two lines each had gap-2 between
               them plus py-2.5 inside, which spread the list over more height
               than it had content for. */}
+          {/* Labelled "Built-in" deliberately. These five ship with Husk and
+              cannot be added or removed, so presenting them under a bare
+              "Plugins" heading — with nothing to install — would promise a
+              capability that does not exist yet. */}
+          <div className="px-0.5 pb-1 text-[9px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase">
+            Built-in
+          </div>
           <div className="flex flex-col gap-1">
             {TOOLS.map((tool) => {
               const disabled = tool.status !== "ready";

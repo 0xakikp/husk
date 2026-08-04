@@ -181,7 +181,7 @@ export function DialogHost({
         {lazyPanel(<CiCdDialog onClose={() => setCicdOpen(false)} />, "CI/CD")}
       </DialogLayer>
       <DialogLayer open={toolsOpen}>
-        {lazyPanel(<ToolsHubDialog onClose={() => setToolsOpen(false)} />, "Integrations")}
+        {lazyPanel(<ToolsHubDialog onClose={() => setToolsOpen(false)} />, "Plugins")}
       </DialogLayer>
       <DialogLayer open={diffOpen}>
         {diffOpen && lazyPanel(
