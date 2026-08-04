@@ -72,7 +72,6 @@ export function DialogHost({
   commands,
   clipboardOpen,
   setClipboardOpen,
-  clipboardButtonRef,
   switcherOpen,
   setSwitcherOpen,
   term,
@@ -125,7 +124,6 @@ export function DialogHost({
   commands: Command[];
   clipboardOpen: boolean;
   setClipboardOpen: Setter<boolean>;
-  clipboardButtonRef: React.RefObject<HTMLButtonElement | null>;
   switcherOpen: boolean;
   setSwitcherOpen: Setter<boolean>;
   term: TerminalTabsApi;
@@ -214,10 +212,10 @@ export function DialogHost({
         "Command Palette",
       )}
       {clipboardOpen && lazyPanel(
-        <ClipboardPanel
-          onClose={() => setClipboardOpen(false)}
-          anchorRef={clipboardButtonRef}
-        />,
+        /* No anchor any more — the clipboard icon it hung off is gone from the
+           title bar. ClipboardPanel falls back to top-right, which is where that
+           icon used to be, so the panel still appears where it always did. */
+        <ClipboardPanel onClose={() => setClipboardOpen(false)} />,
         "Clipboard",
       )}
       <DialogLayer open={switcherOpen}>

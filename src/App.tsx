@@ -169,7 +169,6 @@ function App() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [aiSessionsOpen, setAiSessionsOpen] = useState(false);
   const aiSessionsButtonRef = useRef<HTMLDivElement>(null);
-  const clipboardButtonRef = useRef<HTMLButtonElement>(null);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -855,10 +854,8 @@ function App() {
             aiColor: prefs.aiTabColor,
             animationsEnabled: prefs.animationsEnabled,
           }}
-          clipboardButtonRef={clipboardButtonRef}
-          onToggleClipboard={() => setClipboardOpen((v) => !v)}
           onOpenTotp={() => setTotpOpen(true)}
-          onToggleComposer={() => toggleComposer()}
+          onOpenSearch={() => setPaletteOpen(true)}
           onOpenSettings={openSettings}
           activeKind={activeKind}
         />
@@ -995,7 +992,6 @@ function App() {
           commands={launcherItems}
           clipboardOpen={clipboardOpen}
           setClipboardOpen={setClipboardOpen}
-          clipboardButtonRef={clipboardButtonRef}
           switcherOpen={switcherOpen}
           setSwitcherOpen={setSwitcherOpen}
           term={term}

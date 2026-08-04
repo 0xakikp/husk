@@ -663,7 +663,12 @@ export function setSessionActive(leafId: number, active: boolean): void {
 
     setTerminalLineReaderInput(() => {
       const buf = session.term.buffer.active;
-      return buf.getLine(buf.cursorY)?.translateToString(true) ?? "";
+      /* baseY + cursorY, not cursorY. cursorY is relative to the top of the
+         viewport, while getLine() indexes the whole buffer including
+         scrollback — so as soon as anything scrolled, this read some unrelated
+         line from the top of the history and `/ai ` was never found. It only
+         ever worked in a terminal that had not scrolled yet. */
+      return buf.getLine(buf.baseY + buf.cursorY)?.translateToString(true) ?? "";
     });
 
     setAiPtyWriterInput((data: string) => {

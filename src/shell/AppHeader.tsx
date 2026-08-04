@@ -4,35 +4,39 @@ import { cn } from "@/lib/utils";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  ClipboardIcon,
   LayoutThreeColumnIcon,
   MessageMultiple02Icon,
-  Moon02Icon,
   Settings01Icon,
-  SparklesIcon,
-  Sun03Icon,
   Timer01Icon,
 } from "@hugeicons/core-free-icons";
 import { AiSessionsPanel } from "../ai/AiSessionsPanel";
 import { useTotpTimer } from "../totp/useTotpTimer";
-import { usePrefs, setPrefs } from "../settings/preferences";
 import { TabBar } from "./TabBar";
 import type { ActiveKind } from "./types";
 import type { Prefs } from "../settings/preferences";
 
-function ThemeToggle() {
-  const theme = usePrefs().theme;
-  const isDark = theme === "dark";
+/**
+ * The one thing on the right: a text affordance for the launcher.
+ *
+ * Theme, clipboard and the AI composer used to be icons up here. All three are
+ * already commands in the launcher ("Toggle light / dark theme", "Open clipboard
+ * history", "Toggle AI composer") and the composer has Ctrl+Shift+L, so five
+ * icons were competing for attention to duplicate what one keystroke does.
+ * Teaching the keystroke is worth more than the icons were.
+ */
+function SearchHint({ onOpen }: { onOpen: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-      onClick={() => setPrefs({ theme: isDark ? "light" : "dark" })}
-      title={isDark ? "Switch to light theme" : "Switch to dark theme"}
+    <button
+      type="button"
+      onClick={onOpen}
+      title="Search files, history, commands and actions"
+      className="group hidden h-[18px] shrink-0 items-center gap-1.5 rounded-md border border-border/40 bg-muted/20 pl-2 pr-1 text-[10px] text-muted-foreground/80 transition-colors hover:border-border/70 hover:bg-muted/40 hover:text-foreground sm:inline-flex"
     >
-      <HugeiconsIcon icon={isDark ? Sun03Icon : Moon02Icon} size={14} strokeWidth={1.75} />
-    </Button>
+      <span>Search</span>
+      <kbd className="rounded border border-border/50 bg-background/50 px-1 font-mono text-[9px] leading-[13px] text-muted-foreground/70 transition-colors group-hover:text-foreground/80">
+        {IS_MAC ? "\u2318K" : "Ctrl K"}
+      </kbd>
+    </button>
   );
 }
 
@@ -104,10 +108,8 @@ export function AppHeader({
   aiSessionsButtonRef,
   onSelectAiSession,
   tabBarProps,
-  clipboardButtonRef,
-  onToggleClipboard,
   onOpenTotp,
-  onToggleComposer,
+  onOpenSearch,
   onOpenSettings,
   activeKind,
 }: {
@@ -118,10 +120,9 @@ export function AppHeader({
   aiSessionsButtonRef: React.RefObject<HTMLDivElement | null>;
   onSelectAiSession: (id: string) => void;
   tabBarProps: React.ComponentProps<typeof TabBar>;
-  clipboardButtonRef: React.RefObject<HTMLButtonElement | null>;
-  onToggleClipboard: () => void;
   onOpenTotp: () => void;
-  onToggleComposer: () => void;
+  /** Opens the launcher — the right-hand hint and its shortcut. */
+  onOpenSearch: () => void;
   onOpenSettings: () => void;
   activeKind: ActiveKind;
 }) {
@@ -152,7 +153,7 @@ export function AppHeader({
          behind everything, so it showed through as a stray strip along the top of
          the window. Chrome sits flush; gaps still apply to the workspace panels. */
     >
-      {/* Left: sidebar toggle + AI sessions */}
+      {/* Every action lives on the left. The right side is the search hint. */}
       <div className="flex shrink-0 items-center gap-0.5">
         <Button
           onClick={toggleSidebar}
@@ -190,21 +191,6 @@ export function AppHeader({
             />
           </div>
         )}
-      </div>
-
-      {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}
-      {IS_MAC && <span className="mr-1 h-full w-px shrink-0 bg-border" />}
-
-      {/* Center: tabs */}
-      <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch" data-tauri-drag-region>
-        <TabBar {...tabBarProps} />
-        <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
-      </div>
-
-      {/* Right: search + actions */}
-
-      <div className="flex items-center gap-0.5">
-        <ThemeToggle />
         <Button
           variant="ghost"
           size="icon"
@@ -215,28 +201,6 @@ export function AppHeader({
           <HugeiconsIcon icon={Timer01Icon} size={14} strokeWidth={1.75} />
           <TotpBadge />
         </Button>
-        <button
-          ref={clipboardButtonRef}
-          type="button"
-          aria-label="Clipboard history"
-          title="Clipboard history"
-          onClick={onToggleClipboard}
-          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <HugeiconsIcon icon={ClipboardIcon} size={14} strokeWidth={1.75} />
-        </button>
-
-        {prefs.aiEnabled && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Toggle AI composer (Ctrl+Shift+L)"
-            onClick={onToggleComposer}
-          >
-            <HugeiconsIcon icon={SparklesIcon} size={14} strokeWidth={1.75} />
-          </Button>
-        )}
         <Button
           size="icon"
           className={cn(
@@ -251,6 +215,17 @@ export function AppHeader({
           <HugeiconsIcon icon={Settings01Icon} size={14} strokeWidth={1.75} />
         </Button>
       </div>
+
+      {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}
+      {IS_MAC && <span className="mr-1 h-full w-px shrink-0 bg-border" />}
+
+      {/* Center: tabs */}
+      <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch" data-tauri-drag-region>
+        <TabBar {...tabBarProps} />
+        <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
+      </div>
+
+      <SearchHint onOpen={onOpenSearch} />
 
       {USE_CUSTOM_WINDOW_CONTROLS && (
         <>

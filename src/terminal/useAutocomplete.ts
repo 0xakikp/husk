@@ -84,7 +84,9 @@ export function useAutocomplete(
     const curRow = buf.cursorY + buf.viewportY;
     prompt.row = curRow;
 
-    const line = buf.getLine(buf.cursorY)?.translateToString(true) ?? "";
+    // Same buffer-index bug as the /ai line reader had: cursorY is
+    // viewport-relative, getLine() is absolute.
+    const line = buf.getLine(buf.baseY + buf.cursorY)?.translateToString(true) ?? "";
     // Only consider text from prompt column to cursor position — the
     // buffer line may have residual characters from previous output
     // or prompt framework artifacts beyond the cursor.
