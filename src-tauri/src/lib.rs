@@ -22,6 +22,56 @@ use port_forward::PortForwardManager;
 use tailscale::TailscaleState;
 use tauri::Manager;
 
+/**
+ * The macOS menu, deliberately without Undo/Redo.
+ *
+ * With no menu set, Tauri installs its default, whose Edit submenu owns Cmd+Z and
+ * Shift+Cmd+Z as key equivalents. On macOS a menu key equivalent is consumed
+ * before the webview sees any keydown, so the editor never received the keystroke
+ * — and the native `undo:` the menu sends instead cannot drive Monaco's model, so
+ * undo did nothing at all. Leaving those two items out frees the keys for whoever
+ * owns the text: Monaco in the editor, WebKit in plain inputs.
+ *
+ * Cut/copy/paste/select-all stay: those key equivalents do the right thing in a
+ * webview, and dropping them would cost the clipboard for no gain.
+ */
+#[cfg(target_os = "macos")]
+fn install_macos_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{AboutMetadata, MenuBuilder, SubmenuBuilder};
+
+    let app_menu = SubmenuBuilder::new(app, "Husk")
+        .about(Some(AboutMetadata::default()))
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .minimize()
+        .fullscreen()
+        .separator()
+        .close_window()
+        .build()?;
+
+    let menu = MenuBuilder::new(app)
+        .items(&[&app_menu, &edit_menu, &window_menu])
+        .build()?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -40,51 +90,14 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir().ok();
             app.manage(SftpManager::with_app_data_dir(app_data_dir));
 
-            // Explicit macOS menu, deliberately without Undo/Redo.
-            //
-            // With no .menu() call Tauri installs its default, whose Edit submenu
-            // owns Cmd+Z and Shift+Cmd+Z as key equivalents. On macOS a menu key
-            // equivalent is consumed before the webview sees any keydown, so the
-            // editor never received the keystroke -- and the native `undo:` the
-            // menu sends instead cannot drive Monaco's model, so undo did nothing
-            // at all. Leaving those two items out frees the keys for whoever owns
-            // the text: Monaco in the editor, WebKit in plain inputs. Cut/copy/
-            // paste/select-all stay, since those key equivalents do the right
-            // thing in a webview.
+            /* Non-fatal on purpose. Built with `?` inside setup, a menu that
+               failed to construct would return Err from setup and stop the app
+               launching altogether — bricking the whole app over a menu bar. The
+               worst case now is falling back to Tauri's default menu, which means
+               Cmd+Z is claimed again: a keyboard annoyance, not a dead launch. */
             #[cfg(target_os = "macos")]
-            {
-                use tauri::menu::{AboutMetadata, MenuBuilder, SubmenuBuilder};
-
-                let app_menu = SubmenuBuilder::new(app, "Husk")
-                    .about(Some(AboutMetadata::default()))
-                    .separator()
-                    .services()
-                    .separator()
-                    .hide()
-                    .hide_others()
-                    .show_all()
-                    .separator()
-                    .quit()
-                    .build()?;
-
-                let edit_menu = SubmenuBuilder::new(app, "Edit")
-                    .cut()
-                    .copy()
-                    .paste()
-                    .select_all()
-                    .build()?;
-
-                let window_menu = SubmenuBuilder::new(app, "Window")
-                    .minimize()
-                    .fullscreen()
-                    .separator()
-                    .close_window()
-                    .build()?;
-
-                let menu = MenuBuilder::new(app)
-                    .items(&[&app_menu, &edit_menu, &window_menu])
-                    .build()?;
-                app.set_menu(menu)?;
+            if let Err(e) = install_macos_menu(app.handle()) {
+                eprintln!("husk: could not install the app menu ({e}); using the default");
             }
 
             Ok(())
