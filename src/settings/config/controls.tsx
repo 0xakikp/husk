@@ -32,14 +32,14 @@ export function CfgArt({ lines }: { lines: string[] }) {
 export function CfgComment({ children }: { children: ReactNode }) {
   return (
     <div className="cfg-line">
-      <span className="cfg-comment"># {children}</span>
+      <span className="cfg-comment"><span className="cfg-comment-mark"># </span>{children}</span>
     </div>
   );
 }
 
 export function CfgBlank() {
   return (
-    <div className="cfg-line">
+    <div className="cfg-line cfg-blank">
       <span>{"\u00A0"}</span>
     </div>
   );
@@ -49,10 +49,17 @@ export function CfgSection({ name, array = false }: { name: string; array?: bool
   return (
     <div className="cfg-line">
       <span className="cfg-punct">{array ? "[[" : "["}</span>
-      <span className="cfg-sec">{name}</span>
+      <span className="cfg-sec">{settingLabel(name)}</span>
       <span className="cfg-punct">{array ? "]]" : "]"}</span>
     </div>
   );
+}
+
+function settingLabel(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[._-]+/g, " · ")
+    .replace(/^./, (letter) => letter.toUpperCase());
 }
 
 export function CfgRow({
@@ -65,18 +72,17 @@ export function CfgRow({
   children: ReactNode;
 }) {
   return (
-    <>
-      {comment ? <CfgComment>{comment}</CfgComment> : null}
+    <div className="cfg-setting">
+      {name || comment ? (
+        <div className="cfg-setting-copy">
+          {name ? <span className="cfg-key">{settingLabel(name)}</span> : null}
+          {comment ? <span className="cfg-comment"><span className="cfg-comment-mark"># </span>{comment}</span> : null}
+        </div>
+      ) : null}
       <div className="cfg-line cfg-kv">
-        {name ? (
-          <>
-            <span className="cfg-key">{name}</span>
-            <span className="cfg-punct">{" = "}</span>
-          </>
-        ) : null}
         <span className="cfg-val">{children}</span>
       </div>
-    </>
+    </div>
   );
 }
 

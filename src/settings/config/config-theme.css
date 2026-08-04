@@ -192,13 +192,20 @@
 
 /* ── Explorer (left file tree) ──────────────────────────────────────────── */
 
+.cfgx-sidebar { background: var(--background); }
+.cfgx-sidebar .p-2\.5 { padding: 14px 12px 8px; }
+.cfgx-sidebar input { border-color: color-mix(in srgb, var(--border) 75%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--background) 75%, transparent); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+.cfgx-sidebar-kicker { padding: 9px 10px 5px; color: color-mix(in srgb, var(--muted-foreground) 65%, transparent); font-size: 9px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.cfgx-nav-group { margin: 8px 0 14px; }
+.cfgx-nav-group > p { margin: 0 10px 5px; color: color-mix(in srgb, var(--muted-foreground) 60%, transparent); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .cfgx-tree-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
   width: 100%;
-  padding: 3px 8px;
-  border-radius: 4px;
+  min-height: 46px;
+  padding: 7px 10px;
+  border-radius: 8px;
   font: inherit;
   font-size: 12px;
   text-align: left;
@@ -206,13 +213,120 @@
   cursor: pointer;
   background: none;
   border: none;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition: background 0.14s ease, color 0.14s ease, transform 0.14s ease;
 }
-.cfgx-tree-item:hover { background: rgba(255, 255, 255, 0.04); color: var(--foreground); }
+.cfgx-tree-item:hover { background: color-mix(in srgb, var(--muted) 64%, transparent); color: var(--foreground); }
 .cfgx-tree-item.active {
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
   color: var(--foreground);
   box-shadow: inset 2px 0 0 var(--primary);
+}
+.cfgx-tree-detail { display: block; margin-top: 2px; overflow: hidden; color: color-mix(in srgb, var(--muted-foreground) 74%, transparent); font-size: 10px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.cfgx-tree-item.active .cfgx-tree-detail { color: color-mix(in srgb, var(--foreground) 65%, var(--muted-foreground)); }
+.cfgx-nav-mark { display: inline-flex; width: 25px; height: 25px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--border) 80%, transparent); border-radius: 7px; color: color-mix(in srgb, var(--muted-foreground) 82%, transparent); background: color-mix(in srgb, var(--background) 55%, transparent); font-size: 13px; line-height: 1; transition: color .14s ease, border-color .14s ease, background .14s ease; }
+.cfgx-tree-item:hover .cfgx-nav-mark { color: var(--foreground); border-color: color-mix(in srgb, var(--primary) 36%, var(--border)); }
+.cfgx-tree-item.active .cfgx-nav-mark { border-color: color-mix(in srgb, var(--primary) 65%, var(--border)); color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+.cfgx-search-results { padding-top: 3px; }
+.cfgx-sidebar-footer { display: flex; align-items: center; gap: 6px; border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent); padding: 11px 14px; color: color-mix(in srgb, var(--muted-foreground) 72%, transparent); font-size: 10px; }
+.cfgx-footer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 9px color-mix(in srgb, var(--primary) 65%, transparent); }
+
+/* ── Guided settings ───────────────────────────────────────────────────── */
+
+.settings-mode-switch { display: inline-flex; padding: 2px; border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--muted) 35%, transparent); }
+.settings-mode-switch button { border: 0; border-radius: 5px; padding: 3px 8px; color: var(--muted-foreground); background: transparent; cursor: pointer; font-size: 10px; transition: color .14s ease, background .14s ease; }
+.settings-mode-switch button:hover { color: var(--foreground); }
+.settings-mode-switch button.active { color: var(--foreground); background: var(--background); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+
+.settings-simple-content { background: var(--background); }
+.settings-guide { box-sizing: border-box; width: min(100%, 920px); margin: 0; padding: 28px 36px 32px; }
+.settings-guide-heading { max-width: 680px; margin-bottom: 8px; }
+.settings-eyebrow, .settings-card-label { margin: 0 0 5px; color: color-mix(in srgb, var(--primary) 88%, var(--foreground)); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.settings-guide h1 { margin: 0; color: var(--foreground); font-size: 24px; font-weight: 600; letter-spacing: -.02em; line-height: 1.25; }
+.settings-guide-heading > p:last-child { margin: 7px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
+.settings-guide-intro { max-width: 680px; margin: 7px 0 20px; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
+.settings-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: transparent; box-shadow: none; }
+.settings-card h2, .settings-section h2 { margin: 0; color: var(--foreground); font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.settings-card p:not(.settings-card-label) { margin: 5px 0 0; color: var(--muted-foreground); font-size: 12px; }
+.settings-select { max-width: 290px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 29px 6px 8px; color: var(--foreground); background: var(--background); font: inherit; font-size: 11px; outline: none; }
+.settings-select:focus { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent); }
+.settings-section { margin-top: 24px; }
+.settings-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 7px; }
+.settings-section-description { margin: 0; color: var(--muted-foreground); font-size: 12px; }
+.settings-control-card, .settings-list-card { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: transparent; }
+.settings-toggle-row, .settings-select-row, .settings-list-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 54px; padding: 9px 14px; }
+.settings-toggle-row + .settings-toggle-row, .settings-toggle-row + .settings-select-row, .settings-select-row + .settings-toggle-row, .settings-select-row + .settings-select-row, .settings-list-row + .settings-list-row { border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent); }
+.settings-toggle-row strong, .settings-select-row strong, .settings-list-row strong { display: block; color: var(--foreground); font-size: 12px; font-weight: 570; }
+.settings-toggle-row small, .settings-select-row small, .settings-list-row small { display: block; max-width: 520px; margin-top: 2px; overflow: hidden; color: var(--muted-foreground); font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.settings-toggle-row input { appearance: none; width: 34px; height: 20px; flex: 0 0 auto; border: 1px solid color-mix(in srgb, var(--border) 85%, transparent); border-radius: 999px; background: var(--muted); cursor: pointer; transition: background .16s ease, border-color .16s ease; }
+.settings-toggle-row input::after { display: block; width: 14px; height: 14px; margin: 2px; border-radius: 50%; background: var(--muted-foreground); content: ""; transition: transform .16s ease, background .16s ease; }
+.settings-toggle-row input:checked { border-color: var(--primary); background: var(--primary); }
+.settings-toggle-row input:checked::after { background: white; transform: translateX(14px); }
+.settings-toggle-row input:focus-visible, .settings-primary-button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.settings-text-button, .settings-advanced-link { border: 0; padding: 0; color: var(--primary); background: transparent; cursor: pointer; font: inherit; font-size: 12px; }
+.settings-text-button:hover, .settings-advanced-link:hover { text-decoration: underline; }
+.settings-provider-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.settings-provider-card { display: flex; align-items: center; gap: 10px; min-height: 58px; border: 1px solid color-mix(in srgb, var(--border) 80%, transparent); border-radius: 10px; padding: 10px 12px; color: var(--foreground); background: color-mix(in srgb, var(--card) 65%, transparent); cursor: pointer; transition: border-color .14s ease, background .14s ease, transform .14s ease; }
+.settings-provider-card:hover { border-color: color-mix(in srgb, var(--primary) 50%, var(--border)); background: color-mix(in srgb, var(--primary) 5%, var(--card)); transform: translateY(-1px); }
+.settings-provider-card strong, .settings-provider-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-provider-card strong { font-size: 12px; font-weight: 550; }
+.settings-provider-card small { margin-top: 3px; color: var(--muted-foreground); font-size: 10px; }
+.settings-status-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--muted-foreground); opacity: .45; }
+.settings-status-dot.connected { background: #4ade80; opacity: 1; box-shadow: 0 0 10px rgba(74,222,128,.45); }
+.settings-provider-action { color: var(--primary); font-size: 10px; }
+.settings-active-pill { border-radius: 999px; padding: 3px 7px; color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); font-size: 9px; font-weight: 650; }
+.settings-empty-state { padding: 22px 14px; color: var(--muted-foreground); font-size: 12px; line-height: 1.45; }
+.settings-field { display: flex; flex-direction: column; gap: 6px; padding: 14px; color: var(--foreground); font-size: 12px; }
+.settings-field + .settings-field { border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent); }
+.settings-field input, .settings-field textarea { box-sizing: border-box; width: 100%; border: 1px solid color-mix(in srgb, var(--border) 85%, transparent); border-radius: 7px; padding: 8px 9px; color: var(--foreground); background: var(--background); font: inherit; font-size: 12px; outline: none; resize: vertical; }
+.settings-field input:focus, .settings-field textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent); }
+.settings-primary-button { align-self: flex-start; margin: 0 14px 14px; border: 0; border-radius: 7px; padding: 8px 11px; color: var(--primary-foreground); background: var(--primary); cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
+.settings-primary-button:hover { filter: brightness(1.08); }
+.settings-color-input { width: 34px; height: 28px; padding: 2px; border: 1px solid color-mix(in srgb, var(--border) 85%, transparent); border-radius: 7px; background: var(--background); cursor: pointer; }
+.settings-about-logo { width: 56px; height: 56px; border-radius: 14px; }
+
+/* The complete control set uses the same primitives as the original settings
+   pages, but is rendered as a conventional form rather than source code. */
+.settings-more-settings { width: min(100%, 920px); box-sizing: border-box; margin: 0 0 40px; border: 1px solid var(--border); border-radius: 8px; background: transparent; }
+.settings-more-settings > summary { padding: 12px 14px; color: var(--foreground); cursor: pointer; font-size: 12px; font-weight: 600; list-style: none; }
+.settings-more-settings > summary::-webkit-details-marker { display: none; }
+.settings-more-settings > summary::after { float: right; color: var(--muted-foreground); content: "+"; font-size: 17px; font-weight: 400; }
+.settings-more-settings[open] > summary { border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent); }
+.settings-more-settings[open] > summary::after { content: "–"; }
+.settings-more-settings > p { margin: 0; padding: 9px 14px 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.45; }
+.settings-form .cfg-file { counter-reset: none; box-sizing: border-box; width: 100%; padding: 10px 14px 16px; background: none; font-family: inherit; font-feature-settings: normal; font-size: 12px; line-height: normal; }
+.settings-form .cfg-line { min-height: 0; }
+.settings-form .cfg-line::before, .settings-form .cfg-line--art, .settings-form .cfg-comment-mark { display: none; }
+.settings-form .cfg-line:has(.cfg-sec) { margin: 21px 0 8px; }
+.settings-form .cfg-line:has(.cfg-sec):first-child { margin-top: 0; }
+.settings-form .cfg-line:has(.cfg-sec) .cfg-punct { display: none; }
+.settings-form .cfg-sec { color: var(--foreground); font-size: 13px; font-weight: 650; text-shadow: none; }
+.settings-form .cfg-setting { border: 1px solid color-mix(in srgb, var(--border) 65%, transparent); border-radius: 9px; margin: 7px 0; padding: 10px 12px; background: color-mix(in srgb, var(--background) 45%, transparent); }
+.settings-form .cfg-setting .cfg-line { display: block; }
+.settings-form .cfg-setting .cfg-line.cfg-kv { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.settings-form .cfg-setting .cfg-comment { display: block; margin-bottom: 7px; color: var(--muted-foreground); font-size: 11px; line-height: 1.4; }
+.settings-form .cfg-key { color: var(--foreground); font-size: 12px; font-weight: 570; }
+.settings-form .cfg-punct { display: none; }
+.settings-form .cfg-val { justify-content: flex-end; color: var(--foreground); }
+.settings-form .cfg-str { color: var(--foreground); }
+.settings-form .cfg-enum, .settings-form .cfg-text { border: 1px solid color-mix(in srgb, var(--border) 85%, transparent); border-radius: 6px; padding: 6px 24px 6px 8px; color: var(--foreground); background-color: var(--background); font-size: 12px; }
+.settings-form .cfg-text { min-width: 130px; }
+.settings-form .cfg-bool { position: relative; width: 34px; height: 20px; padding: 0; border: 1px solid color-mix(in srgb, var(--border) 85%, transparent); border-radius: 999px; color: transparent; background: var(--muted); font-size: 0; }
+.settings-form .cfg-bool::after { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted-foreground); content: ""; transition: transform .16s ease, background .16s ease; }
+.settings-form .cfg-bool-on { border-color: var(--primary); background: var(--primary); }
+.settings-form .cfg-bool-on::after { background: white; transform: translateX(14px); }
+.settings-form .cfg-act { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent); border-radius: 6px; padding: 5px 8px; color: var(--foreground); background: var(--background); font-size: 11px; }
+.settings-form .cfg-act:hover { border-color: var(--primary); color: var(--primary); }
+.settings-form .cfg-block { color: var(--foreground); background: var(--background); }
+.settings-form .cfg-range { max-width: 130px; }
+.settings-note { display: flex; flex-direction: column; gap: 3px; margin-top: 22px; border-left: 2px solid var(--primary); padding: 4px 0 4px 10px; color: var(--muted-foreground); font-size: 11px; line-height: 1.45; }
+.settings-note strong { color: var(--foreground); font-size: 12px; }
+.settings-advanced-link { display: inline-block; margin-top: 30px; }
+
+@media (max-width: 680px) {
+  .settings-provider-grid { grid-template-columns: 1fr; }
+  .settings-card { align-items: flex-start; flex-direction: column; }
+  .settings-select { width: 100%; max-width: none; }
+  .cfgx-tree-path { display: none; }
 }
 
 /* ── Tab bar ────────────────────────────────────────────────────────────── */
@@ -268,4 +382,63 @@
 
 .cfg-art-hash {
   color: #52525b;
+}
+
+/* ── Terminal-native settings layout ────────────────────────────────────── */
+
+.settings-native-content { background: var(--background); }
+.settings-native-frame { box-sizing: border-box; width: min(100%, 860px); padding: 24px 34px 56px; }
+.settings-native-heading { margin-bottom: 22px; border-bottom: 1px solid var(--border); padding-bottom: 14px; }
+.settings-native-heading h1 { margin: 0; color: var(--foreground); font-size: 15px; font-weight: 600; line-height: 1.3; }
+.settings-native-heading p { margin: 4px 0 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.4; }
+
+.settings-native-form .cfg-file { counter-reset: none; box-sizing: border-box; padding: 0; background: none; font-family: inherit; font-feature-settings: normal; font-size: 12px; line-height: 1.35; }
+.settings-native-form .cfg-line { min-height: 0; }
+.settings-native-form .cfg-line::before,
+.settings-native-form .cfg-line--art,
+.settings-native-form .cfg-blank,
+.settings-native-form .cfg-comment-mark { display: none; }
+.settings-native-form .cfg-line:has(.cfg-sec) { margin: 24px 0 7px; }
+.settings-native-form .cfg-line:has(.cfg-sec):first-child { margin-top: 0; }
+.settings-native-form .cfg-line:has(.cfg-sec) .cfg-punct { display: none; }
+.settings-native-form .cfg-sec { color: var(--foreground); font-size: 12px; font-weight: 650; letter-spacing: .02em; text-shadow: none; }
+
+.settings-native-form .cfg-setting { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 54px; margin: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 10px 0; background: transparent; }
+.settings-native-form .cfg-setting-copy { min-width: 0; flex: 1 1 auto; }
+.settings-native-form .cfg-key { display: block; color: var(--foreground); font-size: 12px; font-weight: 500; }
+.settings-native-form .cfg-comment { display: block; max-width: 560px; margin-top: 3px; color: var(--muted-foreground); font-size: 10.5px; line-height: 1.4; }
+.settings-native-form .cfg-line.cfg-kv { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; }
+.settings-native-form .cfg-val { justify-content: flex-end; color: var(--foreground); }
+.settings-native-form .cfg-punct { display: none; }
+.settings-native-form .cfg-str { color: var(--foreground); }
+.settings-native-form .cfg-enum, .settings-native-form .cfg-text { min-width: 124px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 26px 6px 8px; color: var(--foreground); background-color: var(--background); font-size: 11px; }
+.settings-native-form .cfg-text { box-sizing: border-box; }
+.settings-native-form .cfg-enum:focus, .settings-native-form .cfg-text:focus { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent); }
+.settings-native-form .cfg-bool { position: relative; width: 34px; height: 20px; padding: 0; border: 1px solid var(--border); border-radius: 999px; color: transparent; background: var(--muted); font-size: 0; }
+.settings-native-form .cfg-bool::after { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted-foreground); content: ""; transition: transform .16s ease, background .16s ease; }
+.settings-native-form .cfg-bool-on { border-color: var(--primary); background: var(--primary); }
+.settings-native-form .cfg-bool-on::after { background: var(--primary-foreground); transform: translateX(14px); }
+.settings-native-form .cfg-act { border: 0; border-bottom: 1px solid transparent; border-radius: 0; padding: 2px 0; color: var(--primary); background: none; font-size: 11px; }
+.settings-native-form .cfg-act:hover { border-color: var(--primary); color: var(--primary); }
+.settings-native-form .cfg-hint { font-size: 10px; }
+.settings-native-form .cfg-range { width: 120px; }
+.settings-native-form .cfg-setting:has(.cfg-block) { display: block; }
+.settings-native-form .cfg-setting:has(.cfg-block) .cfg-line.cfg-kv { display: block; margin-top: 9px; }
+.settings-native-form .cfg-setting:has(.cfg-block) .cfg-val { display: block; }
+.settings-native-form .cfg-block { box-sizing: border-box; width: 100%; color: var(--foreground); background: var(--background); }
+.settings-native-form > .cfg-file > .cfg-line:not(:has(.cfg-sec)):not(.cfg-blank):not(.cfg-line--art) { margin: 8px 0; color: var(--muted-foreground); font-size: 10.5px; }
+
+/* Keep navigation functional but deliberately quiet: it is a directory, not a
+   second dashboard competing with the controls. */
+.cfgx-nav-group { margin: 7px 0 12px; }
+.cfgx-nav-group > p { margin: 0 10px 4px; font-size: 8.5px; }
+.cfgx-tree-item { min-height: 38px; gap: 8px; padding: 5px 10px; border-radius: 6px; }
+.cfgx-tree-detail { margin-top: 1px; font-size: 9px; }
+.cfgx-nav-mark { width: 21px; height: 21px; border-radius: 5px; font-size: 11px; }
+.cfgx-tree-item.active { background: color-mix(in srgb, var(--primary) 10%, transparent); box-shadow: inset 2px 0 0 var(--primary); }
+
+@media (max-width: 680px) {
+  .settings-native-frame { width: 100%; padding: 18px 20px 42px; }
+  .settings-native-form .cfg-setting { align-items: flex-start; flex-direction: column; gap: 9px; }
+  .settings-native-form .cfg-line.cfg-kv { width: 100%; }
 }
