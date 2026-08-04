@@ -19,8 +19,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { usePrefs, setPrefs } from "../settings/preferences";
-import { loadConfig, getKey } from "../ai/store";
+import { loadConfig, getKey, useConfig } from "../ai/store";
 import { getProvider } from "../ai/providers";
+import { ModelSwitcher } from "../ai/ModelSwitcher";
 import { streamChat } from "../ai/client";
 import type { Tool } from "ai";
 import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
@@ -916,7 +917,11 @@ export function TerminalAiComposer({
     return () => stopSpeaking();
   }, []);
 
-  const cfg = loadConfig();
+  /* useConfig, not loadConfig: switching provider or model from the footer has to
+     re-render the composer, or the model shown on each message and the
+     missing-key warning would keep reporting the old choice. Safe above the early
+     return below — a hook after it would change hook order between renders. */
+  const cfg = useConfig();
   const provider = cfg.providerId ? getProvider(cfg.providerId) : getProvider("openai");
 
   if (!open || !prefs.aiEnabled) return null;
@@ -1504,8 +1509,8 @@ export function TerminalAiComposer({
 
       <div className="composer-footer">
         <span className="wb-status-left">
-          <span className="wb-status-dot">●</span>
-          {provider.label.toLowerCase()} · {(cfg.model || provider.defaultModel).toLowerCase()} · {busy ? "streaming" : "connected"}
+          {/* The status line is the switcher — see ai/ModelSwitcher. */}
+          <ModelSwitcher busy={busy} />
           {currentFile && includeFile ? " · file ctx" : ""}
         </span>
         <span className="wb-status-right">

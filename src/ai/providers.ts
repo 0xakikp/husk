@@ -1,4 +1,5 @@
-export type ProviderKind = "anthropic" | "openai" | "google" | "openai-compatible";
+/** `cli` drives the local `claude` binary instead of an HTTP API — no key. */
+export type ProviderKind = "anthropic" | "openai" | "google" | "openai-compatible" | "cli";
 
 export type Provider = {
   id: string;
@@ -20,6 +21,17 @@ export type Provider = {
  * with just a base URL, so the list is easy to extend.
  */
 export const PROVIDERS: Provider[] = [
+  {
+    /* Runs the `claude` CLI the user is already logged into, so a Pro/Max/
+       Enterprise subscriber does not have to pay a second time through the API.
+       keyless because there is genuinely nothing to enter; the settings page
+       hides it unless the binary is on PATH. */
+    id: "claude-code",
+    label: "Claude Code (my subscription)",
+    kind: "cli",
+    defaultModel: "sonnet",
+    keyless: true,
+  },
   { id: "anthropic", label: "Anthropic (Claude)", kind: "anthropic", defaultModel: "claude-sonnet-5" },
   { id: "openai", label: "OpenAI (GPT)", kind: "openai", defaultModel: "gpt-4.1" },
   { id: "google", label: "Google (Gemini)", kind: "google", defaultModel: "gemini-2.0-flash" },

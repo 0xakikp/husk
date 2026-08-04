@@ -2,6 +2,7 @@ mod fs;
 mod browser;
 mod jobs;
 mod mcp;
+mod ai_cli;
 mod pty;
 mod remote;
 mod secrets;
@@ -103,12 +104,16 @@ pub fn run() {
             Ok(())
         })
         .manage(PtyState::default())
+        .manage(ai_cli::AiCliState::default())
         .manage(McpState::default())
         .manage(SecretsState::default())
         .manage(JobsState::default())
         .manage(PortForwardManager::new())
         .manage(TailscaleState::default())
         .invoke_handler(tauri::generate_handler![
+            ai_cli::ai_cli_available,
+            ai_cli::ai_cli_start,
+            ai_cli::ai_cli_stop,
             pty::pty_spawn,
             pty::pty_write,
             pty::pty_resize,

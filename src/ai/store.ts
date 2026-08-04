@@ -12,11 +12,16 @@ export type StoredConfig = {
   baseURL: string;
 };
 
-const DEFAULT: StoredConfig = {
-  providerId: PROVIDERS[0].id,
-  model: PROVIDERS[0].defaultModel,
-  baseURL: PROVIDERS[0].baseURL ?? "",
-};
+/* Named, not positional. This was PROVIDERS[0], so adding a provider to the top
+   of the list silently changed the default for every new install — and the CLI
+   provider must never be a default, since it needs a binary the user may not
+   have. */
+const DEFAULT_PROVIDER_ID = "anthropic";
+
+const DEFAULT: StoredConfig = (() => {
+  const p = PROVIDERS.find((x) => x.id === DEFAULT_PROVIDER_ID) ?? PROVIDERS[0];
+  return { providerId: p.id, model: p.defaultModel, baseURL: p.baseURL ?? "" };
+})();
 
 /**
  * A stored model id is only honoured if the app still offers it.
@@ -32,7 +37,23 @@ function knownModel(id: string | undefined, providerId: string): string {
   return PROVIDERS.find((p) => p.id === providerId)?.defaultModel ?? DEFAULT.model;
 }
 
-export function loadConfig(): StoredConfig {
+/* Cached snapshot. loadConfig() is called from render paths, so it used to parse
+   localStorage on every render — and useSyncExternalStore needs a referentially
+   stable snapshot or it re-renders forever. */
+let configCache: StoredConfig | null = null;
+const configSubs = new Set<() => void>();
+
+export function subscribeConfig(fn: () => void): () => void {
+  configSubs.add(fn);
+  return () => configSubs.delete(fn);
+}
+
+/** Reactive config, so switching provider or model updates the UI immediately. */
+export function useConfig(): StoredConfig {
+  return useSyncExternalStore(subscribeConfig, loadConfig, loadConfig);
+}
+
+function readConfig(): StoredConfig {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return DEFAULT;
@@ -48,7 +69,14 @@ export function loadConfig(): StoredConfig {
   }
 }
 
+export function loadConfig(): StoredConfig {
+  configCache ??= readConfig();
+  return configCache;
+}
+
 export function saveConfig(cfg: StoredConfig): void {
+  configCache = { providerId: cfg.providerId, model: cfg.model, baseURL: cfg.baseURL };
+  for (const fn of configSubs) fn();
   try {
     // Persist only non-secret fields — never the keys.
     localStorage.setItem(

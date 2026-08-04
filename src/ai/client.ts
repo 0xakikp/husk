@@ -5,6 +5,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { streamText, stepCountIs, type ModelMessage, type Tool } from "ai";
 import type { Provider } from "./providers";
+import { runClaudeCli } from "./claudeCli";
 
 // Route model HTTP through Tauri (Rust) so provider APIs aren't blocked by the
 // webview's CORS policy.
@@ -19,9 +20,31 @@ export type ChatConfig = {
   baseURL: string;
 };
 
+/**
+ * Flatten a conversation into the single prompt the CLI accepts.
+ *
+ * Husk's session store stays the one source of truth for history, so the whole
+ * transcript is re-sent each turn rather than threading the CLI's own
+ * `--resume` session id. Two session models tracking the same conversation is
+ * the kind of bookkeeping that drifts and then silently loses turns; the CLI
+ * caches repeated context, so the cost of re-sending is much smaller than it
+ * looks.
+ */
+function flattenForCli(system: string, messages: ChatMessage[]): string {
+  const parts: string[] = [];
+  if (system.trim()) parts.push(system.trim());
+  for (const m of messages) {
+    parts.push(`${m.role === "user" ? "User" : "Assistant"}: ${m.content}`);
+  }
+  return parts.join("\n\n");
+}
+
 function buildModel(cfg: ChatConfig) {
   const { provider, model, apiKey, baseURL } = cfg;
   switch (provider.kind) {
+    case "cli":
+      // Handled before this is reached; there is no HTTP model to build.
+      throw new Error("cli provider does not use an HTTP model");
     case "anthropic":
       return createAnthropic({ apiKey, fetch: tfetch })(model);
     case "openai":
@@ -58,6 +81,28 @@ export async function streamChat(
   abortSignal?: AbortSignal,
   onStatus?: (status: string) => void,
 ): Promise<void> {
+  if (cfg.provider.kind === "cli") {
+    /* Husk's own tools are not forwarded. The CLI is its own agent with its own
+       toolset, and its write/execute tools are refused in claudeCli.ts so file
+       edits keep going through Husk's diff review. Tool-driven features are
+       therefore weaker in this mode — the trade for needing no API key. */
+    const run = runClaudeCli({
+      prompt: flattenForCli(system, messages),
+      model: cfg.model,
+      onDelta,
+      onStatus: (name) => onStatus?.(`🛠️ ${name}`),
+      onNotice: (text) => onStatus?.(`⚠️ ${text}`),
+    });
+    const onAbort = () => run.stop();
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      await run.done;
+    } finally {
+      abortSignal?.removeEventListener("abort", onAbort);
+    }
+    return;
+  }
+
   const result = streamText({
     model: buildModel(cfg),
     system,
@@ -100,6 +145,18 @@ export async function generateOnce(
   system: string,
   prompt: string,
 ): Promise<string> {
+  if (cfg.provider.kind === "cli") {
+    let out = "";
+    const run = runClaudeCli({
+      prompt: flattenForCli(system, [{ role: "user", content: prompt }]),
+      model: cfg.model,
+      onDelta: (t) => {
+        out += t;
+      },
+    });
+    await run.done;
+    return out.trim();
+  }
   const result = streamText({ model: buildModel(cfg), system, prompt });
   return (await result.text).trim();
 }

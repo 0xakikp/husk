@@ -11,6 +11,14 @@ export type ModelInfo = {
 };
 
 export const MODELS: ModelInfo[] = [
+  /* Claude Code CLI. Aliases, not dated ids: the CLI resolves "sonnet" to
+     whatever it currently maps to, so these never go stale the way a pinned id
+     does. They must be listed here or knownModel() treats a saved "sonnet" as
+     retired and silently falls back to another provider's default. */
+  { id: "sonnet", label: "Sonnet (via CLI)", provider: getProvider("claude-code"), description: "Balanced — the CLI's default", contextWindow: "plan limits" },
+  { id: "opus", label: "Opus (via CLI)", provider: getProvider("claude-code"), description: "Highest reasoning quality", contextWindow: "plan limits" },
+  { id: "haiku", label: "Haiku (via CLI)", provider: getProvider("claude-code"), description: "Fastest, lightest on usage", contextWindow: "plan limits" },
+
   // Anthropic
   { id: "claude-opus-5", label: "Claude Opus 5", provider: getProvider("anthropic"), description: "Highest reasoning quality", contextWindow: "200K" },
   { id: "claude-sonnet-5", label: "Claude Sonnet 5", provider: getProvider("anthropic"), description: "Balanced speed & reasoning", contextWindow: "200K" },

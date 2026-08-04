@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MODELS, getModel } from "../../ai/models";
 import { PROVIDERS, type Provider } from "../../ai/providers";
 import { loadConfig, saveConfig, useKey, setKey } from "../../ai/store";
+import { claudeCliAvailable } from "../../ai/claudeCli";
 import {
   ConfigEditor,
   CfgArt,
@@ -28,6 +29,16 @@ function ProviderBlock({ provider }: { provider: Provider }) {
   const apiKey = useKey(provider.id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+
+  /* The CLI provider needs no key but is not therefore usable — it needs the
+     binary. Reporting `configured = true` because it is keyless would promise a
+     provider that cannot answer, which is what made the MCP marketplace worth
+     deleting. */
+  const isCli = provider.kind === "cli";
+  const [cliReady, setCliReady] = useState(false);
+  useEffect(() => {
+    if (isCli) void claudeCliAvailable().then(setCliReady);
+  }, [isCli]);
 
   const startEdit = () => {
     setDraft(apiKey || "");
@@ -56,7 +67,18 @@ function ProviderBlock({ provider }: { provider: Provider }) {
           <CfgStr>{provider.baseURL}</CfgStr>
         </CfgRow>
       ) : null}
-      {provider.keyless ? (
+      {isCli ? (
+        <CfgRow
+          name="login"
+          comment={
+            cliReady
+              ? "Uses the Claude Code CLI you are already signed into. No API key, and usage draws on your subscription rather than per-token billing."
+              : "Not found. Install the claude CLI and run `claude login`, then reopen settings."
+          }
+        >
+          <CfgStr>{cliReady ? "claude CLI detected" : "claude CLI not on PATH"}</CfgStr>
+        </CfgRow>
+      ) : provider.keyless ? (
         <CfgRow name="keyless" comment="This provider needs no API key.">
           <CfgBool value={true} onChange={() => {}} />
         </CfgRow>
@@ -77,8 +99,15 @@ function ProviderBlock({ provider }: { provider: Provider }) {
           <CfgAct onClick={startEdit}>{apiKey ? "edit" : "add key"}</CfgAct>
         </CfgRow>
       )}
-      <CfgRow name="configured" comment="Whether a key is stored for this provider in your OS keychain.">
-        <CfgBool value={provider.keyless || !!apiKey} onChange={() => {}} />
+      <CfgRow
+        name="configured"
+        comment={
+          isCli
+            ? "Whether the claude CLI was found on PATH."
+            : "Whether a key is stored for this provider in your OS keychain."
+        }
+      >
+        <CfgBool value={isCli ? cliReady : provider.keyless || !!apiKey} onChange={() => {}} />
       </CfgRow>
       <CfgBlank />
     </>
