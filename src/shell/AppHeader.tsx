@@ -178,6 +178,21 @@ export function AppHeader({
             />
           </div>
         )}
+      </div>
+
+      {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}
+      {IS_MAC && <span className="mr-1 h-full w-px shrink-0 bg-border" />}
+
+      {/* Center: tabs */}
+      <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch" data-tauri-drag-region>
+        <TabBar {...tabBarProps} />
+        <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
+      </div>
+
+      {/* Far right, after the search hint: settings is the one control that is
+          not about the current view, so it sits at the window's edge. */}
+      <div className="flex shrink-0 items-center gap-1">
+        <SearchHint onOpen={onOpenSearch} />
         <Button
           size="icon"
           className={cn(
@@ -192,17 +207,6 @@ export function AppHeader({
           <HugeiconsIcon icon={Settings01Icon} size={14} strokeWidth={1.75} />
         </Button>
       </div>
-
-      {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}
-      {IS_MAC && <span className="mr-1 h-full w-px shrink-0 bg-border" />}
-
-      {/* Center: tabs */}
-      <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch" data-tauri-drag-region>
-        <TabBar {...tabBarProps} />
-        <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
-      </div>
-
-      <SearchHint onOpen={onOpenSearch} />
 
       {USE_CUSTOM_WINDOW_CONTROLS && (
         <>
