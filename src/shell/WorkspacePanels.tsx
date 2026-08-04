@@ -115,37 +115,30 @@ export function WorkspacePanels({
 
   /* Single inspector slot. The two selections used to render as two independent
      overlays at the same z-index, so both could stack on top of each other; one
-     slot removes that by construction. */
+     slot removes that by construction.
+     Content only — each panel brings its own header, title and close. */
   const inspected = selectedK8sResource
-    ? {
-        title: `${selectedK8sResource.kind} · ${selectedK8sResource.name}`,
-        close: () => setSelectedK8sResource(null),
-        content: lazyPanel(
-          <K8sResourceDetailPanel
-            selection={selectedK8sResource}
-            onClose={() => setSelectedK8sResource(null)}
-          />,
-          "Kubernetes",
-        ),
-      }
+    ? lazyPanel(
+        <K8sResourceDetailPanel
+          selection={selectedK8sResource}
+          onClose={() => setSelectedK8sResource(null)}
+        />,
+        "Kubernetes",
+      )
     : selectedDockerResource
-      ? {
-          title: `docker · ${selectedDockerResource.kind}`,
-          close: () => setSelectedDockerResource(null),
-          content: lazyPanel(
-            <DockerDetailPanel
-              selection={selectedDockerResource}
-              onClose={() => setSelectedDockerResource(null)}
-              /* Preserved verbatim from the layer this replaces — the panel
-                 reports its own actions and expects the toast from here. */
-              onAction={async (fn, label) => {
-                await fn();
-                toast({ title: label, variant: "success" });
-              }}
-            />,
-            "Docker",
-          ),
-        }
+      ? lazyPanel(
+          <DockerDetailPanel
+            selection={selectedDockerResource}
+            onClose={() => setSelectedDockerResource(null)}
+            /* Preserved verbatim from the layer this replaces — the panel
+               reports its own actions and expects the toast from here. */
+            onAction={async (fn, label) => {
+              await fn();
+              toast({ title: label, variant: "success" });
+            }}
+          />,
+          "Docker",
+        )
       : null;
 
   return (
@@ -405,8 +398,8 @@ export function WorkspacePanels({
           overlay. Sits outside the layer stack above, so it stays put whichever
           tab is active and never covers the terminal. */}
       {inspected && (
-        <Inspector title={inspected.title} onClose={inspected.close}>
-          <ErrorBoundary>{inspected.content}</ErrorBoundary>
+        <Inspector>
+          <ErrorBoundary>{inspected}</ErrorBoundary>
         </Inspector>
       )}
     </div>

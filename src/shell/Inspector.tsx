@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
-import { cn } from "@/lib/utils";
 import { getPrefs, setPrefs } from "../settings/preferences";
 
 /**
@@ -24,6 +21,13 @@ import { getPrefs, setPrefs } from "../settings/preferences";
  * the terminal and the detail full width, and leaves the AI dock alone: it is a
  * column, this is a row, so the two never compete for the same space.
  *
+ * ── Why there is no header here ──────────────────────────────────────────────
+ * Every detail panel already draws its own h-11 header with the title, subtitle,
+ * copy and a close that calls the same handler — they were built as full-screen
+ * views. A header here meant two stacked title bars and ~28px of a short pane
+ * spent saying the same thing twice. This contributes only the grab strip; the
+ * panel owns its own chrome.
+ *
  * ── Why height is uncontrolled ───────────────────────────────────────────────
  * Dragging writes straight to the element's style through a ref instead of React
  * state. setPrefs serialises every preference to localStorage and notifies every
@@ -32,15 +36,7 @@ import { getPrefs, setPrefs } from "../settings/preferences";
  * which re-fits xterm. The drag felt heavy for that reason alone. Prefs are
  * written once, on release.
  */
-export function Inspector({
-  title,
-  onClose,
-  children,
-}: {
-  title: ReactNode;
-  onClose: () => void;
-  children: ReactNode;
-}) {
+export function Inspector({ children }: { children: ReactNode }) {
   const paneRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
@@ -111,21 +107,6 @@ export function Inspector({
         title="Drag to resize"
       >
         <span className="h-px w-8 rounded bg-border/60 transition-colors group-hover:bg-primary/60" />
-      </div>
-
-      <div className="flex h-7 shrink-0 items-center gap-2 border-b border-border/40 px-2">
-        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-primary">{title}</span>
-        <button
-          type="button"
-          onClick={onClose}
-          title="Close inspector"
-          className={cn(
-            "inline-flex size-5 shrink-0 items-center justify-center rounded",
-            "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-          )}
-        >
-          <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
-        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
