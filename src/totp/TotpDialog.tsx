@@ -9,6 +9,8 @@ import {
 } from "./store";
 import { generateCode, parseSecretInput, generateQrDataUrl, parseTotpUri } from "./totp";
 import { toast } from "@/toast";
+import { cn } from "@/lib/utils";
+import { PALETTE_BACKDROP, PALETTE_SURFACE } from "@/components/paletteSurface";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFileBase64 } from "@/fs";
 import jsQR from "jsqr";
@@ -607,9 +609,14 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
           </div>
         </>
       ) : (
-        <div className="modal-backdrop" onClick={onClose}>
+        /* Wears the launcher's surface, since this is reached from ⌘K.
+           `.modal` centred it with the app's generic dialog chrome, so following
+           "Open authenticator" out of the launcher landed somewhere that looked
+           unrelated to where you just were. Same width, radius, translucency,
+           blur and 12vh anchor as the palette — see components/paletteSurface. */
+        <div className={PALETTE_BACKDROP} onClick={onClose}>
           <div
-            className="modal"
+            className={cn(PALETTE_SURFACE, "animate-hyprland-enter flex flex-col")}
             role="dialog"
             aria-label="Authenticator"
             onClick={(e) => e.stopPropagation()}

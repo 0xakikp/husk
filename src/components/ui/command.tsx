@@ -2,6 +2,7 @@ import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 
 import { cn } from "@/lib/utils"
+import { PALETTE_SURFACE } from "@/components/paletteSurface"
 import {
   Dialog,
   DialogContent,
@@ -66,7 +67,10 @@ function CommandDialog({
           /* w-auto is load-bearing: the base sets w-full, and left-0 + right-0 +
              width:100% is over-constrained, so CSS drops `right` and resolves
              mx-auto to 0 — pinning the panel to the left edge. */
-          "top-[12vh] left-0 right-0 w-auto mx-auto translate-x-0 translate-y-0 overflow-hidden rounded-xl! border border-border/40 bg-background/70 p-0 shadow-lg backdrop-blur-xl",
+          "top-[12vh] left-0 right-0 mx-auto translate-x-0 translate-y-0 rounded-xl! p-0",
+          /* Shared with other ⌘K-reachable panels so they cannot drift apart. */
+          PALETTE_SURFACE,
+          "w-auto",
           "[&[data-state=open]]:animate-none", /* suppress radix default zoom */
           "animate-hyprland-enter",
           className
