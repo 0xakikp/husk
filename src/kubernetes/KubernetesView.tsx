@@ -35,6 +35,7 @@ import {
 import { toast } from "../toast";
 import { Modal } from "../components/Modal";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner, LoadingRow } from "@/components/Spinner";
 import {
   Database01Icon,
   Refresh01Icon,
@@ -236,8 +237,10 @@ export function KubernetesView({
     <Modal title="Kubernetes" onClose={onClose} inline={inline} headerActions={headerActions}>
       {loading && available === null ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
-          <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 animate-pulse">
-            <HugeiconsIcon icon={Database01Icon} size={20} className="text-primary" />
+          {/* Rotation, not a pulse: a fading icon can read as a static gradient,
+              and this is the wait that can take several seconds. */}
+          <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+            <Spinner size={18} className="text-primary" />
           </div>
           <p className="text-[12px] font-medium text-foreground">Analyzing cluster…</p>
         </div>
@@ -320,7 +323,7 @@ export function KubernetesView({
               {TABS.find((t) => t.id === tab)?.label}
             </span>
             {loading ? (
-              <p className="py-4 text-center text-[11px] text-muted-foreground">Loading…</p>
+              <LoadingRow label={`Loading ${TABS.find((t) => t.id === tab)?.label.toLowerCase() ?? "resources"}`} />
             ) : (
               <div className="flex flex-col gap-0.5">
                 {tab === "pods" && pods.map((p) => (

@@ -9,6 +9,7 @@ import {
 import { toast } from "../toast";
 import { Modal } from "../components/Modal";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { LoadingRow } from "@/components/Spinner";
 import { ContainerIcon, Refresh01Icon } from "@hugeicons/core-free-icons";
 import { DockerDetailPanel, type DockerResourceSelection } from "./DockerDetailPanel";
 
@@ -133,7 +134,9 @@ export function DockerView({
 
           {tab === "containers" ? (
             <div className="flex flex-col gap-1">
-              {containers.length === 0 && !loading ? (
+              {loading && containers.length === 0 ? (
+                <LoadingRow label="Loading containers" />
+              ) : containers.length === 0 ? (
                 <p className="py-4 text-center text-[11px] text-muted-foreground">No containers.</p>
               ) : (
                 containers.map((c) => (
@@ -168,7 +171,9 @@ export function DockerView({
             </div>
           ) : (
             <div className="flex flex-col gap-1">
-              {images.length === 0 ? (
+              {loading && images.length === 0 ? (
+                <LoadingRow label="Loading images" />
+              ) : images.length === 0 ? (
                 <p className="py-4 text-center text-[11px] text-muted-foreground">No images.</p>
               ) : (
                 images.map((im) => (
