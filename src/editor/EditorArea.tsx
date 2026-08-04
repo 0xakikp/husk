@@ -323,8 +323,16 @@ export function EditorArea({
         if (editorRef.current !== editor) return;
         const current = model.getValue();
         if (current === content) return;
-        // Update model without adding to undo stack
-        model.setValue(content);
+        /* pushEditOperations, not setValue. The old comment claimed setValue
+           avoided the undo stack; it clears it outright, so an external write to
+           the open file silently destroyed every undo step you had. Replacing the
+           full range as an edit operation keeps the history and makes the reload
+           itself undoable. */
+        model.pushEditOperations(
+          [],
+          [{ range: model.getFullModelRange(), text: content }],
+          () => null,
+        );
         markSaved(changedPath, model.getAlternativeVersionId());
       });
     });
