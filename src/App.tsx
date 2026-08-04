@@ -30,6 +30,7 @@ import { useActiveSshHost, setActiveSshHost } from "./remote/store";
 import { StatusBar } from "./statusbar/StatusBar";
 import type { OpenPanelKind } from "./git/types";
 import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId, runInActiveTerminal } from "./ai/terminalContext";
+import { openActiveTerminalLogs } from "./terminal/registry";
 import { useLauncherItems, type LauncherCtx } from "./command-palette/useLauncherItems";
 import { pinNote, unpinNote } from "./notes/store";
 import { useContext as k8sUseContext } from "./kubernetes/client";
@@ -585,6 +586,18 @@ function App() {
       },
       // Terminal tab commands
       { id: "new-tab", label: "New terminal tab", hint: "Ctrl/Cmd+T", run: () => { term.addTab(); setActiveKind("term"); } },
+      {
+        id: "open-live-logs",
+        label: "Open beautiful logs",
+        hint: "active terminal",
+        keywords: "beautiful logs formatted output info warn warning error terminal",
+        run: () => {
+          setActiveKind("term");
+          if (!openActiveTerminalLogs()) {
+            toast({ title: "Focus a terminal to open its logs", variant: "warning", duration: 2000 });
+          }
+        },
+      },
       { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+Shift+W", run: () => term.closeTab(term.activeId) },
       { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind(n.sftpOpen ? "sftp" : "term"); } } },
       { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind(p.sftpOpen ? "sftp" : "term"); } } },

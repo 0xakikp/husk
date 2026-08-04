@@ -549,7 +549,6 @@ export function NotesView({
             <h3 className="sidebar-rail-title truncate">
               VAULT
             </h3>
-            <span className="font-mono text-[9px] text-muted-foreground/60">· {allNotePaths.length} notes</span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

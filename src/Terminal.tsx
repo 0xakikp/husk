@@ -17,6 +17,7 @@ import {
   setSessionActive,
   getSessionHandle,
   setSessionCallbacks,
+  registerTerminalLogsOpener,
   type TerminalHandle,
 } from "./terminal/registry";
 import "@xterm/xterm/css/xterm.css";
@@ -32,6 +33,7 @@ export function TerminalView({
   onClose,
   canClose = false,
   onFocus,
+  onOpenLogs,
   onFocusDirection: _onFocusDirection,
 }: {
   leafId: number;
@@ -41,6 +43,7 @@ export function TerminalView({
   onClose?: () => void;
   canClose?: boolean;
   onFocus?: () => void;
+  onOpenLogs?: (leafId: number) => void;
   onFocusDirection?: (dir: "left" | "right" | "up" | "down") => void;
 }) {
   void _onFocusDirection; // used by parent key handler, not directly here
@@ -55,6 +58,10 @@ export function TerminalView({
   const hostRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLElement | null>(null);
   const mouseDownOnOverlayRef = useRef(false);
+
+  /* The global launcher resolves this opener from the focused leaf; the shared
+     workspace Inspector owns the visible Logs panel, not this xterm surface. */
+  useEffect(() => registerTerminalLogsOpener(leafId, () => onOpenLogs?.(leafId)), [leafId, onOpenLogs]);
 
   // ── Create session on mount (registry handles terminal + PTY) ────────────
   useEffect(() => {

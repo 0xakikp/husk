@@ -71,6 +71,9 @@ export type TerminalCallbacks = {
   onHistoryOpen?: () => void;
 };
 
+export type TerminalOutputListener = (data: string) => void;
+type TerminalLogsOpener = () => void;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Session state (module-level, survives React lifecycle)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -115,6 +118,54 @@ type Session = {
 
 const sessions = new Map<number, Session>();
 let activeLeafId: number | null = null;
+/* Output listeners deliberately live beside sessions rather than in React.
+   A terminal's PTY survives tab switches, and a Logs drawer must be able to
+   subscribe to the same stream without affecting xterm's rendering or input. */
+const outputListeners = new Map<number, Set<TerminalOutputListener>>();
+const logsOpeners = new Map<number, TerminalLogsOpener>();
+
+/** Let app-wide commands open the drawer belonging to the focused terminal. */
+export function registerTerminalLogsOpener(leafId: number, opener: TerminalLogsOpener): () => void {
+  logsOpeners.set(leafId, opener);
+  return () => {
+    if (logsOpeners.get(leafId) === opener) logsOpeners.delete(leafId);
+  };
+}
+
+export function openActiveTerminalLogs(): boolean {
+  if (activeLeafId == null) return false;
+  const opener = logsOpeners.get(activeLeafId);
+  if (!opener) return false;
+  opener();
+  return true;
+}
+
+export function subscribeTerminalOutput(leafId: number, listener: TerminalOutputListener): () => void {
+  let listeners = outputListeners.get(leafId);
+  if (!listeners) {
+    listeners = new Set();
+    outputListeners.set(leafId, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    const current = outputListeners.get(leafId);
+    if (!current) return;
+    current.delete(listener);
+    if (current.size === 0) outputListeners.delete(leafId);
+  };
+}
+
+function emitTerminalOutput(leafId: number, data: string): void {
+  const listeners = outputListeners.get(leafId);
+  if (!listeners) return;
+  for (const listener of listeners) {
+    try {
+      listener(data);
+    } catch (error) {
+      console.error("[husk] Terminal output listener failed:", error);
+    }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parse OSC 7 cwd
@@ -391,6 +442,7 @@ export async function createSession(
         // Write to terminal immediately — xterm.js handles ANSI sequences
         // and progress bars correctly when fed in real-time
         term.write(text);
+        emitTerminalOutput(leafId, text);
 
         // Scan for husk commands in the incoming text (not buffered)
         // This is best-effort: husk commands typically emit on their own line
@@ -411,6 +463,7 @@ export async function createSession(
     session.unlisteners.push(
       await listen(`pty://exit/${id}`, () => {
         term.write("\r\n\x1b[2m[process exited]\x1b[0m\r\n");
+        emitTerminalOutput(leafId, "\n[process exited]\n");
       }),
     );
 
@@ -770,6 +823,8 @@ export function disposeSession(leafId: number): void {
   session.prefsUnsub?.();
   session.term.dispose();
   sessions.delete(leafId);
+  outputListeners.delete(leafId);
+  logsOpeners.delete(leafId);
 
   if (activeLeafId === leafId) activeLeafId = null;
 }

@@ -9,9 +9,11 @@ import type { TerminalTabsApi } from "./useTerminalTabs";
 export function TerminalStack({
   term,
   viewActive,
+  onOpenLogs,
 }: {
   term: TerminalTabsApi;
   viewActive: boolean;
+  onOpenLogs: (leafId: number) => void;
 }) {
   const { tabs, activeId, splitLeaf, closeLeaf, focusLeaf, focusLeafDirection, ratioLeaf } = term;
   return (
@@ -30,6 +32,7 @@ export function TerminalStack({
             onSplit={(leafId, dir) => splitLeaf(t.id, leafId, dir)}
             onClose={(leafId) => closeLeaf(t.id, leafId)}
             onFocus={(leafId) => focusLeaf(t.id, leafId)}
+            onOpenLogs={onOpenLogs}
             onFocusDirection={(dir) => focusLeafDirection(t.id, dir)}
             onRatio={(splitId, ratio) => ratioLeaf(t.id, splitId, ratio)}
           />

@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazy, useCallback, useEffect, useState } from "react";
 import type * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
 import { TerminalStack } from "../TerminalStack";
 import { TerminalBottomBar } from "../terminal/TerminalBottomBar";
 import { TerminalAiComposer, tabSessionId } from "../terminal/TerminalAiComposer";
-import { runInActiveTerminal } from "../ai/terminalContext";
+import { focusActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
+import { TerminalLogs } from "../terminal/TerminalLogs";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { toast } from "../toast";
 import { lazyPanel } from "./lazy";
@@ -112,6 +113,19 @@ export function WorkspacePanels({
   chromeOccluded: boolean;
 }) {
   const aiLeft = prefs.aiPanelDock === "left";
+  const [logsLeafId, setLogsLeafId] = useState<number | null>(null);
+
+  /* Inspector is intentionally one slot. Opening Kubernetes/Docker detail
+     replaces Logs rather than piling another pane beneath the terminal. */
+  useEffect(() => {
+    if (selectedK8sResource || selectedDockerResource) setLogsLeafId(null);
+  }, [selectedK8sResource, selectedDockerResource]);
+
+  const openLogs = useCallback((leafId: number) => {
+    setSelectedK8sResource(null);
+    setSelectedDockerResource(null);
+    setLogsLeafId(leafId);
+  }, [setSelectedDockerResource, setSelectedK8sResource]);
 
   /* Single inspector slot. The two selections used to render as two independent
      overlays at the same z-index, so both could stack on top of each other; one
@@ -214,7 +228,7 @@ export function WorkspacePanels({
                   </div>
                 }
               >
-                <TerminalStack term={term} viewActive={activeKind === "term"} />
+                <TerminalStack term={term} viewActive={activeKind === "term"} onOpenLogs={openLogs} />
               </ErrorBoundary>
             </div>
             {!aiLeft && (
@@ -398,9 +412,19 @@ export function WorkspacePanels({
       {/* Inspector — a row under the work area, not a fourth column and not an
           overlay. Sits outside the layer stack above, so it stays put whichever
           tab is active and never covers the terminal. */}
-      {inspected && (
+      {(logsLeafId != null || inspected) && (
         <Inspector>
-          <ErrorBoundary>{inspected}</ErrorBoundary>
+          <ErrorBoundary>
+            {logsLeafId != null ? (
+              <TerminalLogs
+                leafId={logsLeafId}
+                onClose={() => {
+                  setLogsLeafId(null);
+                  focusActiveTerminal();
+                }}
+              />
+            ) : inspected}
+          </ErrorBoundary>
         </Inspector>
       )}
     </div>
