@@ -107,7 +107,12 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
-        "group relative flex h-6 shrink items-center gap-1 rounded-md text-xs transition-colors min-w-0 max-w-[160px] overflow-hidden border-l-2 select-none",
+        /* min-w is what makes the strip scroll. Tabs had only max-w and `shrink`, so
+           they compressed toward zero instead of overflowing — twelve tabs all read
+           "P…" and the overflow-x-auto on the strip could never engage, because a
+           container whose children shrink to fit never overflows. 112px keeps ~10
+           characters legible; past that the strip scrolls. */
+        "group relative flex h-6 shrink items-center gap-1 rounded-md text-xs transition-colors min-w-[112px] max-w-[160px] overflow-hidden border-l-2 select-none",
         onClose ? "pr-1" : "pr-2",
         active ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
         animate && "animate-tab-slide-in",
@@ -226,6 +231,20 @@ export function TabBar({
       left: tabRect.left - barRect.left + 8,
       width: tabRect.width - 16,
     });
+
+    /* Reveal the active tab. Selecting a tab with Cmd+1..9 or closing one can
+       leave the selection off-screen now that the strip scrolls. Done by hand
+       rather than scrollIntoView, which also scrolls ancestors vertically. The
+       right margin clears the sticky + button. */
+    const strip = scrollRef.current;
+    if (strip) {
+      const stripRect = strip.getBoundingClientRect();
+      if (tabRect.left < stripRect.left) {
+        strip.scrollLeft -= stripRect.left - tabRect.left + 8;
+      } else if (tabRect.right > stripRect.right - 32) {
+        strip.scrollLeft += tabRect.right - stripRect.right + 32;
+      }
+    }
   }, [active, termTabs, openFiles, settingsOpen]);
 
   // Horizontal wheel scroll
@@ -258,7 +277,7 @@ export function TabBar({
       data-tauri-drag-region
       className="relative min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <div className="flex w-full min-w-0 items-center gap-0.5" ref={tabBarRef} onDragOver={handleDragOver}>
+      <div className="flex w-max min-w-full items-center gap-0.5" ref={tabBarRef} onDragOver={handleDragOver}>
         {/* Pinned Husk AI tab — rendered first when pinned */}
         {aiPinned && (
           <TabChip
@@ -511,7 +530,9 @@ export function TabBar({
         <Button
           variant="ghost"
           size="icon"
-          className="size-6 shrink-0 rounded-none text-muted-foreground hover:bg-muted hover:text-foreground"
+          /* sticky: this button lives inside the scrolling row, so it would
+             scroll out of reach precisely when the most tabs are open. */
+          className="sticky right-0 z-10 size-6 shrink-0 rounded-none bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
           title="New tab"
           onClick={onNewTerm}
         >
