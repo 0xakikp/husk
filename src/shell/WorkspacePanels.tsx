@@ -10,6 +10,7 @@ import { runInActiveTerminal } from "../ai/terminalContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { toast } from "../toast";
 import { lazyPanel } from "./lazy";
+import { Inspector } from "./Inspector";
 import type { Prefs } from "../settings/preferences";
 import type { OpenFile } from "../editor/EditorArea";
 import type { TerminalTabsApi } from "../useTerminalTabs";
@@ -111,6 +112,42 @@ export function WorkspacePanels({
   chromeOccluded: boolean;
 }) {
   const aiLeft = prefs.aiPanelDock === "left";
+
+  /* Single inspector slot. The two selections used to render as two independent
+     overlays at the same z-index, so both could stack on top of each other; one
+     slot removes that by construction. */
+  const inspected = selectedK8sResource
+    ? {
+        title: `${selectedK8sResource.kind} · ${selectedK8sResource.name}`,
+        close: () => setSelectedK8sResource(null),
+        content: lazyPanel(
+          <K8sResourceDetailPanel
+            selection={selectedK8sResource}
+            onClose={() => setSelectedK8sResource(null)}
+          />,
+          "Kubernetes",
+        ),
+      }
+    : selectedDockerResource
+      ? {
+          title: `docker · ${selectedDockerResource.kind}`,
+          close: () => setSelectedDockerResource(null),
+          content: lazyPanel(
+            <DockerDetailPanel
+              selection={selectedDockerResource}
+              onClose={() => setSelectedDockerResource(null)}
+              /* Preserved verbatim from the layer this replaces — the panel
+                 reports its own actions and expects the toast from here. */
+              onAction={async (fn, label) => {
+                await fn();
+                toast({ title: label, variant: "success" });
+              }}
+            />,
+            "Docker",
+          ),
+        }
+      : null;
+
   return (
     <div
       className={cn(
@@ -132,13 +169,17 @@ export function WorkspacePanels({
         <div
           className={cn(
             "absolute inset-0 flex flex-col",
-            (activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null) && "invisible pointer-events-none",
+            /* Only the active tab decides this now. It used to also hide when a
+               k8s or docker resource was selected, because detail rendered as a
+               full-workspace overlay — so opening a pod hid the shell you wanted
+               to run commands in. Detail lives in the inspector below instead. */
+            activeKind !== "term" && "invisible pointer-events-none",
             prefs.neonBorderGlow && activeKind === "term" && "neon-glow",
           )}
           /* Gap on the column, not as a margin on either child, so the two cannot
              stack into a double-width band. */
           style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
-          aria-hidden={activeKind !== "term" || selectedK8sResource != null || selectedDockerResource != null}
+          aria-hidden={activeKind !== "term"}
         >
           {/* AI chat is right-dock only: fixed flex-row, no bottom-mode gap spacer. */}
           {/* The border is what makes the radius visible. The terminal itself is
@@ -193,46 +234,6 @@ export function WorkspacePanels({
           </div>
           <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
         </div>
-
-        {/* Kubernetes resource detail layer */}
-        {selectedK8sResource && (
-          <div
-            className={cn(
-              "absolute inset-0 z-10 flex flex-col",
-              prefs.neonBorderGlow && "neon-glow",
-            )}
-            aria-hidden={!selectedK8sResource}
-          >
-            <ErrorBoundary>
-              {lazyPanel(<K8sResourceDetailPanel selection={selectedK8sResource} onClose={() => setSelectedK8sResource(null)} />, "Kubernetes")}
-            </ErrorBoundary>
-          </div>
-        )}
-
-        {/* Docker resource detail layer */}
-        {selectedDockerResource && (
-          <div
-            className={cn(
-              "absolute inset-0 z-10 flex flex-col",
-              prefs.neonBorderGlow && "neon-glow",
-            )}
-            aria-hidden={!selectedDockerResource}
-          >
-            <ErrorBoundary>
-              {lazyPanel(
-                <DockerDetailPanel
-                  selection={selectedDockerResource}
-                  onClose={() => setSelectedDockerResource(null)}
-                  onAction={async (fn, label) => {
-                    await fn();
-                    toast({ title: label, variant: "success" });
-                  }}
-                />,
-                "Docker",
-              )}
-            </ErrorBoundary>
-          </div>
-        )}
 
         {/* Editor + AI pane row — AI panel overlays editor so nothing resizes when the panel toggles. */}
         <div
@@ -399,6 +400,19 @@ export function WorkspacePanels({
           ) : null
         )}
       </div>
+
+      {/* Inspector — a row under the work area, not a fourth column and not an
+          overlay. Sits outside the layer stack above, so it stays put whichever
+          tab is active and never covers the terminal. */}
+      {inspected && (
+        <Inspector
+          title={inspected.title}
+          height={prefs.inspectorHeight}
+          onClose={inspected.close}
+        >
+          <ErrorBoundary>{inspected.content}</ErrorBoundary>
+        </Inspector>
+      )}
     </div>
   );
 }

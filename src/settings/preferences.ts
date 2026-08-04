@@ -76,6 +76,8 @@ export type Prefs = {
   showHidden: boolean;
   /** Folder of Husk plugin JSON files. Empty means no user plugins. */
   pluginsDir: string;
+  /** Height of the resource inspector pane, in px. */
+  inspectorHeight: number;
 
   // AI
   aiEnabled: boolean;
@@ -168,6 +170,7 @@ const DEFAULT: Prefs = {
 
   showHidden: false,
   pluginsDir: "",
+  inspectorHeight: 300,
 
   aiEnabled: true,
   terminalAiErrorAssist: false,

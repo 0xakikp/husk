@@ -200,8 +200,21 @@ function App() {
   const [previewPath, setPreviewPath] = useState<string | undefined>(undefined);
   const [openPanel, setOpenPanel] = useState<OpenPanelKind>(null);
 
-  const [selectedK8sResource, setSelectedK8sResource] = useState<K8sResourceSelection | null>(null);
-  const [selectedDockerResource, setSelectedDockerResource] = useState<DockerResourceSelection | null>(null);
+  /* One inspector slot, so opening a container replaces the pod you were reading
+     rather than stacking a second panel on top of it — which is what the two
+     independent overlays used to do. The setters keep their original signatures,
+     so every caller (sidebar views, dialogs) is unchanged. */
+  const [selectedK8sResource, setK8sSelection] = useState<K8sResourceSelection | null>(null);
+  const [selectedDockerResource, setDockerSelection] = useState<DockerResourceSelection | null>(null);
+
+  const setSelectedK8sResource = useCallback((sel: K8sResourceSelection | null) => {
+    setK8sSelection(sel);
+    if (sel) setDockerSelection(null);
+  }, []);
+  const setSelectedDockerResource = useCallback((sel: DockerResourceSelection | null) => {
+    setDockerSelection(sel);
+    if (sel) setK8sSelection(null);
+  }, []);
 
   const prefs = usePrefs();
   useClipboardListener();
