@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazy, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { FileExplorer } from "../explorer/FileExplorer";
 import { SidebarRail, type SidebarViewId } from "../sidebar/SidebarRail";
@@ -19,6 +19,21 @@ const TerraformView = lazy(() => import("../terraform/TerraformView").then((m) =
 const DockerView = lazy(() => import("../docker/DockerView").then((m) => ({ default: m.DockerView })));
 const TailscaleView = lazy(() => import("../tailscale/TailscaleView").then((m) => ({ default: m.TailscaleView })));
 const NotesView = lazy(() => import("../notes/NotesView").then((m) => ({ default: m.NotesView })));
+
+/** Every view the rail can select, in a stable order. */
+const VIEW_IDS: SidebarViewId[] = [
+  "explorer",
+  "source-control",
+  "remotes",
+  "workflows",
+  "tools-hub",
+  "kubernetes",
+  "ci-cd",
+  "terraform",
+  "docker",
+  "tailscale",
+  "vault",
+];
 
 export function SidebarHost({
   explorerOpen,
@@ -65,6 +80,15 @@ export function SidebarHost({
   sidebarMaxWidth: number;
   typeInActiveTerminal: (text: string) => boolean;
 }) {
+  /* Grows as you visit views and never shrinks, so returning to one is instant.
+     Seeded with the current view so the first render mounts exactly one. */
+  const [visited, setVisited] = useState<Set<SidebarViewId>>(() => new Set([sidebarView]));
+  useEffect(() => {
+    setVisited((prev) => (prev.has(sidebarView) ? prev : new Set(prev).add(sidebarView)));
+  }, [sidebarView]);
+
+  /* Must come after the hooks above: an early return before them would change
+     the hook order between renders. */
   if (!explorerOpen) return null;
 
   return (
@@ -93,70 +117,83 @@ export function SidebarHost({
         {/* Everything in here is "inside the sidebar", so any Modal a view
             opens renders as a panel sheet rather than a centred dialog. */}
         <SidebarSheetContext.Provider value={true}>
+        {/* Every visited view stays mounted and is hidden with display:none when
+            another is selected.
+
+            This was a single ternary, so only the active view existed — clicking
+            Notes did not hide Kubernetes, it destroyed it. Coming back re-ran
+            every kubectl and threw away the context, namespace, tab and scroll
+            position you had. TerminalStack already solves this one layer up for
+            terminal tabs ("so its PTYs and scrollback survive switching"); the
+            sidebar simply never got the same treatment.
+
+            Mounted on first visit rather than all at once, so opening Husk does
+            not shell out to docker, kubectl and terraform before you ask for
+            them. */}
         <div className="min-h-0 flex-1 overflow-hidden">
-          {sidebarView === "explorer" ? (
-            <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
+          {VIEW_IDS.filter((id) => visited.has(id)).map((id) => (
+            <div
+              key={id}
+              className="h-full"
+              /* display:none, not `invisible`: hidden views must not take
+                 layout, and their state has to survive untouched. */
+              style={id === sidebarView ? undefined : { display: "none" }}
+            >
+              {id === "explorer" ? (
+                <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
+                </div>
+              ) : id === "source-control" ? (
+                lazyPanel(<SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />, "Source Control")
+              ) : id === "remotes" ? (
+                lazyPanel(<RemotesView inline onSftp={(h) => openSftp(h)} />, "Remotes")
+              ) : id === "workflows" ? (
+                lazyPanel(<RunbooksDialog inline />, "Workflows")
+              ) : id === "tools-hub" ? (
+                lazyPanel(
+                  <ToolsHubView
+                    onSelectView={(v) => persistSidebarView(v)}
+                    onTypeCommand={(cmd) => typeInActiveTerminal(cmd)}
+                    onRunCommand={(cmd) => runInActiveTerminal(cmd)}
+                  />,
+                  "Plugins",
+                )
+              ) : id === "kubernetes" ? (
+                lazyPanel(
+                  <KubernetesView inline onInspectResource={(sel) => setSelectedK8sResource(sel)} />,
+                  "Kubernetes",
+                )
+              ) : id === "ci-cd" ? (
+                lazyPanel(<CiCdDialog inline />, "CI/CD")
+              ) : id === "terraform" ? (
+                lazyPanel(<TerraformView inline />, "Terraform")
+              ) : id === "docker" ? (
+                lazyPanel(
+                  <DockerView
+                    inline
+                    /* The only view with a timer. Kept mounted it would poll
+                       `docker ps` every 5s while you were reading Notes. */
+                    active={sidebarView === "docker"}
+                    onInspectResource={(sel) => setSelectedDockerResource(sel)}
+                  />,
+                  "Docker",
+                )
+              ) : id === "tailscale" ? (
+                lazyPanel(
+                  <TailscaleView
+                    inline
+                    onConnect={(device) => {
+                      const sshUser = device.user || "root";
+                      typeInActiveTerminal(`ssh ${sshUser}@${device.ipv4}`);
+                    }}
+                  />,
+                  "Tailscale",
+                )
+              ) : id === "vault" ? (
+                lazyPanel(<NotesView inline onOpenFile={(path, name) => openFile(path, name)} />, "Notes")
+              ) : null}
             </div>
-          ) : sidebarView === "source-control" ? (
-            lazyPanel(<SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />, "Source Control")
-          ) : sidebarView === "remotes" ? (
-            lazyPanel(
-              <RemotesView
-                inline
-                onSftp={(h) => openSftp(h)}
-              />,
-              "Remotes",
-            )
-          ) : sidebarView === "workflows" ? (
-            lazyPanel(<RunbooksDialog inline />, "Workflows")
-          ) : sidebarView === "tools-hub" ? (
-            lazyPanel(
-              <ToolsHubView
-                onSelectView={(v) => persistSidebarView(v)}
-                onTypeCommand={(cmd) => typeInActiveTerminal(cmd)}
-                onRunCommand={(cmd) => runInActiveTerminal(cmd)}
-              />,
-              "Plugins",
-            )
-          ) : sidebarView === "kubernetes" ? (
-            lazyPanel(
-              <KubernetesView
-                inline
-                onInspectResource={(sel) => setSelectedK8sResource(sel)}
-              />,
-              "Kubernetes",
-            )
-          ) : sidebarView === "ci-cd" ? (
-            lazyPanel(<CiCdDialog inline />, "CI/CD")
-          ) : sidebarView === "terraform" ? (
-            lazyPanel(<TerraformView inline />, "Terraform")
-          ) : sidebarView === "docker" ? (
-            lazyPanel(
-              <DockerView
-                inline
-                onInspectResource={(sel) => setSelectedDockerResource(sel)}
-              />,
-              "Docker",
-            )
-          ) : sidebarView === "tailscale" ? (
-            lazyPanel(
-              <TailscaleView
-                inline
-                onConnect={(device) => {
-                  const sshUser = device.user || "root";
-                  const cmd = `ssh ${sshUser}@${device.ipv4}`;
-                  typeInActiveTerminal(cmd);
-                }}
-              />,
-              "Tailscale",
-            )
-          ) : sidebarView === "vault" ? (
-            lazyPanel(
-              <NotesView inline onOpenFile={(path, name) => openFile(path, name)} />,
-              "Notes",
-            )
-          ) : null}
+          ))}
         </div>
         </SidebarSheetContext.Provider>
         <SidebarRail

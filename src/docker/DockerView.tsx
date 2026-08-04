@@ -19,10 +19,16 @@ export function DockerView({
   onClose,
   inline,
   onInspectResource,
+  /* Defaults true so the dialog/standalone use keeps polling as before; only the
+     sidebar passes it. */
+  active = true,
 }: {
   onClose?: () => void;
   inline?: boolean;
   onInspectResource?: (sel: DockerResourceSelection) => void;
+  /** False while another sidebar view is showing. The panel stays mounted so its
+   *  state survives, but polling `docker ps` in the background would not. */
+  active?: boolean;
 }) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [containers, setContainers] = useState<DockerContainer[]>([]);
@@ -46,10 +52,15 @@ export function DockerView({
   }, []);
 
   useEffect(() => {
+    /* Gated on visibility. This view is now kept mounted when you switch sidebar
+       views, so an ungated interval would run `docker ps` every 5s forever while
+       you were reading Notes. Becoming visible refreshes once, so what you see on
+       return is current rather than however stale it was when you left. */
+    if (!active) return;
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, active]);
 
   const runningCount = containers.filter((c) => c.state === "running").length;
 
