@@ -111,8 +111,15 @@ export type Prefs = {
   aiSidebarWidth: number;
 
   // AI composer dock (terminal)
-  /** Which side the AI panel docks to, in both the terminal and editor views. */
-  aiComposerDock: "left" | "right";
+  /** Which side the AI panel docks to, in both the terminal and editor views.
+   *
+   *  Renamed from aiComposerDock. That key was declared and defaulted to "right"
+   *  while nothing read it, and prefs persist as one object — so every existing
+   *  install already has "right" in localStorage, and load()'s
+   *  { ...DEFAULT, ...saved } meant changing the default could never take effect.
+   *  A new name has no stored value, so the default applies once and the setting
+   *  takes over from there. */
+  aiPanelDock: "left" | "right";
   aiComposerSideWidth: number;
 
   // AI talk-back (TTS) voice — empty = auto female
@@ -243,7 +250,7 @@ const DEFAULT: Prefs = {
   aiTabPinned: false,
   aiTabColor: undefined,
   aiSidebarWidth: 240,
-  aiComposerDock: "left",
+  aiPanelDock: "left",
   aiComposerSideWidth: 380,
   aiTtsVoice: "",
   setupAssistantDismissed: false,

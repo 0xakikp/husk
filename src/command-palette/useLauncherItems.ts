@@ -20,6 +20,7 @@ import type { Workflow } from "../workflows/store";
 import { composeCommand } from "../workflows/params";
 import { removeRecentNote } from "../notes/store";
 import { toast } from "../toast";
+import { getAllSessions, deleteSession } from "../ai/sessionStore";
 import { loadAccounts as loadTotpAccounts } from "../totp/store";
 import { generateCode as generateTotpCode } from "../totp/totp";
 import { useClipHistory, deleteClip } from "../clipboard/store";
@@ -55,6 +56,8 @@ export type LauncherCtx = {
   openBookmarks: () => void;
   /** Hand the raw query to the AI bubble so the launcher never dead-ends. */
   askAi: (query: string) => void;
+  /** Switch to an AI chat session and show the AI view. */
+  selectAiSession: (id: string) => void;
   /** Rewrite the launcher input, e.g. to apply a scope token. */
   setQuery: (value: string) => void;
   openFiles: { path: string; name: string }[];
@@ -229,6 +232,28 @@ export function useLauncherItems(
           { label: "Copy path", run: () => copy(n.path) },
           { label: "Copy filename", run: () => copy(n.name) },
           { label: "Remove from recents", run: () => removeRecentNote(n.path) },
+        ],
+      });
+    }
+
+    /* AI chat sessions.
+       These were reachable only from a title-bar dropdown, which is fine at
+       three sessions and useless at thirty — a list you cannot search. Rows
+       here are searchable by name and carry the same delete the panel had. */
+    for (const sess of getAllSessions()) {
+      if (sess.archived) continue;
+      const count = sess.messages.length;
+      items.push({
+        id: `session:${sess.id}`,
+        kind: "session",
+        label: sess.name,
+        hint: count ? `${count} message${count === 1 ? "" : "s"}` : "empty",
+        keywords: `chat session ai ${sess.source}`,
+        group: "Chats",
+        run: () => ctx.selectAiSession(sess.id),
+        actions: [
+          { label: "Copy name", run: () => copy(sess.name) },
+          { label: "Delete chat", run: () => deleteSession(sess.id) },
         ],
       });
     }

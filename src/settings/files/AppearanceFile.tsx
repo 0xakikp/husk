@@ -226,8 +226,8 @@ export function AppearanceFile() {
       <CfgSection name="composer" />
       <CfgRow name="dock" comment="Which side the AI panel sits on, in both the terminal and editor.">
         <CfgEnum<"left" | "right">
-          value={p.aiComposerDock}
-          onChange={(aiComposerDock) => setPrefs({ aiComposerDock })}
+          value={p.aiPanelDock}
+          onChange={(aiPanelDock) => setPrefs({ aiPanelDock })}
           options={[
             { value: "left", label: "Left" },
             { value: "right", label: "Right" },

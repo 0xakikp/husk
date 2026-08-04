@@ -167,8 +167,6 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInput, setPaletteInput] = useState("");
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [aiSessionsOpen, setAiSessionsOpen] = useState(false);
-  const aiSessionsButtonRef = useRef<HTMLDivElement>(null);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -731,6 +729,10 @@ function App() {
         showSidebarView("remotes");
       },
       openBookmarks: () => showSidebarView("bookmarks"),
+      selectAiSession: (id) => {
+        setActiveSessionId(id);
+        setActiveKind("ai");
+      },
       askAi: (q) => openBubble(q),
       setQuery: (v) => setPaletteInput(v),
       openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
@@ -824,15 +826,6 @@ function App() {
         )}
 
         <AppHeader
-          prefs={prefs}
-          toggleSidebar={toggleSidebar}
-          aiSessionsOpen={aiSessionsOpen}
-          setAiSessionsOpen={setAiSessionsOpen}
-          aiSessionsButtonRef={aiSessionsButtonRef}
-          onSelectAiSession={(id) => {
-            setActiveSessionId(id);
-            setActiveKind("ai");
-          }}
           tabBarProps={{
             termTabs: term.tabs,
             openFiles,

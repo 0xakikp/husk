@@ -4,14 +4,10 @@ import { cn } from "@/lib/utils";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  LayoutThreeColumnIcon,
-  MessageMultiple02Icon,
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
-import { AiSessionsPanel } from "../ai/AiSessionsPanel";
 import { TabBar } from "./TabBar";
 import type { ActiveKind } from "./types";
-import type { Prefs } from "../settings/preferences";
 
 /**
  * The one thing on the right: a text affordance for the launcher.
@@ -90,23 +86,11 @@ function WindowControls() {
 }
 
 export function AppHeader({
-  prefs,
-  toggleSidebar,
-  aiSessionsOpen,
-  setAiSessionsOpen,
-  aiSessionsButtonRef,
-  onSelectAiSession,
   tabBarProps,
   onOpenSearch,
   onOpenSettings,
   activeKind,
 }: {
-  prefs: Prefs;
-  toggleSidebar: () => void;
-  aiSessionsOpen: boolean;
-  setAiSessionsOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  aiSessionsButtonRef: React.RefObject<HTMLDivElement | null>;
-  onSelectAiSession: (id: string) => void;
   tabBarProps: React.ComponentProps<typeof TabBar>;
   /** Opens the launcher — the right-hand hint and its shortcut. */
   onOpenSearch: () => void;
@@ -140,48 +124,12 @@ export function AppHeader({
          behind everything, so it showed through as a stray strip along the top of
          the window. Chrome sits flush; gaps still apply to the workspace panels. */
     >
-      {/* Every action lives on the left. The right side is the search hint. */}
-      <div className="flex shrink-0 items-center gap-0.5">
-        <Button
-          onClick={toggleSidebar}
-          title="Toggle sidebar"
-          variant="ghost"
-          size="icon"
-          className="size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <HugeiconsIcon icon={LayoutThreeColumnIcon} size={14} strokeWidth={1.75} />
-        </Button>
-        {prefs.aiEnabled && (
-          <div className="relative" ref={aiSessionsButtonRef}>
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                setAiSessionsOpen((v) => !v);
-              }}
-              title="AI Sessions"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "size-5 shrink-0 rounded-md",
-                aiSessionsOpen
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-            >
-              <HugeiconsIcon icon={MessageMultiple02Icon} size={14} strokeWidth={1.75} />
-            </Button>
-            <AiSessionsPanel
-              open={aiSessionsOpen}
-              onClose={() => setAiSessionsOpen(false)}
-              onSelectSession={onSelectAiSession}
-              anchorRef={aiSessionsButtonRef}
-            />
-          </div>
-        )}
-      </div>
-
-      {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}
-      {IS_MAC && <span className="mr-1 h-full w-px shrink-0 bg-border" />}
+      {/* No action icons on the left any more. Sidebar toggle went to Cmd+B and
+          "Toggle sidebar" in the launcher; AI sessions became the Chats scope
+          (chat:), which is searchable in a way a dropdown never was. */}
+      {/* No divider here. It separated the left icon cluster from the tabs; with
+          the cluster gone it sat between the window controls and the first tab,
+          dividing nothing and costing the tabs the space. */}
 
       {/* Center: tabs */}
       <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch" data-tauri-drag-region>

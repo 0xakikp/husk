@@ -110,7 +110,7 @@ export function WorkspacePanels({
       can cover the browser — the native webview must be parked. */
   chromeOccluded: boolean;
 }) {
-  const aiLeft = prefs.aiComposerDock === "left";
+  const aiLeft = prefs.aiPanelDock === "left";
   return (
     <div
       className={cn(
