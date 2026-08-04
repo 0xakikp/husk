@@ -49,3 +49,24 @@ export const PALETTE_INPUT =
 /** The `esc` hint that sits at the right end of the capsule. */
 export const PALETTE_ESC =
   "pointer-events-none shrink-0 rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9.5px] tracking-wider text-muted-foreground/50";
+
+/** Group heading above a section of rows — "ACCOUNTS", "NOTES", "ADD". */
+export const PALETTE_HEADING =
+  "px-2 py-1 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase";
+
+/**
+ * A selectable row.
+ *
+ * `group/palette-row` rather than the launcher's `group/command-item`, so a
+ * trailing PALETTE_CHIP can react to hover without cmdk driving selection.
+ */
+export const PALETTE_ROW =
+  "group/palette-row relative flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground outline-hidden select-none transition-colors hover:bg-white/[0.06]";
+
+/** The trailing key hint on a row. */
+export const PALETTE_CHIP =
+  "ml-auto inline-flex shrink-0 items-center rounded border border-white/[0.06] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-muted-foreground/70 transition-colors group-hover/palette-row:border-white/[0.08] group-hover/palette-row:bg-white/[0.06] group-hover/palette-row:text-foreground";
+
+/** The hint bar along the bottom of the panel. */
+export const PALETTE_FOOTER =
+  "flex shrink-0 items-center gap-3 border-t border-border/50 px-3 py-1.5 text-[9.5px] text-muted-foreground/50";

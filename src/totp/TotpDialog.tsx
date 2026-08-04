@@ -10,7 +10,17 @@ import {
 import { generateCode, parseSecretInput, generateQrDataUrl, parseTotpUri } from "./totp";
 import { toast } from "@/toast";
 import { cn } from "@/lib/utils";
-import { PALETTE_BACKDROP, PALETTE_CAPSULE, PALETTE_ESC, PALETTE_INPUT, PALETTE_SURFACE } from "@/components/paletteSurface";
+import {
+  PALETTE_BACKDROP,
+  PALETTE_CAPSULE,
+  PALETTE_CHIP,
+  PALETTE_ESC,
+  PALETTE_FOOTER,
+  PALETTE_HEADING,
+  PALETTE_INPUT,
+  PALETTE_ROW,
+  PALETTE_SURFACE,
+} from "@/components/paletteSurface";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFileBase64 } from "@/fs";
 import jsQR from "jsqr";
@@ -20,6 +30,7 @@ import {
   Upload02Icon,
   Download02Icon,
   QrCodeIcon,
+  PlusSignIcon,
   Cancel01Icon,
   PencilEdit02Icon,
   Copy01Icon,
@@ -517,11 +528,12 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
 
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/40 p-1.5" style={{ maxHeight: "60vh" }}>
         {accounts.length === 0 && !adding ? (
-          <p className="rb-empty">
-            No 2FA accounts yet. Add a base32 secret, scan a QR code, or import a backup.
+          <p className="px-2 py-6 text-center text-[12px] text-muted-foreground/60">
+            No accounts yet — add a base32 secret, scan a QR code, or import a backup.
           </p>
         ) : (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col">
+            {filtered.length > 0 ? <div className={PALETTE_HEADING}>Accounts</div> : null}
             {filtered.map((a) => (
               <AccountRow
                 key={a.id}
@@ -577,15 +589,39 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-1">
-            <button type="button" className="rb-new" onClick={() => setAdding(true)}>
-              + Add account
+          /* Launcher rows, not buttons. Two bordered pills at the foot of a list
+             of flat rows was the last thing reading as a different widget. */
+          <div className="flex flex-col">
+            <div className={PALETTE_HEADING}>Add</div>
+            <button type="button" className={PALETTE_ROW} onClick={() => setAdding(true)}>
+              <span className="flex size-5 shrink-0 items-center justify-center rounded bg-accent/10 text-accent">
+                <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={2} />
+              </span>
+              <span className="truncate">Add account</span>
+              <span className={PALETTE_CHIP}>secret</span>
             </button>
-            <button type="button" className="rb-new" onClick={handleScanQr}>
-              <HugeiconsIcon icon={QrCodeIcon} size={13} strokeWidth={1.5} className="inline" /> Scan QR from image
+            <button type="button" className={PALETTE_ROW} onClick={handleScanQr}>
+              <span className="flex size-5 shrink-0 items-center justify-center rounded bg-accent/10 text-accent">
+                <HugeiconsIcon icon={QrCodeIcon} size={12} strokeWidth={2} />
+              </span>
+              <span className="truncate">Scan QR from image</span>
+              <span className={PALETTE_CHIP}>image</span>
             </button>
           </div>
         )}
+      </div>
+
+      {/* Same hint bar the launcher carries, so the panel is bounded the same way
+          top and bottom rather than just ending. */}
+      <div className={PALETTE_FOOTER}>
+        <span className="shrink-0">↵ copy</span>
+        <span className="shrink-0">↑↓ select</span>
+        <span className="shrink-0">esc close</span>
+        <span className="ml-auto min-w-0 truncate">
+          {accounts.length === 0
+            ? "no accounts"
+            : `${filtered.length}${search ? ` of ${accounts.length}` : ""} account${filtered.length === 1 ? "" : "s"}`}
+        </span>
       </div>
     </>
   );
