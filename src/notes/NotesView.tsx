@@ -22,7 +22,7 @@ import {
   Cancel01Icon,
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
-import { fileIconUrl, folderIconUrl } from "../explorer/iconResolver";
+import { folderIconUrl } from "../explorer/iconResolver";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,7 +42,7 @@ import {
   touchRecentNote,
   removeRecentNote,
   getPinnedNotes,
-  getRecentNotes,
+  getRecentNoteEntries,
   searchNotesContent,
   getAllTemplates,
   getTemplateById,
@@ -53,10 +53,41 @@ import {
   type FileNode,
   type NoteSearchResult,
   type NoteTemplate,
+  type RecentNote,
 } from "./store";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import { sheetHost } from "../components/sheetHost";
+
+function noteTitle(name: string): string {
+  return name.replace(/\.(md|mdx|txt)$/i, "");
+}
+
+function noteFolder(path: string, root: string): string {
+  const parent = path.slice(0, Math.max(0, path.lastIndexOf("/")));
+  if (!root || parent === root) return "Vault";
+  const relative = parent.startsWith(`${root}/`) ? parent.slice(root.length + 1) : parent;
+  return relative || "Vault";
+}
+
+function lastOpenedLabel(openedAt?: number): string {
+  if (!openedAt) return "recently opened";
+  const elapsed = Math.max(0, Date.now() - openedAt);
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function notesInTree(nodes?: FileNode[]): number {
+  if (!nodes) return 0;
+  return nodes.reduce(
+    (total, node) => total + (node.isDirectory ? notesInTree(node.children) : isNoteFile(node.name) ? 1 : 0),
+    0,
+  );
+}
 
 export function NotesView({ 
   inline,
@@ -83,7 +114,8 @@ export function NotesView({
   const [templateContents, setTemplateContents] = useState("");
   const [templates, setTemplates] = useState<NoteTemplate[]>(getAllTemplates);
   const [pinned, setPinned] = useState<string[]>([]);
-  const [recents, setRecents] = useState<string[]>([]);
+  const [recents, setRecents] = useState<RecentNote[]>([]);
+  const [activeNotePath, setActiveNotePath] = useState<string | null>(() => getLastViewedNote());
 
   /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -112,7 +144,7 @@ export function NotesView({
 
   const loadLists = useCallback(() => {
     setPinned(getPinnedNotes());
-    setRecents(getRecentNotes());
+    setRecents(getRecentNoteEntries());
   }, []);
 
   const loadTree = useCallback(async () => {
@@ -180,6 +212,7 @@ export function NotesView({
 
   const handleOpenNote = async (path: string) => {
     setLastViewedNote(path);
+    setActiveNotePath(path);
     touchRecentNote(path);
     loadLists();
     if (onOpenFile) {
@@ -296,6 +329,7 @@ export function NotesView({
         setEditingFile(null);
         setEditContent("");
       }
+      if (activeNotePath === path) setActiveNotePath(null);
       toast({ title: "Deleted", variant: "success" });
     } catch {
       // error handled in store
@@ -356,6 +390,19 @@ export function NotesView({
     return paths;
   }, [tree]);
 
+  const folderCount = useMemo(() => {
+    let count = 0;
+    function walk(nodes: FileNode[]) {
+      for (const node of nodes) {
+        if (!node.isDirectory) continue;
+        count += 1;
+        if (node.children) walk(node.children);
+      }
+    }
+    walk(tree);
+    return count;
+  }, [tree]);
+
   const pinnedInfo = useMemo(() => {
     return pinned
       .filter((p) => allNotePaths.includes(p))
@@ -364,17 +411,15 @@ export function NotesView({
 
   const recentsInfo = useMemo(() => {
     return recents
-      .filter((r) => allNotePaths.includes(r) && !pinned.includes(r))
-      .map((r) => ({ path: r, name: r.split("/").pop() || r }))
+      .filter((entry) => allNotePaths.includes(entry.path) && !pinned.includes(entry.path))
+      .map((entry) => ({ ...entry, name: entry.path.split("/").pop() || entry.path }))
       .slice(0, 5);
   }, [recents, allNotePaths, pinned]);
 
   const renderNode = (node: FileNode, depth: number) => {
     const isExpanded = expanded.has(node.path) || node.expanded;
-    /* Mirror the file explorer's row recipe: same .enode/.edir/.efile classes,
-       same ▾/▸ caret column, same 6 + depth*12 indent — so the notes tree
-       reads exactly like the Files section. */
-    const indent = { paddingLeft: 6 + depth * 12 };
+    const isActive = activeNotePath === node.path;
+    const indent = { paddingLeft: 7 + depth * 14 };
 
     return (
       <div key={node.path}>
@@ -382,27 +427,31 @@ export function NotesView({
           {node.isDirectory ? (
             <button
               type="button"
-              className="enode edir"
+              className="flex h-7 w-full items-center gap-1.5 pr-2 text-left font-mono text-[11px] font-medium text-foreground/90 transition-colors hover:bg-muted/45"
               style={indent}
               onClick={() => toggleExpanded(node.path)}
             >
-              <span className="enode-caret">{isExpanded ? "▾" : "▸"}</span>
-              <img src={folderIconUrl(node.name, !!isExpanded)} className="enode-img" alt="" draggable={false} />
+              <span className="inline-flex w-3 shrink-0 justify-center text-[9px] text-muted-foreground/60">{isExpanded ? "▾" : "▸"}</span>
+              <img src={folderIconUrl(node.name, !!isExpanded)} className="size-3.5 shrink-0" alt="" draggable={false} />
               <span className="truncate">{node.name}</span>
+              <span className="ml-auto text-[9px] font-normal text-muted-foreground/50">{notesInTree(node.children)}</span>
             </button>
           ) : (
             <button
               type="button"
-              className={cn("enode efile", editingFile === node.path && "active")}
+              className={cn(
+                "flex h-7 w-full items-center gap-1.5 border-l-2 border-transparent pr-2 text-left font-mono text-[11px] text-foreground/80 transition-colors hover:bg-muted/45 hover:text-foreground",
+                isActive && "border-primary bg-primary/[0.08] text-foreground",
+              )}
               style={indent}
               onClick={() => {
                 if (isNoteFile(node.name)) handleOpenNote(node.path);
               }}
               title={isNoteFile(node.name) ? "Open in editor" : node.name}
             >
-              <span className="enode-caret" />
-              <img src={fileIconUrl(node.name)} className="enode-img" alt="" draggable={false} />
-              <span className="truncate">{node.name}</span>
+              <span className="w-3 shrink-0" />
+              <HugeiconsIcon icon={File02Icon} size={12} strokeWidth={1.6} className={cn("shrink-0 text-muted-foreground/65", isActive && "text-primary")} />
+              <span className="truncate">{noteTitle(node.name)}</span>
             </button>
           )}
 
@@ -459,24 +508,31 @@ export function NotesView({
     );
   };
 
-  const renderQuickNote = (item: { path: string; name: string }) => (
+  const renderQuickNote = (item: { path: string; name: string; openedAt?: number }, pinnedNote = false) => (
     <div
       key={item.path}
-      className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 hover:border-border/40 cursor-pointer"
+      className={cn(
+        "group flex min-h-9 cursor-pointer items-center gap-2 border-l-2 border-transparent py-0.5 pl-2 pr-1 transition-colors hover:bg-muted/45",
+        activeNotePath === item.path && "border-primary bg-primary/[0.08]",
+      )}
       onClick={() => handleOpenNote(item.path)}
     >
-      <img src={fileIconUrl(item.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
-      <span className="flex-1 min-w-0 truncate text-[11px] text-foreground">{item.name}</span>
+      <HugeiconsIcon icon={File02Icon} size={13} strokeWidth={1.6} className={cn("shrink-0 text-muted-foreground/65", activeNotePath === item.path && "text-primary")} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-mono text-[11px] text-foreground">{noteTitle(item.name)}</span>
+        <span className="block truncate pt-0.5 text-[9px] text-muted-foreground/65">{noteFolder(item.path, notesDirRef.current)}</span>
+      </span>
+      {!pinnedNote && <span className="shrink-0 font-mono text-[9px] text-muted-foreground/55">{lastOpenedLabel(item.openedAt)}</span>}
       <button
         type="button"
         onClick={(e) => {
           e.stopPropagation();
           togglePin(item.path);
         }}
-        className="rounded p-0.5 text-primary opacity-0 transition-opacity group-hover:opacity-100"
-        title="Unpin"
+        className={cn("rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground", pinnedNote && "text-primary")}
+        title={pinnedNote ? "Unpin note" : "Pin note"}
       >
-        <HugeiconsIcon icon={PinOffIcon} size={8} />
+        <HugeiconsIcon icon={pinnedNote ? PinOffIcon : PinIcon} size={8} />
       </button>
     </div>
   );
@@ -486,13 +542,14 @@ export function NotesView({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className={cn("flex flex-col h-full", inline ? "p-2" : "p-4")}>
+      <div className={cn("box-border flex h-full min-h-0 flex-col", inline ? "p-2" : "p-4")}>
         {/* Header */}
-        <div className="flex items-center gap-1 mb-2">
-          <div className="flex items-center gap-1.5 flex-1">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">
-              Notes
+        <div className="mb-3 flex items-center gap-1 border-b border-border/55 pb-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <h3 className="sidebar-rail-title truncate">
+              VAULT
             </h3>
+            <span className="font-mono text-[9px] text-muted-foreground/60">· {allNotePaths.length} notes</span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -515,7 +572,7 @@ export function NotesView({
           <button
             type="button"
             onClick={() => setShowTemplatePicker(true)}
-            className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
             title="New note from template"
           >
             <HugeiconsIcon icon={File02Icon} size={10} />
@@ -525,8 +582,8 @@ export function NotesView({
               type="button"
               onClick={() => setSearchActive(true)}
               className={cn(
-                "inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors",
-                searchActive && "border-border/70 text-foreground"
+                "inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors",
+                searchActive && "bg-muted/60 text-foreground"
               )}
               title="Search notes"
             >
@@ -540,7 +597,7 @@ export function NotesView({
               setCreateDir(notesDirRef.current);
               setShowCreate(true);
             }}
-            className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
             title="New note"
           >
             <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
@@ -576,71 +633,53 @@ export function NotesView({
         </div>
       )}
 
-      {/* Pinned & Recents */}
+      {/* Pinned notes and recent activity stay separate from the folder tree:
+          recents answer “what was I working on?”, browse answers “where is it?”. */}
       {!searchIsActive && !loading && (
-        <div className="flex flex-col gap-2 mb-2 pl-1.5">
+        <div className="mb-3 flex flex-col gap-3">
           {pinnedInfo.length > 0 && (
             <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground/80 font-semibold">
+              <div className="flex items-center gap-1 px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/65">
                 <HugeiconsIcon icon={PinIcon} size={8} />
                 Pinned
               </div>
-              <div className="flex flex-col gap-1">{pinnedInfo.map(renderQuickNote)}</div>
+              <div>{pinnedInfo.map((item) => renderQuickNote(item, true))}</div>
             </div>
           )}
           {recentsInfo.length > 0 && (
             <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-amber-600/90 dark:text-amber-400/90 font-semibold">
+              <div className="flex items-center gap-1 px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/65">
                 <HugeiconsIcon icon={Clock01Icon} size={8} />
-                Recent
+                Recently opened
+                <span className="ml-auto text-muted-foreground/45">{recentsInfo.length}</span>
               </div>
-              <div className="flex flex-col gap-0.5 border-l-2 border-amber-400/60 pl-1.5">
-                {recentsInfo.map((item) => (
-                  <div
-                    key={item.path}
-                    className="group flex items-center gap-1.5 rounded-sm bg-transparent px-1 py-1 cursor-pointer transition-colors hover:bg-amber-400/[0.07]"
-                    onClick={() => handleOpenNote(item.path)}
-                  >
-                    <img src={fileIconUrl(item.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
-                    <span className="flex-1 min-w-0 truncate text-[11px] text-foreground/90 transition-colors group-hover:text-amber-300">{item.name}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        pinNote(item.path);
-                        loadLists();
-                      }}
-                      className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                      title="Pin note"
-                    >
-                      <HugeiconsIcon icon={PinIcon} size={8} />
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <div>{recentsInfo.map((item) => renderQuickNote(item))}</div>
             </div>
           )}
         </div>
       )}
 
       {/* Tree / Search results */}
-      <div className="flex-1 overflow-y-auto pl-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {loading || searching ? (
           <div className="py-4 text-center text-[11px] text-muted-foreground">{searching ? "Searching…" : "Loading…"}</div>
         ) : searchIsActive ? (
           searchResults.length === 0 ? (
             <div className="py-4 text-center text-[11px] text-muted-foreground">No matches.</div>
           ) : (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col">
               {searchResults.map((r) => (
                 <div
                   key={r.path}
-                  className="group flex flex-col gap-0.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1.5 hover:border-border/40 cursor-pointer"
+                  className={cn(
+                    "group flex cursor-pointer flex-col gap-0.5 border-l-2 border-transparent px-2 py-1.5 hover:bg-muted/45",
+                    activeNotePath === r.path && "border-primary bg-primary/[0.08]",
+                  )}
                   onClick={() => handleOpenNote(r.path)}
                 >
                   <div className="flex items-center gap-1.5">
-                    <img src={fileIconUrl(r.name)} alt="" className="size-3.5 object-contain shrink-0" draggable={false} />
-                    <span className="flex-1 min-w-0 truncate text-[11px] font-medium text-foreground">{r.name}</span>
+                    <HugeiconsIcon icon={File02Icon} size={12} strokeWidth={1.6} className="shrink-0 text-muted-foreground/65" />
+                    <span className="flex-1 min-w-0 truncate font-mono text-[11px] font-medium text-foreground">{noteTitle(r.name)}</span>
                     {r.matchesContent && (
                       <span className="text-[8px] px-1 rounded bg-primary/10 text-primary">content</span>
                     )}
@@ -657,9 +696,23 @@ export function NotesView({
             {search ? "No matches." : "No notes. Click + to create."}
           </div>
         ) : (
-          filteredTree.map((node) => renderNode(node, 0))
+          <>
+            <div className="mb-1 flex items-center px-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/65">
+              Browse
+              <span className="ml-auto text-muted-foreground/45">{folderCount} folders</span>
+            </div>
+            {filteredTree.map((node) => renderNode(node, 0))}
+          </>
         )}
       </div>
+
+      {!searchIsActive && !loading && (
+        <div className="mt-1 flex h-4 shrink-0 items-center border-t border-border/55 px-2 font-mono text-[9px] leading-none text-muted-foreground/60">
+          <span>{allNotePaths.length} notes</span>
+          <span className="px-1.5 text-muted-foreground/35">·</span>
+          <span>{folderCount} {folderCount === 1 ? "folder" : "folders"}</span>
+        </div>
+      )}
 
       {/* Create modal */}
       {showCreate &&

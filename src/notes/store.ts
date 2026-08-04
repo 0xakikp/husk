@@ -67,27 +67,55 @@ export function isNotePinned(path: string): boolean {
 const RECENTS_KEY = "huskv2.notes.recents";
 const MAX_RECENTS = 8;
 
-export function getRecentNotes(): string[] {
+export type RecentNote = {
+  path: string;
+  /** Missing on entries saved by older Husk versions. */
+  openedAt?: number;
+};
+
+/** Accept the old string-only list as well as the timestamped entries written
+    now. Keeping this migration at the storage boundary means existing vaults
+    retain their recents instead of being reset for a presentation upgrade. */
+export function getRecentNoteEntries(): RecentNote[] {
   try {
     const raw = localStorage.getItem(RECENTS_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === "string") : [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((entry): RecentNote[] => {
+      if (typeof entry === "string") return [{ path: entry }];
+      if (
+        entry &&
+        typeof entry === "object" &&
+        "path" in entry &&
+        typeof entry.path === "string"
+      ) {
+        return [{
+          path: entry.path,
+          openedAt: typeof entry.openedAt === "number" ? entry.openedAt : undefined,
+        }];
+      }
+      return [];
+    });
   } catch {
     return [];
   }
 }
 
+export function getRecentNotes(): string[] {
+  return getRecentNoteEntries().map((entry) => entry.path);
+}
+
 export function touchRecentNote(path: string) {
-  const current = getRecentNotes();
-  const next = [path, ...current.filter((p) => p !== path)].slice(0, MAX_RECENTS);
+  const current = getRecentNoteEntries();
+  const next = [{ path, openedAt: Date.now() }, ...current.filter((entry) => entry.path !== path)].slice(0, MAX_RECENTS);
   try {
     localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
   } catch {}
 }
 
 export function removeRecentNote(path: string) {
-  const next = getRecentNotes().filter((p) => p !== path);
+  const next = getRecentNoteEntries().filter((entry) => entry.path !== path);
   try {
     localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
   } catch {}

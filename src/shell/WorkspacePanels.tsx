@@ -152,10 +152,10 @@ export function WorkspacePanels({
         marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : '8px',
         marginBottom: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
         marginLeft: prefs.panelGaps > 0 ? '0' : undefined,
-        /* Settings intentionally hides the workspace breadcrumb. Give that
-           self-contained panel the same quiet top margin as its bottom edge,
-           without bringing back a redundant path bar. */
-        marginTop: activeKind === "settings" && prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+        /* Full-page AI and Settings views intentionally hide the workspace
+           breadcrumb. Give either self-contained panel the same quiet top
+           margin as its bottom edge, without bringing back a redundant path bar. */
+        marginTop: (activeKind === "settings" || activeKind === "ai") && prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
       }}
     >
       <div className="relative flex min-h-0 min-w-0 flex-1">

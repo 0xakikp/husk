@@ -45,7 +45,7 @@ export function Modal({
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex h-8 shrink-0 items-center justify-between gap-1 border-b border-border/40 px-3">
-          <span className="truncate text-xs font-semibold text-primary">{title}</span>
+          <span className="sidebar-rail-title truncate">{title}</span>
           {headerActions ? <div className="flex items-center gap-0.5">{headerActions}</div> : null}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

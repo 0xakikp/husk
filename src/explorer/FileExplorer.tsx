@@ -150,7 +150,7 @@ export function FileExplorer({
     <div className="explorer">
       {/* husk v1's explorer header: workspace name + new/refresh/collapse actions. */}
       <div className="flex h-8 items-center gap-1 px-2">
-        <span className="flex flex-1 items-center gap-1.5 truncate text-xs font-medium text-primary" title={root}>
+        <span className="sidebar-rail-title flex flex-1 items-center gap-1.5 truncate" title={root}>
           {remoteHost ? (
             <HugeiconsIcon icon={GlobalIcon} size={14} strokeWidth={1.75} className="shrink-0 text-[var(--accent)]" />
           ) : (

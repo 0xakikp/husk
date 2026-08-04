@@ -142,7 +142,7 @@ export function TailscaleView({
             <HugeiconsIcon icon={CloudIcon} size={16} strokeWidth={1.5} className="text-primary" />
           </div>
           <div className="flex flex-col">
-            <span className="text-xs font-semibold text-primary">Tailscale</span>
+            <span className="sidebar-rail-title">Tailscale</span>
             <span className="text-[10px] text-muted-foreground">
               {onlineCount}/{devices.length} devices online
             </span>

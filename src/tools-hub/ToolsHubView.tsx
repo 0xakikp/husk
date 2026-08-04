@@ -125,7 +125,7 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
       <div className="flex h-full flex-col">
         <div className="flex h-8 shrink-0 items-center border-b border-border/40 px-3">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-primary">Plugins</span>
+            <span className="sidebar-rail-title">Plugins</span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
