@@ -943,9 +943,9 @@ function App() {
             sidebarMaxWidth={SIDEBAR_MAX_WIDTH}
             typeInActiveTerminal={typeInActiveTerminal}
           />
-          {/* Breadcrumb sits above the TERMINAL only, so the sidebar runs the
-              full height beside it. Right margin matches WorkspacePanels so the
-              two align; the row's own gap separates this column from the sidebar. */}
+          {/* The breadcrumb belongs to workspace surfaces, not Settings. Hiding
+              it there avoids a blank navigation strip above a self-contained
+              settings page and gives that page the reclaimed vertical space. */}
           <div
             className="flex min-h-0 min-w-0 flex-1 flex-col"
             /* Panel gap between the breadcrumb and the terminal, so they float
@@ -954,22 +954,24 @@ function App() {
                double up. */
             style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
           >
-            <div
-              className={cn(
-                "shrink-0 overflow-hidden rounded-lg border border-[var(--border)]",
-                prefs.frostedGlass && bgDataUrl
-                  ? "bg-background/50 backdrop-blur-md"
-                  : "bg-background/95",
-                prefs.neonBorderGlow && "neon-glow",
-                prefs.panelShadows && "panel-shadow",
-              )}
-              style={{
-                marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
-                marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : "8px",
-              }}
-            >
-              <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
-            </div>
+            {activeKind !== "settings" && (
+              <div
+                className={cn(
+                  "shrink-0 overflow-hidden rounded-lg border border-[var(--border)]",
+                  prefs.frostedGlass && bgDataUrl
+                    ? "bg-background/50 backdrop-blur-md"
+                    : "bg-background/95",
+                  prefs.neonBorderGlow && "neon-glow",
+                  prefs.panelShadows && "panel-shadow",
+                )}
+                style={{
+                  marginTop: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+                  marginRight: prefs.panelGaps > 0 ? `var(--panel-gaps)` : "8px",
+                }}
+              >
+                <PathBar activeFile={activeKind === "file" ? activeFile : undefined} />
+              </div>
+            )}
           <WorkspacePanels
             term={term}
             activeKind={activeKind}
