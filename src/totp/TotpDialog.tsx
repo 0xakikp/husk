@@ -10,7 +10,7 @@ import {
 import { generateCode, parseSecretInput, generateQrDataUrl, parseTotpUri } from "./totp";
 import { toast } from "@/toast";
 import { cn } from "@/lib/utils";
-import { PALETTE_BACKDROP, PALETTE_CAPSULE, PALETTE_SURFACE } from "@/components/paletteSurface";
+import { PALETTE_BACKDROP, PALETTE_CAPSULE, PALETTE_ESC, PALETTE_INPUT, PALETTE_SURFACE } from "@/components/paletteSurface";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFileBase64 } from "@/fs";
 import jsQR from "jsqr";
@@ -482,7 +482,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search 2FA accounts…"
             autoFocus
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/55"
+            className={PALETTE_INPUT}
           />
           {search ? (
             <button
@@ -511,6 +511,7 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
           >
             <HugeiconsIcon icon={Upload02Icon} size={13} strokeWidth={1.75} />
           </button>
+          <kbd className={PALETTE_ESC}>esc</kbd>
         </div>
       </div>
 
@@ -610,9 +611,9 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
            "Open authenticator" out of the launcher landed somewhere that looked
            unrelated to where you just were. Same width, radius, translucency,
            blur and 12vh anchor as the palette — see components/paletteSurface. */
-        <div className={PALETTE_BACKDROP} onClick={onClose}>
+        <div className={cn(PALETTE_BACKDROP, "animate-palette-backdrop")} onClick={onClose}>
           <div
-            className={cn(PALETTE_SURFACE, "animate-hyprland-enter flex flex-col")}
+            className={cn(PALETTE_SURFACE, "max-w-[420px] animate-hyprland-enter flex flex-col")}
             role="dialog"
             aria-label="Authenticator"
             onClick={(e) => e.stopPropagation()}

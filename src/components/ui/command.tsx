@@ -2,7 +2,7 @@ import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 
 import { cn } from "@/lib/utils"
-import { PALETTE_SURFACE } from "@/components/paletteSurface"
+import { PALETTE_SURFACE, PALETTE_CAPSULE, PALETTE_INPUT, PALETTE_ESC } from "@/components/paletteSurface"
 import {
   Dialog,
   DialogContent,
@@ -97,7 +97,7 @@ function CommandInput({
 }) {
   return (
     <div data-slot="command-input-wrapper" className="p-2.5">
-      <div className="command-capsule group relative flex h-11 items-center gap-2 rounded-full border border-accent/20 bg-white/[0.03] px-2.5 focus-within:border-accent/60">
+      <div className={PALETTE_CAPSULE}>
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent transition-colors duration-200 group-focus-within:bg-accent/20">
           <HugeiconsIcon icon={SearchIcon} strokeWidth={2} className="size-4" />
         </span>
@@ -106,15 +106,10 @@ function CommandInput({
         ) : null}
         <CommandPrimitive.Input
           data-slot="command-input"
-          className={cn(
-            "h-full w-full min-w-0 border-0 bg-transparent text-[15px] text-foreground caret-accent outline-none ring-0 shadow-none placeholder:text-muted-foreground/35 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50",
-            className
-          )}
+          className={cn(PALETTE_INPUT, className)}
           {...props}
         />
-        <kbd className="pointer-events-none shrink-0 rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9.5px] tracking-wider text-muted-foreground/50">
-          esc
-        </kbd>
+        <kbd className={PALETTE_ESC}>esc</kbd>
       </div>
     </div>
   )

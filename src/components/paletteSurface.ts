@@ -26,6 +26,26 @@ export const PALETTE_SURFACE =
 export const PALETTE_BACKDROP =
   "fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[12vh]";
 
-/** The rounded input capsule, for panels that carry their own filter field. */
+/**
+ * The rounded input capsule. Includes `command-capsule`, which carries the inset
+ * highlight and the focus glow in CSS — without it the capsule has a hard accent
+ * ring instead of the launcher's soft one, which is most of why a copy looks
+ * "nearly right but wrong".
+ */
 export const PALETTE_CAPSULE =
-  "group relative flex h-11 items-center gap-2 rounded-full border border-accent/20 bg-white/[0.03] px-2.5 focus-within:border-accent/60";
+  "command-capsule group relative flex h-11 items-center gap-2 rounded-full border border-accent/20 bg-white/[0.03] px-2.5 focus-within:border-accent/60";
+
+/**
+ * The input inside the capsule.
+ *
+ * The ring-0/shadow-none/focus-visible resets are not defensive noise — something
+ * in the base layer rings inputs, and without them the field draws its own
+ * rectangle inside the rounded capsule. Any panel reusing the capsule needs this
+ * exact list, which is why it is exported rather than retyped.
+ */
+export const PALETTE_INPUT =
+  "h-full w-full min-w-0 border-0 bg-transparent text-[15px] text-foreground caret-accent outline-none ring-0 shadow-none placeholder:text-muted-foreground/35 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50";
+
+/** The `esc` hint that sits at the right end of the capsule. */
+export const PALETTE_ESC =
+  "pointer-events-none shrink-0 rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9.5px] tracking-wider text-muted-foreground/50";
