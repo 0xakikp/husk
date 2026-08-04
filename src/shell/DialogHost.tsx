@@ -143,7 +143,12 @@ export function DialogHost({
       <DialogLayer open={shortcutsOpen}>
         {lazyPanel(<ShortcutsDialog onClose={() => setShortcutsOpen(false)} />, "Shortcuts")}
       </DialogLayer>
-      {totpOpen && lazyPanel(<TotpDialog onClose={() => setTotpOpen(false)} variant="dropdown" />, "Authenticator")}
+      {/* Centred, not "dropdown". The dropdown variant is hardcoded to
+          `fixed top-10 right-2` — it only looked deliberate while a title-bar
+          icon happened to sit in that corner. With no trigger to hang off, a
+          panel flying to a corner reads as a bug; this is a managed list, so it
+          gets a real dialog (movable, non-blocking, Esc to close). */}
+      {totpOpen && lazyPanel(<TotpDialog onClose={() => setTotpOpen(false)} variant="modal" />, "Authenticator")}
       <DialogLayer open={jobsOpen}>
         {lazyPanel(<JobsDialog onClose={() => setJobsOpen(false)} />, "Jobs")}
       </DialogLayer>

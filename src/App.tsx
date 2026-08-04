@@ -854,7 +854,6 @@ function App() {
             aiColor: prefs.aiTabColor,
             animationsEnabled: prefs.animationsEnabled,
           }}
-          onOpenTotp={() => setTotpOpen(true)}
           onOpenSearch={() => setPaletteOpen(true)}
           onOpenSettings={openSettings}
           activeKind={activeKind}

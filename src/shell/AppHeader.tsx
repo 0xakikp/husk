@@ -7,10 +7,8 @@ import {
   LayoutThreeColumnIcon,
   MessageMultiple02Icon,
   Settings01Icon,
-  Timer01Icon,
 } from "@hugeicons/core-free-icons";
 import { AiSessionsPanel } from "../ai/AiSessionsPanel";
-import { useTotpTimer } from "../totp/useTotpTimer";
 import { TabBar } from "./TabBar";
 import type { ActiveKind } from "./types";
 import type { Prefs } from "../settings/preferences";
@@ -91,15 +89,6 @@ function WindowControls() {
   );
 }
 
-function TotpBadge() {
-  const remaining = useTotpTimer();
-  if (remaining > 10) return null;
-  const color = remaining <= 5 ? "bg-destructive" : "bg-amber-500";
-  return (
-    <span className={`absolute -top-0.5 -right-0.5 block h-2 w-2 rounded-full ${color} ring-1 ring-background`} />
-  );
-}
-
 export function AppHeader({
   prefs,
   toggleSidebar,
@@ -108,7 +97,6 @@ export function AppHeader({
   aiSessionsButtonRef,
   onSelectAiSession,
   tabBarProps,
-  onOpenTotp,
   onOpenSearch,
   onOpenSettings,
   activeKind,
@@ -120,7 +108,6 @@ export function AppHeader({
   aiSessionsButtonRef: React.RefObject<HTMLDivElement | null>;
   onSelectAiSession: (id: string) => void;
   tabBarProps: React.ComponentProps<typeof TabBar>;
-  onOpenTotp: () => void;
   /** Opens the launcher — the right-hand hint and its shortcut. */
   onOpenSearch: () => void;
   onOpenSettings: () => void;
@@ -191,16 +178,6 @@ export function AppHeader({
             />
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          title="Authenticator (2FA)"
-          onClick={onOpenTotp}
-        >
-          <HugeiconsIcon icon={Timer01Icon} size={14} strokeWidth={1.75} />
-          <TotpBadge />
-        </Button>
         <Button
           size="icon"
           className={cn(

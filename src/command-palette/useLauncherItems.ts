@@ -19,6 +19,9 @@ import { bgKill, type BgJob } from "../jobs/client";
 import type { Workflow } from "../workflows/store";
 import { composeCommand } from "../workflows/params";
 import { removeRecentNote } from "../notes/store";
+import { toast } from "../toast";
+import { loadAccounts as loadTotpAccounts } from "../totp/store";
+import { generateCode as generateTotpCode } from "../totp/totp";
 import { useClipHistory, deleteClip } from "../clipboard/store";
 import { useBookmarks, addBookmark, toggleBookmarkPin, type Bookmark } from "../bookmarks/store";
 import { parseQuery, matchScopeTokens } from "./CommandPalette";
@@ -227,6 +230,43 @@ export function useLauncherItems(
           { label: "Copy filename", run: () => copy(n.name) },
           { label: "Remove from recents", run: () => removeRecentNote(n.path) },
         ],
+      });
+    }
+
+    /* 2FA codes.
+       The code is generated inside run(), not here. Generating it for the row
+       would print a value that goes stale within 30 seconds while the palette
+       sits open, and refreshing every second would re-run a memo over every
+       launcher item once a second — the same shape as the perf regression this
+       list already had once. So the row identifies the account and Enter
+       produces a code that is correct at the instant it is copied. */
+    for (const acc of loadTotpAccounts()) {
+      const name = acc.issuer ? `${acc.issuer} — ${acc.label}` : acc.label;
+      const copyCode = () => {
+        const gen = generateTotpCode(acc);
+        if (!gen) {
+          toast({ title: "Could not generate code", message: name, variant: "error" });
+          return;
+        }
+        copy(gen.code);
+        toast({
+          title: `Code copied — ${gen.code}`,
+          message: `${name} · expires in ${gen.remaining}s`,
+          variant: "success",
+          duration: 2500,
+        });
+      };
+      items.push({
+        id: `totp:${acc.id}`,
+        kind: "totp",
+        label: name,
+        hint: "copy code",
+        keywords: [acc.issuer, acc.label, "2fa", "otp", "totp", "authenticator"]
+          .filter(Boolean)
+          .join(" "),
+        group: "2FA",
+        run: copyCode,
+        actions: [{ label: "Copy code", run: copyCode }],
       });
     }
 
