@@ -254,9 +254,9 @@ export function useLauncherItems(
       items.push({
         id: `script:${sc.path}`,
         kind: "script",
-        label: sc.name,
+        label: sc.folder ? `${sc.folder}/${sc.name}` : sc.name,
         hint: sc.lang,
-        keywords: `script run ${sc.ext}`,
+        keywords: `script run ${sc.ext} ${sc.folder}`,
         group: "Scripts",
         run: () => ctx.typeInTerminal(cmd),
         actions: [

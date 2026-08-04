@@ -54,9 +54,20 @@ export function ScriptsView({
     if (selected && typeof selected === "string") setPrefs({ scriptsDir: selected });
   }, []);
 
-  const shown = query.trim()
-    ? files.filter((f) => f.name.toLowerCase().includes(query.trim().toLowerCase()))
+  const q = query.trim().toLowerCase();
+  // Subfolder is searchable too, so "db reset" finds db/reset.sh.
+  const shown = q
+    ? files.filter((f) => `${f.folder} ${f.name}`.toLowerCase().includes(q))
     : files;
+
+  /* Grouped by subfolder, preserving listScripts' order (top level first, then
+     folders alphabetically) so the flat case renders exactly as before. */
+  const groups: { folder: string; items: ScriptFile[] }[] = [];
+  for (const f of shown) {
+    const last = groups[groups.length - 1];
+    if (last && last.folder === f.folder) last.items.push(f);
+    else groups.push({ folder: f.folder, items: [f] });
+  }
 
   if (!dir) {
     return (
@@ -103,7 +114,14 @@ export function ScriptsView({
         </p>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {shown.map((f) => (
+          {groups.map((g) => (
+            <div key={g.folder || "__root"} className="flex flex-col gap-1">
+              {g.folder ? (
+                <span className="px-1 pt-1 text-[9px] font-medium tracking-wide text-muted-foreground/70 uppercase">
+                  {g.folder}
+                </span>
+              ) : null}
+              {g.items.map((f) => (
             <div
               key={f.path}
               className="group flex items-center gap-1.5 rounded-md border border-border/20 bg-card/20 px-1.5 py-1 transition-colors hover:border-border/40"
@@ -147,6 +165,8 @@ export function ScriptsView({
               >
                 <HugeiconsIcon icon={Copy01Icon} size={10} strokeWidth={2} />
               </button>
+            </div>
+              ))}
             </div>
           ))}
         </div>
