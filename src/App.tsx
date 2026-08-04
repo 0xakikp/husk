@@ -521,7 +521,14 @@ function App() {
       { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
       { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
       { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
-      { id: "totp", label: "Open authenticator (2FA)", run: () => setTotpOpen(true) },
+      {
+        id: "totp",
+        /* Keywords because nobody types "authenticator". The palette ranks over
+           label + id + keywords, so totp/otp/2fa/mfa/code/token all land here. */
+        label: "Open authenticator (2FA)",
+        keywords: "totp otp 2fa mfa auth code token verification",
+        run: () => setTotpOpen(true),
+      },
       { id: "tools", label: "Open integrations", run: () => { cycleSidebarView("tools-hub"); } },
       { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
       { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },

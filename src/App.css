@@ -2773,22 +2773,29 @@ button {
 }
 
 /* TOTP */
+/* Launcher row language, not card language. Each account used to be a bordered,
+   filled box; the launcher's rows are flat with only the selected one lit, so a
+   column of boxes was the loudest remaining tell that this was a different
+   surface. Matches CommandItem: same padding, size and selected fill. */
 .totp-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  border: 1px solid var(--border);
+  gap: 8px;
+  border: 0;
   border-radius: 6px;
-  padding: 4px 8px;
-  background: var(--bg-2);
+  padding: 6px 8px;
+  background: transparent;
   overflow: hidden;
   min-width: 0;
   min-height: 0;
 }
 
+.totp-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .totp-item-selected {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg-2));
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .totp-code {

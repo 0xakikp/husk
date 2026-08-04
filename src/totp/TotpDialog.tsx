@@ -10,7 +10,7 @@ import {
 import { generateCode, parseSecretInput, generateQrDataUrl, parseTotpUri } from "./totp";
 import { toast } from "@/toast";
 import { cn } from "@/lib/utils";
-import { PALETTE_BACKDROP, PALETTE_SURFACE } from "@/components/paletteSurface";
+import { PALETTE_BACKDROP, PALETTE_CAPSULE, PALETTE_SURFACE } from "@/components/paletteSurface";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFileBase64 } from "@/fs";
 import jsQR from "jsqr";
@@ -467,58 +467,54 @@ export function TotpDialog({ onClose, variant = "modal" }: { onClose: () => void
 
   const content = (
     <>
-      <div className="modal-header">
-        <span>Authenticator</span>
-        <div className="flex items-center gap-1">
+      {/* The launcher's own input, not a lookalike: same capsule, same accent
+          search circle, same 2.5 padding, so the field you were typing in a
+          moment ago appears to have simply changed what it searches. Export,
+          import and close ride inside it as trailing icons rather than sitting in
+          a separate title bar, which is what made this read as another app. */}
+      <div className="shrink-0 p-2.5">
+        <div className={PALETTE_CAPSULE}>
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent transition-colors duration-200 group-focus-within:bg-accent/20">
+            <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4" />
+          </span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search 2FA accounts…"
+            autoFocus
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/55"
+          />
+          {search ? (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              title="Clear"
+              className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
+            </button>
+          ) : null}
+          <span className="mx-0.5 h-4 w-px shrink-0 bg-border/50" />
           <button
             type="button"
-            className="ai-icon"
+            className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
             title="Export accounts"
             onClick={handleExport}
           >
-            <HugeiconsIcon icon={Download02Icon} size={14} strokeWidth={1.5} />
+            <HugeiconsIcon icon={Download02Icon} size={13} strokeWidth={1.75} />
           </button>
           <button
             type="button"
-            className="ai-icon"
+            className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
             title="Import accounts"
             onClick={handleImport}
           >
-            <HugeiconsIcon icon={Upload02Icon} size={14} strokeWidth={1.5} />
-          </button>
-          <button type="button" className="ai-icon" onClick={onClose} aria-label="Close">
-            ×
+            <HugeiconsIcon icon={Upload02Icon} size={13} strokeWidth={1.75} />
           </button>
         </div>
       </div>
 
-      <div className="modal-body" style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', padding: '10px' }}>
-        {/* Search */}
-        <div className="relative w-full">
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={12}
-            strokeWidth={1.75}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search accounts…"
-            className="h-7 w-full rounded-md border border-muted-foreground/25 bg-background py-0 pr-7 pl-7 text-xs text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-primary"
-            style={{ boxSizing: 'border-box' }}
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={2} />
-            </button>
-          )}
-        </div>
-
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/40 p-1.5" style={{ maxHeight: "60vh" }}>
         {accounts.length === 0 && !adding ? (
           <p className="rb-empty">
             No 2FA accounts yet. Add a base32 secret, scan a QR code, or import a backup.
