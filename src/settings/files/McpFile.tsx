@@ -1,10 +1,4 @@
 import { useEffect, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { connectMcpServer, disconnectMcpServer } from "@/mcp/client";
 import {
@@ -31,7 +25,7 @@ export function McpFile() {
   const [servers, setServers] = useState<McpServerConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<McpServerConfig | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; msg: string } | null>(null);
@@ -119,7 +113,7 @@ export function McpFile() {
       const added = await addMcpServer(config);
       setServers((prev) => [...prev, added]);
     }
-    setDialogOpen(false);
+    setFormOpen(false);
     setEditing(null);
   };
 
@@ -138,19 +132,7 @@ export function McpFile() {
           </CfgRow>
         </>
       ) : servers.length === 0 ? (
-        <>
-          <CfgComment>no servers configured — add one to give the AI external tools</CfgComment>
-          <CfgRow>
-            <CfgAct
-              onClick={() => {
-                setEditing(null);
-                setDialogOpen(true);
-              }}
-            >
-              + add custom
-            </CfgAct>
-          </CfgRow>
-        </>
+        <CfgComment>no servers configured — add one to give the AI external tools</CfgComment>
       ) : (
         <>
           {servers.map((server) => (
@@ -182,7 +164,7 @@ export function McpFile() {
                 <CfgAct
                   onClick={() => {
                     setEditing(server);
-                    setDialogOpen(true);
+                    setFormOpen(true);
                   }}
                 >
                   edit
@@ -194,39 +176,43 @@ export function McpFile() {
               <CfgBlank />
             </div>
           ))}
-          <CfgRow>
-            <CfgAct
-              onClick={() => {
-                setEditing(null);
-                setDialogOpen(true);
-              }}
-            >
-              + add custom
-            </CfgAct>
-          </CfgRow>
         </>
       )}
 
-      <McpServerDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        editing={editing}
-        onSave={handleSave}
-      />
+      {formOpen ? (
+        <McpServerForm
+          editing={editing}
+          onCancel={() => {
+            setFormOpen(false);
+            setEditing(null);
+          }}
+          onSave={handleSave}
+        />
+      ) : (
+        <CfgRow>
+          <CfgAct
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
+            + add custom server
+          </CfgAct>
+        </CfgRow>
+      )}
     </ConfigEditor>
   );
 }
 
-/* Add/edit dialog — same fields and payload as the previous implementation. */
-function McpServerDialog({
-  open,
-  onOpenChange,
+/** In-place editor using the same section-and-row pattern as every other
+ * settings surface. Its validation and saved payload are unchanged. */
+function McpServerForm({
   editing,
+  onCancel,
   onSave,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   editing: McpServerConfig | null;
+  onCancel: () => void;
   onSave: (config: Omit<McpServerConfig, "id"> & { id?: string }) => void;
 }) {
   const [name, setName] = useState("");
@@ -252,7 +238,7 @@ function McpServerDialog({
       setCwd("");
       setEnabled(true);
     }
-  }, [editing, open]);
+  }, [editing]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -276,51 +262,32 @@ function McpServerDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="text-sm">{editing ? "Edit MCP server" : "Add MCP server"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground">Name</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Filesystem" className="h-8 text-[12px]" required />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground">Command</label>
-            <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="e.g. npx" className="h-8 text-[12px]" required />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground">Arguments</label>
-            <Input value={args} onChange={(e) => setArgs(e.target.value)} placeholder="e.g. -y @modelcontextprotocol/server-filesystem /path" className="h-8 text-[12px]" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground">Environment variables</label>
-            <textarea
-              value={env}
-              onChange={(e) => setEnv(e.target.value)}
-              placeholder={`KEY=value\nANOTHER=secret`}
-              className="h-20 rounded-md border border-input bg-transparent px-3 py-2 text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground">Working directory (optional)</label>
-            <Input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/dir" className="h-8 text-[12px]" />
-          </div>
-          <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-            Enabled
-          </label>
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => onOpenChange(false)} className="rounded px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground">
-              Cancel
-            </button>
-            <button type="submit" className="rounded bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary hover:bg-primary/15">
-              {editing ? "Update" : "Add"}
-            </button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <section className="mcp-inline-form" aria-label={editing ? "Edit MCP server" : "Add MCP server"}>
+      <CfgSection name={editing ? "edit_server" : "add_custom_server"} />
+      <form onSubmit={handleSubmit}>
+        <CfgRow name="name" comment="A short label for this server in the integrations list.">
+          <Input className="mcp-inline-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Filesystem" required />
+        </CfgRow>
+        <CfgRow name="command" comment="The executable that starts the server, for example npx or uvx.">
+          <Input className="mcp-inline-input" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="e.g. npx" required />
+        </CfgRow>
+        <CfgRow name="arguments" comment="Arguments passed to the command, separated by spaces.">
+          <Input className="mcp-inline-input" value={args} onChange={(e) => setArgs(e.target.value)} placeholder="e.g. -y @modelcontextprotocol/server-filesystem /path" />
+        </CfgRow>
+        <CfgRow name="environment" comment="Optional KEY=value entries, one per line. Lines beginning with # are ignored.">
+          <textarea className="mcp-inline-textarea" value={env} onChange={(e) => setEnv(e.target.value)} placeholder={`KEY=value\nANOTHER=secret`} rows={4} />
+        </CfgRow>
+        <CfgRow name="workingDirectory" comment="Optional directory where Husk starts the server.">
+          <Input className="mcp-inline-input" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/dir" />
+        </CfgRow>
+        <CfgRow name="enabled" comment="Load this server's tools into the AI as soon as it is saved.">
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
+        </CfgRow>
+        <CfgRow>
+          <CfgAct onClick={onCancel}>cancel</CfgAct>
+          <button type="submit" className="cfg-act">[ {editing ? "save changes" : "add server"} ]</button>
+        </CfgRow>
+      </form>
+    </section>
   );
 }

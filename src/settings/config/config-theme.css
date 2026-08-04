@@ -437,8 +437,68 @@
 .cfgx-nav-mark { width: 21px; height: 21px; border-radius: 5px; font-size: 11px; }
 .cfgx-tree-item.active { background: color-mix(in srgb, var(--primary) 10%, transparent); box-shadow: inset 2px 0 0 var(--primary); }
 
+/* MCP configuration stays in the page and reuses the exact settings rows. */
+.mcp-inline-form { margin: 20px 0 8px; border-top: 1px solid var(--border); padding-top: 2px; }
+.settings-native-form .mcp-inline-input { min-width: 260px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; color: var(--foreground); background: var(--background); font: inherit; font-size: 11px; }
+.settings-native-form .mcp-inline-input:focus, .settings-native-form .mcp-inline-textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent); outline: none; }
+.settings-native-form .cfg-setting:has(.mcp-inline-textarea) { display: block; }
+.settings-native-form .cfg-setting:has(.mcp-inline-textarea) .cfg-line.cfg-kv { display: block; margin-top: 9px; }
+.settings-native-form .mcp-inline-textarea { box-sizing: border-box; width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: var(--foreground); background: var(--background); font: inherit; font-size: 11px; }
+
+/* Setup Assistant is a Command tools sub-view, not a competing modal. */
+.setup-inline { padding-bottom: 8px; }
+.setup-inline-topline { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 20px; }
+.setup-inline-back { border: 0; border-bottom: 1px solid transparent; padding: 1px 0; color: var(--primary); background: transparent; cursor: pointer; font: inherit; font-size: 10.5px; }
+.setup-inline-back:hover { border-color: var(--primary); }
+.setup-inline-meta { color: var(--muted-foreground); font-size: 10px; white-space: nowrap; }
+.setup-inline-title { display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; border-bottom: 1px solid var(--border); padding-bottom: 14px; color: var(--primary); }
+.setup-inline-title h2 { margin: 0; color: var(--foreground); font-size: 13px; font-weight: 600; line-height: 1.25; }
+.setup-inline-title p { margin: 3px 0 0; color: var(--muted-foreground); font-size: 10.5px; line-height: 1.45; }
+.setup-inline-toolbar { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.setup-inline-search { display: flex; align-items: center; gap: 7px; box-sizing: border-box; width: 100%; border: 1px solid var(--border); border-radius: 6px; padding: 0 8px; color: var(--muted-foreground); background: var(--background); }
+.setup-inline-search:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent); }
+.setup-inline-search input { width: 100%; height: 29px; border: 0; padding: 0; outline: 0; color: var(--foreground); background: transparent; font: inherit; font-size: 11px; }
+.setup-inline-search input::placeholder { color: var(--muted-foreground); }
+.setup-inline-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.setup-inline-categories, .setup-inline-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.setup-inline-category, .setup-inline-action { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 24px; border: 1px solid transparent; border-radius: 5px; padding: 3px 6px; color: var(--muted-foreground); background: transparent; cursor: pointer; font: inherit; font-size: 10px; transition: color .14s ease, border-color .14s ease, background .14s ease; }
+.setup-inline-category:hover, .setup-inline-action:hover:not(:disabled) { color: var(--foreground); border-color: var(--border); background: color-mix(in srgb, var(--muted) 40%, transparent); }
+.setup-inline-category.active { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 42%, var(--border)); background: color-mix(in srgb, var(--primary) 9%, transparent); }
+.setup-inline-action:disabled { cursor: default; opacity: .45; }
+.setup-inline-actions .setup-inline-action:first-child { color: var(--foreground); border-color: var(--border); }
+.setup-inline-groups { padding-top: 4px; }
+.setup-inline-group { margin-top: 22px; }
+.setup-inline-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+.setup-inline-group-title { display: flex; min-width: 0; align-items: flex-start; gap: 8px; color: var(--primary); }
+.setup-inline-group-title h3 { margin: 0; color: var(--foreground); font-size: 12px; font-weight: 600; line-height: 1.25; }
+.setup-inline-group-title p { margin: 2px 0 0; color: var(--muted-foreground); font-size: 10px; line-height: 1.35; }
+.setup-inline-tool-list { border-top: 1px solid var(--border); }
+.setup-inline-tool { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 61px; border-bottom: 1px solid var(--border); padding: 9px 0; }
+.setup-inline-tool-copy { min-width: 0; flex: 1 1 auto; }
+.setup-inline-tool-name { display: flex; align-items: center; gap: 5px; color: var(--foreground); font-size: 11px; font-weight: 550; }
+.setup-inline-tool.is-installed .setup-inline-tool-name svg { color: #4ade80; }
+.setup-inline-tool-copy p { max-width: 430px; margin: 3px 0 0; color: var(--muted-foreground); font-size: 10px; line-height: 1.35; }
+.setup-inline-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+.setup-inline-tags span { border: 1px solid color-mix(in srgb, var(--border) 72%, transparent); border-radius: 3px; padding: 1px 4px; color: var(--muted-foreground); font-size: 8.5px; line-height: 1.25; }
+.setup-inline-installed, .setup-inline-unsupported { flex: 0 0 auto; font-size: 10px; white-space: nowrap; }
+.setup-inline-installed { color: #4ade80; }
+.setup-inline-unsupported { color: var(--muted-foreground); }
+.setup-inline-command { display: flex; align-items: center; width: min(45%, 340px); flex: 0 1 340px; border: 1px solid var(--border); border-radius: 5px; background: var(--background); }
+.setup-inline-command code { min-width: 0; flex: 1; overflow: hidden; padding: 5px 6px; color: var(--muted-foreground); font-family: inherit; font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+.setup-inline-command button { display: inline-flex; width: 27px; height: 25px; flex: 0 0 auto; align-items: center; justify-content: center; border: 0; border-left: 1px solid var(--border); border-radius: 0 4px 4px 0; color: var(--muted-foreground); background: transparent; cursor: pointer; }
+.setup-inline-command button:hover { color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.setup-inline-empty { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 8px; color: var(--muted-foreground); font-size: 11px; }
+.setup-inline-status { display: flex; align-items: center; gap: 6px; margin-top: 22px; border-top: 1px solid var(--border); padding-top: 11px; color: var(--muted-foreground); font-size: 10px; line-height: 1.4; }
+.setup-inline-status.is-ok { color: #4ade80; }
+.setup-inline-status.is-warning { color: #fbbf24; }
+
 @media (max-width: 680px) {
   .settings-native-frame { width: 100%; padding: 18px 20px 42px; }
   .settings-native-form .cfg-setting { align-items: flex-start; flex-direction: column; gap: 9px; }
   .settings-native-form .cfg-line.cfg-kv { width: 100%; }
+  .settings-native-form .mcp-inline-input { width: 100%; min-width: 0; }
+  .setup-inline-topline, .setup-inline-controls, .setup-inline-group-heading, .setup-inline-tool { align-items: flex-start; flex-direction: column; }
+  .setup-inline-meta { white-space: normal; }
+  .setup-inline-actions { width: 100%; }
+  .setup-inline-command { width: 100%; max-width: none; flex-basis: auto; }
 }

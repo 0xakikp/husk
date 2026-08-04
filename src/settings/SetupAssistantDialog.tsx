@@ -359,6 +359,242 @@ function getCommand(tool: ToolInfo, platform: Platform): string | null {
   return tool.commands[platform] ?? tool.commands.macos ?? null;
 }
 
+/**
+ * The setup flow lives inside Command tools, so it feels like a settings view
+ * rather than a second, unrelated application window. The dialog export below
+ * is kept for now for callers outside Settings; Settings itself uses this view.
+ */
+export function SetupAssistantView({ onBack }: { onBack: () => void }) {
+  const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<"All" | ToolGroup["id"]>("All");
+  const [lastOp, setLastOp] = useState<{ message: string; ok: boolean } | null>(null);
+
+  const check = useCallback(async () => {
+    setLoading(true);
+    try {
+      const allIds = SETUP_GROUPS.flatMap((group) => group.tools.map((tool) => tool.id));
+      setInstalled(await detectInstalled(allIds));
+    } catch {
+      setLastOp({ message: "Could not check installed tools. Try refreshing.", ok: false });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setLastOp(null);
+    void check();
+  }, [check]);
+
+  const allTools = useMemo(() => SETUP_GROUPS.flatMap((group) => group.tools), []);
+  const installedCount = allTools.filter((tool) => installed.has(tool.id)).length;
+  const totalCount = allTools.length;
+  const missingCount = totalCount - installedCount;
+  const visibleGroups = useMemo(
+    () => activeCategory === "All" ? SETUP_GROUPS : SETUP_GROUPS.filter((group) => group.id === activeCategory),
+    [activeCategory],
+  );
+  const filteredGroups = useMemo(() => {
+    if (!query.trim()) return visibleGroups;
+    const needle = query.toLowerCase();
+    return visibleGroups
+      .map((group) => ({
+        ...group,
+        tools: group.tools.filter((tool) =>
+          tool.name.toLowerCase().includes(needle)
+          || tool.description.toLowerCase().includes(needle)
+          || tool.tags?.some((tag) => tag.toLowerCase().includes(needle)),
+        ),
+      }))
+      .filter((group) => group.tools.length > 0);
+  }, [visibleGroups, query]);
+
+  const platformLabel = PLATFORM === "macos" ? "Homebrew" : PLATFORM === "linux" ? "apt" : "winget";
+  const categories = ["All", ...SETUP_GROUPS.map((group) => group.id)];
+  const copyCommand = (tool: ToolInfo) => {
+    const command = getCommand(tool, PLATFORM);
+    if (!command) {
+      setLastOp({ message: `No install command available for ${tool.name} on ${PLATFORM}.`, ok: false });
+      return;
+    }
+    navigator.clipboard
+      .writeText(command)
+      .then(() => setLastOp({ message: `Copied ${tool.name} install command to clipboard.`, ok: true }))
+      .catch(() => setLastOp({ message: `Failed to copy ${tool.name} install command.`, ok: false }));
+  };
+  const installAll = () => setLastOp({
+    message: "Background install is not yet available. Copy commands and run them in your terminal.",
+    ok: false,
+  });
+  const installGroup = (group: ToolGroup) => setLastOp({
+    message: `Background install for ${group.title} is not yet available.`,
+    ok: false,
+  });
+
+  return (
+    <section className="setup-inline" aria-labelledby="setup-assistant-title">
+      <div className="setup-inline-topline">
+        <button type="button" onClick={onBack} className="setup-inline-back">← command tools</button>
+        {!loading && (
+          <span className="setup-inline-meta">
+            {installedCount}/{totalCount} installed · {missingCount} missing · {platformLabel}
+          </span>
+        )}
+      </div>
+
+      <div className="setup-inline-title">
+        <HugeiconsIcon icon={ToolsIcon} size={15} strokeWidth={1.75} aria-hidden="true" />
+        <div>
+          <h2 id="setup-assistant-title">Setup Assistant</h2>
+          <p>Find optional command-line tools Husk can use, then copy their install commands.</p>
+        </div>
+      </div>
+
+      <div className="setup-inline-toolbar">
+        <label className="setup-inline-search">
+          <HugeiconsIcon icon={Search01Icon} size={13} aria-hidden="true" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search tools…"
+            aria-label="Search tools"
+          />
+        </label>
+
+        <div className="setup-inline-controls">
+          <div className="setup-inline-categories" aria-label="Tool categories">
+            {categories.map((category) => {
+              const isAll = category === "All";
+              const group = SETUP_GROUPS.find((item) => item.id === category);
+              return (
+                <button
+                  type="button"
+                  key={category}
+                  onClick={() => setActiveCategory(category as typeof activeCategory)}
+                  className={cn("setup-inline-category", activeCategory === category && "active")}
+                >
+                  {isAll ? "All" : group?.title}
+                </button>
+              );
+            })}
+          </div>
+          <div className="setup-inline-actions">
+            <button type="button" onClick={installAll} disabled={missingCount === 0 || loading} className="setup-inline-action">
+              <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} aria-hidden="true" />
+              Install all missing
+            </button>
+            <button type="button" onClick={check} disabled={loading} className="setup-inline-action">
+              {loading ? "Checking…" : "Refresh"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {filteredGroups.length === 0 ? (
+        <div className="setup-inline-empty">
+          <HugeiconsIcon icon={Search01Icon} size={20} aria-hidden="true" />
+          No tools match your search.
+        </div>
+      ) : (
+        <div className="setup-inline-groups">
+          {filteredGroups.map((group) => {
+            const groupMissing = group.tools.filter((tool) => !installed.has(tool.id));
+            return (
+              <section key={group.id} className="setup-inline-group">
+                <div className="setup-inline-group-heading">
+                  <div className="setup-inline-group-title">
+                    <HugeiconsIcon icon={group.icon} size={14} aria-hidden="true" />
+                    <div>
+                      <h3>{group.title}</h3>
+                      <p>{group.description}</p>
+                    </div>
+                  </div>
+                  {groupMissing.length > 0 && (
+                    <button type="button" onClick={() => installGroup(group)} className="setup-inline-action">
+                      Install {groupMissing.length}
+                    </button>
+                  )}
+                </div>
+                <div className="setup-inline-tool-list">
+                  {group.tools.map((tool) => (
+                    <InlineToolRow
+                      key={tool.id}
+                      tool={tool}
+                      platform={PLATFORM}
+                      isInstalled={installed.has(tool.id)}
+                      onCopyCommand={copyCommand}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      <div className={cn("setup-inline-status", lastOp && (lastOp.ok ? "is-ok" : "is-warning"))} aria-live="polite">
+        {lastOp ? (
+          <>
+            <HugeiconsIcon icon={lastOp.ok ? CheckmarkCircle02Icon : ComputerTerminal02Icon} size={12} aria-hidden="true" />
+            {lastOp.message}
+          </>
+        ) : "Tip: copy a command and paste it into your terminal. Detection runs when this view opens."}
+      </div>
+    </section>
+  );
+}
+
+function InlineToolRow({
+  tool,
+  platform,
+  isInstalled,
+  onCopyCommand,
+}: {
+  tool: ToolInfo;
+  platform: Platform;
+  isInstalled: boolean;
+  onCopyCommand: (tool: ToolInfo) => void;
+}) {
+  const command = getCommand(tool, platform);
+  const unsupported = command === null;
+
+  return (
+    <div className={cn("setup-inline-tool", isInstalled && "is-installed")}>
+      <div className="setup-inline-tool-copy">
+        <div className="setup-inline-tool-name">
+          <span>{tool.name}</span>
+          {isInstalled && <HugeiconsIcon icon={CheckmarkCircle02Icon} size={13} aria-label="Installed" />}
+        </div>
+        <p>{tool.description}</p>
+        {tool.tags && tool.tags.length > 0 && (
+          <div className="setup-inline-tags">
+            {tool.tags.map((tag) => <span key={tag}>{tag}</span>)}
+          </div>
+        )}
+      </div>
+      {isInstalled ? (
+        <span className="setup-inline-installed">installed</span>
+      ) : unsupported ? (
+        <span className="setup-inline-unsupported">no {platform} command</span>
+      ) : (
+        <div className="setup-inline-command">
+          <code title={command}>{command}</code>
+          <button
+            type="button"
+            onClick={() => onCopyCommand(tool)}
+            title={`Copy ${tool.name} install command`}
+            aria-label={`Copy ${tool.name} install command`}
+          >
+            <HugeiconsIcon icon={Copy01Icon} size={12} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SetupAssistantDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
