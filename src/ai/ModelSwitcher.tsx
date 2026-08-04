@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { PROVIDERS, getProvider } from "./providers";
+import { CLI_SUBSCRIPTION_MODE, PROVIDERS, getProvider, type Provider } from "./providers";
 import { MODELS } from "./models";
 import { loadConfig, saveConfig, useConfig, getKey } from "./store";
 import { claudeCliAvailable } from "./claudeCli";
+import { codexCliAvailable, codexCliModels, type CodexCliModel } from "./codexCli";
 
 /**
  * Switch provider and model from the chat itself.
@@ -14,17 +15,29 @@ import { claudeCliAvailable } from "./claudeCli";
  * composer is dense enough that another button would cost more than it gives.
  *
  * Only providers you can actually use are listed — a configured key, or keyless
- * (local endpoints, and the Claude Code CLI when it is installed). Offering a
+ * (local endpoints, and installed subscription CLIs). Offering a
  * provider that cannot answer is the mistake the MCP marketplace made.
  */
-/** What CLI mode cannot do, in the order people notice it. */
-const CLI_LIMITS =
-  "Limited features. Chat, code questions, terminal help and commit messages all work. Husk cannot edit your files in this mode, and your own connected tools are unavailable — add an API key for those.";
+function cliReady(provider: Provider, availability: { claude: boolean; codex: boolean }): boolean {
+  return provider.cli === "codex" ? availability.codex : availability.claude;
+}
+
+function cliLabel(provider: Provider): string {
+  return provider.cli === "codex" ? "Codex" : "Claude Code";
+}
+
+function cliLoginHelp(provider: Provider): string {
+  return provider.cli === "codex"
+    ? "Install the codex CLI and sign in with your ChatGPT account to use Codex without an API key."
+    : "Install the claude CLI and run claude login to use your Claude subscription without an API key.";
+}
 
 export function ModelSwitcher({ busy }: { busy?: boolean }) {
   const cfg = useConfig();
   const [open, setOpen] = useState(false);
-  const [cliReady, setCliReady] = useState(false);
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const [cliAvailability, setCliAvailability] = useState({ claude: false, codex: false });
+  const [codexModels, setCodexModels] = useState<CodexCliModel[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
   /* Room above the button, so the menu cannot be taller than the panel.
      .composer-dock-side sets overflow:hidden, and this menu opens upward from a
@@ -33,24 +46,31 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
   const [maxHeight, setMaxHeight] = useState(320);
 
   useEffect(() => {
-    void claudeCliAvailable().then(setCliReady);
+    void Promise.all([claudeCliAvailable(), codexCliAvailable()]).then(([claude, codex]) => {
+      setCliAvailability({ claude, codex });
+    });
+    void codexCliModels().then(setCodexModels);
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !limitsOpen) return;
     const rect = rootRef.current?.getBoundingClientRect();
     if (rect) {
       // 16px clear of the panel's top edge so it never touches the header.
       setMaxHeight(Math.max(140, Math.min(320, rect.top - 16)));
     }
     const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setLimitsOpen(false);
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       // Stops here: Escape would otherwise close the whole composer behind it.
       if (e.key === "Escape") {
         e.stopPropagation();
         setOpen(false);
+        setLimitsOpen(false);
       }
     };
     document.addEventListener("mousedown", onDown);
@@ -59,11 +79,11 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey, true);
     };
-  }, [open]);
+  }, [open, limitsOpen]);
 
   const provider = getProvider(cfg.providerId);
   const usable = PROVIDERS.filter((p) => {
-    if (p.kind === "cli") return cliReady;
+    if (p.kind === "cli") return cliReady(p, cliAvailability);
     return p.keyless || !!getKey(p.id);
   });
 
@@ -74,32 +94,41 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
   };
 
   return (
-    <div ref={rootRef} className="relative inline-flex">
+    <div ref={rootRef} className="relative inline-flex items-center gap-1">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v);
+          setLimitsOpen(false);
+        }}
         title="Change provider or model"
         className="inline-flex items-center gap-1 rounded px-1 -mx-1 transition-colors hover:text-foreground"
       >
         <span className={cn("wb-status-dot", provider.kind === "cli" && "text-primary")}>●</span>
-        {provider.kind === "cli" ? "claude code" : provider.label.toLowerCase()}
+        {provider.kind === "cli" ? cliLabel(provider).toLowerCase() : provider.label.toLowerCase()}
         {" · "}
         {(cfg.model || provider.defaultModel).toLowerCase()}
         {" · "}
         {busy ? "streaming" : "connected"}
-        {/* Stated in the status line, because the degradation is otherwise
-            invisible: the model was never given Husk's tools, so it cannot fail
-            to use them — it just answers in prose and never stages an edit, with
-            nothing on screen to say why. */}
-        {provider.kind === "cli" && (
-          <span
-            className="rounded bg-amber-500/10 px-1 text-[9px] text-amber-500/90"
-            title={CLI_LIMITS}
-          >
-            read-only
-          </span>
-        )}
       </button>
+
+      {/* A distinct button avoids nesting an interactive control inside the
+          provider picker. It keeps the reminder compact but makes the actual
+          trade-off available where people notice it: while composing. */}
+      {provider.kind === "cli" && (
+        <button
+          type="button"
+          onClick={() => {
+            setLimitsOpen((v) => !v);
+            setOpen(false);
+          }}
+          aria-expanded={limitsOpen}
+          title="What is unavailable in subscription mode?"
+          className="rounded bg-amber-500/10 px-1 text-[9px] text-amber-500/90 transition-colors hover:bg-amber-500/20"
+        >
+          read-only
+        </button>
+      )}
 
       {open && (
         /* Upward: the footer sits at the bottom of the panel, so a downward menu
@@ -114,11 +143,16 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
             </p>
           ) : (
             usable.map((p) => {
-              const models = MODELS.filter((m) => m.provider.id === p.id);
+              const models = p.cli === "codex"
+                ? [
+                    { id: p.defaultModel, label: "Codex default" },
+                    ...codexModels.filter((model) => model.id !== p.defaultModel),
+                  ]
+                : MODELS.filter((model) => model.provider.id === p.id);
               return (
                 <div key={p.id} className="py-0.5">
                   <div className="px-2.5 py-1 text-[9px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase">
-                    {p.kind === "cli" ? "Claude Code · your subscription" : p.label}
+                    {p.kind === "cli" ? `${cliLabel(p)} · your subscription` : p.label}
                   </div>
                   {p.kind === "cli" && (
                     <p className="px-2.5 pb-1 text-[9.5px] leading-snug text-amber-500/80">
@@ -149,15 +183,27 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
               );
             })
           )}
-          {!cliReady && (
+          {PROVIDERS.filter((p) => p.kind === "cli" && !cliReady(p, cliAvailability)).map((p) => (
             /* Said plainly rather than showing a disabled row: the reason it is
                missing is actionable, and a greyed entry does not explain itself. */
-            <p className="border-t border-border/40 px-2.5 py-1.5 text-[9.5px] leading-snug text-muted-foreground/70">
-              Install the <span className="font-mono">claude</span> CLI and run{" "}
-              <span className="font-mono">claude login</span> to use your Claude subscription
-              without an API key.
+            <p key={p.id} className="border-t border-border/40 px-2.5 py-1.5 text-[9.5px] leading-snug text-muted-foreground/70">
+              {cliLoginHelp(p)}
             </p>
-          )}
+          ))}
+        </div>
+      )}
+
+      {limitsOpen && provider.kind === "cli" && (
+        <div
+          role="status"
+          className="absolute bottom-full left-0 z-50 mb-1.5 w-72 overflow-y-auto border border-border/60 bg-background/95 p-3 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{ maxHeight }}
+        >
+          <p className="m-0 text-[11px] font-semibold text-foreground">{CLI_SUBSCRIPTION_MODE.title}</p>
+          <p className="mt-1 text-[10px] leading-snug text-muted-foreground">{CLI_SUBSCRIPTION_MODE.summary}</p>
+          <p className="mt-2 text-[10px] leading-snug text-muted-foreground"><span className="text-foreground">Works: </span>{CLI_SUBSCRIPTION_MODE.works}</p>
+          <p className="mt-1 text-[10px] leading-snug text-muted-foreground"><span className="text-foreground">Unavailable: </span>{CLI_SUBSCRIPTION_MODE.unavailable}</p>
+          <p className="mt-2 text-[10px] leading-snug text-amber-500/90">{CLI_SUBSCRIPTION_MODE.unlock}</p>
         </div>
       )}
     </div>

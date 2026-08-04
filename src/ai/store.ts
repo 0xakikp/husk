@@ -33,6 +33,11 @@ const DEFAULT: StoredConfig = (() => {
  * Unknown ids fall back to the provider's own default.
  */
 function knownModel(id: string | undefined, providerId: string): string {
+  // Codex models are discovered from the signed-in CLI at runtime, so they are
+  // deliberately absent from the static registry. Preserve the saved slug and
+  // let the CLI validate it; otherwise a refresh would silently replace a
+  // user's selected Codex model with the generic default.
+  if (providerId === "codex" && id) return id;
   if (id && MODELS.some((m) => m.id === id)) return id;
   return PROVIDERS.find((p) => p.id === providerId)?.defaultModel ?? DEFAULT.model;
 }

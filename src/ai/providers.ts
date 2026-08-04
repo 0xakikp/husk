@@ -1,5 +1,6 @@
-/** `cli` drives the local `claude` binary instead of an HTTP API — no key. */
+/** `cli` drives a signed-in local coding CLI instead of an HTTP API — no key. */
 export type ProviderKind = "anthropic" | "openai" | "google" | "openai-compatible" | "cli";
+export type CliProviderId = "claude" | "codex";
 
 export type Provider = {
   id: string;
@@ -13,7 +14,20 @@ export type Provider = {
   keyless?: boolean;
   /** User supplies the base URL (custom / local gateways). */
   configurableBaseURL?: boolean;
+  /** Which local CLI backs a keyless subscription provider. */
+  cli?: CliProviderId;
 };
+
+/** Copy shared anywhere Husk presents a signed-in CLI subscription provider.
+    It describes Husk's integration boundary, not a limitation of Codex or
+    Claude themselves. */
+export const CLI_SUBSCRIPTION_MODE = {
+  title: "Subscription mode — read-only",
+  summary: "Uses your signed-in plan without an API key. Husk cannot run actions on your behalf in this mode.",
+  works: "Chat, code questions, terminal help, command suggestions, and commit messages.",
+  unavailable: "File edits and review, connected MCP tools, and other Husk actions that need tool access.",
+  unlock: "To use full Husk, configure an API provider. You can keep this mode and switch any time.",
+} as const;
 
 /**
  * The provider list users pick from. OpenAI-compatible entries cover a long
@@ -29,7 +43,21 @@ export const PROVIDERS: Provider[] = [
     id: "claude-code",
     label: "Claude Code (my subscription)",
     kind: "cli",
+    cli: "claude",
     defaultModel: "sonnet",
+    keyless: true,
+  },
+  {
+    /* Like Claude Code, Codex owns its own ChatGPT/Codex sign-in. Running the
+       locally logged-in CLI keeps that credential out of Husk and charges the
+       account's Codex allowance rather than a separately supplied API key. */
+    id: "codex",
+    label: "Codex (my subscription)",
+    kind: "cli",
+    cli: "codex",
+    // "codex" is Husk's alias for "let the signed-in CLI choose its default".
+    // It is deliberately not passed as --model, because plan defaults evolve.
+    defaultModel: "codex",
     keyless: true,
   },
   { id: "anthropic", label: "Anthropic (Claude)", kind: "anthropic", defaultModel: "claude-sonnet-5" },

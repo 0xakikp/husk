@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { MODELS, getModel } from "../../ai/models";
-import { PROVIDERS, type Provider } from "../../ai/providers";
+import { MODELS } from "../../ai/models";
+import { CLI_SUBSCRIPTION_MODE, PROVIDERS, type Provider } from "../../ai/providers";
 import { loadConfig, saveConfig, useKey, setKey } from "../../ai/store";
 import { claudeCliAvailable } from "../../ai/claudeCli";
+import { codexCliAvailable, codexCliModels, type CodexCliModel } from "../../ai/codexCli";
 import {
   ConfigEditor,
   CfgArt,
@@ -24,6 +25,35 @@ function maskKey(k: string): string {
   return `${k.slice(0, 7)}…${k.slice(-4)}`;
 }
 
+/** This appears at the decision point, rather than expecting a person to
+    infer the trade-off from the provider's technical configuration below. */
+function SubscriptionModeNotice({ provider }: { provider: Provider }) {
+  return (
+    <aside className="settings-subscription-notice" role="note">
+      <div className="settings-subscription-heading">
+        <span className="settings-subscription-dot" aria-hidden="true">!</span>
+        <div>
+          <strong>{CLI_SUBSCRIPTION_MODE.title}</strong>
+          <p>{provider.label}{" — "}{CLI_SUBSCRIPTION_MODE.summary}</p>
+        </div>
+      </div>
+      <div className="settings-subscription-details">
+        <p><span>Works</span>{CLI_SUBSCRIPTION_MODE.works}</p>
+        <p><span>Unavailable</span>{CLI_SUBSCRIPTION_MODE.unavailable}</p>
+      </div>
+      <p className="settings-subscription-unlock">
+        {CLI_SUBSCRIPTION_MODE.unlock}{" "}
+        <button
+          type="button"
+          onClick={() => document.getElementById("api-provider-access")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        >
+          [ set up API access ]
+        </button>
+      </p>
+    </aside>
+  );
+}
+
 /** One provider's config block with keychain-backed API key editing. */
 function ProviderBlock({ provider }: { provider: Provider }) {
   const apiKey = useKey(provider.id);
@@ -35,10 +65,14 @@ function ProviderBlock({ provider }: { provider: Provider }) {
      provider that cannot answer, which is what made the MCP marketplace worth
      deleting. */
   const isCli = provider.kind === "cli";
+  const isCodexCli = provider.cli === "codex";
+  const cliName = isCodexCli ? "Codex" : "Claude Code";
+  const cliCommand = isCodexCli ? "codex" : "claude";
   const [cliReady, setCliReady] = useState(false);
   useEffect(() => {
-    if (isCli) void claudeCliAvailable().then(setCliReady);
-  }, [isCli]);
+    if (!isCli) return;
+    void (isCodexCli ? codexCliAvailable() : claudeCliAvailable()).then(setCliReady);
+  }, [isCli, isCodexCli]);
 
   const startEdit = () => {
     setDraft(apiKey || "");
@@ -72,11 +106,13 @@ function ProviderBlock({ provider }: { provider: Provider }) {
           name="login"
           comment={
             cliReady
-              ? "Uses the Claude Code CLI you are already signed into. No API key, and usage draws on your subscription rather than per-token billing."
-              : "Not found. Install the claude CLI and run `claude login`, then reopen settings."
+              ? `Uses the ${cliName} CLI you are already signed into. No API key; usage draws on that account instead of per-token billing.`
+              : isCodexCli
+                ? "Not found. Install the codex CLI and sign in with your ChatGPT account, then reopen settings."
+                : "Not found. Install the claude CLI and run `claude login`, then reopen settings."
           }
         >
-          <CfgStr>{cliReady ? "claude CLI detected" : "claude CLI not on PATH"}</CfgStr>
+          <CfgStr>{cliReady ? `${cliCommand} CLI detected` : `${cliCommand} CLI not on PATH`}</CfgStr>
         </CfgRow>
       ) : provider.keyless ? (
         <CfgRow name="keyless" comment="This provider needs no API key.">
@@ -103,28 +139,14 @@ function ProviderBlock({ provider }: { provider: Provider }) {
         name="configured"
         comment={
           isCli
-            ? "Whether the claude CLI was found on PATH."
+            ? `Whether the ${cliCommand} CLI was found on PATH.`
             : "Whether a key is stored for this provider in your OS keychain."
         }
       >
         <CfgBool value={isCli ? cliReady : provider.keyless || !!apiKey} onChange={() => {}} />
       </CfgRow>
       {isCli ? (
-        /* Plain language on purpose. The first version named staged edits,
-           MCP servers and index-versus-grep search — all accurate, and all
-           meaningless to someone who has just installed Husk. Someone choosing a
-           provider needs to know what they give up, not how it works. */
-        <>
-          <CfgComment>Free with your Claude subscription — no API key needed.</CfgComment>
-          <CfgBlank />
-          <CfgComment>You get limited features: chatting, asking about your code,</CfgComment>
-          <CfgComment>terminal help, commit messages and command suggestions.</CfgComment>
-          <CfgBlank />
-          <CfgComment>Husk cannot edit your files in this mode, and your own</CfgComment>
-          <CfgComment>connected tools are unavailable. Add an API key below for</CfgComment>
-          <CfgComment>those. You can keep both and switch any time from the AI</CfgComment>
-          <CfgComment>panel.</CfgComment>
-        </>
+        <CfgComment>Subscription mode is read-only. Its available and unavailable features are shown above when selected.</CfgComment>
       ) : null}
       <CfgBlank />
     </>
@@ -133,6 +155,12 @@ function ProviderBlock({ provider }: { provider: Provider }) {
 
 export function ModelsFile() {
   const [config, setConfig] = useState(() => loadConfig());
+  const [codexModels, setCodexModels] = useState<CodexCliModel[]>([]);
+  const subscriptionProvider = PROVIDERS.find((provider) => provider.id === config.providerId && provider.kind === "cli");
+
+  useEffect(() => {
+    void codexCliModels().then(setCodexModels);
+  }, []);
 
   const updateConfig = (patch: Partial<ReturnType<typeof loadConfig>>) => {
     const next = { ...config, ...patch };
@@ -140,10 +168,21 @@ export function ModelsFile() {
     saveConfig(next);
   };
 
-  const modelOptions = MODELS.map((m) => ({
-    value: m.id,
-    label: `${m.label} · ${m.provider.label}`,
-  }));
+  const modelOptions = [
+    ...MODELS.map((model) => ({
+      value: model.id,
+      label: `${model.label} · ${model.provider.label}`,
+      providerId: model.provider.id,
+    })),
+    // Keep a stable escape hatch when Codex has not created its local cache
+    // yet, and let the CLI choose the account's default model.
+    { value: "codex", label: "Codex default · Codex (my subscription)", providerId: "codex" },
+    ...codexModels.map((model) => ({
+      value: model.id,
+      label: `${model.label} · Codex (my subscription)`,
+      providerId: "codex",
+    })),
+  ];
 
   return (
     <ConfigEditor>
@@ -155,12 +194,21 @@ export function ModelsFile() {
         <CfgEnum
           value={config.model}
           options={modelOptions}
-          onChange={(model) => updateConfig({ model, providerId: getModel(model).provider.id })}
+          onChange={(model) => {
+            const option = modelOptions.find((item) => item.value === model);
+            if (option) updateConfig({ model, providerId: option.providerId });
+          }}
         />
       </CfgRow>
+      {subscriptionProvider ? <SubscriptionModeNotice provider={subscriptionProvider} /> : null}
       <CfgBlank />
 
-      {PROVIDERS.filter((p) => p.id !== "local").map((provider) => (
+      {PROVIDERS.filter((p) => p.kind === "cli").map((provider) => (
+        <ProviderBlock key={provider.id} provider={provider} />
+      ))}
+
+      <div id="api-provider-access" className="settings-provider-anchor" aria-hidden="true" />
+      {PROVIDERS.filter((p) => p.id !== "local" && p.kind !== "cli").map((provider) => (
         <ProviderBlock key={provider.id} provider={provider} />
       ))}
 

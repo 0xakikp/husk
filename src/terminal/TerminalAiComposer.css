@@ -33,8 +33,12 @@
 
 .composer-full {
   flex: 1;
+  min-height: 0;
   max-height: none !important;
   height: 100% !important;
+  /* The transcript owns scrolling. Keeping the full panel clipped here stops
+     its footer from being pushed beyond the AI-tab viewport by a long chat. */
+  overflow: hidden;
   border-radius: 0 !important;
   margin: 0 !important;
   padding: 12px 16px;
@@ -164,6 +168,7 @@
 
 .composer-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -947,6 +952,7 @@
 .composer-input-wrapper {
   position: relative;
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 6px;
 }
@@ -1167,6 +1173,9 @@
 
 .composer-footer {
   display: flex;
+  /* Keep connection/provider state visible in long chats. The messages stream
+     is the one scrollable flex child; chrome must never be squeezed away. */
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 8px;

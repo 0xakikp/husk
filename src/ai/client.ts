@@ -6,6 +6,7 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { streamText, stepCountIs, type ModelMessage, type Tool } from "ai";
 import type { Provider } from "./providers";
 import { runClaudeCli } from "./claudeCli";
+import { runCodexCli } from "./codexCli";
 
 // Route model HTTP through Tauri (Rust) so provider APIs aren't blocked by the
 // webview's CORS policy.
@@ -82,17 +83,24 @@ export async function streamChat(
   onStatus?: (status: string) => void,
 ): Promise<void> {
   if (cfg.provider.kind === "cli") {
-    /* Husk's own tools are not forwarded. The CLI is its own agent with its own
-       toolset, and its write/execute tools are refused in claudeCli.ts so file
-       edits keep going through Husk's diff review. Tool-driven features are
-       therefore weaker in this mode — the trade for needing no API key. */
-    const run = runClaudeCli({
-      prompt: flattenForCli(system, messages),
-      model: cfg.model,
-      onDelta,
-      onStatus: (name) => onStatus?.(`🛠️ ${name}`),
-      onNotice: (text) => onStatus?.(`⚠️ ${text}`),
-    });
+    /* Husk's own tools are not forwarded. Both CLIs run in restricted mode so
+       file edits keep going through Husk's diff review. Tool-driven features
+       are therefore weaker in this mode — the trade for needing no API key. */
+    const prompt = flattenForCli(system, messages);
+    const run = cfg.provider.cli === "codex"
+      ? runCodexCli({
+          prompt,
+          model: cfg.model,
+          onDelta,
+          onStatus,
+        })
+      : runClaudeCli({
+          prompt,
+          model: cfg.model,
+          onDelta,
+          onStatus: (name) => onStatus?.(`🛠️ ${name}`),
+          onNotice: (text) => onStatus?.(`⚠️ ${text}`),
+        });
     const onAbort = () => run.stop();
     abortSignal?.addEventListener("abort", onAbort, { once: true });
     try {
@@ -147,13 +155,18 @@ export async function generateOnce(
 ): Promise<string> {
   if (cfg.provider.kind === "cli") {
     let out = "";
-    const run = runClaudeCli({
-      prompt: flattenForCli(system, [{ role: "user", content: prompt }]),
-      model: cfg.model,
-      onDelta: (t) => {
-        out += t;
-      },
-    });
+    const cliPrompt = flattenForCli(system, [{ role: "user", content: prompt }]);
+    const run = cfg.provider.cli === "codex"
+      ? runCodexCli({
+          prompt: cliPrompt,
+          model: cfg.model,
+          onDelta: (text) => { out += text; },
+        })
+      : runClaudeCli({
+          prompt: cliPrompt,
+          model: cfg.model,
+          onDelta: (text) => { out += text; },
+        });
     await run.done;
     return out.trim();
   }

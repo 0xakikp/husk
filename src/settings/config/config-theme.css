@@ -428,6 +428,22 @@
 .settings-native-form .cfg-block { box-sizing: border-box; width: 100%; color: var(--foreground); background: var(--background); }
 .settings-native-form > .cfg-file > .cfg-line:not(:has(.cfg-sec)):not(.cfg-blank):not(.cfg-line--art) { margin: 8px 0; color: var(--muted-foreground); font-size: 10.5px; }
 
+/* Subscription CLIs are a useful no-key option, but their restricted tool
+   access has to be stated at the model-selection point. This is deliberately
+   a slim terminal-style rail, not another dashboard card. */
+.settings-subscription-notice { margin: 14px 0 2px; border-left: 2px solid #f59e0b; padding: 3px 0 4px 11px; color: var(--muted-foreground); }
+.settings-subscription-heading { display: flex; align-items: flex-start; gap: 8px; }
+.settings-subscription-dot { display: inline-flex; width: 15px; height: 15px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, #f59e0b 55%, transparent); border-radius: 50%; color: #fbbf24; font-size: 10px; font-weight: 700; line-height: 1; }
+.settings-subscription-heading strong { display: block; color: var(--foreground); font-size: 11px; font-weight: 600; }
+.settings-subscription-heading p, .settings-subscription-details p, .settings-subscription-unlock { margin: 3px 0 0; max-width: 640px; font-size: 10.5px; line-height: 1.45; }
+.settings-subscription-details { display: grid; gap: 2px; margin: 8px 0 0 23px; }
+.settings-subscription-details p { margin: 0; }
+.settings-subscription-details span { display: inline-block; width: 72px; color: var(--foreground); font-weight: 500; }
+.settings-subscription-unlock { margin-left: 23px; color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground)); }
+.settings-subscription-unlock button { border: 0; border-bottom: 1px solid transparent; padding: 0; color: var(--primary); background: none; cursor: pointer; font: inherit; font-weight: 550; }
+.settings-subscription-unlock button:hover { border-color: var(--primary); }
+.settings-provider-anchor { height: 1px; scroll-margin-top: 20px; }
+
 /* Keep navigation functional but deliberately quiet: it is a directory, not a
    second dashboard competing with the controls. */
 .cfgx-nav-group { margin: 7px 0 12px; }

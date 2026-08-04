@@ -319,7 +319,10 @@ export function AiTabPanel() {
       </div>
 
       {/* Chat area */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* This is a vertical flex boundary for the full composer. Without
+          min-h-0, a long transcript can make the composer grow past this pane
+          and the AI tab's outer overflow clips its connection footer. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {prefs.aiEnabled ? (
           <TerminalAiComposer sessionId={activeSession.id} variant="full" registerToggle={false} registerOpen={false} registerSend={false} />
         ) : (
