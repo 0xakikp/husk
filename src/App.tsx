@@ -946,7 +946,11 @@ function App() {
             bands below and beside it where nothing paints, and the wallpaper sits
             behind everything at z-index -2. */}
         <div>
-          <StatusBar onExplainError={prefs.aiEnabled ? explainLastError : undefined} />
+          <StatusBar
+            onExplainError={prefs.aiEnabled ? explainLastError : undefined}
+            sidebarOpen={explorerOpen}
+            onToggleSidebar={toggleSidebar}
+          />
         </div>
 
         <DialogHost
