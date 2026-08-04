@@ -72,7 +72,7 @@ function ProviderBlock({ provider }: { provider: Provider }) {
           name="login"
           comment={
             cliReady
-              ? "Uses the Claude Code CLI you are already signed into. No API key, and usage draws on your subscription rather than per-token billing. Read-only: no staged file edits, and Husk's MCP servers are unavailable in this mode."
+              ? "Uses the Claude Code CLI you are already signed into. No API key, and usage draws on your subscription rather than per-token billing."
               : "Not found. Install the claude CLI and run `claude login`, then reopen settings."
           }
         >
@@ -109,6 +109,22 @@ function ProviderBlock({ provider }: { provider: Provider }) {
       >
         <CfgBool value={isCli ? cliReady : provider.keyless || !!apiKey} onChange={() => {}} />
       </CfgRow>
+      {isCli ? (
+        /* Spelled out here rather than only in the chat's hover text: this is
+           where someone picks a provider, and the trade should be visible before
+           they choose, not discovered when an edit never gets staged. */
+        <>
+          <CfgComment>This mode covers chat, explanations, terminal and file context,</CfgComment>
+          <CfgComment>commit messages and command suggestions — everything that reads.</CfgComment>
+          <CfgBlank />
+          <CfgComment>It cannot stage file edits for your review, and Husk's own MCP</CfgComment>
+          <CfgComment>servers are not available (the CLI loads its own instead), so</CfgComment>
+          <CfgComment>codebase search falls back from Husk's index to plain grep.</CfgComment>
+          <CfgBlank />
+          <CfgComment>Add an API key to a provider below for the full set. Both can be</CfgComment>
+          <CfgComment>configured at once — switch any time from the AI panel's footer.</CfgComment>
+        </>
+      ) : null}
       <CfgBlank />
     </>
   );
