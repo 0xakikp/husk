@@ -26,6 +26,11 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
   const [open, setOpen] = useState(false);
   const [cliReady, setCliReady] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  /* Room above the button, so the menu cannot be taller than the panel.
+     .composer-dock-side sets overflow:hidden, and this menu opens upward from a
+     footer inside it — so on a short dock the top would be silently clipped and
+     providers would vanish off the top edge rather than scroll. */
+  const [maxHeight, setMaxHeight] = useState(320);
 
   useEffect(() => {
     void claudeCliAvailable().then(setCliReady);
@@ -33,6 +38,11 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
 
   useEffect(() => {
     if (!open) return;
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (rect) {
+      // 16px clear of the panel's top edge so it never touches the header.
+      setMaxHeight(Math.max(140, Math.min(320, rect.top - 16)));
+    }
     const onDown = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -94,7 +104,10 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
       {open && (
         /* Upward: the footer sits at the bottom of the panel, so a downward menu
            would open off-screen. */
-        <div className="absolute bottom-full left-0 z-50 mb-1.5 max-h-[320px] min-w-[240px] overflow-y-auto rounded-lg border border-border/60 bg-background/95 py-1 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[240px] overflow-y-auto rounded-lg border border-border/60 bg-background/95 py-1 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{ maxHeight }}
+        >
           {usable.length === 0 ? (
             <p className="px-2.5 py-2 text-[10.5px] text-muted-foreground">
               No provider configured — add a key in Settings → Models.
