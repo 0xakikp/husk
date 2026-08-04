@@ -19,7 +19,7 @@ import { claudeCliAvailable } from "./claudeCli";
  */
 /** What CLI mode cannot do, in the order people notice it. */
 const CLI_LIMITS =
-  "Claude Code mode is read-only: it can read and search your code, but cannot stage file edits for review, and Husk's MCP servers are not available (the CLI loads its own). Switch to an API provider for those.";
+  "Limited features. Chat, code questions, terminal help and commit messages all work. Husk cannot edit your files in this mode, and your own connected tools are unavailable — add an API key for those.";
 
 export function ModelSwitcher({ busy }: { busy?: boolean }) {
   const cfg = useConfig();
@@ -122,8 +122,8 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
                   </div>
                   {p.kind === "cli" && (
                     <p className="px-2.5 pb-1 text-[9.5px] leading-snug text-amber-500/80">
-                      Read-only: no staged file edits, and Husk's MCP servers are
-                      not available in this mode.
+                      Limited features — Husk cannot edit files or use your
+                      connected tools in this mode.
                     </p>
                   )}
                   {/* A provider with no registered models still needs to be

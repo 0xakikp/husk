@@ -110,19 +110,20 @@ function ProviderBlock({ provider }: { provider: Provider }) {
         <CfgBool value={isCli ? cliReady : provider.keyless || !!apiKey} onChange={() => {}} />
       </CfgRow>
       {isCli ? (
-        /* Spelled out here rather than only in the chat's hover text: this is
-           where someone picks a provider, and the trade should be visible before
-           they choose, not discovered when an edit never gets staged. */
+        /* Plain language on purpose. The first version named staged edits,
+           MCP servers and index-versus-grep search — all accurate, and all
+           meaningless to someone who has just installed Husk. Someone choosing a
+           provider needs to know what they give up, not how it works. */
         <>
-          <CfgComment>This mode covers chat, explanations, terminal and file context,</CfgComment>
-          <CfgComment>commit messages and command suggestions — everything that reads.</CfgComment>
+          <CfgComment>Free with your Claude subscription — no API key needed.</CfgComment>
           <CfgBlank />
-          <CfgComment>It cannot stage file edits for your review, and Husk's own MCP</CfgComment>
-          <CfgComment>servers are not available (the CLI loads its own instead), so</CfgComment>
-          <CfgComment>codebase search falls back from Husk's index to plain grep.</CfgComment>
+          <CfgComment>You get limited features: chatting, asking about your code,</CfgComment>
+          <CfgComment>terminal help, commit messages and command suggestions.</CfgComment>
           <CfgBlank />
-          <CfgComment>Add an API key to a provider below for the full set. Both can be</CfgComment>
-          <CfgComment>configured at once — switch any time from the AI panel's footer.</CfgComment>
+          <CfgComment>Husk cannot edit your files in this mode, and your own</CfgComment>
+          <CfgComment>connected tools are unavailable. Add an API key below for</CfgComment>
+          <CfgComment>those. You can keep both and switch any time from the AI</CfgComment>
+          <CfgComment>panel.</CfgComment>
         </>
       ) : null}
       <CfgBlank />
