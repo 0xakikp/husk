@@ -72,7 +72,7 @@ function ProviderBlock({ provider }: { provider: Provider }) {
           name="login"
           comment={
             cliReady
-              ? "Uses the Claude Code CLI you are already signed into. No API key, and usage draws on your subscription rather than per-token billing."
+              ? "Uses the Claude Code CLI you are already signed into. No API key, and usage draws on your subscription rather than per-token billing. Read-only: no staged file edits, and Husk's MCP servers are unavailable in this mode."
               : "Not found. Install the claude CLI and run `claude login`, then reopen settings."
           }
         >

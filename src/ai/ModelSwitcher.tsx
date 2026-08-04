@@ -17,6 +17,10 @@ import { claudeCliAvailable } from "./claudeCli";
  * (local endpoints, and the Claude Code CLI when it is installed). Offering a
  * provider that cannot answer is the mistake the MCP marketplace made.
  */
+/** What CLI mode cannot do, in the order people notice it. */
+const CLI_LIMITS =
+  "Claude Code mode is read-only: it can read and search your code, but cannot stage file edits for review, and Husk's MCP servers are not available (the CLI loads its own). Switch to an API provider for those.";
+
 export function ModelSwitcher({ busy }: { busy?: boolean }) {
   const cfg = useConfig();
   const [open, setOpen] = useState(false);
@@ -73,6 +77,18 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
         {(cfg.model || provider.defaultModel).toLowerCase()}
         {" · "}
         {busy ? "streaming" : "connected"}
+        {/* Stated in the status line, because the degradation is otherwise
+            invisible: the model was never given Husk's tools, so it cannot fail
+            to use them — it just answers in prose and never stages an edit, with
+            nothing on screen to say why. */}
+        {provider.kind === "cli" && (
+          <span
+            className="rounded bg-amber-500/10 px-1 text-[9px] text-amber-500/90"
+            title={CLI_LIMITS}
+          >
+            read-only
+          </span>
+        )}
       </button>
 
       {open && (
@@ -91,6 +107,12 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
                   <div className="px-2.5 py-1 text-[9px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase">
                     {p.kind === "cli" ? "Claude Code · your subscription" : p.label}
                   </div>
+                  {p.kind === "cli" && (
+                    <p className="px-2.5 pb-1 text-[9.5px] leading-snug text-amber-500/80">
+                      Read-only: no staged file edits, and Husk's MCP servers are
+                      not available in this mode.
+                    </p>
+                  )}
                   {/* A provider with no registered models still needs to be
                       selectable — custom gateways carry user-typed model ids. */}
                   {(models.length > 0 ? models : [{ id: p.defaultModel, label: p.defaultModel }]).map((m) => {
