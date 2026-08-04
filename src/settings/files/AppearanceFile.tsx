@@ -82,6 +82,13 @@ export function AppearanceFile() {
     }
   }, [bg]);
 
+  const pickFolder = useCallback(async () => {
+    const selected = await openDialog({ directory: true, multiple: false });
+    if (selected && typeof selected === "string") {
+      setPrefs({ background: { ...bg, dir: selected } });
+    }
+  }, [bg]);
+
   const clearImage = useCallback(() => {
     setPrefs({ background: { ...bg, enabled: false, path: "" } });
   }, [bg]);
@@ -158,6 +165,22 @@ export function AppearanceFile() {
         <CfgStr>{fileName ?? ""}</CfgStr>
         <CfgAct onClick={pickImage}>pick</CfgAct>
         {bg.path ? <CfgAct onClick={clearImage} danger>clear</CfgAct> : null}
+      </CfgRow>
+      <CfgRow
+        name="folder"
+        comment={
+          bg.dir
+            ? "Switch between images in this folder from the launcher (wall:) or with Cmd+Shift+B."
+            : "Optional. Pick a folder to switch between wallpapers without opening settings."
+        }
+      >
+        <CfgStr>{bg.dir ? bg.dir.split(/[\\/]/).pop() ?? bg.dir : ""}</CfgStr>
+        <CfgAct onClick={pickFolder}>pick folder</CfgAct>
+        {bg.dir ? (
+          <CfgAct onClick={() => patchBg({ dir: "" })} danger>
+            clear
+          </CfgAct>
+        ) : null}
       </CfgRow>
       <CfgRow name="fit" comment="cover fills the window and crops the overflow; contain shows the whole image, may leave empty edges.">
         <CfgEnum

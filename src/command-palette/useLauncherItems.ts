@@ -21,6 +21,8 @@ import { composeCommand } from "../workflows/params";
 import { removeRecentNote } from "../notes/store";
 import { toast } from "../toast";
 import { getAllSessions, deleteSession } from "../ai/sessionStore";
+import { listWallpapers, wallpaperName, applyWallpaper } from "../settings/wallpapers";
+import { getPrefs } from "../settings/preferences";
 import { loadAccounts as loadTotpAccounts } from "../totp/store";
 import { generateCode as generateTotpCode } from "../totp/totp";
 import { useClipHistory, deleteClip } from "../clipboard/store";
@@ -70,6 +72,7 @@ type DynamicState = {
   jobs: BgJob[];
   sshHosts: string[];
   wsFiles: WorkspaceFileEntry[];
+  wallpapers: string[];
   loaded: boolean;
 };
 
@@ -80,6 +83,7 @@ const EMPTY: DynamicState = {
   jobs: [],
   sshHosts: [],
   wsFiles: [],
+  wallpapers: [],
   loaded: false,
 };
 
@@ -123,6 +127,7 @@ export function useLauncherItems(
       loadK8sContexts().then((k8s) => merge({ k8s })),
       loadRunningJobs().then((jobs) => merge({ jobs })),
       loadSshHosts().then((sshHosts) => merge({ sshHosts })),
+      listWallpapers(getPrefs().background.dir).then((wallpapers) => merge({ wallpapers })),
     ].map((p) => p.catch(() => {}));
 
     void Promise.allSettled(loads).then(() => merge({ loaded: true }));
@@ -233,6 +238,24 @@ export function useLauncherItems(
           { label: "Copy filename", run: () => copy(n.name) },
           { label: "Remove from recents", run: () => removeRecentNote(n.path) },
         ],
+      });
+    }
+
+    /* Wallpapers in the configured folder.
+       Named rows rather than only next/previous commands: with twenty images,
+       cycling to the one you want means pressing a key nineteen times. */
+    for (const path of dyn.wallpapers) {
+      const name = wallpaperName(path);
+      const current = path === getPrefs().background.path;
+      items.push({
+        id: `wallpaper:${path}`,
+        kind: "wallpaper",
+        label: name,
+        hint: current ? "current" : undefined,
+        keywords: "wallpaper background image",
+        group: "Wallpaper",
+        run: () => applyWallpaper(path),
+        actions: [{ label: "Copy path", run: () => copy(path) }],
       });
     }
 

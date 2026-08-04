@@ -19,6 +19,7 @@ import { fontStack } from "./styles/fonts";
 import { initKeys } from "./ai/store";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { readFileBase64 } from "./fs";
+import { stepWallpaper, randomWallpaper } from "./settings/wallpapers";
 import { ToastContainer, toast } from "./toast";
 import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
@@ -79,6 +80,17 @@ function readSidebarView(): SidebarViewId {
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
   } catch (e) { console.error("Failed to read sidebar view", e); }
   return "explorer";
+}
+
+/** Wallpaper switching is silent when it works, so only the failures speak. */
+function reportWallpaper(name: string | null) {
+  if (name) return;
+  toast({
+    title: "No wallpaper folder set",
+    message: "Settings → Appearance → wallpaper → folder",
+    variant: "info",
+    duration: 3000,
+  });
 }
 
 function App() {
@@ -439,7 +451,7 @@ function App() {
       e.key.toLowerCase() === key || e.code === code;
 
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && hit(e, "b", "KeyB")) {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && hit(e, "b", "KeyB")) {
         /* Cmd/Ctrl+B for the sidebar — VS Code, Zed, Cursor and Sublime all use
            it, and until now the sidebar had no shortcut at all: the title-bar
            icon and a palette command were the only ways to reach it. */
@@ -450,6 +462,9 @@ function App() {
         e.preventDefault();
         e.stopPropagation();
         setPaletteOpen(true);
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && hit(e, "b", "KeyB")) {
+        e.preventDefault();
+        void stepWallpaper(1).then(reportWallpaper);
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && hit(e, "l", "KeyL")) {
         if (!prefs.aiEnabled) return;
         e.preventDefault();
@@ -482,7 +497,25 @@ function App() {
 
   const commands: Command[] = useMemo(
     () => [
-      { id: "explorer", label: "Toggle file explorer", run: () => toggleSidebar() },
+      { id: "explorer", label: "Toggle file explorer", keywords: "sidebar panel files", run: () => toggleSidebar() },
+      {
+        id: "wall-next",
+        label: "Next wallpaper",
+        keywords: "background image cycle switch",
+        run: () => void stepWallpaper(1).then(reportWallpaper),
+      },
+      {
+        id: "wall-prev",
+        label: "Previous wallpaper",
+        keywords: "background image cycle switch",
+        run: () => void stepWallpaper(-1).then(reportWallpaper),
+      },
+      {
+        id: "wall-random",
+        label: "Random wallpaper",
+        keywords: "background image shuffle",
+        run: () => void randomWallpaper().then(reportWallpaper),
+      },
       { id: "browser", label: "Open browser", keywords: "web internet page url chrome", run: () => openBrowser() },
       { id: "open-folder", label: "Open folder…", run: () => void pickWorkspaceFolder() },
       { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },

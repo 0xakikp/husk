@@ -12,6 +12,9 @@ export type LineHighlight = "none" | "line" | "gutter" | "all";
 export type BackgroundSettings = {
   enabled: boolean;
   path: string;
+  /** Folder of images to switch between. Optional — `path` still decides what
+   *  shows, so a folder can be set and never used. */
+  dir: string;
   opacity: number;
   blur: number;
   /** cover = fill the window and crop overflow; contain = whole image visible. */
@@ -224,6 +227,7 @@ const DEFAULT: Prefs = {
   sessionRestoreEnabled: true,
 
   background: {
+    dir: "",
     enabled: false,
     path: "",
     opacity: 100,
