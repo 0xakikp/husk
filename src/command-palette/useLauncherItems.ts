@@ -22,6 +22,7 @@ import { removeRecentNote } from "../notes/store";
 import { toast } from "../toast";
 import { getAllSessions, deleteSession } from "../ai/sessionStore";
 import { listWallpapers, wallpaperName, applyWallpaper } from "../settings/wallpapers";
+import { listScripts, runCommandFor, type ScriptFile } from "../scripts/scripts";
 import { getPrefs } from "../settings/preferences";
 import { loadAccounts as loadTotpAccounts } from "../totp/store";
 import { generateCode as generateTotpCode } from "../totp/totp";
@@ -73,6 +74,7 @@ type DynamicState = {
   sshHosts: string[];
   wsFiles: WorkspaceFileEntry[];
   wallpapers: string[];
+  scripts: ScriptFile[];
   loaded: boolean;
 };
 
@@ -84,6 +86,7 @@ const EMPTY: DynamicState = {
   sshHosts: [],
   wsFiles: [],
   wallpapers: [],
+  scripts: [],
   loaded: false,
 };
 
@@ -128,6 +131,7 @@ export function useLauncherItems(
       loadRunningJobs().then((jobs) => merge({ jobs })),
       loadSshHosts().then((sshHosts) => merge({ sshHosts })),
       listWallpapers(getPrefs().background.dir).then((wallpapers) => merge({ wallpapers })),
+      listScripts(getPrefs().scriptsDir).then((scripts) => merge({ scripts })),
     ].map((p) => p.catch(() => {}));
 
     void Promise.allSettled(loads).then(() => merge({ loaded: true }));
@@ -237,6 +241,28 @@ export function useLauncherItems(
           { label: "Copy path", run: () => copy(n.path) },
           { label: "Copy filename", run: () => copy(n.name) },
           { label: "Remove from recents", run: () => removeRecentNote(n.path) },
+        ],
+      });
+    }
+
+    /* Scripts from the configured folder.
+       Enter TYPES the command rather than running it, matching the panel: a
+       script almost always wants arguments, and typing leaves the cursor ready
+       for them. "Run now" is the explicit second action. */
+    for (const sc of dyn.scripts) {
+      const cmd = runCommandFor(sc.path);
+      items.push({
+        id: `script:${sc.path}`,
+        kind: "script",
+        label: sc.name,
+        hint: sc.lang,
+        keywords: `script run ${sc.ext}`,
+        group: "Scripts",
+        run: () => ctx.typeInTerminal(cmd),
+        actions: [
+          { label: "Open in editor", run: () => ctx.openFile(sc.path, sc.name) },
+          { label: "Copy path", run: () => copy(sc.path) },
+          { label: "Copy command", run: () => copy(cmd) },
         ],
       });
     }

@@ -2,6 +2,7 @@ import { lazy } from "react";
 import { cn } from "@/lib/utils";
 import { FileExplorer } from "../explorer/FileExplorer";
 import { SidebarRail, type SidebarViewId } from "../sidebar/SidebarRail";
+import { runInActiveTerminal } from "../ai/terminalContext";
 import { lazyPanel } from "./lazy";
 import { SHEET_HOST_ID, SidebarSheetContext } from "../components/sheetHost";
 import type { Prefs } from "../settings/preferences";
@@ -17,7 +18,7 @@ const CiCdDialog = lazy(() => import("../ci-cd/CiCdDialog").then((m) => ({ defau
 const TerraformView = lazy(() => import("../terraform/TerraformView").then((m) => ({ default: m.TerraformView })));
 const DockerView = lazy(() => import("../docker/DockerView").then((m) => ({ default: m.DockerView })));
 const TailscaleView = lazy(() => import("../tailscale/TailscaleView").then((m) => ({ default: m.TailscaleView })));
-const BookmarksView = lazy(() => import("../bookmarks/BookmarksView").then((m) => ({ default: m.BookmarksView })));
+const VaultView = lazy(() => import("../vault/VaultView").then((m) => ({ default: m.VaultView })));
 
 export function SidebarHost({
   explorerOpen,
@@ -145,18 +146,11 @@ export function SidebarHost({
             )
           ) : sidebarView === "vault" ? (
             lazyPanel(
-              <BookmarksView
+              <VaultView
                 inline
-                onTypeCommand={(cmd) => {
-                  typeInActiveTerminal(cmd);
-                }}
-                onOpenFile={(path) => {
-                  const name = path.split("/").pop() || path;
-                  openFile(path, name);
-                }}
-                onOpenDirectory={(path) => {
-                  typeInActiveTerminal(`cd "${path}"`);
-                }}
+                onTypeCommand={(cmd) => typeInActiveTerminal(cmd)}
+                onRunCommand={(cmd) => runInActiveTerminal(cmd)}
+                onOpenFile={(path, name) => openFile(path, name)}
               />,
               "Vault",
             )
