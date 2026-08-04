@@ -2,6 +2,7 @@ import { lazy } from "react";
 import { cn } from "@/lib/utils";
 import { FileExplorer } from "../explorer/FileExplorer";
 import { SidebarRail, type SidebarViewId } from "../sidebar/SidebarRail";
+import { runInActiveTerminal } from "../ai/terminalContext";
 import { lazyPanel } from "./lazy";
 import { SHEET_HOST_ID, SidebarSheetContext } from "../components/sheetHost";
 import type { Prefs } from "../settings/preferences";
@@ -110,7 +111,14 @@ export function SidebarHost({
           ) : sidebarView === "workflows" ? (
             lazyPanel(<RunbooksDialog inline />, "Workflows")
           ) : sidebarView === "tools-hub" ? (
-            lazyPanel(<ToolsHubView onSelectView={(v) => persistSidebarView(v)} />, "Plugins")
+            lazyPanel(
+              <ToolsHubView
+                onSelectView={(v) => persistSidebarView(v)}
+                onTypeCommand={(cmd) => typeInActiveTerminal(cmd)}
+                onRunCommand={(cmd) => runInActiveTerminal(cmd)}
+              />,
+              "Plugins",
+            )
           ) : sidebarView === "kubernetes" ? (
             lazyPanel(
               <KubernetesView

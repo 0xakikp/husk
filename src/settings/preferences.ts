@@ -74,6 +74,8 @@ export type Prefs = {
 
   // Explorer
   showHidden: boolean;
+  /** Folder of Husk plugin JSON files. Empty means no user plugins. */
+  pluginsDir: string;
 
   // AI
   aiEnabled: boolean;
@@ -165,6 +167,7 @@ const DEFAULT: Prefs = {
   vimMode: false,
 
   showHidden: false,
+  pluginsDir: "",
 
   aiEnabled: true,
   terminalAiErrorAssist: false,

@@ -1,0 +1,16 @@
+{
+  "name": "Git Branches",
+  "description": "Local branches, with checkout and delete",
+  "brand": "#F05032",
+  "views": [
+    {
+      "title": "Branches",
+      "command": "git branch -vv",
+      "format": "lines",
+      "empty": "Not a git repository.",
+      "actions": [
+        { "label": "Checkout", "command": "git checkout {Output}" }
+      ]
+    }
+  ]
+}

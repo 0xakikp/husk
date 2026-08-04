@@ -1,5 +1,11 @@
+import { useCallback, useEffect, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { cn } from "@/lib/utils";
-import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { InformationCircleIcon, PlusSignIcon, AlertCircleIcon, PuzzleIcon } from "@hugeicons/core-free-icons";
+import { usePrefs, setPrefs } from "../settings/preferences";
+import { loadPlugins, type LoadedPlugin } from "../plugins/loader";
+import { PluginPanel } from "../plugins/PluginPanel";
+import type { Plugin } from "../plugins/types";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   SiKubernetes,
@@ -82,9 +88,38 @@ const TOOLS: ToolCard[] = [
 
 type Props = {
   onSelectView: (view: SidebarViewId) => void;
+  onTypeCommand: (cmd: string) => void;
+  onRunCommand: (cmd: string) => void;
 };
 
-export function ToolsHubView({ onSelectView }: Props) {
+export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Props) {
+  const dir = usePrefs().pluginsDir;
+  const [loaded, setLoaded] = useState<LoadedPlugin[]>([]);
+  const [active, setActive] = useState<Plugin | null>(null);
+
+  const reload = useCallback(() => {
+    void loadPlugins(dir).then(setLoaded);
+  }, [dir]);
+  useEffect(reload, [reload]);
+
+  const pickDir = useCallback(async () => {
+    const selected = await openDialog({ directory: true, multiple: false });
+    if (selected && typeof selected === "string") setPrefs({ pluginsDir: selected });
+  }, []);
+
+  /* A plugin fills the panel, the same way the workflow editor does — not a
+     dialog. It was opened from inside the sidebar, so it belongs here. */
+  if (active) {
+    return (
+      <PluginPanel
+        plugin={active}
+        onBack={() => setActive(null)}
+        onTypeCommand={onTypeCommand}
+        onRunCommand={onRunCommand}
+      />
+    );
+  }
+
   return (
     <TooltipProvider delayDuration={200}>
       <div className="flex h-full flex-col">
@@ -110,6 +145,14 @@ export function ToolsHubView({ onSelectView }: Props) {
               </TooltipContent>
             </Tooltip>
           </div>
+          <button
+            type="button"
+            onClick={pickDir}
+            title={dir ? `Plugins folder: ${dir}` : "Choose a plugins folder"}
+            className="ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <HugeiconsIcon icon={PlusSignIcon} size={13} strokeWidth={2} />
+          </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* gap-1 and py-1.5: five rows of two lines each had gap-2 between
@@ -173,6 +216,74 @@ export function ToolsHubView({ onSelectView }: Props) {
               );
             })}
           </div>
+
+          {/* User plugins. Broken ones are listed with their reason rather than
+              omitted: a plugin that simply fails to appear gives its author
+              nothing to debug. */}
+          <div className="mt-3 px-0.5 pb-1 text-[9px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase">
+            Installed
+          </div>
+          {!dir ? (
+            <button
+              type="button"
+              onClick={pickDir}
+              className="w-full rounded-lg border border-dashed border-border/40 px-2.5 py-2 text-left text-[10.5px] text-muted-foreground transition-colors hover:border-border/70 hover:text-foreground"
+            >
+              Choose a folder of plugin files to load them here.
+            </button>
+          ) : loaded.length === 0 ? (
+            <p className="px-1 py-2 text-[10.5px] text-muted-foreground">No plugin files in that folder.</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {loaded.map((entry) =>
+                "plugin" in entry ? (
+                  <button
+                    key={entry.plugin.id}
+                    type="button"
+                    onClick={() => setActive(entry.plugin)}
+                    className="group flex items-start gap-2.5 rounded-lg border border-border/40 bg-card/30 px-2.5 py-1.5 text-left transition-colors hover:border-border/60 hover:bg-card/50"
+                  >
+                    <div
+                      className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${entry.plugin.brand ?? "var(--primary)"} 14%, transparent)`,
+                      }}
+                    >
+                      <HugeiconsIcon
+                        icon={PuzzleIcon}
+                        size={15}
+                        strokeWidth={1.75}
+                        style={{ color: entry.plugin.brand ?? "var(--primary)" }}
+                      />
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="text-[12.5px] font-medium text-foreground">{entry.plugin.name}</span>
+                      <span className="text-[11px] leading-snug text-muted-foreground">
+                        {entry.plugin.description ??
+                          `${entry.plugin.views.length} view${entry.plugin.views.length === 1 ? "" : "s"}`}
+                      </span>
+                    </div>
+                  </button>
+                ) : (
+                  <div
+                    key={entry.id}
+                    className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-2.5 py-1.5"
+                  >
+                    <HugeiconsIcon
+                      icon={AlertCircleIcon}
+                      size={13}
+                      strokeWidth={2}
+                      className="mt-0.5 shrink-0 text-destructive"
+                    />
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <span className="text-[11.5px] font-medium text-foreground">{entry.id}</span>
+                      <span className="text-[10px] leading-snug text-muted-foreground">{entry.error}</span>
+                    </div>
+                  </div>
+                ),
+              )}
+            </div>
+          )}
         </div>
       </div>
     </TooltipProvider>
