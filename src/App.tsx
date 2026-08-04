@@ -441,7 +441,14 @@ function App() {
       e.key.toLowerCase() === key || e.code === code;
 
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && hit(e, "k", "KeyK")) {
+      if ((e.metaKey || e.ctrlKey) && hit(e, "b", "KeyB")) {
+        /* Cmd/Ctrl+B for the sidebar — VS Code, Zed, Cursor and Sublime all use
+           it, and until now the sidebar had no shortcut at all: the title-bar
+           icon and a palette command were the only ways to reach it. */
+        e.preventDefault();
+        e.stopPropagation();
+        toggleSidebar();
+      } else if ((e.metaKey || e.ctrlKey) && hit(e, "k", "KeyK")) {
         e.preventDefault();
         e.stopPropagation();
         setPaletteOpen(true);
