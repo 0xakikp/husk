@@ -94,22 +94,24 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
   };
 
   return (
-    <div ref={rootRef} className="relative inline-flex items-center gap-1">
+    <div ref={rootRef} className="relative inline-flex min-w-0 items-center gap-1">
       <button
         type="button"
         onClick={() => {
           setOpen((v) => !v);
           setLimitsOpen(false);
         }}
-        title="Change provider or model"
-        className="inline-flex items-center gap-1 rounded px-1 -mx-1 transition-colors hover:text-foreground"
+        title={`${provider.label} · ${cfg.model || provider.defaultModel} · ${busy ? "streaming" : "connected"} — change provider or model`}
+        className="inline-flex min-w-0 items-center gap-1 rounded px-1 -mx-1 transition-colors hover:text-foreground"
       >
-        <span className={cn("wb-status-dot", provider.kind === "cli" && "text-primary")}>●</span>
-        {provider.kind === "cli" ? cliLabel(provider).toLowerCase() : provider.label.toLowerCase()}
-        {" · "}
-        {(cfg.model || provider.defaultModel).toLowerCase()}
-        {" · "}
-        {busy ? "streaming" : "connected"}
+        <span className={cn("wb-status-dot shrink-0", provider.kind === "cli" && "text-primary")}>●</span>
+        <span className="truncate">
+          {provider.kind === "cli" ? cliLabel(provider).toLowerCase() : provider.label.toLowerCase()}
+          {" · "}
+          {(cfg.model || provider.defaultModel).toLowerCase()}
+          {" · "}
+          {busy ? "streaming" : "connected"}
+        </span>
       </button>
 
       {/* A distinct button avoids nesting an interactive control inside the

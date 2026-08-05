@@ -1171,11 +1171,11 @@ export function TerminalAiComposer({
         />
       )}
       <div className="composer-header">
-        <div className="flex items-center gap-2">
-          <span className={cn("composer-avatar", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className={cn("composer-avatar shrink-0", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
             {activeAgentIcon}
           </span>
-          <div ref={agentDropdownRef} className="relative">
+          <div ref={agentDropdownRef} className="relative shrink-0">
             <button
               type="button"
               onClick={() => setAgentDropdownOpen((v) => !v)}
@@ -1221,7 +1221,7 @@ export function TerminalAiComposer({
               </div>
             )}
           </div>
-          <span className="composer-crumb">
+          <span className="composer-crumb min-w-0 truncate" title={`${activeAgentName} · ${session.name}`}>
             husk://
             <span className={cn("composer-crumb-accent", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
               {activeAgentName.toLowerCase().replace(/\s+/g, "-")}
@@ -1229,17 +1229,22 @@ export function TerminalAiComposer({
             <span className="composer-crumb-sep">/</span>
             {session.name.toLowerCase().replace(/\s+/g, "-")}
           </span>
-          {fileName && (
+          {/* Show the open file only when it is actually attached as context —
+              displaying it while excluded read as "this is being sent". */}
+          {fileName && includeFile && currentFile && (
             <>
-              <span className="text-[10px] text-muted-foreground/60">·</span>
-              <span className="flex items-center gap-1 text-[10px] text-primary/80">
-                <HugeiconsIcon icon={CommandIcon} size={10} strokeWidth={1.5} />
-                {fileName}
+              <span className="shrink-0 text-[10px] text-muted-foreground/60">·</span>
+              <span
+                className="flex min-w-0 items-center gap-1 truncate text-[10px] text-primary/80"
+                title={`Attached as context: ${currentFile}`}
+              >
+                <HugeiconsIcon icon={CommandIcon} size={10} strokeWidth={1.5} className="shrink-0" />
+                <span className="truncate">{fileName}</span>
               </span>
             </>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {busy && (
             <button
               type="button"
@@ -1623,12 +1628,12 @@ export function TerminalAiComposer({
                       type="button"
                       onClick={() => setPreviewChipId((id) => (id === item.id ? null : item.id))}
                       className="truncate max-w-[220px] underline decoration-dotted underline-offset-2"
-                      title="Show exactly what will be sent"
+                      title={`${item.label} · ${formatKb(item.bytes)} — show exactly what will be sent`}
                     >
                       {item.label}
                     </button>
                   ) : (
-                    <span className="truncate max-w-[140px]">{item.label}</span>
+                    <span className="truncate max-w-[140px]" title={`${item.label} · ${formatKb(item.bytes)}`}>{item.label}</span>
                   )}
                   {item.sensitive && (
                     <span
@@ -1768,7 +1773,7 @@ export function TerminalAiComposer({
             type="button"
             onClick={() => setInspectorOpen(true)}
             className={cn("wb-ctx-inspect", ctxOverBudget && "wb-ctx-inspect-over")}
-            title="Review exactly what the AI can see before sending"
+            title={`${formatKb(ctxTotalBytes)} of ${budgetKb} KB context budget used · ${contextItems.length} item${contextItems.length === 1 ? "" : "s"} attached — review exactly what the AI can see`}
           >
             Context: {formatKb(ctxTotalBytes)} / {budgetKb} KB · {contextItems.length} item{contextItems.length === 1 ? "" : "s"} · Inspect ›
           </button>
