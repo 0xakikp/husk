@@ -39,6 +39,17 @@ export function GeneralFile() {
       <CfgArt lines={BANNERS.config} />
       <CfgBlank />
 
+      <CfgSection name="profile" />
+      <CfgRow name="name" comment="Optional. Husk AI uses it sparingly in replies. Stored locally; sent only with AI requests when set. Clear the field to remove it.">
+        <CfgText
+          value={p.userName}
+          onChange={(userName) => setPrefs({ userName })}
+          placeholder="What should Husk call you?"
+          widthCh={28}
+        />
+      </CfgRow>
+      <CfgBlank />
+
       <CfgSection name="ai" />
       <CfgRow name="enabled" comment="Toggle all AI features. Hides chat, traces, and shortcuts.">
         <CfgBool value={p.aiEnabled} onChange={(v) => setPrefs({ aiEnabled: v })} />

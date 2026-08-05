@@ -6,7 +6,7 @@ import {
   getAllMcpTools,
   type McpDiscoveredTool,
 } from "./client";
-import { loadMcpServers } from "./store";
+import { loadMcpServers, resolveMcpServerEnv } from "./store";
 
 let cachedDiscovered: McpDiscoveredTool[] = [];
 
@@ -26,10 +26,11 @@ export async function buildMcpTools(): Promise<Record<string, Tool>> {
   // Connect enabled servers.
   for (const config of enabled) {
     try {
+      const env = await resolveMcpServerEnv(config);
       await connectMcpServer(config.id, config.name, {
         command: config.command,
         args: config.args,
-        env: config.env,
+        env,
         cwd: config.cwd,
       });
     } catch (e) {

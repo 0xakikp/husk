@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadConfig, getKey } from "../store";
+import { getPrefs } from "../../settings/preferences";
 import { getProvider } from "../providers";
 import { streamChat, type ChatMessage } from "../client";
 import { getActiveAgent } from "../agents";
+import { buildHuskAssistantContext } from "../huskContext";
 import { readActiveTerminal } from "../terminalContext";
 import { projectMemoryBlock } from "../projectMemory";
 import { getEditorFile, getEditorSelection } from "../editorStore";
@@ -47,7 +49,7 @@ export function useAiBubbleChat(tabId?: number) {
   setInputExternal.current = (text) => setInput(text);
 
   const [busy, setBusy] = useState(false);
-  const [includeContext, setIncludeContext] = useState(true);
+  const [includeContext, setIncludeContext] = useState(() => getPrefs().aiDefaultIncludeTerminal);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const abortRef = useRef(false);
   const abortCtrlRef = useRef<AbortController | null>(null);
@@ -170,17 +172,26 @@ export function useAiBubbleChat(tabId?: number) {
       abortCtrlRef.current = new AbortController();
 
       const agent = getActiveAgent();
-      const ctx = includeContext ? readActiveTerminal() : "";
-      const base = agent.systemPrompt;
+      const contextDefaults = getPrefs();
+      const ctx = includeContext && contextDefaults.aiDefaultIncludeTerminal ? readActiveTerminal() : "";
+      const modelId = agent.model || cfg.model || provider.defaultModel;
 
-      let system = base + projectMemoryBlock() + "\n\nYou have access to file tools: readFile, writeFile, listFiles, applyEdit, revertPendingEdit. Use them to explore the codebase, read files for context, and make surgical edits. When writing files, always write the complete file content. When editing, use applyEdit for small changes. If the user asks to revert/undo a change you just proposed, use revertPendingEdit to cancel it.";
+      let system =
+        agent.systemPrompt +
+        "\n\n" +
+        buildHuskAssistantContext({ agent, provider, model: modelId }) +
+        projectMemoryBlock();
+
+      if (provider.kind !== "cli") {
+        system += "\n\nYou have access to file tools: readFile, writeFile, listFiles, applyEdit, revertPendingEdit. Use them to explore the codebase, read files for context, and make surgical edits. When writing files, always write the complete file content. When editing, use applyEdit for small changes. If the user asks to revert/undo a change you just proposed, use revertPendingEdit to cancel it.";
+      }
 
       // Auto-context: current file and selection
       const currentFile = getEditorFile();
       const selection = getEditorSelection();
-      if (currentFile) {
+      if (currentFile && contextDefaults.aiDefaultIncludeFile) {
         system += `\n\nCurrent file: ${currentFile}`;
-        if (selection) {
+        if (selection && contextDefaults.aiDefaultIncludeSelection) {
           system += `\nSelected lines ${selection.startLine}-${selection.endLine}:\n\`\`\`\n${selection.text}\n\`\`\``;
         }
       }
@@ -193,15 +204,18 @@ export function useAiBubbleChat(tabId?: number) {
         system += `\n\nAttached files:\n${fileBlock}`;
       }
 
-      const modelId = cfg.model || agent.model || provider.defaultModel;
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
 
       }
 
       try {
-        const mcpTools = await buildMcpTools().catch(() => ({}));
-        const builtinTools = buildBuiltinTools();
+        const mcpTools = provider.kind !== "cli" && contextDefaults.aiMcpToolsEnabled
+          ? await buildMcpTools().catch(() => ({}))
+          : {};
+        const builtinTools = provider.kind !== "cli" && contextDefaults.aiFileToolsEnabled
+          ? buildBuiltinTools()
+          : {};
         const tools = mergeTools(builtinTools, mcpTools);
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         const timeoutPromise = new Promise<void>((_, reject) => {
@@ -287,6 +301,7 @@ export function useAiBubbleChat(tabId?: number) {
     saveBubbleSessions(next, tabIdRef.current);
     loadedSessionIdRef.current = session.id;
     setMessages([]);
+    setIncludeContext(getPrefs().aiDefaultIncludeTerminal);
   }, [store]);
 
   const switchSession = useCallback((id: string) => {

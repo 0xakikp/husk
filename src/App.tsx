@@ -177,6 +177,7 @@ function App() {
   /* ── Dialog state (unchanged from huskv2) ── */
   const [totpOpen, setTotpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInput, setPaletteInput] = useState("");
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -532,6 +533,7 @@ function App() {
       },
       { id: "browser", label: "Open browser", keywords: "web internet page url chrome", run: () => openBrowser() },
       { id: "open-folder", label: "Open folder…", run: () => void pickWorkspaceFolder() },
+      { id: "welcome", label: "Welcome to Husk", keywords: "getting started onboarding first launch help", run: () => setWelcomeOpen(true) },
       { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
       { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
       { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
@@ -695,6 +697,28 @@ function App() {
     setSettingsOpen(false);
     setActiveKind((k) => (k === "settings" ? "term" : k));
   };
+  const dismissWelcome = useCallback(() => {
+    setPrefs({ hasSeenWelcome: true });
+    setWelcomeOpen(false);
+  }, []);
+  const openWelcomeFolder = useCallback(async () => {
+    const path = await pickWorkspaceFolder();
+    if (path) dismissWelcome();
+  }, [dismissWelcome]);
+  const openWelcomeTerminal = useCallback(() => {
+    dismissWelcome();
+    setActiveKind("term");
+    requestAnimationFrame(() => focusActiveTerminal());
+  }, [dismissWelcome]);
+  const openWelcomeAskHusk = useCallback(() => {
+    dismissWelcome();
+    if (prefs.aiEnabled) openBubble();
+    else openSettings();
+  }, [dismissWelcome, prefs.aiEnabled]);
+  const openWelcomeSettings = useCallback(() => {
+    dismissWelcome();
+    openSettings();
+  }, [dismissWelcome]);
   const openGitGraph = () => {
     setActiveKind("git-graph");
     setOpenPanel("git-graph");
@@ -1004,6 +1028,7 @@ function App() {
             closeIssues={closeIssues}
             closeSftp={closeSftp}
             closeBrowser={closeBrowser}
+            onOpenSourceControl={() => showSidebarView("source-control")}
             chromeOccluded={paletteOpen || switcherOpen}
           />
           </div>
@@ -1023,7 +1048,12 @@ function App() {
 
         <DialogHost
           aiEnabled={prefs.aiEnabled}
-          hasSeenWelcome={prefs.hasSeenWelcome}
+          welcomeOpen={!prefs.hasSeenWelcome || welcomeOpen}
+          onWelcomeOpenFolder={openWelcomeFolder}
+          onWelcomeOpenTerminal={openWelcomeTerminal}
+          onWelcomeAskHusk={openWelcomeAskHusk}
+          onWelcomeOpenSettings={openWelcomeSettings}
+          onWelcomeDismiss={dismissWelcome}
           gitHistoryOpen={gitHistoryOpen}
           setGitHistoryOpen={setGitHistoryOpen}
           shortcutsOpen={shortcutsOpen}

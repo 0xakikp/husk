@@ -444,6 +444,16 @@
 .settings-subscription-unlock button:hover { border-color: var(--primary); }
 .settings-provider-anchor { height: 1px; scroll-margin-top: 20px; }
 
+/* Connected MCP servers are only callable by API-backed providers. State that
+   boundary once at the top of Integrations, rather than repeating it for every
+   service card the user adds below. */
+.settings-integration-notice { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 18px; border-left: 2px solid var(--primary); padding: 2px 0 3px 10px; color: var(--muted-foreground); }
+.settings-integration-notice-mark { display: inline-flex; width: 15px; height: 15px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent); border-radius: 50%; color: var(--primary); font-size: 10px; font-weight: 700; line-height: 1; }
+.settings-integration-notice p { margin: 0; max-width: 680px; font-size: 10.5px; line-height: 1.45; }
+.settings-integration-notice strong { color: var(--foreground); font-weight: 600; }
+/* The notice provides the spacing before the first service section. */
+.settings-native-form .settings-github-integration .cfg-line:has(.cfg-sec) { margin-top: 0; }
+
 /* Keep navigation functional but deliberately quiet: it is a directory, not a
    second dashboard competing with the controls. */
 .cfgx-nav-group { margin: 7px 0 12px; }

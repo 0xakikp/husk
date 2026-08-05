@@ -200,6 +200,7 @@ export function ModelsFile() {
           }}
         />
       </CfgRow>
+      <CfgComment>An agent can optionally override this model in Settings → Agents. Leave its model blank to use this default.</CfgComment>
       {subscriptionProvider ? <SubscriptionModeNotice provider={subscriptionProvider} /> : null}
       <CfgBlank />
 

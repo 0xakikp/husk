@@ -1,240 +1,153 @@
 # Husk
 
-> The terminal-native IDE that brings your shell, editor, and AI into a single, seamless workspace. No browser tabs. No context switching. Just flow.
+<p align="center">
+  <img src="public/logo.png" alt="Husk logo" width="88" />
+</p>
 
 <p align="center">
-  <img src="public/images/screenshot-terminal.png" alt="Husk Terminal" width="100%" />
+  <strong>A terminal-native workspace for code, context, and calm focus.</strong><br />
+  Keep your shell, editor, AI, notes, and operational tools in one place.
 </p>
 
 ---
 
-## What is Husk?
+Husk is a desktop workspace built for people who spend their day close to a terminal. It does not treat the shell as an afterthought beneath an editor: the terminal is the centre of the application, with the surrounding tools there when they help and out of the way when they do not.
 
-Husk is a **desktop IDE built around the terminal**. Instead of treating the terminal as a second-class citizen tucked in a panel, Husk elevates it to the center of your workspace — and wraps it with a real code editor, native AI assistance, and deep shell integration that understands what you're doing.
+Open a folder, run a command, inspect its output, edit a file, ask a focused question, save a note, or check an integration—without turning your work into a trail of browser tabs and disconnected windows.
 
-- **Terminal-first** — Your terminal is always live, interactive, and context-aware. Run commands, review output, and ask AI about errors without leaving the app.
-- **Inline AI** — Two AI interfaces: a floating bubble for quick terminal questions and a dedicated editor panel for code generation, refactoring, and review.
-- **Real editor** — Full Monaco-based code editor with syntax highlighting, IntelliSense, Vim mode, file tree, tabs, and inline diff views.
-- **Deep shell integration** — OSC 133 sequences track prompt boundaries, enabling click-to-edit on the current command line, automatic error detection, and AI-assisted debugging.
+## Why Husk
 
-Built with [Tauri](https://tauri.app/), [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), and [Monaco Editor](https://microsoft.github.io/monaco-editor/).
+Most developer tools make you choose a primary surface: an editor with a hidden terminal, a terminal with a few panes, or an AI chat that has no real awareness of your working environment. Husk is designed as one workspace instead.
 
----
+- **The terminal stays first-class.** Tabs, pane splits, searchable history, command context, and live output are part of the main flow.
+- **AI belongs beside the work.** It can use the context you deliberately attach, explain terminal output, work with workspace files when permitted, and guide people through Husk itself.
+- **The workspace remains yours.** Preferences, project memory, notes, and connection setup are local by default; every powerful integration is visible and configurable.
+- **The interface stays quiet.** Husk favours a compact, keyboard-first, terminal-native visual language over a dashboard full of decorative cards.
 
-## Features
+## What you can do
 
-### Terminal
-- **Multi-tab terminal** — Draggable tabs with session restore and persistent scrollback
-- **Pane splitting** — Split terminal tabs horizontally or vertically
-- **Shell integration** — OSC 133 support for bash, zsh, fish, and PowerShell
-- **Click-to-edit** — Click anywhere on the current command line to position the cursor (Warp-like behavior)
-- **Command history** — Searchable history panel with fuzzy matching and highlight
-- **Autocomplete bar** — Smart command suggestions as you type
-- **Terminal themes** — Customizable color presets, font families, and background images with blur/dim controls
-- **SSH remotes** — Connect to remote hosts directly from the sidebar with built-in SFTP
-- **Port forwarding** — Forward remote ports locally without leaving the app
-- **Bottom bar vitals** — Real-time context badges showing git branch, dirty state, docker status, background jobs, and system info
+### Work from the terminal without losing context
 
-### Code Editor
-- **Monaco Editor** — Full-featured editing with IntelliSense, go-to-definition, find/replace, and more
-- **File explorer** — Tree view with create, rename, delete, drag-drop, and hidden file toggle
-- **Tab system** — Open multiple files with drag-to-reorder, pin tabs, and color-coded status indicators
-- **Vim mode** — Optional Vim keybindings via monaco-vim
-- **Diff viewer** — Side-by-side and inline diff for comparing files or reviewing AI edits
-- **Git integration** — Status bar branch indicator, source control panel, commit graph, history view, and issue tracking
-- **Remote editing** — Edit files on SSH hosts directly in the Monaco editor
+- Run multiple terminal tabs, split a tab into panes, and restore sessions and working directories between launches.
+- Use shell integration to understand command boundaries, current working directory, exit status, and recent command output.
+- Search terminal history and terminal output, get command suggestions, and ask AI to explain a failure or propose a command.
+- Open **Beautiful Logs** from `⌘/Ctrl K`: formatted live terminal output appears in a lower inspector split, with filters for all, info, warnings, and errors. It is a focused view of the active terminal—not an endless, separate log archive.
+- Read the bottom bar at a glance: current command state, workspace folder, Git branch and status, CPU, memory, system load, battery, and clock.
 
-### AI Integration
-- **Multiple providers** — OpenAI, Anthropic, Google Gemini, Azure OpenAI, and local models (Ollama, LM Studio)
-- **Editor AI panel** — Right-side chat with workspace-scoped sessions, inline code edits with approval/reject flow, and file context awareness
-- **Floating AI bubble** — Overlay chat for quick terminal questions with smart quick actions:
-  - **Explain Error** — Find and explain the last terminal error
-  - **Make Script** — Turn recent commands into a reusable shell script
-  - **Summarize** — Recap recent terminal activity
-  - **Find Issues** — Scan output for errors and warnings
-  - **Suggest Command** — Describe a task, get a command suggestion you can insert, run, or copy
-- **Vision support** — Attach images to prompts for models that support vision
-- **Model Context Protocol (MCP)** — Browse and install MCP servers from the marketplace for extended AI capabilities
-- **Codebase search** — AI-powered search across your workspace files
+### Keep code and workspace tools close
 
-### DevOps & Tooling
-- **Docker** — Container management, image lists, and status monitoring
-- **Kubernetes** — Pod and deployment views with parallelized kubectl calls and loading states
-- **Terraform** — Infrastructure state and plan visualization
-- **CI/CD** — Pipeline status viewer for tracking builds and deployments
-- **GitHub Issues** — View and manage issues from connected repositories
-- **Jobs** — Background job tracking and management
-- **Runbooks / Workflows** — Save and execute reusable command sequences
-- **TOTP** — Built-in time-based one-time password manager for 2FA codes
-- **Bookmarks** — Save frequently used commands, files, and directories for instant access
-- **Cloud Sync** — Synchronize settings and data across devices
+- Browse files, open and pin editor tabs, and work in a Monaco-based code editor with find/replace, syntax support, Vim mode, minimap, sticky scroll, line controls, and configurable typography.
+- Review diffs and proposed changes without leaving the workspace.
+- Use Source Control, workspace bookmarks, clipboard history, quick switching, and the `⌘/Ctrl K` command palette to move through work quickly.
+- Store Markdown notes in the **Vault**. Recently opened notes and folders are easy to scan, while the rail stays compact enough to leave open.
+- Connect saved SSH hosts, browse with SFTP, and configure port forwarding from the same workspace.
 
-### Customization
-- **Themes** — Dark/light mode with customizable accent colors
-- **Background images** — Set custom wallpapers behind the terminal and editor with opacity, blur, and dim controls
-- **AI panel styling** — Independent opacity, blur, dim, and font size controls for both the editor AI panel and floating bubble
-- **Animations** — Toggle smooth transitions, frosted glass effects, and neon border glows
-- **Fonts** — Choose from multiple monospace font families (JetBrains Mono, Fira Code, Cascadia Code, Space Grotesk, Source Code Pro, MesloLGS NF)
-- **Tailwind v4** — Modern utility-first styling with CSS variables for theming
+### Use AI with clear boundaries
 
-### Navigation & Productivity
-- **Command palette** — Quick file switcher (`Ctrl/Cmd+P`) and AI command palette (`Ctrl/Cmd+Shift+P`)
-- **Quick switcher** — Fuzzy-find files, commands, and actions instantly
-- **Snippets** — Save and insert reusable code snippets
-- **Clipboard manager** — History of copied items with quick access dropdown
-- **Notes** — Built-in markdown notes panel for quick scratchpad usage
-- **Tailscale** — Direct integration with Tailscale for secure remote access
-- **Crash reporting** — Optional Sentry integration for automatic error tracking
+Husk AI is available as a docked terminal composer and as a dedicated full-screen AI workspace with named sessions. It can include the active terminal, the current file, a selection, attachments, or a particular command result—only when those context chips are enabled.
 
----
+Every normal Husk AI conversation receives the same product-aware context. This means the selected agent can explain Husk features, point to the right settings area, describe the current model mode accurately, and answer “who are you?” as a Husk AI persona rather than as an anonymous generic chatbot.
 
-## Screenshots
+Choose the access mode that fits your workflow:
 
-### Terminal with File Explorer and Background Image
+| Mode | Best for | What it can do in Husk |
+| --- | --- | --- |
+| **API-backed model** | Full workspace assistance | Chat, file tools when enabled, reviewable edits, and configured MCP integrations. |
+| **Claude Code or Codex subscription** | Using an existing signed-in CLI plan | Chat, code questions, terminal help, command suggestions, and commit-message help—without an API key. These modes are read-only inside Husk and cannot call file-edit/review actions or connected MCP tools. |
 
-The main workspace with the file explorer sidebar, multi-tab terminal, and a custom background image with configurable blur and dim overlay.
+API-backed providers include OpenAI, Anthropic, Google, Groq, DeepSeek, OpenRouter, xAI, Mistral, Moonshot, and compatible local endpoints such as LM Studio or Ollama. The configured provider and model are always visible in the AI interface.
 
-![Husk Terminal](public/images/screenshot-terminal.png)
+#### AI that adapts to the person and project
 
-### AI Floating Bubble
+- Select a built-in persona—such as Code, Debug, Architect, or Ask—or create a custom agent with its own instructions.
+- Set global instructions, response style, personal memory, default context attachments, and file/MCP tool access in **Settings → Agents**.
+- Give an agent an optional model override while retaining a global model default.
+- Add workspace-specific project memory for a stack, conventions, or constraints that should follow that project.
+- Set an optional display name during first-run setup or later in Settings. It is stored locally and only included with normal AI conversations when set, so replies can be personal without becoming repetitive.
 
-The floating AI chat bubble that appears over the terminal for quick questions. Features quick actions for explaining errors, summarizing output, and more.
+### Connect the tools around your work
 
-![Husk AI Floating Bubble](public/images/screenshot-bubble.png)
+- Add custom MCP servers in **Settings → Integrations** without leaving the settings workspace.
+- Connect GitHub MCP with a personal access token stored in the OS keychain; start read-only and enable broader access only when you intend to.
+- Use Docker, Kubernetes, Terraform, CI/CD, Tailscale, workflows, jobs, bookmarks, and an authenticator from dedicated workspace views where those tools are configured.
+- Install and manage command-line helpers through the setup assistant instead of hunting for install commands yourself.
 
-### Editor with AI Panel
+### Make the workspace feel like yours
 
-The Monaco-based code editor alongside the AI panel. The AI panel provides context-aware chat with workspace-scoped sessions and inline code edit suggestions.
+Husk’s first-run defaults are deliberately opinionated: Iosevka typography, the Husk terminal palette, a frosted workspace, 11px panel gaps, subtle shadows, active-panel glow, neon borders, and a softened AI composer. Every part is adjustable later.
 
-![Husk Editor with AI](public/images/screenshot-editor.png)
+- Switch terminal theme, font, cursor behaviour, scrollback, editor preferences, and Vim controls.
+- Choose wallpapers, folder-based wallpaper cycling, opacity, blur, and background fit.
+- Tune panel gaps, animations, frosted glass, shadows, active glow, neon borders, and AI composer appearance independently.
+- Start from the **HUSK / READY** boot screen on a clean install, then revisit it any time through `⌘/Ctrl K` → **Welcome to Husk**.
 
----
+## First five minutes
 
-## Getting Started
+1. Launch Husk and choose **Open folder** from the boot screen.
+2. Open `⌘/Ctrl K` and try **Open beautiful logs**, **Open settings**, or a workspace search.
+3. In **Settings → AI & Models**, select an API-backed provider or a signed-in Codex / Claude Code subscription mode.
+4. In **Settings → Agents**, choose an agent, set a response style, and decide what context a new AI chat should attach.
+5. If you use integrations, add them in **Settings → Integrations**. Husk explains there when the selected model mode cannot use connected tools.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `⌘/Ctrl K` | Open the command palette |
+| `⌘/Ctrl B` | Toggle the sidebar |
+| `⌘/Ctrl F` | Find in terminal output |
+| `⌘/Ctrl T` | Create a terminal tab |
+| `⌘/Ctrl Shift W` | Close a terminal tab |
+| `⌘/Ctrl Tab` / `⌘/Ctrl Shift Tab` | Move to the next / previous tab |
+| `⌘/Ctrl 1–9` | Switch to a tab by position |
+| `⌘/Ctrl S` | Save the active editor file |
+| `⌘/Ctrl Shift B` | Move to the next wallpaper in the chosen folder |
+| `Esc` | Close the active dialog or search surface |
+
+The in-app keyboard-shortcuts panel remains the source of truth as shortcuts evolve.
+
+## Privacy and permissions
+
+Husk makes the important boundaries explicit.
+
+- API keys and integration secrets are stored in the operating system keychain rather than in project files.
+- Preferences, agents, project memory, Vault notes, sessions, and optional display name are local application data unless you intentionally export or sync them.
+- Terminal output, file contents, attachments, project memory, personal memory, and display name can be sent to the selected AI provider when included in an AI request. Review context chips before sending sensitive output.
+- File and MCP tool access can be disabled in **Settings → Agents**. Existing-file edits use Husk’s review flow; subscription CLI modes cannot invoke those actions at all.
+
+## Run from source
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v20 or later)
-- [pnpm](https://pnpm.io/) (v9 or later)
-- [Rust](https://www.rust-lang.org/tools/install) (latest stable)
-- macOS, Linux, or Windows
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/0xakikp/husk.git
-cd husk
-
-# Install dependencies
-pnpm install
-
-# Install Tauri CLI (if not already installed)
-cargo install tauri-cli
-```
+- [Node.js](https://nodejs.org/) 20 or later
+- [pnpm](https://pnpm.io/) 9 or later
+- [Rust](https://www.rust-lang.org/tools/install) stable, plus the platform dependencies required by Tauri
 
 ### Development
 
 ```bash
-# Start the dev server with hot reload
+git clone https://github.com/0xakikp/husk.git
+cd husk
+pnpm install
 pnpm tauri dev
 ```
 
-This will launch the Vite dev server and the Tauri application window.
-
-### Building
+### Production build
 
 ```bash
-# Build for production
 pnpm tauri build
 ```
 
-The compiled application will be available in `src-tauri/target/release/bundle/`.
+The platform bundle is written beneath `src-tauri/target/release/bundle/`.
 
----
+## Technical overview
 
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd/Ctrl + 1-9` | Switch to terminal/file tab by index |
-| `Cmd/Ctrl + P` | Open command palette / quick switcher |
-| `Cmd/Ctrl + Shift + P` | Open AI command palette |
-| `Cmd/Ctrl + ,` | Open settings |
-| `Cmd/Ctrl + W` | Close active tab |
-| `Cmd/Ctrl + Shift + W` | Close terminal tab |
-| `Cmd/Ctrl + T` | New terminal tab |
-| `Cmd/Ctrl + Tab` | Next terminal tab |
-| `Cmd/Ctrl + Shift + Tab` | Previous terminal tab |
-| `Cmd/Ctrl + S` | Save current file |
-| `Cmd/Ctrl + O` | Open file |
-| `Cmd/Ctrl + Shift + A` | Toggle AI chat bubble |
-| `Cmd/Ctrl + Shift + L` | Toggle AI chat bubble |
-| `Ctrl + R` | Search terminal history |
-
-*Full shortcuts list available in-app via Settings → Shortcuts.*
-
----
-
-## AI Providers
-
-Husk supports multiple AI providers out of the box:
-
-| Provider | Setup |
-|----------|-------|
-| OpenAI | Add your API key in Settings → Models |
-| Anthropic (Claude) | Add your API key in Settings → Models |
-| Google (Gemini) | Add your API key in Settings → Models |
-| Azure OpenAI | Configure endpoint and API key |
-| Local (Ollama / LM Studio) | Run locally and configure base URL |
-
----
-
-## Terminal Shell Integration
-
-Husk automatically installs shell integration scripts on first launch. Supported shells:
-
-- **Bash** — `~/.cache/huskv2/shell-integration/bash/bashrc`
-- **Zsh** — `~/.cache/huskv2/shell-integration/zsh/`
-- **Fish** — `~/.cache/huskv2/shell-integration/fish/init.fish`
-- **PowerShell** — `~/.cache/huskv2/shell-integration/powershell/profile.ps1`
-
-These scripts emit OSC 133 sequences that enable:
-- Prompt boundary tracking
-- Current command detection
-- Exit code reporting
-- Automatic AI error assistance
-- Click-to-edit on the command line
-
----
-
-## Architecture
-
-Husk is built as a modern desktop application using:
-
-- **Frontend**: React 19 + TypeScript + Tailwind CSS v4 + Vite
-- **Backend**: Tauri v2 (Rust) with custom native commands
-- **Editor**: Monaco Editor with custom theme and Vim bindings
-- **Terminal**: xterm.js with custom addons for OSC 133, search, and fit
-- **AI**: AI SDK with support for multiple providers and MCP
-- **State**: Zustand-style lightweight stores for UI state
-- **File System**: Tauri FS API with SSH/SFTP support for remote files
-
----
+Husk is a desktop application built with React, TypeScript, Vite, Tauri, Monaco Editor, xterm.js, and the AI SDK. The technical stack supports the product; the intended experience is a fast, local workspace that keeps terminals, files, AI, and operational tooling in one coherent place.
 
 ## Contributing
 
-We welcome contributions! Please see [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines.
-
-Quick start:
-1. Fork the repository
-2. Create a branch from `main`: `git checkout -b feat/your-feature`
-3. Make your changes and test with `pnpm tauri dev`
-4. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
-5. Open a Pull Request
-
----
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), create a focused branch from `main`, test with `pnpm tauri dev`, and use Conventional Commit messages where practical.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[MIT](LICENSE)

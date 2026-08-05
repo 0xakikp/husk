@@ -8,6 +8,7 @@ export type TerminalCursorStyle = "block" | "bar" | "underline";
 export type LineNumbers = "on" | "off" | "relative";
 export type RenderWhitespace = "none" | "boundary" | "all";
 export type LineHighlight = "none" | "line" | "gutter" | "all";
+export type AiResponseStyle = "concise" | "balanced" | "detailed";
 
 export type BackgroundSettings = {
   enabled: boolean;
@@ -43,6 +44,8 @@ export type Prefs = {
   theme: "dark" | "light";
   zoomLevel: number;
   hasSeenWelcome: boolean;
+  /** Optional local name used sparingly by Husk AI. */
+  userName: string;
   /** Monospace family shared by the terminal and editor. */
   fontFamily: FontFamilyId;
 
@@ -85,6 +88,17 @@ export type Prefs = {
   aiPromptTemplates: PromptTemplate[];
   aiAgents: AiAgent[];
   activeAgentId: string;
+  /** Preferences shared by every normal Husk AI conversation. */
+  aiGlobalInstructions: string;
+  aiPersonalMemory: string;
+  aiResponseStyle: AiResponseStyle;
+  /** Context chips selected when a new composer chat begins. */
+  aiDefaultIncludeTerminal: boolean;
+  aiDefaultIncludeFile: boolean;
+  aiDefaultIncludeSelection: boolean;
+  /** Tool access only applies to non-subscription model modes. */
+  aiFileToolsEnabled: boolean;
+  aiMcpToolsEnabled: boolean;
 
   // Session
   sessionRestoreEnabled: boolean;
@@ -143,7 +157,8 @@ const DEFAULT: Prefs = {
   theme: "dark",
   zoomLevel: 1,
   hasSeenWelcome: false,
-  fontFamily: "jetbrains",
+  userName: "",
+  fontFamily: "iosevka",
 
   terminalFontSize: 13,
   cursorBlink: true,
@@ -229,6 +244,14 @@ const DEFAULT: Prefs = {
     },
   ],
   activeAgentId: "code",
+  aiGlobalInstructions: "",
+  aiPersonalMemory: "",
+  aiResponseStyle: "concise",
+  aiDefaultIncludeTerminal: true,
+  aiDefaultIncludeFile: true,
+  aiDefaultIncludeSelection: true,
+  aiFileToolsEnabled: true,
+  aiMcpToolsEnabled: true,
 
   sessionRestoreEnabled: true,
 
@@ -243,17 +266,17 @@ const DEFAULT: Prefs = {
 
   accentColor: "#11c700",
   animationsEnabled: true,
-  frostedGlass: false,
-  panelGaps: 0,
+  frostedGlass: true,
+  panelGaps: 11,
   panelGapStyle: "none",
-  panelShadows: false,
-  activePanelGlow: false,
-  neonBorderGlow: false,
+  panelShadows: true,
+  activePanelGlow: true,
+  neonBorderGlow: true,
   editorWallpaperOpacity: 0,
 
-  aiMiniOpacity: 48,
+  aiMiniOpacity: 35,
   aiMiniFontSize: 11,
-  aiMiniBgBlur: 0,
+  aiMiniBgBlur: 14,
   aiMiniBgDim: 50,
   aiComposerBgStyle: "default",
   aiComposerBgColor: "#000000",

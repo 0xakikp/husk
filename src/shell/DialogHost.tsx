@@ -32,7 +32,12 @@ type Setter<T> = React.Dispatch<React.SetStateAction<T>>;
 
 export function DialogHost({
   aiEnabled,
-  hasSeenWelcome,
+  welcomeOpen,
+  onWelcomeOpenFolder,
+  onWelcomeOpenTerminal,
+  onWelcomeAskHusk,
+  onWelcomeOpenSettings,
+  onWelcomeDismiss,
   gitHistoryOpen,
   setGitHistoryOpen,
   shortcutsOpen,
@@ -84,7 +89,12 @@ export function DialogHost({
   openSettings,
 }: {
   aiEnabled: boolean;
-  hasSeenWelcome: boolean;
+  welcomeOpen: boolean;
+  onWelcomeOpenFolder: () => void;
+  onWelcomeOpenTerminal: () => void;
+  onWelcomeAskHusk: () => void;
+  onWelcomeOpenSettings: () => void;
+  onWelcomeDismiss: () => void;
   gitHistoryOpen: boolean;
   setGitHistoryOpen: Setter<boolean>;
   shortcutsOpen: boolean;
@@ -205,7 +215,15 @@ export function DialogHost({
           "Cloud Sync",
         )}
       </DialogLayer>
-      {!hasSeenWelcome ? <WelcomeDialog /> : null}
+      {welcomeOpen ? (
+        <WelcomeDialog
+          onOpenFolder={onWelcomeOpenFolder}
+          onOpenTerminal={onWelcomeOpenTerminal}
+          onAskHusk={onWelcomeAskHusk}
+          onOpenSettings={onWelcomeOpenSettings}
+          onDismiss={onWelcomeDismiss}
+        />
+      ) : null}
       {paletteOpen && lazyPanel(
         <CommandPalette
           open

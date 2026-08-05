@@ -170,8 +170,8 @@ export function AppearanceFile() {
         name="folder"
         comment={
           bg.dir
-            ? "Switch between images in this folder from the launcher (wall:) or with Cmd+Shift+B."
-            : "Optional. Pick a folder to switch between wallpapers without opening settings."
+            ? "Switch between images in this folder with ⌘/Ctrl+Shift+B, or from the launcher (wall:)."
+            : "Optional. Pick a folder, then switch wallpapers anytime with ⌘/Ctrl+Shift+B or from the launcher (wall:)."
         }
       >
         <CfgStr>{bg.dir ? bg.dir.split(/[\\/]/).pop() ?? bg.dir : ""}</CfgStr>

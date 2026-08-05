@@ -53,7 +53,9 @@ export function gotoWorkspace(path: string): void {
 }
 
 /** Open a native folder picker and switch the workspace to it. */
-export async function pickWorkspaceFolder(): Promise<void> {
+export async function pickWorkspaceFolder(): Promise<string | null> {
   const picked = await open({ directory: true, multiple: false });
-  if (typeof picked === "string") gotoWorkspace(picked);
+  if (typeof picked !== "string") return null;
+  gotoWorkspace(picked);
+  return picked;
 }

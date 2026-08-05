@@ -88,6 +88,7 @@ export function WorkspacePanels({
   closeIssues,
   closeSftp,
   closeBrowser,
+  onOpenSourceControl,
   chromeOccluded,
 }: {
   term: TerminalTabsApi;
@@ -108,6 +109,7 @@ export function WorkspacePanels({
   closeIssues: () => void;
   closeSftp: () => void;
   closeBrowser: () => void;
+  onOpenSourceControl: () => void;
   /** True when a React surface (palette, switcher, settings, detail panels)
       can cover the browser — the native webview must be parked. */
   chromeOccluded: boolean;
@@ -240,7 +242,10 @@ export function WorkspacePanels({
               />
             )}
           </div>
-          <TerminalBottomBar onSendToTerminal={(text: string) => runInActiveTerminal(text)} />
+          <TerminalBottomBar
+            onSendToTerminal={(text: string) => runInActiveTerminal(text)}
+            onOpenSourceControl={onOpenSourceControl}
+          />
         </div>
 
         {/* Editor + AI pane row — AI panel overlays editor so nothing resizes when the panel toggles. */}

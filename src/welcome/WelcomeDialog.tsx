@@ -1,26 +1,72 @@
-import { setPrefs } from "../settings/preferences";
+import { useEffect } from "react";
+import { setPrefs, usePrefs } from "../settings/preferences";
 
-export function WelcomeDialog() {
+export function WelcomeDialog({
+  onOpenFolder,
+  onOpenTerminal,
+  onAskHusk,
+  onOpenSettings,
+  onDismiss,
+}: {
+  onOpenFolder: () => void;
+  onOpenTerminal: () => void;
+  onAskHusk: () => void;
+  onOpenSettings: () => void;
+  onDismiss: () => void;
+}) {
+  const prefs = usePrefs();
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onDismiss();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [onDismiss]);
+
   return (
-    <div className="modal-backdrop">
-      <div className="modal welcome-modal" role="dialog" aria-label="Welcome to husk">
+    <div className="modal-backdrop welcome-backdrop">
+      <section className="modal welcome-modal" role="dialog" aria-modal="true" aria-label="Husk is ready">
+        <header className="welcome-header">
+          <span>HUSK / READY</span>
+          <span className="welcome-header-status"><i aria-hidden="true" /> LOCAL</span>
+        </header>
         <div className="welcome-body">
-          <img src="/logo.png" className="welcome-logo" alt="husk" />
-          <h2 className="welcome-title">Welcome to husk</h2>
-          <p className="welcome-text">
-            A terminal with built-in AI and a code editor. Open the AI panel with
-            <b> ✦ AI</b>, browse files with <b>☰ Files</b>, and reach MCP servers,
-            runbooks, and 2FA from the title bar.
-          </p>
+          <p className="welcome-prompt">$ Workspace is standing by.</p>
+          <p className="welcome-text">Open a project to start editing, running terminals, writing notes, and working with Husk AI.</p>
+          <label className="welcome-name-field">
+            <span>WHAT SHOULD HUSK CALL YOU? <em>OPTIONAL</em></span>
+            <input
+              value={prefs.userName}
+              onChange={(event) => setPrefs({ userName: event.target.value })}
+              placeholder="Your display name"
+              maxLength={48}
+              autoComplete="given-name"
+            />
+            <small>Saved locally. If set, your name is shared with your chosen AI model only to personalize replies.</small>
+          </label>
           <button
             type="button"
-            className="welcome-cta"
-            onClick={() => setPrefs({ hasSeenWelcome: true })}
+            className="welcome-open-folder"
+            onClick={onOpenFolder}
           >
-            Get started
+            <span className="welcome-action-mark" aria-hidden="true">◉</span>
+            <span className="welcome-action-copy"><strong>Open folder</strong><small>Choose a project or workspace</small></span>
           </button>
+          <div className="welcome-actions" aria-label="Other ways to begin">
+            <button type="button" onClick={onOpenTerminal}><span aria-hidden="true">›_</span> Open terminal</button>
+            <button type="button" onClick={onAskHusk}><span aria-hidden="true">✦</span> Ask Husk</button>
+            <button type="button" onClick={onOpenSettings}><span aria-hidden="true">⚙</span> Open settings</button>
+          </div>
         </div>
-      </div>
+        <footer className="welcome-footer">
+          <span><kbd>⌘K</kbd> command palette</span>
+          <span><kbd>⌘⇧B</kbd> change wallpaper</span>
+          <button type="button" onClick={onDismiss}>Skip for now <kbd>Esc</kbd></button>
+        </footer>
+      </section>
     </div>
   );
 }

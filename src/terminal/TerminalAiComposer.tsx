@@ -18,7 +18,7 @@ import {
   ArrowDown01Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
-import { usePrefs, setPrefs } from "../settings/preferences";
+import { getPrefs, usePrefs, setPrefs } from "../settings/preferences";
 import { loadConfig, getKey, useConfig } from "../ai/store";
 import { getProvider } from "../ai/providers";
 import { ModelSwitcher } from "../ai/ModelSwitcher";
@@ -29,6 +29,7 @@ import { readActiveTerminal, runInActiveTerminal, getRecentCommandRuns, type Com
 import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { projectMemoryBlock } from "../ai/projectMemory";
+import { buildHuskAssistantContext } from "../ai/huskContext";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -331,9 +332,10 @@ export function TerminalAiComposer({
 
   const newSession = useCallback(() => {
     updateSession(sessionId, () => ({ ...getSession(sessionId), messages: [], input: "" }));
-    setIncludeFile(true);
-    setIncludeSelection(true);
-    setIncludeTerminal(true);
+    const defaults = getPrefs();
+    setIncludeFile(defaults.aiDefaultIncludeFile);
+    setIncludeSelection(defaults.aiDefaultIncludeSelection);
+    setIncludeTerminal(defaults.aiDefaultIncludeTerminal);
   }, [sessionId]);
 
   const handleFileUpload = useCallback(async () => {
@@ -365,9 +367,9 @@ export function TerminalAiComposer({
   const currentFile = useMemo(() => getEditorFile(), [tick]);
   const selection = useMemo(() => getEditorSelection(), [tick]);
   const fileName = currentFile ? currentFile.split("/").pop() : null;
-  const [includeFile, setIncludeFile] = useState(true);
-  const [includeSelection, setIncludeSelection] = useState(true);
-  const [includeTerminal, setIncludeTerminal] = useState(true);
+  const [includeFile, setIncludeFile] = useState(() => prefs.aiDefaultIncludeFile);
+  const [includeSelection, setIncludeSelection] = useState(() => prefs.aiDefaultIncludeSelection);
+  const [includeTerminal, setIncludeTerminal] = useState(() => prefs.aiDefaultIncludeTerminal);
 
   const contextChips = useMemo(() => {
     const chips: {
@@ -568,20 +570,25 @@ export function TerminalAiComposer({
     }
 
     let tools: Record<string, Tool> = {};
-    try {
-      const mcpTools = await buildMcpTools().catch(() => ({}));
-      const builtinTools = buildBuiltinTools();
-      tools = mergeTools(builtinTools, mcpTools);
-    } catch (e) {
-      if (import.meta.env.DEV) {
-        console.warn("[AI] tool build failed", e);
+    if (provider.kind !== "cli" && (prefs.aiFileToolsEnabled || prefs.aiMcpToolsEnabled)) {
+      try {
+        const mcpTools = prefs.aiMcpToolsEnabled ? await buildMcpTools().catch(() => ({})) : {};
+        const builtinTools = prefs.aiFileToolsEnabled ? buildBuiltinTools() : {};
+        tools = mergeTools(builtinTools, mcpTools);
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.warn("[AI] tool build failed", e);
+        }
       }
     }
 
     const agent = getActiveAgent();
+    const modelId = agent.model || cfg.model || provider.defaultModel;
     let system =
       agent.systemPrompt +
-      "\n\nYou are a helpful coding/terminal assistant inside Husk. Respond concisely. If you suggest a shell command, wrap it in a code block." +
+      "\n\n" +
+      buildHuskAssistantContext({ agent, provider, model: modelId }) +
+      "\n\nIf you suggest a shell command, wrap it in a code block." +
       // Per-workspace background, so the stack does not need re-explaining each session.
       projectMemoryBlock();
 
@@ -616,7 +623,7 @@ export function TerminalAiComposer({
       await streamChat(
         {
           provider,
-          model: cfg.model || agent.model || provider.defaultModel,
+          model: modelId,
           apiKey,
           baseURL: cfg.baseURL,
         },
@@ -666,7 +673,7 @@ export function TerminalAiComposer({
         speakText(assistantMsg.content);
       }
     }
-  }, [input, busy, messages, sessionId, attachedFiles, currentFile, selection, includeFile, includeSelection, includeTerminal]);
+  }, [input, busy, messages, sessionId, attachedFiles, currentFile, selection, includeFile, includeSelection, includeTerminal, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled]);
 
   const stop = useCallback(() => {
     abortRef.current = true;

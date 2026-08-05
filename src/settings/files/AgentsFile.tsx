@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { usePrefs, setPrefs, type AiAgent } from "../preferences";
+import { usePrefs, setPrefs, type AiAgent, type AiResponseStyle } from "../preferences";
 import {
   ConfigEditor,
   CfgArt,
   CfgAct,
   CfgBlank,
   CfgBlock,
+  CfgBool,
   CfgComment,
   CfgEnum,
   CfgRow,
@@ -15,6 +16,7 @@ import {
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
 import { getProjectMemory, setProjectMemory, MAX_MEMORY_CHARS } from "../../ai/projectMemory";
+import { MAX_GLOBAL_INSTRUCTIONS_CHARS, MAX_PERSONAL_MEMORY_CHARS } from "../../ai/huskContext";
 import { getWorkspaceRoot } from "../../workspace/store";
 
 function nextId() {
@@ -31,7 +33,7 @@ export function AgentsFile() {
   const [memory, setMemory] = useState(() => getProjectMemory());
   const workspace = getWorkspaceRoot();
   const [editing, setEditing] = useState<AiAgent | null>(null);
-  const [form, setForm] = useState({ name: "", icon: "", systemPrompt: "" });
+  const [form, setForm] = useState({ name: "", icon: "", systemPrompt: "", model: "" });
   const [showForm, setShowForm] = useState(false);
 
   const agents = p.aiAgents ?? [];
@@ -43,6 +45,8 @@ export function AgentsFile() {
       name: form.name.trim(),
       icon: form.icon.trim() || "🤖",
       systemPrompt: form.systemPrompt.trim(),
+      model: form.model.trim() || undefined,
+      color: editing?.color,
       builtIn: editing?.builtIn ?? false,
     };
     const next = editing
@@ -54,13 +58,13 @@ export function AgentsFile() {
 
   const reset = () => {
     setEditing(null);
-    setForm({ name: "", icon: "", systemPrompt: "" });
+    setForm({ name: "", icon: "", systemPrompt: "", model: "" });
     setShowForm(false);
   };
 
   const startEdit = (a: AiAgent) => {
     setEditing(a);
-    setForm({ name: a.name, icon: a.icon, systemPrompt: a.systemPrompt });
+    setForm({ name: a.name, icon: a.icon, systemPrompt: a.systemPrompt, model: a.model ?? "" });
     setShowForm(true);
   };
 
@@ -85,6 +89,62 @@ export function AgentsFile() {
       <CfgBlank />
 
       <CfgSection name="ai" />
+      <CfgComment>Every agent inherits Husk product knowledge and current model access. Its own prompt adds its speciality and tone.</CfgComment>
+      <CfgBlank />
+
+      <CfgSection name="defaults" />
+      <CfgRow name="responseStyle" comment="Default level of detail for normal replies. A direct request from you always wins.">
+        <CfgEnum<AiResponseStyle>
+          value={p.aiResponseStyle}
+          options={[
+            { value: "concise", label: "Concise" },
+            { value: "balanced", label: "Balanced" },
+            { value: "detailed", label: "Detailed" },
+          ]}
+          onChange={(aiResponseStyle) => setPrefs({ aiResponseStyle })}
+        />
+      </CfgRow>
+      <CfgRow name="globalInstructions" comment="Applied to every Husk AI chat. For example: preferred language, stack, or how you want answers structured.">
+        <CfgBlock
+          value={p.aiGlobalInstructions}
+          onChange={(aiGlobalInstructions) => setPrefs({ aiGlobalInstructions: aiGlobalInstructions.slice(0, MAX_GLOBAL_INSTRUCTIONS_CHARS) })}
+          placeholder="e.g. Prefer TypeScript. Explain commands before suggesting them."
+          rows={4}
+        />
+      </CfgRow>
+      <CfgRow name="personalMemory" comment="Optional background about you. Stored locally and shared with AI chats as context, not as an instruction.">
+        <CfgBlock
+          value={p.aiPersonalMemory}
+          onChange={(aiPersonalMemory) => setPrefs({ aiPersonalMemory: aiPersonalMemory.slice(0, MAX_PERSONAL_MEMORY_CHARS) })}
+          placeholder="e.g. I am learning Kubernetes and prefer beginner-friendly explanations."
+          rows={3}
+        />
+      </CfgRow>
+      <CfgBlank />
+
+      <CfgSection name="newChatContext" />
+      <CfgComment>These are defaults for a new AI chat. You can remove any context chip in an individual conversation.</CfgComment>
+      <CfgRow name="includeTerminal" comment="Attach the current terminal output by default. Review the chip before sending if output may contain secrets.">
+        <CfgBool value={p.aiDefaultIncludeTerminal} onChange={(aiDefaultIncludeTerminal) => setPrefs({ aiDefaultIncludeTerminal })} />
+      </CfgRow>
+      <CfgRow name="includeCurrentFile" comment="Attach the current editor file by default when one is open.">
+        <CfgBool value={p.aiDefaultIncludeFile} onChange={(aiDefaultIncludeFile) => setPrefs({ aiDefaultIncludeFile })} />
+      </CfgRow>
+      <CfgRow name="includeSelection" comment="Attach the current editor selection by default when one is active.">
+        <CfgBool value={p.aiDefaultIncludeSelection} onChange={(aiDefaultIncludeSelection) => setPrefs({ aiDefaultIncludeSelection })} />
+      </CfgRow>
+      <CfgBlank />
+
+      <CfgSection name="toolAccess" />
+      <CfgComment>These controls apply to API-backed models. Claude Code and Codex subscription modes remain read-only.</CfgComment>
+      <CfgRow name="workspaceFileTools" comment="Allow the model to inspect workspace files and propose edits. Existing-file changes still go through review.">
+        <CfgBool value={p.aiFileToolsEnabled} onChange={(aiFileToolsEnabled) => setPrefs({ aiFileToolsEnabled })} />
+      </CfgRow>
+      <CfgRow name="connectedMcpTools" comment="Allow configured MCP integrations, such as GitHub. Disabling this stops Husk from connecting them for AI chats.">
+        <CfgBool value={p.aiMcpToolsEnabled} onChange={(aiMcpToolsEnabled) => setPrefs({ aiMcpToolsEnabled })} />
+      </CfgRow>
+      <CfgBlank />
+
       <CfgRow name="activeAgent" comment="Persona used by the AI composer.">
         <CfgEnum
           value={p.activeAgentId}
@@ -108,6 +168,11 @@ export function AgentsFile() {
           <CfgRow name="prompt" comment="System prompt that defines this agent's behaviour and tone.">
             <CfgStr>{a.systemPrompt.split("\n")[0].slice(0, 70)}{a.systemPrompt.length > 70 ? "…" : ""}</CfgStr>
           </CfgRow>
+          {a.model ? (
+            <CfgRow name="model" comment="This agent overrides the global model when that model is available from the selected provider.">
+              <CfgStr>{a.model}</CfgStr>
+            </CfgRow>
+          ) : null}
           <CfgRow>
             <CfgAct onClick={() => startEdit(a)}>edit</CfgAct>
             <CfgAct onClick={() => duplicate(a)}>duplicate</CfgAct>
@@ -138,6 +203,14 @@ export function AgentsFile() {
               onChange={(systemPrompt) => setForm((f) => ({ ...f, systemPrompt }))}
               placeholder="You are the …"
               rows={4}
+            />
+          </CfgRow>
+          <CfgRow name="model" comment="Optional override for this agent. Leave empty to use the global model in AI & Models; use a model ID available from the selected provider.">
+            <CfgText
+              value={form.model}
+              onChange={(model) => setForm((f) => ({ ...f, model }))}
+              placeholder="Use global default"
+              widthCh={24}
             />
           </CfgRow>
           <CfgRow>
