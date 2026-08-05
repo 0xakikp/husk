@@ -1,4 +1,5 @@
 import { getPrefs, setPrefs, type Prefs } from "./preferences";
+import { persistNativeConfigSection } from "./nativeConfig";
 
 /** The appearance-only slice of Prefs a preset is allowed to set. */
 type AppearancePrefs = Pick<
@@ -95,7 +96,7 @@ export function applyAppearancePreset(preset: AppearancePreset): void {
    Kept in their own localStorage key rather than inside Prefs, so capturing a
    preset never becomes part of the value a preset can set. */
 
-const LS_KEY = "husk.appearance.presets";
+export const APPEARANCE_PRESETS_STORAGE_KEY = "husk.appearance.presets";
 
 const APPEARANCE_KEYS: (keyof AppearancePrefs)[] = [
   "accentColor",
@@ -117,7 +118,7 @@ const APPEARANCE_KEYS: (keyof AppearancePrefs)[] = [
 
 export function getCustomPresets(): AppearancePreset[] {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(APPEARANCE_PRESETS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as AppearancePreset[]) : [];
@@ -128,9 +129,21 @@ export function getCustomPresets(): AppearancePreset[] {
 
 function writeCustomPresets(list: AppearancePreset[]): void {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(list));
+    localStorage.setItem(APPEARANCE_PRESETS_STORAGE_KEY, JSON.stringify(list));
   } catch {
     // storage unavailable — nothing useful to do
+  }
+  persistNativeConfigSection("appearance_presets", { items: list });
+}
+
+export function hydrateAppearancePresetsFromNative(value: unknown): void {
+  const items = value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)
+    ? (value as { items: AppearancePreset[] }).items
+    : [];
+  try {
+    localStorage.setItem(APPEARANCE_PRESETS_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // The native config remains the durable source.
   }
 }
 

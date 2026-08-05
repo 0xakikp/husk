@@ -1,4 +1,5 @@
 mod fs;
+mod config;
 mod browser;
 mod jobs;
 mod mcp;
@@ -134,6 +135,12 @@ pub fn run() {
             fs::create_dir,
             fs::rename_path,
             fs::delete_path,
+            config::config_load,
+            config::config_save,
+            config::config_location,
+            config::agents_load,
+            config::agent_write,
+            config::agent_delete,
             browser::browser_create,
             browser::browser_navigate,
             browser::browser_go,

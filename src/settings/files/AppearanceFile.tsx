@@ -47,8 +47,8 @@ const PRESET_COLORS = [
 
 export function AppearanceFile() {
   const p = usePrefs();
-  /* Custom presets live in localStorage, so a tick forces the list to re-read
-     after a save or delete. */
+  /* Custom presets are mirrored from config.toml into the synchronous browser
+     cache, so a tick forces the list to re-read after a save or delete. */
   const [presetTick, setPresetTick] = useState(0);
   const [newPresetName, setNewPresetName] = useState("");
   const presets = useMemo(() => allPresets(), [presetTick]);

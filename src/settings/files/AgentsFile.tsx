@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { usePrefs, setPrefs, type AiAgent, type AiResponseStyle } from "../preferences";
+import { builtInAiAgents, usePrefs, setPrefs, type AiAgent, type AiResponseStyle } from "../preferences";
 import {
   ConfigEditor,
   CfgArt,
@@ -18,12 +18,27 @@ import { BANNERS } from "../config/banners";
 import { getProjectMemory, setProjectMemory, MAX_MEMORY_CHARS } from "../../ai/projectMemory";
 import { MAX_GLOBAL_INSTRUCTIONS_CHARS, MAX_PERSONAL_MEMORY_CHARS } from "../../ai/huskContext";
 import { getWorkspaceRoot } from "../../workspace/store";
+import { saveAiAgentsToFiles } from "../../ai/agentFiles";
+import { toast } from "../../toast";
 
 function nextId() {
   return `agent-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
 }
 
 const BUILT_IN_IDS = new Set(["architect", "code", "ask", "debug", "orchestrator"]);
+
+function isBuiltInOverride(agent: AiAgent) {
+  const shipped = builtInAiAgents().find((candidate) => candidate.id === agent.id);
+  return Boolean(
+    shipped && (
+      agent.name !== shipped.name
+      || agent.icon !== shipped.icon
+      || agent.systemPrompt !== shipped.systemPrompt
+      || (agent.model ?? "") !== (shipped.model ?? "")
+      || (agent.color ?? "") !== (shipped.color ?? "")
+    ),
+  );
+}
 
 export function AgentsFile() {
   const p = usePrefs();
@@ -37,6 +52,22 @@ export function AgentsFile() {
   const [showForm, setShowForm] = useState(false);
 
   const agents = p.aiAgents ?? [];
+
+  const saveAgents = async (next: AiAgent[]) => {
+    // Keep the picker responsive immediately; the native Markdown write is
+    // then reconciled in the background and reports a real failure instead of
+    // silently pretending the setting survived a restart.
+    setPrefs({ aiAgents: next });
+    try {
+      await saveAiAgentsToFiles(next);
+    } catch (cause) {
+      toast({
+        title: "Could not save AI agents",
+        message: cause instanceof Error ? cause.message : String(cause),
+        variant: "error",
+      });
+    }
+  };
 
   const save = () => {
     if (!form.name.trim() || !form.systemPrompt.trim()) return;
@@ -52,7 +83,7 @@ export function AgentsFile() {
     const next = editing
       ? agents.map((a) => (a.id === editing.id ? item : a))
       : [...agents, item];
-    setPrefs({ aiAgents: next });
+    void saveAgents(next);
     reset();
   };
 
@@ -69,18 +100,22 @@ export function AgentsFile() {
   };
 
   const duplicate = (a: AiAgent) => {
-    setPrefs({
-      aiAgents: [...agents, { ...a, id: nextId(), name: `${a.name} Copy`, builtIn: false }],
-    });
+    void saveAgents([...agents, { ...a, id: nextId(), name: `${a.name} Copy`, builtIn: false }]);
   };
 
   const remove = (id: string) => {
     const next = agents.filter((a) => a.id !== id);
-    setPrefs({ aiAgents: next });
+    void saveAgents(next);
     if (p.activeAgentId === id) {
       const fallback = next.find((a) => a.id === "code") || next[0];
       if (fallback) setPrefs({ activeAgentId: fallback.id });
     }
+  };
+
+  const resetBuiltIn = (id: string) => {
+    const shipped = builtInAiAgents().find((agent) => agent.id === id);
+    if (!shipped) return;
+    void saveAgents(agents.map((agent) => (agent.id === id ? shipped : agent)));
   };
 
   return (
@@ -90,6 +125,7 @@ export function AgentsFile() {
 
       <CfgSection name="ai" />
       <CfgComment>Every agent inherits Husk product knowledge and current model access. Its own prompt adds its speciality and tone.</CfgComment>
+      <CfgComment>Custom agents and edited built-ins are saved as Markdown files in ~/.husk/agents/ and survive reinstalling Husk.</CfgComment>
       <CfgBlank />
 
       <CfgSection name="defaults" />
@@ -181,6 +217,9 @@ export function AgentsFile() {
             ) : null}
             {!BUILT_IN_IDS.has(a.id) ? (
               <CfgAct onClick={() => remove(a.id)} danger>delete</CfgAct>
+            ) : null}
+            {a.builtIn && isBuiltInOverride(a) ? (
+              <CfgAct onClick={() => resetBuiltIn(a.id)}>reset</CfgAct>
             ) : null}
           </CfgRow>
           <CfgBlank />

@@ -111,7 +111,10 @@ The in-app keyboard-shortcuts panel remains the source of truth as shortcuts evo
 Husk makes the important boundaries explicit.
 
 - API keys and integration secrets are stored in the operating system keychain rather than in project files.
-- Preferences, agents, project memory, Vault notes, sessions, and optional display name are local application data unless you intentionally export or sync them.
+- Your durable non-secret settings are written atomically to `~/.husk/config.toml`; the previous valid version is retained as `~/.husk/config.toml.bak` during an update.
+- Custom agents and edits to built-in agents are readable Markdown files in `~/.husk/agents/`. The default Vault lives in `~/.husk/notes/` unless you choose another notes directory.
+- These user-home files are kept when Husk is normally removed and reinstalled. Deleting `~/.husk/` deliberately removes them.
+- Chat history, terminal session restoration, project memory, recents, and other transient workspace state remain local application data for now; they are not placed in the readable config or agent files.
 - Terminal output, file contents, attachments, project memory, personal memory, and display name can be sent to the selected AI provider when included in an AI request. Review context chips before sending sensitive output.
 - File and MCP tool access can be disabled in **Settings → Agents**. Existing-file edits use Husk’s review flow; subscription CLI modes cannot invoke those actions at all.
 

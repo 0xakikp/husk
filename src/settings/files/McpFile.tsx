@@ -499,8 +499,8 @@ function McpServerForm({
         <CfgRow name="arguments" comment="Arguments passed to the command, separated by spaces.">
           <Input className="mcp-inline-input" value={args} onChange={(e) => setArgs(e.target.value)} placeholder="e.g. -y @modelcontextprotocol/server-filesystem /path" />
         </CfgRow>
-        <CfgRow name="environment" comment="Optional KEY=value entries, one per line. Lines beginning with # are ignored.">
-          <textarea className="mcp-inline-textarea" value={env} onChange={(e) => setEnv(e.target.value)} placeholder={`KEY=value\nANOTHER=secret`} rows={4} />
+        <CfgRow name="environment" comment="Optional KEY=value entries, one per line. Token, secret, password, and API-key values are moved to your OS keychain automatically.">
+          <textarea className="mcp-inline-textarea" value={env} onChange={(e) => setEnv(e.target.value)} placeholder={`LOG_LEVEL=debug\nAPI_TOKEN=stored securely`} rows={4} />
         </CfgRow>
         <CfgRow name="workingDirectory" comment="Optional directory where Husk starts the server.">
           <Input className="mcp-inline-input" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/dir" />

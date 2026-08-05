@@ -2,10 +2,19 @@ import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import App from "./App";
-import { getPrefs } from "./settings/preferences";
+import {
+  getPrefs,
+  hydratePrefsFromNative,
+  preferencesForNativeConfig,
+} from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getSentryEnabled } from "./settings/CrashReportingSection";
+import { loadConfig, hydrateAiConfigFromNative } from "./ai/store";
+import { loadMcpServers, hydrateMcpServersFromNative, saveMcpServers } from "./mcp/store";
+import { getCustomPresets, hydrateAppearancePresetsFromNative } from "./settings/appearancePresets";
+import { initialiseNativeConfig, readNativeConfig } from "./settings/nativeConfig";
+import { loadAiAgentsFromFiles, migrateLegacyAiAgents } from "./ai/agentFiles";
 /* No ?v=N cache-busting queries on these imports: the query becomes part of
    the module id, so when Tailwind finishes its cold-start candidate scan and
    invalidates the stylesheet by its plain id, the update misses this module —
@@ -71,8 +80,13 @@ function SettingsWindowWrapper() {
 // the settings window renders SettingsPage (not App) and never runs that
 // effect — so set it here too, otherwise settings would flash/stay on the
 // fallback font.
-document.documentElement.dataset.theme = getPrefs().theme;
-document.documentElement.style.setProperty("--font-mono", fontStack(getPrefs().fontFamily));
+function applyStartupChrome() {
+  const prefs = getPrefs();
+  document.documentElement.dataset.theme = prefs.theme;
+  document.documentElement.style.setProperty("--font-mono", fontStack(prefs.fontFamily));
+}
+
+applyStartupChrome();
 
 // Global safety net for a Radix quirk that was freezing the window: a modal
 // Dialog disables `pointer-events` on <body> while open and can leave it
@@ -94,8 +108,59 @@ window.addEventListener("focus", restoreBodyInteractivity);
 
 const isSettings = new URLSearchParams(location.search).get("view") === "settings";
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    {isSettings ? <SettingsWindowWrapper /> : <App />}
-  </React.StrictMode>,
-);
+async function startApplication() {
+  const legacyPrefs = getPrefs();
+  const loaded = await readNativeConfig();
+  let configLoad = loaded;
+
+  /* Existing installs used localStorage. Before first TOML write, move custom
+     agent prompts to their own Markdown files and let MCP storage shift likely
+     secret environment variables into the OS keychain. If either native action
+     fails, no TOML file is created and the old browser state remains intact. */
+  if (!loaded.exists && !loaded.error) {
+    try {
+      await migrateLegacyAiAgents(legacyPrefs.aiAgents);
+      await saveMcpServers(loadMcpServers());
+    } catch (cause) {
+      console.error("Husk settings migration was not completed", cause);
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      // Do not create a partial TOML snapshot that excludes the old agents or
+      // might copy an unprotected MCP secret. The existing local data remains
+      // available, and the next launch can retry the migration safely.
+      configLoad = { ...loaded, error: `Migration not completed: ${detail}` };
+    }
+  }
+
+  const configDocument = await initialiseNativeConfig(configLoad, {
+    config_version: 1,
+    preferences: preferencesForNativeConfig(legacyPrefs),
+    ai: loadConfig(),
+    mcp: { servers: loadMcpServers() },
+    appearance_presets: { items: getCustomPresets() },
+  });
+
+  let agents = legacyPrefs.aiAgents;
+  try {
+    const loadedAgents = await loadAiAgentsFromFiles();
+    agents = loadedAgents.agents;
+    if (loadedAgents.errors.length) {
+      console.warn("Some Husk agent files could not be loaded", loadedAgents.errors);
+    }
+  } catch (cause) {
+    console.error("Husk agent files could not be loaded", cause);
+  }
+
+  hydratePrefsFromNative(configDocument.preferences, agents);
+  hydrateAiConfigFromNative(configDocument.ai);
+  hydrateMcpServersFromNative(configDocument.mcp);
+  hydrateAppearancePresetsFromNative(configDocument.appearance_presets);
+  applyStartupChrome();
+
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      {isSettings ? <SettingsWindowWrapper /> : <App />}
+    </React.StrictMode>,
+  );
+}
+
+void startApplication();

@@ -2,8 +2,9 @@ import { useSyncExternalStore } from "react";
 import { PROVIDERS } from "./providers";
 import { MODELS } from "./models";
 import { secretsSet, secretsDelete, secretsGetAll } from "../secrets";
+import { persistNativeConfigSection } from "../settings/nativeConfig";
 
-const LS_KEY = "huskv2.ai.config";
+export const AI_CONFIG_STORAGE_KEY = "huskv2.ai.config";
 
 /** Non-secret AI config. API keys live in the OS keychain, not here. */
 export type StoredConfig = {
@@ -60,7 +61,7 @@ export function useConfig(): StoredConfig {
 
 function readConfig(): StoredConfig {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(AI_CONFIG_STORAGE_KEY);
     if (!raw) return DEFAULT;
     const parsed = JSON.parse(raw) as Partial<StoredConfig>;
     const providerId = parsed.providerId ?? DEFAULT.providerId;
@@ -85,12 +86,31 @@ export function saveConfig(cfg: StoredConfig): void {
   try {
     // Persist only non-secret fields — never the keys.
     localStorage.setItem(
-      LS_KEY,
+      AI_CONFIG_STORAGE_KEY,
       JSON.stringify({ providerId: cfg.providerId, model: cfg.model, baseURL: cfg.baseURL }),
     );
   } catch {
     // storage unavailable — keep config in memory only
   }
+  persistNativeConfigSection("ai", configCache);
+}
+
+/** Apply the non-secret AI selection from config.toml before either composer
+ * renders. API keys are intentionally hydrated through the keychain below. */
+export function hydrateAiConfigFromNative(value: unknown): void {
+  const parsed = value && typeof value === "object" ? (value as Partial<StoredConfig>) : {};
+  const providerId = parsed.providerId ?? DEFAULT.providerId;
+  configCache = {
+    providerId,
+    model: knownModel(parsed.model, providerId),
+    baseURL: parsed.baseURL ?? DEFAULT.baseURL,
+  };
+  try {
+    localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(configCache));
+  } catch {
+    // The native config is still authoritative for the next launch.
+  }
+  for (const fn of configSubs) fn();
 }
 
 // --- API keys ---------------------------------------------------------------
@@ -145,7 +165,7 @@ export async function initKeys(): Promise<void> {
 
   let legacy: Record<string, string> = {};
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(AI_CONFIG_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as { keys?: Record<string, string> };
       legacy = parsed.keys ?? {};

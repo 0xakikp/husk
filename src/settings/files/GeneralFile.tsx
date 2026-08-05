@@ -21,11 +21,13 @@ import {
   CfgText,
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
+import { useNativeConfigStatus } from "../nativeConfig";
 
 const px = (a: number[]) => a.map((n) => ({ value: n, label: `${n}px` }));
 
 export function GeneralFile() {
   const p = usePrefs();
+  const config = useNativeConfigStatus();
   /* Glass TTY VT220 has no bundled faces and no @fontsource package, so the
      option only does anything once it is installed system-wide. Saying that in
      the label beats letting the pick silently render as the next font. */
@@ -233,7 +235,13 @@ export function GeneralFile() {
         />
       </CfgRow>
       <CfgBlank />
-      <CfgComment>written automatically to ~/.husk/config.toml</CfgComment>
+      <CfgComment>
+        {config.ready && config.path
+          ? `saved automatically to ${config.path}`
+          : config.error
+            ? `settings are using the previous local copy: ${config.error}`
+            : "preparing ~/.husk/config.toml…"}
+      </CfgComment>
     </ConfigEditor>
   );
 }

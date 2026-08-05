@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { TerminalThemePreset } from "../styles/terminalTheme";
 import type { FontFamilyId } from "../styles/fonts";
+import { persistNativeConfigSection } from "./nativeConfig";
 
 export type WordWrap = "off" | "on" | "bounded";
 export type EditorCursorStyle = "line" | "block" | "underline";
@@ -290,30 +291,34 @@ const DEFAULT: Prefs = {
 
   notesDirectory: "",
 };
-const LS_KEY = "huskv2.prefs.v2";
+export const PREFS_STORAGE_KEY = "huskv2.prefs.v2";
+
+function mergePrefs(saved: Partial<Prefs>): Prefs {
+  const merged = { ...DEFAULT, ...saved };
+  /* Shallow merge alone would let a stored nested object (e.g. background)
+     permanently hide keys added to the defaults later — deep-merge those. */
+  merged.background = { ...DEFAULT.background, ...(saved.background ?? {}) };
+
+  /* `dim` was a second black overlay above the wallpaper, while `opacity`
+     faded the wallpaper toward the same black underneath it — so the two
+     multiplied out to one value, image x opacity x (1 - dim). Only `opacity`
+     remains; fold any stored dim into it so an existing wallpaper keeps the
+     brightness it had rather than jumping. */
+  const legacyDim = (saved.background as { dim?: number } | undefined)?.dim;
+  if (typeof legacyDim === "number" && legacyDim > 0) {
+    merged.background = {
+      ...merged.background,
+      opacity: Math.max(10, Math.round((merged.background.opacity * (100 - legacyDim)) / 100)),
+    };
+    delete (merged.background as { dim?: number }).dim;
+  }
+  return merged;
+}
 
 function load(): Prefs {
   try {
-    const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}") as Partial<Prefs>;
-    /* Shallow merge alone would let a stored nested object (e.g. background)
-       permanently hide keys added to the defaults later — deep-merge those. */
-    const merged = { ...DEFAULT, ...saved };
-    merged.background = { ...DEFAULT.background, ...(saved.background ?? {}) };
-
-    /* `dim` was a second black overlay above the wallpaper, while `opacity`
-       faded the wallpaper toward the same black underneath it — so the two
-       multiplied out to one value, image x opacity x (1 - dim). Only `opacity`
-       remains; fold any stored dim into it so an existing wallpaper keeps the
-       brightness it had rather than jumping. */
-    const legacyDim = (saved.background as { dim?: number } | undefined)?.dim;
-    if (typeof legacyDim === "number" && legacyDim > 0) {
-      merged.background = {
-        ...merged.background,
-        opacity: Math.max(10, Math.round((merged.background.opacity * (100 - legacyDim)) / 100)),
-      };
-      delete (merged.background as { dim?: number }).dim;
-    }
-    return merged;
+    const saved = JSON.parse(localStorage.getItem(PREFS_STORAGE_KEY) || "{}") as Partial<Prefs>;
+    return mergePrefs(saved);
   } catch {
     return DEFAULT;
   }
@@ -329,11 +334,40 @@ export function getPrefs(): Prefs {
 export function setPrefs(patch: Partial<Prefs>): void {
   state = { ...state, ...patch };
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // storage unavailable — keep in memory only
   }
+  // Custom agents live as individual Markdown files. The compatibility mirror
+  // in localStorage still keeps their runtime state synchronous, but TOML never
+  // absorbs long prompts or duplicates the agent source of truth.
+  const { aiAgents: _agents, ...preferences } = state;
+  persistNativeConfigSection("preferences", preferences);
   for (const fn of subscribers) fn();
+}
+
+/** Apply the native TOML snapshot at startup without treating it as a new user
+ * edit. Agent definitions are loaded separately from ~/.husk/agents/*.md. */
+export function hydratePrefsFromNative(
+  preferences: Partial<Omit<Prefs, "aiAgents">>,
+  aiAgents: AiAgent[],
+): void {
+  state = mergePrefs({ ...preferences, aiAgents });
+  try {
+    localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // The native file remains the durable source even if browser storage fails.
+  }
+  for (const fn of subscribers) fn();
+}
+
+export function preferencesForNativeConfig(prefs = state): Omit<Prefs, "aiAgents"> {
+  const { aiAgents: _agents, ...preferences } = prefs;
+  return preferences;
+}
+
+export function builtInAiAgents(): AiAgent[] {
+  return DEFAULT.aiAgents.map((agent) => ({ ...agent }));
 }
 
 export function subscribePrefs(fn: () => void): () => void {

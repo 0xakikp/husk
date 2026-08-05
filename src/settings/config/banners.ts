@@ -21,7 +21,7 @@ export const BANNERS: Record<string, string[]> = {
     "│ █▀█ █▀█ █▀█ █▀▀ █▀█ █▀█ █▀█ █▄ █ █▀▀ █▀▀   │",
     "│ █▀█ █▀▀ █▀▀ █▀▀ █▀█ █▀▄ █▀█ █ ▀█ █   █▀▀   │",
     "│ ▀ ▀ ▀   ▀   ▀▀▀ ▀ ▀ ▀ ▀ ▀ ▀ ▀  ▀ ▀▀▀ ▀▀▀   │",
-    "│ appearance.toml · colours, effects, layout │",
+    "│ config.toml · colours, effects, layout     │",
     "╰────────────────────────────────────────────╯",
   ],
   models: [
@@ -29,7 +29,7 @@ export const BANNERS: Record<string, string[]> = {
     "│ █▄▄█ █▀█ █▀▄ █▀▀ █   █▀▀                   │",
     "│ █  █ █ █ █ █ █▀▀ █   ▀▀█                   │",
     "│ ▀  ▀ ▀▀▀ ▀▀  ▀▀▀ ▀▀▀ ▀▀▀                   │",
-    "│ ai/models.toml · providers, keys, models   │",
+    "│ config.toml · providers, keys, models      │",
     "╰────────────────────────────────────────────╯",
   ],
   agents: [
@@ -37,7 +37,7 @@ export const BANNERS: Record<string, string[]> = {
     "│ █▀█ █▀▀ █▀▀ █▄ █ ▀█▀ █▀▀                   │",
     "│ █▀█ █ █ █▀▀ █ ▀█  █  ▀▀█                   │",
     "│ ▀ ▀ ▀▀▀ ▀▀▀ ▀  ▀  ▀  ▀▀▀                   │",
-    "│ ai/agents.toml · personas, system prompts  │",
+    "│ agents/*.md · personas, system prompts     │",
     "╰────────────────────────────────────────────╯",
   ],
   prompts: [
@@ -45,7 +45,7 @@ export const BANNERS: Record<string, string[]> = {
     "│ █▀█ █▀█ █▀█ █▄▄█ █▀█ ▀█▀ █▀▀               │",
     "│ █▀▀ █▀▄ █ █ █  █ █▀▀  █  ▀▀█               │",
     "│ ▀   ▀ ▀ ▀▀▀ ▀  ▀ ▀    ▀  ▀▀▀               │",
-    "│ ai/prompts.toml · templates, quick actions │",
+    "│ config.toml · templates, quick actions     │",
     "╰────────────────────────────────────────────╯",
   ],
   mcp: [
@@ -53,7 +53,7 @@ export const BANNERS: Record<string, string[]> = {
     "│ █▄▄█ █▀▀ █▀█                               │",
     "│ █  █ █   █▀▀                               │",
     "│ ▀  ▀ ▀▀▀ ▀                                 │",
-    "│ mcp.toml · Model Context Protocol servers  │",
+    "│ config.toml · MCP servers                  │",
     "╰────────────────────────────────────────────╯",
   ],
   tools: [
@@ -61,7 +61,7 @@ export const BANNERS: Record<string, string[]> = {
     "│ ▀█▀ █▀█ █▀█ █   █▀▀                        │",
     "│  █  █ █ █ █ █   ▀▀█                        │",
     "│  ▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀▀▀                        │",
-    "│ tools.toml · CLI helpers, install, setup   │",
+    "│ config.toml · CLI helpers, install, setup  │",
     "╰────────────────────────────────────────────╯",
   ],
   sync: [
@@ -69,7 +69,7 @@ export const BANNERS: Record<string, string[]> = {
     "│ █▀▀ █ █ █▄ █ █▀▀                           │",
     "│ ▀▀█ ▀█▀ █ ▀█ █                             │",
     "│ ▀▀▀  ▀  ▀  ▀ ▀▀▀                           │",
-    "│ sync.toml · cloud, export, import, backup  │",
+    "│ config.toml · cloud, export, import, backup│",
     "╰────────────────────────────────────────────╯",
   ],
   crash: [
@@ -77,7 +77,7 @@ export const BANNERS: Record<string, string[]> = {
     "│ █▀▀ █▀█ █▀█ █▀▀ █ █                        │",
     "│ █   █▀▄ █▀█ ▀▀█ █▀█                        │",
     "│ ▀▀▀ ▀ ▀ ▀ ▀ ▀▀▀ ▀ ▀                        │",
-    "│ crash.toml · error reporting, telemetry    │",
+    "│ config.toml · error reporting, telemetry   │",
     "╰────────────────────────────────────────────╯",
   ],
   manifest: [
