@@ -160,6 +160,18 @@ export function AgentsFile() {
 
       <CfgSection name="newChatContext" />
       <CfgComment>These are defaults for a new AI chat. You can remove any context chip in an individual conversation.</CfgComment>
+      <CfgRow name="contextBudget" comment="How much terminal, file, and project context Husk may attach to a new AI request. Treated as bytes, not tokens — roughly 8,000 English tokens per 32 KB. Attachments beyond the limit are never cut silently; Husk asks first.">
+        <CfgEnum<number>
+          value={p.aiContextBudgetKb ?? 32}
+          options={[
+            { value: 8, label: "8 KB" },
+            { value: 16, label: "16 KB" },
+            { value: 32, label: "32 KB" },
+            { value: 64, label: "64 KB" },
+          ]}
+          onChange={(aiContextBudgetKb) => setPrefs({ aiContextBudgetKb })}
+        />
+      </CfgRow>
       <CfgRow name="includeTerminal" comment="Attach the current terminal output by default. Review the chip before sending if output may contain secrets.">
         <CfgBool value={p.aiDefaultIncludeTerminal} onChange={(aiDefaultIncludeTerminal) => setPrefs({ aiDefaultIncludeTerminal })} />
       </CfgRow>

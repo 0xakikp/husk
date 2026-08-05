@@ -28,8 +28,19 @@ import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
 import { readActiveTerminal, runInActiveTerminal, getRecentCommandRuns, type CommandRun } from "../ai/terminalContext";
 import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
-import { projectMemoryBlock } from "../ai/projectMemory";
+import { getProjectMemory } from "../ai/projectMemory";
 import { buildHuskAssistantContext } from "../ai/huskContext";
+import { ContextInspector } from "../ai/ContextInspector";
+import {
+  byteLength,
+  budgetBytes,
+  fitWithinBudget,
+  formatKb,
+  itemToRequestBlock,
+  scanForSecrets,
+  totalBytes,
+  type AiContextItem,
+} from "../ai/contextItems";
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -291,7 +302,7 @@ export function TerminalAiComposer({
   const abortCtrlRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const handleSendRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
+  const handleSendRef = useRef<(textOverride?: string, opts?: { allowOverBudget?: boolean; allowSensitive?: boolean; fitToBudget?: boolean }) => Promise<void>>(async () => {});
   const agentDropdownRef = useRef<HTMLDivElement>(null);
   const slashPaletteRef = useRef<HTMLDivElement>(null);
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
@@ -336,6 +347,9 @@ export function TerminalAiComposer({
     setIncludeFile(defaults.aiDefaultIncludeFile);
     setIncludeSelection(defaults.aiDefaultIncludeSelection);
     setIncludeTerminal(defaults.aiDefaultIncludeTerminal);
+    setExcludeProjectMemory(false);
+    setBudgetPrompt(null);
+    setSensitivePrompt(null);
   }, [sessionId]);
 
   const handleFileUpload = useCallback(async () => {
@@ -363,48 +377,85 @@ export function TerminalAiComposer({
     }
   }, [sessionId]);
 
-  // Context chips
+  // Context items — the single normalized list every surface reads from.
+  // Chips, the Context Inspector and the request builder all derive from this,
+  // so what the user reviews is literally what gets sent.
   const currentFile = useMemo(() => getEditorFile(), [tick]);
   const selection = useMemo(() => getEditorSelection(), [tick]);
   const fileName = currentFile ? currentFile.split("/").pop() : null;
   const [includeFile, setIncludeFile] = useState(() => prefs.aiDefaultIncludeFile);
   const [includeSelection, setIncludeSelection] = useState(() => prefs.aiDefaultIncludeSelection);
   const [includeTerminal, setIncludeTerminal] = useState(() => prefs.aiDefaultIncludeTerminal);
+  const [excludeProjectMemory, setExcludeProjectMemory] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [budgetPrompt, setBudgetPrompt] = useState<{ total: number } | null>(null);
+  const [sensitivePrompt, setSensitivePrompt] = useState<AiContextItem[] | null>(null);
+  const [fileCache, setFileCache] = useState<{ path: string; content: string } | null>(null);
 
-  const contextChips = useMemo(() => {
-    const chips: {
-      id: string;
-      icon: string;
-      label: string;
-      onRemove: () => void;
-      /** Exactly what this chip contributes to the request, for the preview. */
-      preview?: string;
-    }[] = [];
+  const budgetKb = prefs.aiContextBudgetKb || 32;
+
+  /* Cache the open file's content so chips and the Inspector can show real
+     bytes and a preview without a disk read on every render. The send path
+     re-reads, so a stale cache never decides what the model sees. */
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentFile || !includeFile) {
+      setFileCache(null);
+      return;
+    }
+    readFile(currentFile)
+      .then((content) => { if (!cancelled) setFileCache({ path: currentFile, content }); })
+      .catch(() => { if (!cancelled) setFileCache({ path: currentFile, content: "" }); });
+    return () => { cancelled = true; };
+  }, [currentFile, includeFile]);
+
+  const contextItems = useMemo<AiContextItem[]>(() => {
+    const items: AiContextItem[] = [];
+    const mk = (
+      partial: Omit<AiContextItem, "bytes" | "sensitive" | "sensitiveReasons">,
+    ): AiContextItem => {
+      const reasons = scanForSecrets(`${partial.label} ${partial.source}`, partial.preview);
+      return {
+        ...partial,
+        bytes: byteLength(partial.preview),
+        sensitive: reasons.length > 0,
+        sensitiveReasons: reasons,
+      };
+    };
     if (currentFile && includeFile) {
-      chips.push({
+      const content = fileCache?.path === currentFile ? fileCache.content : "";
+      items.push(mk({
         id: "file",
+        kind: "editor-file",
         icon: "📄",
         label: fileName || currentFile,
-        onRemove: () => setIncludeFile(false),
-      });
+        source: currentFile,
+        preview: content,
+        removable: true,
+      }));
     }
     if (selection && includeSelection) {
-      chips.push({
+      items.push(mk({
         id: "selection",
+        kind: "selection",
         icon: "📋",
         label: `selection:${selection.startLine}-${selection.endLine}`,
-        onRemove: () => setIncludeSelection(false),
-      });
+        source: `lines ${selection.startLine}-${selection.endLine}`,
+        preview: selection.text,
+        removable: true,
+      }));
     }
     for (const run of attachedRuns) {
       const label = run.command.trim() || "(command)";
-      chips.push({
+      items.push(mk({
         id: `run:${run.at}`,
+        kind: "command-run",
         icon: "▶",
-        label: `${label.length > 26 ? `${label.slice(0, 25)}…` : label} · ${Math.round(run.output.length / 102.4) / 10} KB`,
-        onRemove: () => setAttachedRuns((rs) => rs.filter((r) => r.at !== run.at)),
+        label: `${label.length > 26 ? `${label.slice(0, 25)}…` : label} · ${formatKb(byteLength(run.output))}`,
+        source: run.command || "(command)",
         preview: `$ ${run.command}\n${run.output}`,
-      });
+        removable: true,
+      }));
     }
     if (includeTerminal) {
       /* Show the size. Terminal scrollback routinely contains echoed API keys,
@@ -413,18 +464,96 @@ export function TerminalAiComposer({
          the chip is clickable to see exactly what. */
       const term = readActiveTerminal();
       const { kb, capped } = getTerminalContextSize();
-      chips.push({
+      items.push(mk({
         id: "terminal",
+        kind: "terminal",
         icon: "🖥️",
         label: `terminal output · ${kb} KB${capped ? " (tail)" : ""}`,
-        onRemove: () => setIncludeTerminal(false),
+        source: "active terminal scrollback",
         preview: term,
-      });
+        removable: true,
+      }));
     }
-    return chips;
-  }, [currentFile, fileName, selection, includeFile, includeSelection, includeTerminal, attachedRuns]);
+    attachedFiles.forEach((f, idx) => {
+      items.push(mk({
+        id: `attach:${idx}`,
+        kind: "file",
+        icon: f.isImage ? "🖼️" : "📎",
+        label: f.name,
+        source: f.name,
+        preview: f.content,
+        removable: true,
+        isImage: f.isImage,
+      }));
+    });
+    const projectNote = getProjectMemory();
+    if (projectNote && !excludeProjectMemory) {
+      items.push(mk({
+        id: "project-memory",
+        kind: "project-memory",
+        icon: "🗂️",
+        label: "project memory",
+        source: "Settings → Agents → project memory",
+        preview: projectNote,
+        removable: true,
+      }));
+    }
+    /* Global instructions and personal memory are assembled inside
+       buildHuskAssistantContext — they are listed here for review only, so
+       they are informational (fixed), never appended twice. */
+    if (prefs.aiGlobalInstructions.trim()) {
+      items.push(mk({
+        id: "instructions",
+        kind: "instructions",
+        icon: "📝",
+        label: "global instructions",
+        source: "Settings → Agents",
+        preview: prefs.aiGlobalInstructions,
+        removable: false,
+      }));
+    }
+    if (prefs.aiPersonalMemory.trim()) {
+      items.push(mk({
+        id: "personal-memory",
+        kind: "personal-memory",
+        icon: "🧠",
+        label: "personal memory",
+        source: "Settings → Agents",
+        preview: prefs.aiPersonalMemory,
+        removable: false,
+      }));
+    }
+    return items;
+  }, [currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick]);
 
-  const previewChip = contextChips.find((c) => c.id === previewChipId && c.preview);
+  const removeContextItem = useCallback((id: string) => {
+    if (id === "file") setIncludeFile(false);
+    else if (id === "selection") setIncludeSelection(false);
+    else if (id === "terminal") setIncludeTerminal(false);
+    else if (id === "project-memory") setExcludeProjectMemory(true);
+    else if (id.startsWith("run:")) {
+      const at = Number(id.slice(4));
+      setAttachedRuns((rs) => rs.filter((r) => r.at !== at));
+    } else if (id.startsWith("attach:")) {
+      const idx = Number(id.slice(7));
+      setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
+    }
+  }, []);
+
+  const clearAllContext = useCallback(() => {
+    setIncludeFile(false);
+    setIncludeSelection(false);
+    setIncludeTerminal(false);
+    setAttachedRuns([]);
+    setAttachedFiles([]);
+    setExcludeProjectMemory(true);
+  }, []);
+
+  /* Chips cover the per-request attachments; instructions/memory stay visible
+     through the footer count and the Inspector instead of crowding the row. */
+  const chipItems = contextItems.filter((i) => i.removable);
+
+  const previewChip = contextItems.find((c) => c.id === previewChipId && c.preview);
 
   // Slash palette commands
   const slashCommands = useMemo(() => {
@@ -540,9 +669,33 @@ export function TerminalAiComposer({
     }
   }, [messages, tick, busy, status]);
 
-  const handleSend = useCallback(async (textOverride?: string) => {
+  const handleSend = useCallback(async (
+    textOverride?: string,
+    opts?: { allowOverBudget?: boolean; allowSensitive?: boolean; fitToBudget?: boolean },
+  ) => {
     const text = (textOverride ?? input).trim();
     if (!text || busy) return;
+
+    /* Context gates run before anything is cleared or sent. Husk never
+       silently cuts context and never silently ships suspicious content —
+       both require an explicit choice. */
+    if (!opts?.allowOverBudget && !opts?.fitToBudget) {
+      const total = totalBytes(contextItems);
+      if (total > budgetBytes(budgetKb)) {
+        setBudgetPrompt({ total });
+        return;
+      }
+    }
+    if (!opts?.allowSensitive) {
+      const flagged = contextItems.filter((i) => i.sensitive);
+      if (flagged.length > 0) {
+        setSensitivePrompt(flagged);
+        return;
+      }
+    }
+    setBudgetPrompt(null);
+    setSensitivePrompt(null);
+
     setInput("");
     setSlashOpen(false);
     setBusy(true);
@@ -584,39 +737,34 @@ export function TerminalAiComposer({
 
     const agent = getActiveAgent();
     const modelId = agent.model || cfg.model || provider.defaultModel;
+
+    /* The request is assembled from the inspected item list — not from hidden
+       ad-hoc sources. fitToBudget keeps only what fits; the user has already
+       seen what was dropped in the budget prompt. */
+    const sendItems = opts?.fitToBudget
+      ? fitWithinBudget(contextItems, budgetKb).kept
+      : [...contextItems];
+
+    /* Re-read the open file at send time — the render-time cache can lag the
+       latest save, and the model should see the file as it is now. */
+    const fileIdx = sendItems.findIndex((i) => i.kind === "editor-file");
+    if (fileIdx >= 0 && currentFile) {
+      try {
+        const content = await readFile(currentFile);
+        sendItems[fileIdx] = { ...sendItems[fileIdx], preview: content, bytes: byteLength(content) };
+      } catch {
+        sendItems[fileIdx] = { ...sendItems[fileIdx], preview: "(could not read file)" };
+      }
+    }
+
     let system =
       agent.systemPrompt +
       "\n\n" +
       buildHuskAssistantContext({ agent, provider, model: modelId }) +
-      "\n\nIf you suggest a shell command, wrap it in a code block." +
-      // Per-workspace background, so the stack does not need re-explaining each session.
-      projectMemoryBlock();
+      "\n\nIf you suggest a shell command, wrap it in a code block.";
 
-    if (currentFile && includeFile) {
-      try {
-        const content = await readFile(currentFile);
-        system += `\n\nCurrent open file: ${currentFile}`;
-        if (selection && includeSelection) {
-          system += `\nSelected lines ${selection.startLine}-${selection.endLine}:\n\`\`\`\n${selection.text}\n\`\`\``;
-        }
-        system += `\n\nFull file content:\n\`\`\`\n${content}\n\`\`\``;
-      } catch {
-        system += `\n\nCurrent open file: ${currentFile} (could not read content)`;
-      }
-    }
-
-    if (attachedFiles.length > 0) {
-      const fileBlock = attachedFiles
-        .map((f) => (f.isImage ? `--- attached image: ${f.name} ---\n${f.content}` : `--- attached file: ${f.name} ---\n\`\`\`\n${f.content}\n\`\`\``))
-        .join("\n\n");
-      system += `\n\nAttached files:\n${fileBlock}`;
-    }
-
-    if (includeTerminal) {
-      const ctx = readActiveTerminal();
-      if (ctx) {
-        system += `\n\nActive terminal output:\n\`\`\`\n${ctx}\n\`\`\``;
-      }
+    for (const item of sendItems) {
+      system += itemToRequestBlock(item);
     }
 
     try {
@@ -673,7 +821,7 @@ export function TerminalAiComposer({
         speakText(assistantMsg.content);
       }
     }
-  }, [input, busy, messages, sessionId, attachedFiles, currentFile, selection, includeFile, includeSelection, includeTerminal, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled]);
+  }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
@@ -837,10 +985,6 @@ export function TerminalAiComposer({
     setAttachedFiles((prev) => [...prev, ...newFiles]);
   };
 
-  const removeAttachedFile = (idx: number) => {
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
-  };
-
   const copyCode = async (code: string, idx: number) => {
     try {
       await writeText(code);
@@ -930,6 +1074,9 @@ export function TerminalAiComposer({
      return below — a hook after it would change hook order between renders. */
   const cfg = useConfig();
   const provider = cfg.providerId ? getProvider(cfg.providerId) : getProvider("openai");
+
+  const ctxTotalBytes = totalBytes(contextItems);
+  const ctxOverBudget = ctxTotalBytes > budgetBytes(budgetKb);
 
   if (!open || !prefs.aiEnabled) return null;
 
@@ -1330,6 +1477,97 @@ export function TerminalAiComposer({
         </div>
       )}
 
+      {budgetPrompt && (
+        <div className="composer-pending-run">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-amber-400">
+              ⚠️ Context exceeds your {budgetKb} KB limit ({formatKb(budgetPrompt.total)} attached)
+            </span>
+            <span className="text-[9.5px] text-muted-foreground">
+              Nothing is cut silently — choose how to proceed.
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="composer-cancel-btn"
+              onClick={() => {
+                setBudgetPrompt(null);
+                setInspectorOpen(true);
+              }}
+            >
+              Remove items
+            </button>
+            <button
+              type="button"
+              className="composer-cancel-btn"
+              onClick={() => {
+                setPrefs({ aiContextBudgetKb: 64 });
+                setBudgetPrompt(null);
+              }}
+            >
+              Raise to 64 KB
+            </button>
+            <button
+              type="button"
+              className="composer-approve-btn"
+              title={(() => {
+                const { dropped } = fitWithinBudget(contextItems, budgetKb);
+                return dropped.length > 0 ? `Not sent: ${dropped.map((d) => d.label).join(", ")}` : "Everything fits";
+              })()}
+              onClick={() => {
+                setBudgetPrompt(null);
+                void handleSendRef.current(undefined, { fitToBudget: true });
+              }}
+            >
+              Send what fits
+            </button>
+            <button type="button" className="composer-cancel-btn" onClick={() => setBudgetPrompt(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sensitivePrompt && (
+        <div className="composer-pending-run">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-amber-400">
+              ⚠️ {sensitivePrompt.length} item{sensitivePrompt.length === 1 ? "" : "s"} may contain secrets:{" "}
+              {sensitivePrompt.map((i) => i.label).join(", ")}
+            </span>
+            <span className="text-[9.5px] text-muted-foreground">
+              Possible {sensitivePrompt[0]?.sensitiveReasons.join(", ") ?? "secret"} — review before this leaves the machine.
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="composer-cancel-btn"
+              onClick={() => {
+                setSensitivePrompt(null);
+                setInspectorOpen(true);
+              }}
+            >
+              Review
+            </button>
+            <button
+              type="button"
+              className="composer-approve-btn"
+              onClick={() => {
+                setSensitivePrompt(null);
+                void handleSendRef.current(undefined, { allowSensitive: true });
+              }}
+            >
+              Send anyway
+            </button>
+            <button type="button" className="composer-cancel-btn" onClick={() => setSensitivePrompt(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div ref={slashPaletteRef} className="composer-input-wrapper">
         {slashOpen && (
           <div className="composer-slash-palette">
@@ -1365,38 +1603,36 @@ export function TerminalAiComposer({
         )}
         <PendingEditsReview />
         <div className="wb-composer">
-          {(contextChips.length > 0 || attachedFiles.length > 0) && (
+          {chipItems.length > 0 && (
             <div className="wb-composer-head">
-              {contextChips.map((chip) => (
-                <span key={chip.id} className="wb-chip">
-                  <span>{chip.icon}</span>
-                  {chip.preview ? (
+              {chipItems.map((item) => (
+                <span key={item.id} className={cn("wb-chip", item.sensitive && "wb-chip-sensitive")}>
+                  <span>{item.icon}</span>
+                  {item.preview ? (
                     <button
                       type="button"
-                      onClick={() => setPreviewChipId((id) => (id === chip.id ? null : chip.id))}
+                      onClick={() => setPreviewChipId((id) => (id === item.id ? null : item.id))}
                       className="truncate max-w-[220px] underline decoration-dotted underline-offset-2"
                       title="Show exactly what will be sent"
                     >
-                      {chip.label}
+                      {item.label}
                     </button>
                   ) : (
-                    <span className="truncate max-w-[140px]">{chip.label}</span>
+                    <span className="truncate max-w-[140px]">{item.label}</span>
                   )}
-                  <button type="button" onClick={chip.onRemove} className="wb-chip-x">
+                  {item.sensitive && (
+                    <span
+                      className="wb-chip-warn"
+                      title={`May contain ${item.sensitiveReasons.join(", ")} — review before sending`}
+                    >
+                      ⚠
+                    </span>
+                  )}
+                  <button type="button" onClick={() => removeContextItem(item.id)} className="wb-chip-x">
                     ×
                   </button>
                 </span>
               ))}
-              {attachedFiles.map((f, idx) => (
-                <span key={`${f.name}-${idx}`} className="wb-chip">
-                  <span>📎</span>
-                  <span className="truncate max-w-[140px]">{f.name}</span>
-                  <button type="button" onClick={() => removeAttachedFile(idx)} className="wb-chip-x">
-                    ×
-                  </button>
-                </span>
-              ))}
-              <span className="wb-ctx-count">ctx: {contextChips.length + attachedFiles.length} attached</span>
             </div>
           )}
           {runPickerOpen && (
@@ -1518,12 +1754,39 @@ export function TerminalAiComposer({
         <span className="wb-status-left">
           {/* The status line is the switcher — see ai/ModelSwitcher. */}
           <ModelSwitcher busy={busy} />
-          {currentFile && includeFile ? " · file ctx" : ""}
+          <button
+            type="button"
+            onClick={() => setInspectorOpen(true)}
+            className={cn("wb-ctx-inspect", ctxOverBudget && "wb-ctx-inspect-over")}
+            title="Review exactly what the AI can see before sending"
+          >
+            Context: {formatKb(ctxTotalBytes)} / {budgetKb} KB · {contextItems.length} item{contextItems.length === 1 ? "" : "s"} · Inspect ›
+          </button>
         </span>
         <span className="wb-status-right">
           ⌘⏎ send{variant === "docked" ? " · esc close · ctrl+shift+L toggle" : ""}
         </span>
       </div>
+
+      {inspectorOpen && (
+        <ContextInspector
+          items={contextItems}
+          budgetKb={budgetKb}
+          tools={{
+            modelLabel: activeAgent?.model || cfg.model || provider.defaultModel,
+            providerLabel: provider.label,
+            providerKind: provider.kind,
+            fileToolsEnabled: prefs.aiFileToolsEnabled,
+            mcpToolsEnabled: prefs.aiMcpToolsEnabled,
+          }}
+          onRemove={removeContextItem}
+          onClearAll={clearAllContext}
+          onClose={() => {
+            setInspectorOpen(false);
+            setTimeout(() => textareaRef.current?.focus(), 40);
+          }}
+        />
+      )}
     </div>
   );
 }

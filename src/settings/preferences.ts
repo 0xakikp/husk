@@ -97,6 +97,9 @@ export type Prefs = {
   aiDefaultIncludeTerminal: boolean;
   aiDefaultIncludeFile: boolean;
   aiDefaultIncludeSelection: boolean;
+  /** Byte budget for attached context on a new AI request (8/16/32/64 KB).
+      Treated as bytes, not tokens — models tokenize differently. */
+  aiContextBudgetKb: number;
   /** Tool access only applies to non-subscription model modes. */
   aiFileToolsEnabled: boolean;
   aiMcpToolsEnabled: boolean;
@@ -251,6 +254,7 @@ const DEFAULT: Prefs = {
   aiDefaultIncludeTerminal: true,
   aiDefaultIncludeFile: true,
   aiDefaultIncludeSelection: true,
+  aiContextBudgetKb: 32,
   aiFileToolsEnabled: true,
   aiMcpToolsEnabled: true,
 
