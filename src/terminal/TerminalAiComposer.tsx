@@ -652,7 +652,10 @@ export function TerminalAiComposer({
         setTimeout(() => textareaRef.current?.focus(), 50);
       }
     });
-  }, []);
+    /* sessionId in deps is load-bearing: the composer instance is reused
+       across tab switches, and a stale registration would write the opened
+       text into the PREVIOUS tab's session — invisible in the current one. */
+  }, [sessionId, registerOpen]);
 
   useEffect(() => {
     if (!registerSend) return;
@@ -664,7 +667,7 @@ export function TerminalAiComposer({
         handleSendRef.current(text);
       }, 60);
     });
-  }, []);
+  }, [sessionId, registerSend]);
 
   useEffect(() => {
     return subscribeSessions(() => setTick((v) => v + 1));
