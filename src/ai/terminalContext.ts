@@ -295,3 +295,18 @@ export function getRecentCommandRuns(): CommandRun[] {
 export function clearRecentCommandRuns(): void {
   recentRuns = [];
 }
+
+/* ── Pending run attachment ────────────────────────────────────────────────
+   The failure strip attaches a failed command's output to the composer. The
+   run is parked here; every composer that opens attaches it (deduped by
+   `at`), and the strip clears the slot shortly after opening. */
+
+let pendingRunAttachment: CommandRun | null = null;
+
+export function setPendingRunAttachment(run: CommandRun | null): void {
+  pendingRunAttachment = run;
+}
+
+export function getPendingRunAttachment(): CommandRun | null {
+  return pendingRunAttachment;
+}

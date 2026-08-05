@@ -25,7 +25,7 @@ import { ModelSwitcher } from "../ai/ModelSwitcher";
 import { streamChat } from "../ai/client";
 import type { Tool } from "ai";
 import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
-import { readActiveTerminal, runInActiveTerminal, getRecentCommandRuns, type CommandRun } from "../ai/terminalContext";
+import { readActiveTerminal, runInActiveTerminal, getRecentCommandRuns, getPendingRunAttachment, type CommandRun } from "../ai/terminalContext";
 import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { getProjectMemory } from "../ai/projectMemory";
@@ -640,6 +640,13 @@ export function TerminalAiComposer({
     if (!registerOpen) return;
     return registerComposerOpen((text) => {
       setOpen(true);
+      /* The failure strip parks a failed command's output for attachment.
+         Peek (not consume): several composers open at once and each dedupes
+         by `at`; the strip clears the slot shortly after. */
+      const pendingRun = getPendingRunAttachment();
+      if (pendingRun) {
+        setAttachedRuns((rs) => (rs.some((r) => r.at === pendingRun.at) ? rs : [...rs, pendingRun]));
+      }
       if (text) {
         setInput(text);
         setTimeout(() => textareaRef.current?.focus(), 50);

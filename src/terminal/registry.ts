@@ -25,6 +25,7 @@ import {
   setFocusTerminalFn,
   setActiveTerminalPtyId,
 } from "../ai/terminalContext";
+import { recordFailure, clearFailure, collapseFailure } from "./failureStore";
 import {
   setAiPtyWriter as setAiPtyWriterInput,
   setTerminalLineReader as setTerminalLineReaderInput,
@@ -289,7 +290,8 @@ export async function createSession(
     if (!session.active) return true;
     if (data.startsWith("D")) {
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
-      setActiveTerminalExit(Number.isNaN(code) ? null : code);
+      const exitCode = Number.isNaN(code) ? null : code;
+      setActiveTerminalExit(exitCode);
       /* Harvest just this command's output, using the row marked at C. Bounded on
          both axes: a build can emit tens of thousands of rows, and this runs on
          every prompt. */
@@ -304,12 +306,22 @@ export async function createSession(
           lines.push(line);
           chars += line.length + 1;
         }
+        const output = lines.join("\n").replace(/\s+$/, "");
+        const command = getCurrentCommand();
         recordCommandRun({
-          command: getCurrentCommand(),
-          output: lines.join("\n").replace(/\s+$/, ""),
-          exitCode: Number.isNaN(code) ? null : code,
+          command,
+          output,
+          exitCode,
           at: Date.now(),
         });
+        /* Per-pane failure state for the Command Failure Assistant. Only a
+           completed command with a real non-zero exit opens the strip — a
+           successful next command (or a new command, below) retires it. */
+        if (exitCode != null && exitCode !== 0) {
+          recordFailure(session.leafId, { command, output, exitCode, cwd: session.cwd });
+        } else if (exitCode === 0) {
+          clearFailure(session.leafId);
+        }
         session.cmdStartRow = null;
       }
       clearCurrentCommand();
@@ -473,6 +485,9 @@ export async function createSession(
       const out = interceptTerminalInput(data);
       if (out === null) return;
       void invoke("pty_write", { id, data: out });
+      /* Typing at the prompt again means the user has moved on — the failure
+         strip collapses to its tiny indicator instead of holding a row. */
+      collapseFailure(leafId);
       if (session.active) {
         setTerminalTyping(true);
         window.clearTimeout(session.typingTimer);
@@ -825,6 +840,7 @@ export function disposeSession(leafId: number): void {
   sessions.delete(leafId);
   outputListeners.delete(leafId);
   logsOpeners.delete(leafId);
+  clearFailure(leafId);
 
   if (activeLeafId === leafId) activeLeafId = null;
 }

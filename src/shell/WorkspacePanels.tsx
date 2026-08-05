@@ -5,6 +5,7 @@ import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { TerminalStack } from "../TerminalStack";
 import { TerminalBottomBar } from "../terminal/TerminalBottomBar";
+import { FailureStrip } from "../terminal/FailureStrip";
 import { TerminalAiComposer, tabSessionId } from "../terminal/TerminalAiComposer";
 import { focusActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { TerminalLogs } from "../terminal/TerminalLogs";
@@ -242,6 +243,7 @@ export function WorkspacePanels({
               />
             )}
           </div>
+          <FailureStrip leafId={term.tabs.find((t) => t.id === term.activeId)?.focused ?? null} />
           <TerminalBottomBar
             onSendToTerminal={(text: string) => runInActiveTerminal(text)}
             onOpenSourceControl={onOpenSourceControl}
