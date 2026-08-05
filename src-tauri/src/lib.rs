@@ -14,6 +14,7 @@ mod shell;
 mod shell_history;
 mod shell_init;
 mod tailscale;
+mod timeline;
 mod vitals;
 
 use jobs::JobsState;
@@ -112,6 +113,7 @@ pub fn run() {
         .manage(JobsState::default())
         .manage(PortForwardManager::new())
         .manage(TailscaleState::default())
+        .manage(timeline::TimelineState::default())
         .invoke_handler(tauri::generate_handler![
             ai_cli::ai_cli_available,
             ai_cli::ai_cli_start,
@@ -190,6 +192,9 @@ pub fn run() {
             project::project_profile_set_enabled,
             project::project_runbook_save,
             project::project_runbook_delete,
+            timeline::timeline_record,
+            timeline::timeline_query,
+            timeline::timeline_clear,
             vitals::system_vitals,
             port_forward::port_forward_start,
             port_forward::port_forward_stop,

@@ -20,12 +20,14 @@ import {
   clearCurrentCommand,
   recordCommandRun,
   getCurrentCommand,
+  getCommandStartTime,
   markCommandStart,
   setPromptPosition,
   setFocusTerminalFn,
   setActiveTerminalPtyId,
 } from "../ai/terminalContext";
 import { recordFailure, clearFailure, collapseFailure } from "./failureStore";
+import { recordTimelineEvent } from "../timeline/store";
 import {
   setAiPtyWriter as setAiPtyWriterInput,
   setTerminalLineReader as setTerminalLineReaderInput,
@@ -321,6 +323,21 @@ export async function createSession(
           recordFailure(session.leafId, { command, output, exitCode, cwd: session.cwd });
         } else if (exitCode === 0) {
           clearFailure(session.leafId);
+        }
+        /* Timeline: the command and its outcome — never its output. */
+        if (command.trim()) {
+          const durationMs = Date.now() - getCommandStartTime();
+          recordTimelineEvent(
+            exitCode != null && exitCode !== 0 ? "command_failed" : "command",
+            exitCode != null && exitCode !== 0
+              ? `${command.trim()} failed (exit ${exitCode})`
+              : `Ran ${command.trim()}`,
+            {
+              exitCode,
+              cwd: session.cwd,
+              ...(durationMs > 0 && durationMs < 86_400_000 ? { durationMs } : {}),
+            },
+          );
         }
         session.cmdStartRow = null;
       }

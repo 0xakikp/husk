@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { monaco, defineHuskTheme } from "./monacoEnv";
 import { initVimMode } from "monaco-vim";
 import { readFile, writeFile } from "../fs";
+import { recordTimelineEvent } from "../timeline/store";
 import { sshReadFile, sshWriteFile } from "../remote/remoteFs";
 import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
@@ -177,6 +178,8 @@ export function EditorArea({
           : writeFile(path, model.getValue());
         void save.then(() => {
           markSaved(path, model.getAlternativeVersionId());
+          /* Timeline records the save event — path only, never contents. */
+          recordTimelineEvent("file", `Edited ${path.split("/").pop() || path}`, { path });
         });
       }
     });

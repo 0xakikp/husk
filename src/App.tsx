@@ -76,7 +76,7 @@ function readSidebarView(): SidebarViewId {
     const stored = window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY);
     const valid: SidebarViewId[] = [
       "explorer", "source-control", "remotes", "workflows", "tools-hub",
-      "kubernetes", "ci-cd", "terraform", "docker", "tailscale", "sftp", "bookmarks",
+      "kubernetes", "ci-cd", "terraform", "docker", "tailscale", "sftp", "bookmarks", "timeline",
     ];
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
   } catch (e) { console.error("Failed to read sidebar view", e); }

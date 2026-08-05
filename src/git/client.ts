@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getWorkspaceRoot } from "../workspace/store";
+import { recordTimelineEvent } from "../timeline/store";
 import { shq, tokenizeCommand } from "../lib/shellQuote";
 
 type ShellOutput = { stdout: string; stderr: string; exit_code: number | null };
@@ -51,7 +52,12 @@ export async function status(cwd?: string | null): Promise<GitFile[]> {
 
 export const stageFile = (p: string) => git(`add -- ${shq(p)}`);
 export const unstageFile = (p: string) => git(`restore --staged -- ${shq(p)}`);
-export const commit = (msg: string) => git(`commit -m ${shq(msg)}`);
+export const commit = async (msg: string) => {
+  const out = await git(`commit -m ${shq(msg)}`);
+  /* Timeline: the subject line only — the diff and any body stay in git. */
+  recordTimelineEvent("git", `Committed ${msg.split("\n")[0].slice(0, 80)}`);
+  return out;
+};
 export const push = () => git("push");
 export const pull = () => git("pull");
 export const fetch = () => git("fetch");

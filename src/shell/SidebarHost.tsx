@@ -19,6 +19,7 @@ const TerraformView = lazy(() => import("../terraform/TerraformView").then((m) =
 const DockerView = lazy(() => import("../docker/DockerView").then((m) => ({ default: m.DockerView })));
 const TailscaleView = lazy(() => import("../tailscale/TailscaleView").then((m) => ({ default: m.TailscaleView })));
 const NotesView = lazy(() => import("../notes/NotesView").then((m) => ({ default: m.NotesView })));
+const TimelineView = lazy(() => import("../timeline/TimelineView").then((m) => ({ default: m.TimelineView })));
 
 /** Every view the rail can select, in a stable order. */
 const VIEW_IDS: SidebarViewId[] = [
@@ -33,6 +34,7 @@ const VIEW_IDS: SidebarViewId[] = [
   "docker",
   "tailscale",
   "vault",
+  "timeline",
 ];
 
 export function SidebarHost({
@@ -191,6 +193,8 @@ export function SidebarHost({
                 )
               ) : id === "vault" ? (
                 lazyPanel(<NotesView inline onOpenFile={(path, name) => openFile(path, name)} />, "Notes")
+              ) : id === "timeline" ? (
+                lazyPanel(<TimelineView inline />, "Timeline")
               ) : null}
             </div>
           ))}

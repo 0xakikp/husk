@@ -32,6 +32,7 @@ import { getProjectMemory } from "../ai/projectMemory";
 import { useProjectProfile } from "../project/profile";
 import { protectedTargets } from "../project/runbooks";
 import { isEnvDestructive } from "./envSignals";
+import { recordTimelineEvent } from "../timeline/store";
 import { buildHuskAssistantContext } from "../ai/huskContext";
 import { ContextInspector } from "../ai/ContextInspector";
 import {
@@ -802,6 +803,14 @@ export function TerminalAiComposer({
     for (const item of sendItems) {
       system += itemToRequestBlock(item);
     }
+
+    /* Timeline: AI request metadata only — provider, model and context size.
+       The prompt and the reply are never recorded. */
+    recordTimelineEvent("ai", `Asked ${agent.name || "Husk AI"} · ${provider.label} · ${modelId}`, {
+      contextBytes: totalBytes(sendItems),
+      contextItems: sendItems.length,
+      mode: provider.kind === "cli" ? "subscription" : "api",
+    });
 
     try {
       await streamChat(
