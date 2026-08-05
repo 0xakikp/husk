@@ -25,6 +25,7 @@ import {
   subscribeTerminalState,
 } from "../ai/terminalContext";
 import { openActiveTerminalLogs } from "./registry";
+import { isProtectedTarget, refreshEnvSignals, useEnvSignals } from "./envSignals";
 import { toast } from "../toast";
 import { usePrefs } from "../settings/preferences";
 import { getActiveSshHost, subscribeSshHost } from "../remote/store";
@@ -131,6 +132,16 @@ export function TerminalBottomBar({
   const vitals = useSystemVitals();
   const sshHost = useSshHost();
   const battery = useBattery();
+  const env = useEnvSignals();
+
+  /* Environment signals (k8s / AWS / Docker) refresh on cwd changes and a
+     relaxed interval — each probe is a subprocess, so unlike the 5s git poll
+     this one stays deliberately slow. The store additionally throttles. */
+  useEffect(() => {
+    refreshEnvSignals();
+    const interval = window.setInterval(() => refreshEnvSignals(), 60_000);
+    return () => window.clearInterval(interval);
+  }, [cwd]);
 
   /* A single timer drives both the clock and the elapsed-time display. */
   useEffect(() => {
@@ -325,6 +336,61 @@ export function TerminalBottomBar({
           <HugeiconsIcon icon={Globe02Icon} size={10} strokeWidth={1.5} />
           <span className="max-w-[100px] truncate">{sshHost}</span>
         </div>
+      )}
+
+      {/* Operational context: what kubectl / aws / docker commands would hit.
+          Production-looking targets get a deliberate accent — impossible to
+          miss, but not blocking (Release 3 adds confirmations). */}
+      {env.kubeContext && (
+        <button
+          type="button"
+          onClick={() => refreshEnvSignals(true)}
+          title={`Kubernetes context: ${env.kubeContext}${isProtectedTarget(env.kubeContext) ? " — protected target" : ""} · click to refresh`}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition-colors",
+            isProtectedTarget(env.kubeContext)
+              ? "border border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
+              : "text-violet-400 hover:bg-muted/45",
+          )}
+        >
+          {isProtectedTarget(env.kubeContext) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
+          <span>☸</span>
+          <span className="max-w-[110px] truncate">{env.kubeContext}</span>
+        </button>
+      )}
+      {env.awsProfile && (
+        <button
+          type="button"
+          onClick={() => refreshEnvSignals(true)}
+          title={`AWS profile: ${env.awsProfile}${isProtectedTarget(env.awsProfile) ? " — protected target" : ""} · click to refresh`}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition-colors",
+            isProtectedTarget(env.awsProfile)
+              ? "border border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
+              : "text-orange-400/90 hover:bg-muted/45",
+          )}
+        >
+          {isProtectedTarget(env.awsProfile) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
+          <span>☁</span>
+          <span className="max-w-[100px] truncate">{env.awsProfile}</span>
+        </button>
+      )}
+      {env.dockerContext && (
+        <button
+          type="button"
+          onClick={() => refreshEnvSignals(true)}
+          title={`Docker context: ${env.dockerContext}${isProtectedTarget(env.dockerContext) ? " — protected target" : ""} · click to refresh`}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition-colors",
+            isProtectedTarget(env.dockerContext)
+              ? "border border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
+              : "text-sky-400/90 hover:bg-muted/45",
+          )}
+        >
+          {isProtectedTarget(env.dockerContext) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
+          <span>🐳</span>
+          <span className="max-w-[90px] truncate">{env.dockerContext}</span>
+        </button>
       )}
       {cwd === "/root" && (
         <div className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] text-amber-400">
