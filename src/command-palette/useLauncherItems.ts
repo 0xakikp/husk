@@ -42,6 +42,8 @@ import {
 } from "../ai/codebaseSearch";
 import { getWorkspaceRoot } from "../workspace/store";
 import { explainCommandPrompt, looksLikeCommand } from "../ai/assist";
+import { initializeProjectProfile, useProjectProfile } from "../project/profile";
+import { runRunbook } from "../project/runbooks";
 
 const copy = (text: string) => void navigator.clipboard.writeText(text);
 
@@ -211,6 +213,7 @@ export function useLauncherItems(
   const openPaths = useMemo(() => new Set(ctx.openFiles.map((f) => f.path)), [ctx.openFiles]);
   const clips = useClipHistory();
   const bookmarks = useBookmarks();
+  const projectProfile = useProjectProfile();
 
   /* The base list is every item from every source — on a large workspace that is
      thousands of objects with fresh closures. It must NOT depend on the query
@@ -517,6 +520,38 @@ export function useLauncherItems(
       });
     }
 
+    /* Project runbooks (.husk/runbooks/*.toml). confirm-marked or
+       protected-target recipes are typed at the prompt rather than run — see
+       project/runbooks.ts. */
+    if (projectProfile?.exists && projectProfile.enabled) {
+      for (const rb of projectProfile.runbooks) {
+        items.push({
+          id: `runbook:${rb.id}`,
+          kind: "command",
+          label: `Run: ${rb.title || rb.id}`,
+          hint: rb.confirm ? "requires confirmation" : rb.command,
+          keywords: `runbook recipe run ${(rb.tags ?? []).join(" ")} ${rb.command ?? ""}`,
+          group: "Runbooks",
+          run: () => runRunbook(rb),
+          actions: [{ label: "Copy command", run: () => copy(rb.command ?? "") }],
+        });
+      }
+    } else if (projectProfile && !projectProfile.exists && getWorkspaceRoot()) {
+      items.push({
+        id: "runbook:init-profile",
+        kind: "command",
+        label: "Initialize project profile",
+        hint: "create .husk/",
+        keywords: "project profile husk init runbook instructions recipe",
+        group: "Runbooks",
+        run: () => {
+          void initializeProjectProfile()
+            .then(() => toast({ title: "Project profile created", message: ".husk/ — edit it in Settings → Project", variant: "success" }))
+            .catch((e) => toast({ title: "Could not initialize profile", message: String(e), variant: "error" }));
+        },
+      });
+    }
+
     // Running jobs
     for (const j of dyn.jobs) {
       items.push({
@@ -594,7 +629,7 @@ export function useLauncherItems(
     }
 
     return items;
-  }, [commands, ctx, dyn, openPaths, clips, bookmarks, scopedKind, grepResults, grepBusy, grepMissingTool, codeResults, codeIndexing]);
+  }, [commands, ctx, dyn, openPaths, clips, bookmarks, projectProfile, scopedKind, grepResults, grepBusy, grepMissingTool, codeResults, codeIndexing]);
 
   /* Cheap per-keystroke layer: a handful of rows appended to a stable base. */
   return useMemo(() => {

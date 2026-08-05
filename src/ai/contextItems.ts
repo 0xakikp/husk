@@ -15,6 +15,7 @@ export type AiContextKind =
   | "selection"
   | "file"
   | "project-memory"
+  | "project-instructions"
   | "instructions"
   | "personal-memory";
 
@@ -150,6 +151,8 @@ export function itemToRequestBlock(item: AiContextItem): string {
         : `\n\n--- attached file: ${item.source} ---\n\`\`\`\n${item.preview}\n\`\`\``;
     case "project-memory":
       return `\n\nBackground on this project (written by the user, not part of their current question):\n${item.preview}`;
+    case "project-instructions":
+      return `\n\nProject instructions (from .husk/instructions.md — follow unless the current request conflicts):\n---\n${item.preview}\n---`;
     /* instructions and personal-memory are assembled by huskContext.ts as part
        of the product-context layer; they appear in the Inspector for review
        but are not appended twice. */

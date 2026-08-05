@@ -48,7 +48,9 @@ impl client::Handler for SshClient {
         let host = self.host.clone();
         let known_hosts = self.known_hosts.clone();
         let app_data_dir = self.app_data_dir.clone();
-        let fingerprint = server_public_key.fingerprint(Default::default()).to_string();
+        let fingerprint = server_public_key
+            .fingerprint(Default::default())
+            .to_string();
         async move {
             let mut hosts = known_hosts.lock().await;
             if let Some(known) = hosts.get(&host) {
@@ -131,7 +133,10 @@ impl SftpManager {
         let mut identity_files: Vec<String> = Vec::new();
 
         // Try ssh -G first
-        if let Ok(out) = std::process::Command::new("ssh").args(["-G", host]).output() {
+        if let Ok(out) = std::process::Command::new("ssh")
+            .args(["-G", host])
+            .output()
+        {
             if out.status.success() {
                 for line in String::from_utf8_lossy(&out.stdout).lines() {
                     let lower = line.to_lowercase();
@@ -189,7 +194,11 @@ impl SftpManager {
                                     host_map
                                         .entry(ch.clone())
                                         .and_modify(|e| e.0 = h.to_string())
-                                        .or_insert((h.to_string(), 22, user.clone().unwrap_or_default()));
+                                        .or_insert((
+                                            h.to_string(),
+                                            22,
+                                            user.clone().unwrap_or_default(),
+                                        ));
                                 }
                             }
                         }
@@ -201,7 +210,11 @@ impl SftpManager {
                                         host_map
                                             .entry(ch.clone())
                                             .and_modify(|e| e.1 = port_num)
-                                            .or_insert((host.to_string(), port_num, user.clone().unwrap_or_default()));
+                                            .or_insert((
+                                                host.to_string(),
+                                                port_num,
+                                                user.clone().unwrap_or_default(),
+                                            ));
                                     }
                                 }
                             }
@@ -232,7 +245,8 @@ impl SftpManager {
 
         let hostname = hostname.unwrap_or_else(|| host.to_string());
         let port = port.unwrap_or(22);
-        let user = user.unwrap_or_else(|| whoami::username().unwrap_or_else(|_| "root".to_string()));
+        let user =
+            user.unwrap_or_else(|| whoami::username().unwrap_or_else(|_| "root".to_string()));
 
         if identity_files.is_empty() {
             identity_files.push("~/.ssh/id_rsa".to_string());
@@ -243,11 +257,7 @@ impl SftpManager {
     }
 
     /// Connect or return cached connection.
-    pub async fn connect(
-        &self,
-        host: &str,
-        passphrase: Option<String>,
-    ) -> Result<(), String> {
+    pub async fn connect(&self, host: &str, passphrase: Option<String>) -> Result<(), String> {
         let mut conns = self.connections.lock().await;
         if conns.contains_key(host) {
             return Ok(());
@@ -280,7 +290,10 @@ impl SftpManager {
                 let secret_key = load_secret_key(&expanded, passphrase.as_deref())
                     .map_err(|e| format!("Failed to load key {}: {}", expanded, e))?;
                 let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(secret_key), None);
-                match session.authenticate_publickey(&username, key_with_hash).await {
+                match session
+                    .authenticate_publickey(&username, key_with_hash)
+                    .await
+                {
                     Ok(AuthResult::Success) => {
                         authenticated = true;
                         break;
@@ -325,7 +338,10 @@ impl SftpManager {
         let mut conns = self.connections.lock().await;
         if let Some(conn) = conns.remove(host) {
             let _ = conn.sftp.close().await;
-            let _ = conn.session.disconnect(Disconnect::ByApplication, "Closed", "English").await;
+            let _ = conn
+                .session
+                .disconnect(Disconnect::ByApplication, "Closed", "English")
+                .await;
         }
     }
 
@@ -365,10 +381,7 @@ pub async fn sftp_connect(
 }
 
 #[tauri::command]
-pub async fn sftp_disconnect(
-    host: String,
-    manager: State<'_, SftpManager>,
-) -> Result<(), String> {
+pub async fn sftp_disconnect(host: String, manager: State<'_, SftpManager>) -> Result<(), String> {
     manager.disconnect(&host).await;
     Ok(())
 }
@@ -416,7 +429,11 @@ pub async fn sftp_list_dir(
             path: entry_path,
             is_dir: meta.file_type().is_dir(),
             size: meta.len(),
-            modified: meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())),
+            modified: meta.modified().ok().and_then(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs())
+            }),
         });
     }
 
@@ -664,6 +681,10 @@ pub async fn sftp_stat(
         path,
         is_dir: meta.file_type().is_dir(),
         size: meta.len(),
-        modified: meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())),
+        modified: meta.modified().ok().and_then(|t| {
+            t.duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|d| d.as_secs())
+        }),
     })
 }

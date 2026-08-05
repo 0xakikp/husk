@@ -6,7 +6,9 @@
 //! palette — so the frontend must call `browser_set_visible(false)` whenever
 //! the browser panel is not the topmost surface.
 
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl,
+};
 
 /// Bare host ("example.com" or "localhost:3000") gets https://; anything with
 /// spaces or without a dot is treated as a web search.
@@ -16,10 +18,7 @@ fn normalize_url(input: &str) -> String {
         return t.to_string();
     }
     if t.contains(' ') || !t.contains('.') {
-        return format!(
-            "https://www.google.com/search?q={}",
-            urlencoding::encode(t)
-        );
+        return format!("https://www.google.com/search?q={}", urlencoding::encode(t));
     }
     format!("https://{t}")
 }

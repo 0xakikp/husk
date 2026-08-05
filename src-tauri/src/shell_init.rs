@@ -113,21 +113,17 @@ mod unix {
     const ZSH_SYNTAX_HIGHLIGHTER_BRACKETS: &str = include_str!(
         "scripts/zsh-syntax-highlighting/highlighters/brackets/brackets-highlighter.zsh"
     );
-    const ZSH_SYNTAX_HIGHLIGHTER_CURSOR: &str = include_str!(
-        "scripts/zsh-syntax-highlighting/highlighters/cursor/cursor-highlighter.zsh"
-    );
-    const ZSH_SYNTAX_HIGHLIGHTER_LINE: &str = include_str!(
-        "scripts/zsh-syntax-highlighting/highlighters/line/line-highlighter.zsh"
-    );
+    const ZSH_SYNTAX_HIGHLIGHTER_CURSOR: &str =
+        include_str!("scripts/zsh-syntax-highlighting/highlighters/cursor/cursor-highlighter.zsh");
+    const ZSH_SYNTAX_HIGHLIGHTER_LINE: &str =
+        include_str!("scripts/zsh-syntax-highlighting/highlighters/line/line-highlighter.zsh");
     const ZSH_SYNTAX_HIGHLIGHTER_PATTERN: &str = include_str!(
         "scripts/zsh-syntax-highlighting/highlighters/pattern/pattern-highlighter.zsh"
     );
-    const ZSH_SYNTAX_HIGHLIGHTER_REGEXP: &str = include_str!(
-        "scripts/zsh-syntax-highlighting/highlighters/regexp/regexp-highlighter.zsh"
-    );
-    const ZSH_SYNTAX_HIGHLIGHTER_ROOT: &str = include_str!(
-        "scripts/zsh-syntax-highlighting/highlighters/root/root-highlighter.zsh"
-    );
+    const ZSH_SYNTAX_HIGHLIGHTER_REGEXP: &str =
+        include_str!("scripts/zsh-syntax-highlighting/highlighters/regexp/regexp-highlighter.zsh");
+    const ZSH_SYNTAX_HIGHLIGHTER_ROOT: &str =
+        include_str!("scripts/zsh-syntax-highlighting/highlighters/root/root-highlighter.zsh");
 
     pub enum Shell {
         Zsh,
@@ -256,7 +252,10 @@ mod unix {
         // zsh-syntax-highlighting
         let zsh_hl = dir.join("zsh-syntax-highlighting");
         fs::create_dir_all(&zsh_hl).map_err(|e| format!("create {}: {e}", zsh_hl.display()))?;
-        write_if_changed(&zsh_hl.join("zsh-syntax-highlighting.zsh"), ZSH_SYNTAX_HIGHLIGHTING)?;
+        write_if_changed(
+            &zsh_hl.join("zsh-syntax-highlighting.zsh"),
+            ZSH_SYNTAX_HIGHLIGHTING,
+        )?;
         for (sub, content) in [
             ("main", ZSH_SYNTAX_HIGHLIGHTER_MAIN),
             ("brackets", ZSH_SYNTAX_HIGHLIGHTER_BRACKETS),

@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::str::FromStr;
-use std::thread;
-use std::io::Read;
-use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::io::Read;
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::process::{Command, Stdio};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 /// Lock a mutex, recovering from poison if a previous thread panicked.
 /// This prevents cascading panics when one thread dies while holding a lock.
@@ -145,10 +145,7 @@ pub fn port_forward_list(state: tauri::State<'_, PortForwardManager>) -> Vec<Por
         .collect()
 }
 
-fn run_forward(
-    config: PortForwardConfig,
-    abort: Arc<AtomicBool>,
-) -> Result<(), String> {
+fn run_forward(config: PortForwardConfig, abort: Arc<AtomicBool>) -> Result<(), String> {
     match config.forward_type.as_str() {
         "local" => run_local_forward(config, abort),
         "remote" => run_remote_forward(config, abort),
@@ -159,11 +156,16 @@ fn run_forward(
 
 fn build_ssh_args(config: &PortForwardConfig) -> Vec<String> {
     let mut args = vec![
-        "-o".to_string(), "BatchMode=no".to_string(),
-        "-o".to_string(), "ServerAliveInterval=30".to_string(),
-        "-o".to_string(), "ServerAliveCountMax=3".to_string(),
-        "-o".to_string(), "StrictHostKeyChecking=accept-new".to_string(),
-        "-p".to_string(), config.port.to_string(),
+        "-o".to_string(),
+        "BatchMode=no".to_string(),
+        "-o".to_string(),
+        "ServerAliveInterval=30".to_string(),
+        "-o".to_string(),
+        "ServerAliveCountMax=3".to_string(),
+        "-o".to_string(),
+        "StrictHostKeyChecking=accept-new".to_string(),
+        "-p".to_string(),
+        config.port.to_string(),
     ];
 
     if let Some(key_path) = &config.private_key_path {
@@ -180,19 +182,20 @@ fn build_ssh_args(config: &PortForwardConfig) -> Vec<String> {
     args
 }
 
-fn run_local_forward(
-    config: PortForwardConfig,
-    abort: Arc<AtomicBool>,
-) -> Result<(), String> {
+fn run_local_forward(config: PortForwardConfig, abort: Arc<AtomicBool>) -> Result<(), String> {
     let local_addr = SocketAddr::from_str(&format!("127.0.0.1:{}", config.local_port))
         .map_err(|e| format!("Invalid local address: {}", e))?;
 
-    let listener = TcpListener::bind(local_addr)
-        .map_err(|e| format!("Failed to bind local port: {}", e))?;
-    listener.set_nonblocking(true)
+    let listener =
+        TcpListener::bind(local_addr).map_err(|e| format!("Failed to bind local port: {}", e))?;
+    listener
+        .set_nonblocking(true)
         .map_err(|e| format!("Failed to set nonblocking: {}", e))?;
 
-    let remote_host = config.remote_host.clone().unwrap_or_else(|| "localhost".to_string());
+    let remote_host = config
+        .remote_host
+        .clone()
+        .unwrap_or_else(|| "localhost".to_string());
     let remote_port = config.remote_port.unwrap_or(0);
 
     loop {
@@ -234,7 +237,8 @@ fn handle_ssh_forward_connection(
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
 
     // Wait for abort or connection close
@@ -265,16 +269,19 @@ fn handle_ssh_forward_connection(
     }
 }
 
-fn run_remote_forward(
-    config: PortForwardConfig,
-    abort: Arc<AtomicBool>,
-) -> Result<(), String> {
-    let remote_host = config.remote_host.clone().unwrap_or_else(|| "localhost".to_string());
+fn run_remote_forward(config: PortForwardConfig, abort: Arc<AtomicBool>) -> Result<(), String> {
+    let remote_host = config
+        .remote_host
+        .clone()
+        .unwrap_or_else(|| "localhost".to_string());
     let remote_port = config.remote_port.unwrap_or(0);
 
     let mut ssh_args = build_ssh_args(&config);
     ssh_args.push("-R".to_string());
-    ssh_args.push(format!("{}:{}:{}", config.local_port, remote_host, remote_port));
+    ssh_args.push(format!(
+        "{}:{}:{}",
+        config.local_port, remote_host, remote_port
+    ));
     ssh_args.push("-N".to_string());
 
     let mut cmd = Command::new("ssh");
@@ -283,7 +290,8 @@ fn run_remote_forward(
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
 
     // Wait for abort
@@ -294,7 +302,10 @@ fn run_remote_forward(
         match child.try_wait() {
             Ok(Some(status)) => {
                 if !status.success() {
-                    return Err(format!("SSH remote forward exited with code: {:?}", status.code()));
+                    return Err(format!(
+                        "SSH remote forward exited with code: {:?}",
+                        status.code()
+                    ));
                 }
                 return Ok(());
             }
@@ -307,10 +318,7 @@ fn run_remote_forward(
     Ok(())
 }
 
-fn run_dynamic_forward(
-    config: PortForwardConfig,
-    abort: Arc<AtomicBool>,
-) -> Result<(), String> {
+fn run_dynamic_forward(config: PortForwardConfig, abort: Arc<AtomicBool>) -> Result<(), String> {
     let mut ssh_args = build_ssh_args(&config);
     ssh_args.push("-D".to_string());
     ssh_args.push(format!("127.0.0.1:{}", config.local_port));
@@ -322,7 +330,8 @@ fn run_dynamic_forward(
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
 
     // Wait for abort
@@ -333,7 +342,10 @@ fn run_dynamic_forward(
         match child.try_wait() {
             Ok(Some(status)) => {
                 if !status.success() {
-                    return Err(format!("SSH dynamic forward exited with code: {:?}", status.code()));
+                    return Err(format!(
+                        "SSH dynamic forward exited with code: {:?}",
+                        status.code()
+                    ));
                 }
                 return Ok(());
             }

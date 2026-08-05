@@ -63,7 +63,14 @@ pub fn pty_spawn(
         .sessions
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .insert(id, PtySession { master, writer, killer });
+        .insert(
+            id,
+            PtySession {
+                master,
+                writer,
+                killer,
+            },
+        );
 
     // Stream shell output to the frontend until EOF.
     let app_reader = app.clone();
@@ -139,13 +146,15 @@ pub fn pty_capture(
     timeout_ms: u64,
 ) -> Result<String, String> {
     let mut sessions = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
-    let session = sessions
-        .get_mut(&id)
-        .ok_or("PTY session not found")?;
+    let session = sessions.get_mut(&id).ok_or("PTY session not found")?;
 
     // Clear any pending output by reading briefly
     let mut drain = [0u8; 4096];
-    let _ = session.master.try_clone_reader().map_err(|e| e.to_string())?.read(&mut drain);
+    let _ = session
+        .master
+        .try_clone_reader()
+        .map_err(|e| e.to_string())?
+        .read(&mut drain);
 
     // Write the command + newline
     session

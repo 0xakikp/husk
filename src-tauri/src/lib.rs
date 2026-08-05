@@ -1,9 +1,11 @@
-mod fs;
-mod config;
+mod ai_cli;
 mod browser;
+mod config;
+mod fs;
 mod jobs;
 mod mcp;
-mod ai_cli;
+mod port_forward;
+mod project;
 mod pty;
 mod remote;
 mod secrets;
@@ -13,14 +15,13 @@ mod shell_history;
 mod shell_init;
 mod tailscale;
 mod vitals;
-mod port_forward;
 
 use jobs::JobsState;
 use mcp::McpState;
+use port_forward::PortForwardManager;
 use pty::PtyState;
 use secrets::SecretsState;
 use sftp::SftpManager;
-use port_forward::PortForwardManager;
 use tailscale::TailscaleState;
 use tauri::Manager;
 
@@ -93,10 +94,10 @@ pub fn run() {
             app.manage(SftpManager::with_app_data_dir(app_data_dir));
 
             /* Non-fatal on purpose. Built with `?` inside setup, a menu that
-               failed to construct would return Err from setup and stop the app
-               launching altogether — bricking the whole app over a menu bar. The
-               worst case now is falling back to Tauri's default menu, which means
-               Cmd+Z is claimed again: a keyboard annoyance, not a dead launch. */
+            failed to construct would return Err from setup and stop the app
+            launching altogether — bricking the whole app over a menu bar. The
+            worst case now is falling back to Tauri's default menu, which means
+            Cmd+Z is claimed again: a keyboard annoyance, not a dead launch. */
             #[cfg(target_os = "macos")]
             if let Err(e) = install_macos_menu(app.handle()) {
                 eprintln!("husk: could not install the app menu ({e}); using the default");
@@ -183,6 +184,12 @@ pub fn run() {
             jobs::shell_bg_remove,
             jobs::shell_bg_list,
             shell_history::pty_shell_history,
+            project::project_profile_load,
+            project::project_profile_init,
+            project::project_profile_write_instructions,
+            project::project_profile_set_enabled,
+            project::project_runbook_save,
+            project::project_runbook_delete,
             vitals::system_vitals,
             port_forward::port_forward_start,
             port_forward::port_forward_stop,

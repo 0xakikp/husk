@@ -10,7 +10,12 @@ fn init_sentry() -> Option<ClientInitGuard> {
         sentry::ClientOptions {
             release: Some("husk@0.3.0".into()),
             environment: Some(
-                if cfg!(debug_assertions) { "development" } else { "production" }.into()
+                if cfg!(debug_assertions) {
+                    "development"
+                } else {
+                    "production"
+                }
+                .into(),
             ),
             ..Default::default()
         },

@@ -29,6 +29,7 @@ import { readActiveTerminal, runInActiveTerminal, getRecentCommandRuns, getPendi
 import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { getProjectMemory } from "../ai/projectMemory";
+import { useProjectProfile } from "../project/profile";
 import { buildHuskAssistantContext } from "../ai/huskContext";
 import { ContextInspector } from "../ai/ContextInspector";
 import {
@@ -348,6 +349,7 @@ export function TerminalAiComposer({
     setIncludeSelection(defaults.aiDefaultIncludeSelection);
     setIncludeTerminal(defaults.aiDefaultIncludeTerminal);
     setExcludeProjectMemory(false);
+    setExcludeProjectInstructions(false);
     setBudgetPrompt(null);
     setSensitivePrompt(null);
   }, [sessionId]);
@@ -387,6 +389,8 @@ export function TerminalAiComposer({
   const [includeSelection, setIncludeSelection] = useState(() => prefs.aiDefaultIncludeSelection);
   const [includeTerminal, setIncludeTerminal] = useState(() => prefs.aiDefaultIncludeTerminal);
   const [excludeProjectMemory, setExcludeProjectMemory] = useState(false);
+  const [excludeProjectInstructions, setExcludeProjectInstructions] = useState(false);
+  const projectProfile = useProjectProfile();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [budgetPrompt, setBudgetPrompt] = useState<{ total: number } | null>(null);
   const [sensitivePrompt, setSensitivePrompt] = useState<AiContextItem[] | null>(null);
@@ -498,6 +502,24 @@ export function TerminalAiComposer({
         removable: true,
       }));
     }
+    /* Repository-level instructions from .husk/instructions.md — attached only
+       when the profile is enabled and opts in, visible and removable per chat. */
+    if (
+      projectProfile?.enabled &&
+      projectProfile.include_instructions &&
+      projectProfile.instructions.trim() &&
+      !excludeProjectInstructions
+    ) {
+      items.push(mk({
+        id: "project-instructions",
+        kind: "project-instructions",
+        icon: "📐",
+        label: "project instructions",
+        source: ".husk/instructions.md",
+        preview: projectProfile.instructions.trim(),
+        removable: true,
+      }));
+    }
     /* Global instructions and personal memory are assembled inside
        buildHuskAssistantContext — they are listed here for review only, so
        they are informational (fixed), never appended twice. */
@@ -524,13 +546,14 @@ export function TerminalAiComposer({
       }));
     }
     return items;
-  }, [currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick]);
+  }, [currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, excludeProjectInstructions, projectProfile, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick]);
 
   const removeContextItem = useCallback((id: string) => {
     if (id === "file") setIncludeFile(false);
     else if (id === "selection") setIncludeSelection(false);
     else if (id === "terminal") setIncludeTerminal(false);
     else if (id === "project-memory") setExcludeProjectMemory(true);
+    else if (id === "project-instructions") setExcludeProjectInstructions(true);
     else if (id.startsWith("run:")) {
       const at = Number(id.slice(4));
       setAttachedRuns((rs) => rs.filter((r) => r.at !== at));
@@ -547,6 +570,7 @@ export function TerminalAiComposer({
     setAttachedRuns([]);
     setAttachedFiles([]);
     setExcludeProjectMemory(true);
+    setExcludeProjectInstructions(true);
   }, []);
 
   /* Chips cover the per-request attachments; instructions/memory stay visible

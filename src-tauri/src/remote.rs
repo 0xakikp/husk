@@ -20,7 +20,8 @@ pub struct DirEntry {
 
 /// Run an SSH command and return stdout on success.
 fn ssh_stdout(host: &str, cmd: &str) -> Result<String, String> {
-    let ssh_cmd = format!("ssh -o BatchMode=yes -o ConnectTimeout=5 {} {}",
+    let ssh_cmd = format!(
+        "ssh -o BatchMode=yes -o ConnectTimeout=5 {} {}",
         shq(host),
         shq(cmd),
     );

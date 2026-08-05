@@ -67,12 +67,14 @@ pub struct AgentLoad {
 }
 
 fn config_path() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "could not resolve the home directory".to_string())?;
+    let home =
+        dirs::home_dir().ok_or_else(|| "could not resolve the home directory".to_string())?;
     Ok(home.join(CONFIG_DIR).join(CONFIG_FILE))
 }
 
 fn husk_root() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "could not resolve the home directory".to_string())?;
+    let home =
+        dirs::home_dir().ok_or_else(|| "could not resolve the home directory".to_string())?;
     Ok(home.join(CONFIG_DIR))
 }
 
@@ -98,7 +100,10 @@ fn is_secret_name(name: &str) -> bool {
         || name.contains("private_key")
 }
 
-fn expect_object<'a>(value: &'a Value, label: &str) -> Result<&'a serde_json::Map<String, Value>, String> {
+fn expect_object<'a>(
+    value: &'a Value,
+    label: &str,
+) -> Result<&'a serde_json::Map<String, Value>, String> {
     value
         .as_object()
         .ok_or_else(|| config_error(format!("{label} must be a table")))
@@ -128,7 +133,9 @@ fn validate_mcp(value: &Value) -> Result<(), String> {
         if let Some(secret_env) = server.get("secretEnv") {
             let secret_env = expect_object(secret_env, "MCP server secretEnv")?;
             if secret_env.values().any(|value| !value.is_string()) {
-                return Err(config_error("MCP secretEnv values must be OS-keychain account names"));
+                return Err(config_error(
+                    "MCP secretEnv values must be OS-keychain account names",
+                ));
             }
         }
     }
@@ -192,7 +199,11 @@ fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|e| config_error(e.to_string()))?
         .as_nanos();
-    let tmp = path.with_file_name(format!(".{CONFIG_FILE}.{}.{}.tmp", std::process::id(), stamp));
+    let tmp = path.with_file_name(format!(
+        ".{CONFIG_FILE}.{}.{}.tmp",
+        std::process::id(),
+        stamp
+    ));
 
     let write_result = (|| -> Result<(), String> {
         let mut options = OpenOptions::new();
@@ -248,18 +259,26 @@ fn write_document(path: &Path, document: &Value) -> Result<(), String> {
 fn valid_agent_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 80
-        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 fn validate_agent(agent: &AgentDocument) -> Result<(), String> {
     if !valid_agent_id(&agent.id) {
-        return Err(config_error("agent id must contain only letters, numbers, hyphens, or underscores"));
+        return Err(config_error(
+            "agent id must contain only letters, numbers, hyphens, or underscores",
+        ));
     }
     if agent.name.trim().is_empty() || agent.name.chars().count() > 80 {
-        return Err(config_error("agent name must be between 1 and 80 characters"));
+        return Err(config_error(
+            "agent name must be between 1 and 80 characters",
+        ));
     }
     if agent.system_prompt.trim().is_empty() || agent.system_prompt.len() > 32_000 {
-        return Err(config_error("agent prompt must be between 1 and 32,000 characters"));
+        return Err(config_error(
+            "agent prompt must be between 1 and 32,000 characters",
+        ));
     }
     if agent.icon.chars().count() > 16 {
         return Err(config_error("agent icon is too long"));
@@ -280,19 +299,33 @@ fn serialise_agent(agent: &AgentDocument) -> Result<String, String> {
         id: agent.id.clone(),
         name: agent.name.trim().to_string(),
         icon: agent.icon.trim().to_string(),
-        model: agent.model.as_ref().map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
-        color: agent.color.as_ref().map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
+        model: agent
+            .model
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        color: agent
+            .color
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
         built_in: agent.built_in,
     };
     let header = toml::to_string_pretty(&header)
         .map_err(|e| config_error(format!("serialize agent header: {e}")))?;
-    Ok(format!("+++\n{header}+++\n\n{}\n", agent.system_prompt.trim()))
+    Ok(format!(
+        "+++\n{header}+++\n\n{}\n",
+        agent.system_prompt.trim()
+    ))
 }
 
 fn parse_agent(path: &Path, contents: &str) -> Result<AgentDocument, String> {
-    let rest = contents
-        .strip_prefix("+++\n")
-        .ok_or_else(|| config_error(format!("{} must start with TOML front matter (`+++`)", path.display())))?;
+    let rest = contents.strip_prefix("+++\n").ok_or_else(|| {
+        config_error(format!(
+            "{} must start with TOML front matter (`+++`)",
+            path.display()
+        ))
+    })?;
     let (header, prompt) = rest
         .split_once("\n+++\n")
         .ok_or_else(|| config_error(format!("{} is missing the closing `+++`", path.display())))?;
@@ -381,7 +414,9 @@ pub fn agents_load(_app: AppHandle) -> Result<AgentLoad, String> {
 
     let mut agents = Vec::new();
     let mut errors = Vec::new();
-    for entry in fs::read_dir(&dir).map_err(|e| config_error(format!("read {}: {e}", dir.display())))? {
+    for entry in
+        fs::read_dir(&dir).map_err(|e| config_error(format!("read {}: {e}", dir.display())))?
+    {
         let entry = match entry {
             Ok(entry) => entry,
             Err(error) => {
@@ -393,7 +428,8 @@ pub fn agents_load(_app: AppHandle) -> Result<AgentLoad, String> {
         if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
             continue;
         }
-        match fs::read_to_string(&path).map_err(|e| config_error(format!("read {}: {e}", path.display())))
+        match fs::read_to_string(&path)
+            .map_err(|e| config_error(format!("read {}: {e}", path.display())))
             .and_then(|contents| parse_agent(&path, &contents))
         {
             Ok(agent) => agents.push(agent),
@@ -420,7 +456,8 @@ pub fn agent_write(_app: AppHandle, agent: AgentDocument) -> Result<String, Stri
 pub fn agent_delete(_app: AppHandle, id: String) -> Result<(), String> {
     let path = agent_path(&id)?;
     if path.exists() {
-        fs::remove_file(&path).map_err(|e| config_error(format!("remove {}: {e}", path.display())))?;
+        fs::remove_file(&path)
+            .map_err(|e| config_error(format!("remove {}: {e}", path.display())))?;
     }
     Ok(())
 }

@@ -50,12 +50,17 @@ pub async fn tailscale_list_devices(
 ) -> Result<TailscaleDeviceList, String> {
     let (api_key, tailnet) = {
         let prefs = state.prefs.lock().map_err(|e| e.to_string())?;
-        let prefs = prefs.as_ref().ok_or("Tailscale not configured. Add API key in settings.")?;
+        let prefs = prefs
+            .as_ref()
+            .ok_or("Tailscale not configured. Add API key in settings.")?;
         (prefs.api_key.clone(), prefs.tailnet.clone())
     };
 
     let client = reqwest::Client::new();
-    let url = format!("https://api.tailscale.com/api/v2/tailnet/{}/devices", tailnet);
+    let url = format!(
+        "https://api.tailscale.com/api/v2/tailnet/{}/devices",
+        tailnet
+    );
 
     let response = client
         .get(&url)
@@ -107,9 +112,7 @@ pub async fn tailscale_list_devices(
 }
 
 #[tauri::command]
-pub async fn tailscale_test_connection(
-    state: State<'_, TailscaleState>,
-) -> Result<bool, String> {
+pub async fn tailscale_test_connection(state: State<'_, TailscaleState>) -> Result<bool, String> {
     let (api_key, tailnet) = {
         let prefs = state.prefs.lock().map_err(|e| e.to_string())?;
         let prefs = prefs.as_ref().ok_or("Not configured")?;
@@ -117,7 +120,10 @@ pub async fn tailscale_test_connection(
     };
 
     let client = reqwest::Client::new();
-    let url = format!("https://api.tailscale.com/api/v2/tailnet/{}/devices", tailnet);
+    let url = format!(
+        "https://api.tailscale.com/api/v2/tailnet/{}/devices",
+        tailnet
+    );
 
     let response = client
         .get(&url)
@@ -160,6 +166,7 @@ pub async fn tailscale_generate_ssh_command(
     Ok(TailscaleSshResponse {
         success: true,
         command: ssh_command,
-        message: "Tailscale SSH uses your tailnet ACLs for authorization. No password needed.".to_string(),
+        message: "Tailscale SSH uses your tailnet ACLs for authorization. No password needed."
+            .to_string(),
     })
 }

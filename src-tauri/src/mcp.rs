@@ -149,7 +149,12 @@ pub fn mcp_recv(
 /// Kill an MCP server process and drop its session.
 #[tauri::command]
 pub fn mcp_kill(state: State<'_, McpState>, id: u32) -> Result<(), String> {
-    if let Some(mut session) = state.sessions.lock().map_err(|e| e.to_string())?.remove(&id) {
+    if let Some(mut session) = state
+        .sessions
+        .lock()
+        .map_err(|e| e.to_string())?
+        .remove(&id)
+    {
         let _ = session.child.kill();
         let _ = session.child.wait();
     }
