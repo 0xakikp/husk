@@ -1,7 +1,7 @@
 import { getWorkspaceRoot } from "../workspace/store";
 import { getProjectProfile, type Runbook } from "./profile";
 import { runInActiveTerminal, typeInActiveTerminal } from "../ai/terminalContext";
-import { getEnvSignals, isProtectedTarget } from "../terminal/envSignals";
+import { getEnvSignals, isProtectedTarget, matchesPattern } from "../terminal/envSignals";
 import { toast } from "../toast";
 
 /**
@@ -13,15 +13,8 @@ import { toast } from "../toast";
  * Enter themselves. Husk never runs a risky recipe silently.
  */
 
-/** Supports exact names and simple "release/*" style globs. */
-function matchesPattern(pattern: string, value: string): boolean {
-  if (pattern === value) return true;
-  if (!pattern.includes("*")) return false;
-  const re = new RegExp(`^${pattern.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
-  return re.test(value);
-}
-
-function protectedTargets(): string[] {
+/** Current protected targets from live environment signals + profile rules. */
+export function protectedTargets(): string[] {
   const safety = getProjectProfile()?.safety;
   const env = getEnvSignals();
   const hits: string[] = [];

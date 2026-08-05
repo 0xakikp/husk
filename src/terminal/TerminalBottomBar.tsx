@@ -25,7 +25,7 @@ import {
   subscribeTerminalState,
 } from "../ai/terminalContext";
 import { openActiveTerminalLogs } from "./registry";
-import { isProtectedTarget, refreshEnvSignals, useEnvSignals } from "./envSignals";
+import { protectedReason, refreshEnvSignals, useEnvSignals } from "./envSignals";
 import { toast } from "../toast";
 import { usePrefs } from "../settings/preferences";
 import { getActiveSshHost, subscribeSshHost } from "../remote/store";
@@ -311,24 +311,34 @@ export function TerminalBottomBar({
       )}
 
       {/* Git is intentionally one quiet chip. It opens the existing Source
-          Control rail rather than exposing a shifting row of Git actions here. */}
-      {branch && (
-        <button
-          type="button"
-          onClick={onOpenSourceControl}
-          title="Open Source Control"
-          className="inline-flex min-w-0 shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground"
-        >
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path d="M6 1v9.5M6 3.5a2 2 0 1 1-2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <circle cx="6" cy="9.5" r="1" fill="currentColor" />
-          </svg>
-          <span className="max-w-[90px] truncate text-foreground/85">{branch}</span>
-          {changedFiles > 0 && <span className="text-amber-400">~{changedFiles}</span>}
-          {aheadBehind.ahead > 0 && <span className="text-emerald-400">↑{aheadBehind.ahead}</span>}
-          {aheadBehind.behind > 0 && <span className="text-amber-400">↓{aheadBehind.behind}</span>}
-        </button>
-      )}
+          Control rail rather than exposing a shifting row of Git actions here.
+          A profile-listed protected branch turns the quiet chip loud. */}
+      {branch && (() => {
+        const branchWarning = protectedReason("git", branch);
+        return (
+          <button
+            type="button"
+            onClick={onOpenSourceControl}
+            title={branchWarning ? `${branch} — ${branchWarning} · Open Source Control` : "Open Source Control"}
+            className={cn(
+              "inline-flex min-w-0 shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition-colors",
+              branchWarning
+                ? "border border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
+                : "text-muted-foreground hover:bg-muted/45 hover:text-foreground",
+            )}
+          >
+            {branchWarning && <span className="shrink-0 text-[9px] font-semibold">⚠</span>}
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" className="shrink-0">
+              <path d="M6 1v9.5M6 3.5a2 2 0 1 1-2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="6" cy="9.5" r="1" fill="currentColor" />
+            </svg>
+            <span className="max-w-[90px] truncate text-foreground/85">{branch}</span>
+            {changedFiles > 0 && <span className="text-amber-400">~{changedFiles}</span>}
+            {aheadBehind.ahead > 0 && <span className="text-emerald-400">↑{aheadBehind.ahead}</span>}
+            {aheadBehind.behind > 0 && <span className="text-amber-400">↓{aheadBehind.behind}</span>}
+          </button>
+        );
+      })()}
 
       {/* Remote context appears only when it changes the meaning of the shell. */}
       {sshHost && (
@@ -345,15 +355,15 @@ export function TerminalBottomBar({
         <button
           type="button"
           onClick={() => refreshEnvSignals(true)}
-          title={`Kubernetes context: ${env.kubeContext}${isProtectedTarget(env.kubeContext) ? " — protected target" : ""} · click to refresh`}
+          title={`Kubernetes context: ${env.kubeContext}${protectedReason("kubernetes", env.kubeContext) ? " — protected target" : ""} · click to refresh`}
           className={cn(
             "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition-colors",
-            isProtectedTarget(env.kubeContext)
+            protectedReason("kubernetes", env.kubeContext)
               ? "border border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
               : "text-violet-400 hover:bg-muted/45",
           )}
         >
-          {isProtectedTarget(env.kubeContext) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
+          {protectedReason("kubernetes", env.kubeContext) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
           <span>☸</span>
           <span className="max-w-[110px] truncate">{env.kubeContext}</span>
         </button>
@@ -362,15 +372,15 @@ export function TerminalBottomBar({
         <button
           type="button"
           onClick={() => refreshEnvSignals(true)}
-          title={`AWS profile: ${env.awsProfile}${isProtectedTarget(env.awsProfile) ? " — protected target" : ""} · click to refresh`}
+          title={`AWS profile: ${env.awsProfile}${protectedReason("aws", env.awsProfile) ? " — protected target" : ""} · click to refresh`}
           className={cn(
             "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition-colors",
-            isProtectedTarget(env.awsProfile)
+            protectedReason("aws", env.awsProfile)
               ? "border border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
               : "text-orange-400/90 hover:bg-muted/45",
           )}
         >
-          {isProtectedTarget(env.awsProfile) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
+          {protectedReason("aws", env.awsProfile) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
           <span>☁</span>
           <span className="max-w-[100px] truncate">{env.awsProfile}</span>
         </button>
@@ -379,15 +389,15 @@ export function TerminalBottomBar({
         <button
           type="button"
           onClick={() => refreshEnvSignals(true)}
-          title={`Docker context: ${env.dockerContext}${isProtectedTarget(env.dockerContext) ? " — protected target" : ""} · click to refresh`}
+          title={`Docker context: ${env.dockerContext}${protectedReason("docker", env.dockerContext) ? " — protected target" : ""} · click to refresh`}
           className={cn(
             "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition-colors",
-            isProtectedTarget(env.dockerContext)
+            protectedReason("docker", env.dockerContext)
               ? "border border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
               : "text-sky-400/90 hover:bg-muted/45",
           )}
         >
-          {isProtectedTarget(env.dockerContext) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
+          {protectedReason("docker", env.dockerContext) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
           <span>🐳</span>
           <span className="max-w-[90px] truncate">{env.dockerContext}</span>
         </button>

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { connectMcpServer, disconnectMcpServer } from "@/mcp/client";
+import { disconnectMcpServer } from "@/mcp/client";
+import { getMcpHealth, testMcpConnection, useMcpHealth } from "@/mcp/health";
 import {
   addMcpServer,
   loadMcpServers,
   removeMcpServer,
-  resolveMcpServerEnv,
   updateMcpServer,
   type McpServerConfig,
 } from "@/mcp/store";
@@ -16,6 +16,7 @@ import {
   CfgArt,
   CfgAct,
   CfgBlank,
+  CfgBlock,
   CfgComment,
   CfgRow,
   CfgSection,
@@ -128,24 +129,13 @@ export function McpFile() {
     setTestResult(null);
     try {
       await disconnectMcpServer(server.id);
-      const env = await resolveMcpServerEnv(server);
-      const tools = await connectMcpServer(server.id, server.name, {
-        command: server.command,
-        args: server.args,
-        env,
-        cwd: server.cwd,
-      });
-      setTestResult({
-        id: server.id,
-        ok: true,
-        msg: `ok · ${tools.length} tool${tools.length === 1 ? "" : "s"}`,
-      });
-    } catch (e) {
-      setTestResult({
-        id: server.id,
-        ok: false,
-        msg: e instanceof Error ? e.message : String(e),
-      });
+      await testMcpConnection(server);
+      const h = getMcpHealth(server.id);
+      setTestResult(
+        h.state === "connected"
+          ? { id: server.id, ok: true, msg: `ok · ${h.toolCount ?? 0} tool${h.toolCount === 1 ? "" : "s"}` }
+          : { id: server.id, ok: false, msg: h.message ?? "connection failed" },
+      );
     } finally {
       setTestingId(null);
     }
@@ -255,6 +245,7 @@ export function McpFile() {
               <CfgRow name="enabled" comment="Load this server's tools into the AI. Disable to keep the config without running it.">
                 <Switch checked={server.enabled} onCheckedChange={(v) => void handleToggle(server.id, v)} />
               </CfgRow>
+              <McpHealthRow serverId={server.id} readOnly={server.readOnly} />
               <CfgRow>
                 <CfgAct onClick={() => void handleTest(server)}>
                   {testingId === server.id ? "testing…" : "test"}
@@ -299,6 +290,64 @@ export function McpFile() {
         </CfgRow>
       )}
     </ConfigEditor>
+  );
+}
+
+/** Runtime status + tool inventory for one server. Configuration never means
+    a server actually connected — this row shows only observed handshakes. */
+function McpHealthRow({ serverId, readOnly }: { serverId: string; readOnly?: boolean }) {
+  const health = useMcpHealth(serverId);
+  const [showTools, setShowTools] = useState(false);
+
+  const checkedAgo = (() => {
+    if (!health.checkedAt) return null;
+    const secs = Math.max(0, Math.floor((Date.now() - health.checkedAt) / 1000));
+    if (secs < 10) return "just now";
+    if (secs < 60) return `${secs}s ago`;
+    return `${Math.floor(secs / 60)}m ago`;
+  })();
+
+  return (
+    <>
+      <CfgRow
+        name="health"
+        comment="Observed runtime status — a saved config never means the server actually connected. Status is session-only and refreshed by test or an AI run."
+      >
+        {health.state === "connected" ? (
+          <span className="cfg-num">● connected{readOnly ? " · read-only" : ""}</span>
+        ) : health.state === "connecting" ? (
+          <span className="cfg-hint">… connecting</span>
+        ) : health.state === "error" ? (
+          <span className="cfg-hint" style={{ color: "#f87171" }}>✕ {health.message ?? "error"}</span>
+        ) : (
+          <span className="cfg-hint">○ not connected this session</span>
+        )}
+        {health.state === "connected" && health.toolCount != null ? (
+          <CfgStr>{health.toolCount} tool{health.toolCount === 1 ? "" : "s"}</CfgStr>
+        ) : null}
+        {checkedAgo ? <CfgStr>checked {checkedAgo}</CfgStr> : null}
+        {(health.toolNames?.length ?? 0) > 0 ? (
+          <CfgAct onClick={() => setShowTools((v) => !v)}>{showTools ? "hide tools" : "view tools"}</CfgAct>
+        ) : null}
+      </CfgRow>
+      {showTools && health.toolNames ? (
+        <CfgRow
+          name="tools"
+          comment={
+            readOnly
+              ? "Read-only mode: the server exposes these reads; create/merge/delete operations are disabled by the integration."
+              : "Tools the AI may call when this server is enabled and an API-key model is active."
+          }
+        >
+          <CfgBlock
+            value={health.toolNames.map((n) => `${readOnly ? "✓" : "•"} ${n}`).join("\n")}
+            onChange={() => {}}
+            rows={Math.min(8, health.toolNames.length)}
+            readOnly
+          />
+        </CfgRow>
+      ) : null}
+    </>
   );
 }
 
@@ -417,6 +466,7 @@ function GitHubIntegration({
         ) : null}
       </CfgRow>
       {error ? <CfgComment>GitHub setup failed: {error}</CfgComment> : null}
+      {server ? <McpHealthRow serverId={server.id} readOnly={server.readOnly} /> : null}
       <CfgRow>
         <CfgAct onClick={() => void save()}>{saving ? "connecting…" : server ? "save & test" : "connect & test"}</CfgAct>
         {server ? <CfgAct onClick={onTest}>{testing ? "testing…" : "test"}</CfgAct> : null}

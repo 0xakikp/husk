@@ -7,6 +7,7 @@ import {
   type McpDiscoveredTool,
 } from "./client";
 import { loadMcpServers, resolveMcpServerEnv } from "./store";
+import { reportMcpConnecting, reportMcpResult } from "./health";
 
 let cachedDiscovered: McpDiscoveredTool[] = [];
 
@@ -25,16 +26,19 @@ export async function buildMcpTools(): Promise<Record<string, Tool>> {
 
   // Connect enabled servers.
   for (const config of enabled) {
+    reportMcpConnecting(config.id);
     try {
       const env = await resolveMcpServerEnv(config);
-      await connectMcpServer(config.id, config.name, {
+      const tools = await connectMcpServer(config.id, config.name, {
         command: config.command,
         args: config.args,
         env,
         cwd: config.cwd,
       });
+      reportMcpResult(config.id, true, tools.map((t) => t.name));
     } catch (e) {
       console.warn(`[mcp] failed to connect to ${config.name}:`, e);
+      reportMcpResult(config.id, false, undefined, e instanceof Error ? e.message : String(e));
     }
   }
 

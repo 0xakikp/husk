@@ -30,6 +30,8 @@ import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { getProjectMemory } from "../ai/projectMemory";
 import { useProjectProfile } from "../project/profile";
+import { protectedTargets } from "../project/runbooks";
+import { isEnvDestructive } from "./envSignals";
 import { buildHuskAssistantContext } from "../ai/huskContext";
 import { ContextInspector } from "../ai/ContextInspector";
 import {
@@ -297,7 +299,7 @@ export function TerminalAiComposer({
   const [tick, setTick] = useState(0);
   const [height, setHeight] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [pendingRun, setPendingRun] = useState<string | null>(null);
+  const [pendingRun, setPendingRun] = useState<{ command: string; productionTarget: string | null } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const abortRef = useRef(false);
   const abortCtrlRef = useRef<AbortController | null>(null);
@@ -931,8 +933,16 @@ export function TerminalAiComposer({
 
   const runCommand = (cmd: string) => {
     const first = extractCommandFromCode(cmd);
+    /* Production gate: a command that mutates shared infrastructure, while a
+       protected target is active, always stops for an explicit approval that
+       names the target — even when the command itself looks "safe". */
+    const protectedHits = protectedTargets();
+    if (protectedHits.length > 0 && isEnvDestructive(first)) {
+      setPendingRun({ command: first, productionTarget: protectedHits[0] });
+      return;
+    }
     if (isDangerousCommand(first)) {
-      setPendingRun(first);
+      setPendingRun({ command: first, productionTarget: null });
     } else {
       runInActiveTerminal(first);
     }
@@ -940,7 +950,7 @@ export function TerminalAiComposer({
 
   const confirmRun = () => {
     if (pendingRun) {
-      runInActiveTerminal(pendingRun);
+      runInActiveTerminal(pendingRun.command);
       setPendingRun(null);
     }
   };
@@ -1502,12 +1512,23 @@ export function TerminalAiComposer({
       {pendingRun && (
         <div className="composer-pending-run">
           <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] font-medium text-amber-400">⚠️ Dangerous command — approve to run</span>
-            <code className="text-[10px] text-foreground/80">{pendingRun}</code>
+            {pendingRun.productionTarget ? (
+              <>
+                <span className="text-[10px] font-medium text-amber-400">
+                  ⚠️ You are targeting {pendingRun.productionTarget} — approve to run
+                </span>
+                <code className="text-[10px] text-foreground/80">{pendingRun.command}</code>
+              </>
+            ) : (
+              <>
+                <span className="text-[10px] font-medium text-amber-400">⚠️ Dangerous command — approve to run</span>
+                <code className="text-[10px] text-foreground/80">{pendingRun.command}</code>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <button type="button" onClick={confirmRun} className="composer-approve-btn">
-              Run
+              {pendingRun.productionTarget ? "Run anyway" : "Run"}
             </button>
             <button type="button" onClick={cancelRun} className="composer-cancel-btn">
               Cancel
