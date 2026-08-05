@@ -14,6 +14,57 @@ import { getPrefs, setPrefs } from "./preferences";
  */
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|avif)$/i;
+const BUILT_IN_PREFIX = "husk:wallpaper/";
+
+export type BuiltInWallpaper = {
+  id: string;
+  name: string;
+  description: string;
+  src: string;
+};
+
+/**
+ * Wallpaper art that ships with Husk. `background.path` normally holds an
+ * absolute local path, so built-ins use a small reserved identifier instead.
+ * That lets existing folder browsing and local-image behaviour remain exactly
+ * as it is while App can resolve bundled art without asking Rust to read it.
+ */
+export const BUILT_IN_WALLPAPERS: readonly BuiltInWallpaper[] = [
+  {
+    id: "midnight-circuit",
+    name: "Midnight Circuit",
+    description: "Emerald traces at the edge of a quiet console.",
+    src: `${import.meta.env.BASE_URL}wallpapers/husk-midnight-circuit.png`,
+  },
+  {
+    id: "signal-bloom",
+    name: "Signal Bloom",
+    description: "Sparse green nodes, with room to think.",
+    src: `${import.meta.env.BASE_URL}wallpapers/husk-signal-bloom.png`,
+  },
+  {
+    id: "deep-space-console",
+    name: "Deep Space Console",
+    description: "Dim telemetry arcs in a deep night sky.",
+    src: `${import.meta.env.BASE_URL}wallpapers/husk-deep-space-console.png`,
+  },
+  {
+    id: "monolith",
+    name: "Monolith",
+    description: "Dark geometry with a measured signal edge.",
+    src: `${import.meta.env.BASE_URL}wallpapers/husk-monolith.png`,
+  },
+];
+
+export function builtInWallpaperPath(id: string): string {
+  return `${BUILT_IN_PREFIX}${id}`;
+}
+
+export function getBuiltInWallpaper(path: string): BuiltInWallpaper | undefined {
+  if (!path.startsWith(BUILT_IN_PREFIX)) return undefined;
+  const id = path.slice(BUILT_IN_PREFIX.length);
+  return BUILT_IN_WALLPAPERS.find((wallpaper) => wallpaper.id === id);
+}
 
 /** Absolute paths of every image directly in the folder, sorted by name. */
 export async function listWallpapers(dir: string): Promise<string[]> {
@@ -32,7 +83,7 @@ export async function listWallpapers(dir: string): Promise<string[]> {
 }
 
 export function wallpaperName(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path;
+  return getBuiltInWallpaper(path)?.name ?? path.split(/[\\/]/).pop() ?? path;
 }
 
 /** Show this image, switching the wallpaper on if it was off. */

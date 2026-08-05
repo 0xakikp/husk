@@ -168,6 +168,61 @@
 .cfg-act:hover { color: var(--foreground); }
 .cfg-act-danger:hover { color: #f87171; }
 
+/* Built-in backgrounds deliberately stay compact: the preview is useful for
+   recognition, but settings must remain a configuration surface rather than a
+   large image browser. */
+.cfg-wallpaper-gallery-line { align-items: stretch; margin: 3px 0 8px; }
+.cfg-wallpaper-gallery-line::before { align-self: stretch; }
+.cfg-wallpaper-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+  gap: 7px;
+  width: min(100%, 760px);
+  padding: 2px 0;
+}
+.cfg-wallpaper-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 6px;
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--background) 82%, transparent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .14s ease, background .14s ease, transform .14s ease;
+}
+.cfg-wallpaper-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--border));
+  background: color-mix(in srgb, var(--primary) 6%, var(--background));
+  transform: translateY(-1px);
+}
+.cfg-wallpaper-card.is-selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--background));
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+.cfg-wallpaper-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.cfg-wallpaper-preview {
+  display: block;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 4px;
+  background-color: #05070c;
+  background-position: center;
+  background-size: cover;
+}
+.cfg-wallpaper-card-copy { min-width: 0; align-self: center; line-height: 1.2; }
+.cfg-wallpaper-card-copy > span, .cfg-wallpaper-card-copy > small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-wallpaper-card-copy > span { color: var(--foreground); font-size: 10px; font-weight: 600; }
+.cfg-wallpaper-card-copy > small { margin-top: 3px; color: var(--muted-foreground); font-size: 8.5px; }
+@media (max-width: 620px) {
+  .cfg-wallpaper-gallery { grid-template-columns: 1fr; }
+}
+
 .cfg-block {
   width: 100%;
   font: inherit;

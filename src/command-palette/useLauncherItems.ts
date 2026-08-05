@@ -21,7 +21,13 @@ import { composeCommand } from "../workflows/params";
 import { removeRecentNote } from "../notes/store";
 import { toast } from "../toast";
 import { getAllSessions, deleteSession } from "../ai/sessionStore";
-import { listWallpapers, wallpaperName, applyWallpaper } from "../settings/wallpapers";
+import {
+  BUILT_IN_WALLPAPERS,
+  builtInWallpaperPath,
+  listWallpapers,
+  wallpaperName,
+  applyWallpaper,
+} from "../settings/wallpapers";
 import { getPrefs } from "../settings/preferences";
 import { loadAccounts as loadTotpAccounts } from "../totp/store";
 import { generateCode as generateTotpCode } from "../totp/totp";
@@ -256,6 +262,23 @@ export function useLauncherItems(
         group: "Wallpaper",
         run: () => applyWallpaper(path),
         actions: [{ label: "Copy path", run: () => copy(path) }],
+      });
+    }
+
+    /* Built-in wallpapers are available even before a local folder is set.
+       The launcher is a useful fast path, while Appearance keeps the visual
+       gallery for browsing them. */
+    for (const wallpaper of BUILT_IN_WALLPAPERS) {
+      const path = builtInWallpaperPath(wallpaper.id);
+      const current = path === getPrefs().background.path;
+      items.push({
+        id: `wallpaper:${path}`,
+        kind: "wallpaper",
+        label: wallpaper.name,
+        hint: current ? "current" : "built-in",
+        keywords: `wallpaper background image built-in ${wallpaper.name} ${wallpaper.description}`,
+        group: "Wallpaper",
+        run: () => applyWallpaper(path),
       });
     }
 

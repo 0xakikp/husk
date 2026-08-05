@@ -19,7 +19,7 @@ import { fontStack } from "./styles/fonts";
 import { initKeys } from "./ai/store";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { readFileBase64 } from "./fs";
-import { stepWallpaper, randomWallpaper } from "./settings/wallpapers";
+import { getBuiltInWallpaper, stepWallpaper, randomWallpaper } from "./settings/wallpapers";
 import { ToastContainer, toast } from "./toast";
 import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
@@ -228,6 +228,13 @@ function App() {
       setBgDataUrl(null);
       return;
     }
+
+    const builtIn = getBuiltInWallpaper(prefs.background.path);
+    if (builtIn) {
+      setBgDataUrl(builtIn.src);
+      return;
+    }
+
     let cancelled = false;
     readFileBase64(prefs.background.path)
       .then((url) => {

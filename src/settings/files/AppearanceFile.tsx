@@ -24,6 +24,13 @@ import {
   CfgStr,
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
+import {
+  BUILT_IN_WALLPAPERS,
+  builtInWallpaperPath,
+  getBuiltInWallpaper,
+  wallpaperName,
+  applyWallpaper,
+} from "../wallpapers";
 
 const PRESET_COLORS = [
   "#11c700",
@@ -100,7 +107,8 @@ export function AppearanceFile() {
     [bg],
   );
 
-  const fileName = bg.path ? bg.path.split(/[\\/]/).pop() : null;
+  const selectedBuiltIn = getBuiltInWallpaper(bg.path);
+  const fileName = bg.path ? wallpaperName(bg.path) : null;
 
   return (
     <ConfigEditor>
@@ -161,11 +169,39 @@ export function AppearanceFile() {
       <CfgRow name="enabled" comment="Show a custom image behind the terminal and editor.">
         <CfgBool value={bg.enabled} onChange={(v) => patchBg({ enabled: v })} />
       </CfgRow>
-      <CfgRow name="path" comment={fileName ? undefined : "No image selected."}>
+      <CfgRow name="path" comment={selectedBuiltIn ? "Built into Husk." : fileName ? undefined : "No image selected."}>
         <CfgStr>{fileName ?? ""}</CfgStr>
         <CfgAct onClick={pickImage}>pick</CfgAct>
         {bg.path ? <CfgAct onClick={clearImage} danger>clear</CfgAct> : null}
       </CfgRow>
+      <CfgSection name="huskCollection" />
+      <CfgComment>Readability-first backgrounds made for Husk. Select one, or keep using your own image below.</CfgComment>
+      <div className="cfg-line cfg-wallpaper-gallery-line">
+        <div className="cfg-wallpaper-gallery" role="list" aria-label="Husk built-in wallpapers">
+          {BUILT_IN_WALLPAPERS.map((wallpaper) => {
+            const selected = selectedBuiltIn?.id === wallpaper.id;
+            return (
+              <button
+                key={wallpaper.id}
+                type="button"
+                className={`cfg-wallpaper-card${selected ? " is-selected" : ""}`}
+                aria-pressed={selected}
+                onClick={() => applyWallpaper(builtInWallpaperPath(wallpaper.id))}
+              >
+                <span
+                  className="cfg-wallpaper-preview"
+                  style={{ backgroundImage: `url("${wallpaper.src}")` }}
+                  aria-hidden="true"
+                />
+                <span className="cfg-wallpaper-card-copy">
+                  <span>{wallpaper.name}</span>
+                  <small>{wallpaper.description}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <CfgRow
         name="folder"
         comment={
