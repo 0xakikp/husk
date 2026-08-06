@@ -13,7 +13,7 @@ import {
   CfgStr,
   CfgText,
 } from "../config/controls";
-import { getWorkspaceRoot } from "../../workspace/store";
+import { pickWorkspaceFolder, useWorkspaceRoot } from "../../workspace/store";
 import {
   GITIGNORE_SUGGESTION,
   deleteRunbook,
@@ -32,7 +32,7 @@ import { toast } from "../../toast";
  * by design: everything here lives in the repo, nothing follows the user.
  */
 export function ProjectFile() {
-  const workspace = getWorkspaceRoot();
+  const workspace = useWorkspaceRoot();
   const profile = useProjectProfile();
   const [instructions, setInstructions] = useState("");
   const [editing, setEditing] = useState<Runbook | null>(null);
@@ -44,11 +44,19 @@ export function ProjectFile() {
     setInstructions(profile?.instructions ?? "");
   }, [profile?.instructions, profile?.husk_dir]);
 
+  const failPick = (cause: unknown) =>
+    toast({ title: "Could not open folder", message: cause instanceof Error ? cause.message : String(cause), variant: "error" });
+
   if (!workspace) {
     return (
       <ConfigEditor>
         <CfgSection name="project" />
         <CfgComment>Open a folder to give it a project profile.</CfgComment>
+        <CfgRow name="folder" comment="Pick a project folder — instructions, runbooks, and environments will live in its .husk/ directory.">
+          <CfgAct onClick={() => void pickWorkspaceFolder().catch(failPick)}>
+            open folder…
+          </CfgAct>
+        </CfgRow>
       </ConfigEditor>
     );
   }
@@ -113,6 +121,9 @@ export function ProjectFile() {
             <CfgStr>{profile.husk_dir}</CfgStr>
             <CfgAct onClick={() => void openPath(profile.husk_dir).catch(fail("Could not open folder"))}>
               open .husk folder
+            </CfgAct>
+            <CfgAct onClick={() => void pickWorkspaceFolder().catch(failPick)}>
+              switch folder…
             </CfgAct>
           </CfgRow>
           <CfgRow name="enabled" comment="When disabled, Husk ignores this profile: no instructions, no runbooks, no safety rules. The files stay in the repo.">
