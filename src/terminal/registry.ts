@@ -28,6 +28,7 @@ import {
 } from "../ai/terminalContext";
 import { recordFailure, clearFailure, collapseFailure } from "./failureStore";
 import { recordTimelineEvent } from "../timeline/store";
+import { syncWorkspaceRootToCwd } from "../workspace/store";
 import {
   setAiPtyWriter as setAiPtyWriterInput,
   setTerminalLineReader as setTerminalLineReaderInput,
@@ -276,6 +277,9 @@ export async function createSession(
     if (cwd) {
       session.cwd = cwd;
       if (session.active) setActiveTerminalCwd(cwd);
+      /* Workspace root follows the terminal so timeline/explorer/root never
+         drift — local shells only, a remote path is not a local folder. */
+      if (session.active && !session.isRemoteShell) syncWorkspaceRootToCwd(cwd);
       session.callbacks.onCwd?.(cwd);
     }
     return true;
@@ -762,7 +766,10 @@ export function setSessionActive(leafId: number, active: boolean): void {
 
     setFocusTerminalFn(() => session.term.focus());
 
-    if (session.cwd) setActiveTerminalCwd(session.cwd);
+    if (session.cwd) {
+      setActiveTerminalCwd(session.cwd);
+      if (!session.isRemoteShell) syncWorkspaceRootToCwd(session.cwd);
+    }
   }
 }
 

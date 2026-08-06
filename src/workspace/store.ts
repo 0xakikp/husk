@@ -59,3 +59,11 @@ export async function pickWorkspaceFolder(): Promise<string | null> {
   gotoWorkspace(picked);
   return picked;
 }
+
+/** Sync the workspace root to the active terminal's cwd (OSC 7, local shells
+    only — remote shells don't map to local folders). Manual picks still work:
+    gotoWorkspace cd-s the terminal, which reports its new cwd right back here,
+    so both directions converge instead of drifting apart. */
+export function syncWorkspaceRootToCwd(cwd: string): void {
+  if (cwd && cwd !== root) setWorkspaceRoot(cwd);
+}
