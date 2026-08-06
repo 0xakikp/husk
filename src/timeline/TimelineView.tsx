@@ -127,7 +127,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
       <PanelHeader
         icon={Clock01Icon}
         title="Timeline"
-        context={root ? root.split("/").pop() || root : "no workspace"}
+        context={root ? `📂 ${root.split("/").pop() || root}` : "no workspace"}
         status={
           <button
             type="button"
@@ -185,9 +185,9 @@ export function TimelineView({ inline }: { inline?: boolean }) {
       />
 
       <div className="shrink-0 border-b border-border/30 px-2 py-1.5">
-        {/* Segmented control: equal segments, active filled. Labels yield to
-            glyph-only below 280px panel width instead of wrapping or clipping. */}
-        <div className="flex rounded-md border border-border/40 bg-muted/15 p-0.5">
+        {/* Segmented grid: 3×2 when narrow, one row of six from 360px panel
+            width — labels always fully visible, no truncation, no clipping. */}
+        <div className="grid grid-cols-3 gap-0.5 rounded-md border border-border/40 bg-muted/15 p-0.5 @[360px]:grid-cols-6">
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -195,14 +195,14 @@ export function TimelineView({ inline }: { inline?: boolean }) {
               onClick={() => setFilter(f.id)}
               title={f.label}
               className={cn(
-                "flex min-w-0 flex-1 items-center justify-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] transition-colors",
+                "flex min-w-0 items-center justify-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] transition-colors",
                 filter === f.id
                   ? "bg-primary/15 text-primary"
                   : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
               )}
             >
               <span className="shrink-0 text-[10px]">{f.glyph}</span>
-              <span className="hidden truncate @[280px]:inline">{f.label}</span>
+              <span className="truncate">{f.label}</span>
             </button>
           ))}
         </div>
