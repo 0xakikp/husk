@@ -146,14 +146,16 @@ export function TimelineView({ inline }: { inline?: boolean }) {
         </button>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border/30 px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/30 px-2 py-1.5">
         {FILTERS.map((f) => (
           <button
             key={f.id}
             type="button"
             onClick={() => setFilter(f.id)}
             className={cn(
-              "shrink-0 rounded-md px-2 py-0.5 text-[9.5px] transition-colors",
+              /* shrink-1 + wrap: at narrow sidebar widths the row folds to two
+                 lines instead of clipping "Errors" off the right edge. */
+              "min-w-0 shrink rounded-md px-2 py-0.5 text-[9.5px] transition-colors",
               filter === f.id
                 ? "bg-primary/15 text-primary"
                 : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
