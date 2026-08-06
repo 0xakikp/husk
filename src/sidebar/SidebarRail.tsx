@@ -71,7 +71,7 @@ export function SidebarRail({
     <TooltipProvider delayDuration={300}>
       <div
         style={{ height: 40 }}
-        className="flex shrink-0 items-center gap-0.5 px-1"
+        className="flex shrink-0 items-center justify-around px-1"
       >
         {slots.map((slot) => {
           const isActive = slot.kind === "view" && slot.id === view;
@@ -92,9 +92,9 @@ export function SidebarRail({
                     else slot.onTrigger();
                   }}
                   className={cn(
-                    /* Fluid width: items share the rail evenly and shrink when the
-                       sidebar is resized narrow instead of overflowing. */
-                    "group relative inline-flex h-8 min-w-0 max-w-8 flex-1 cursor-pointer items-center justify-center rounded-md outline-none transition-[background-color,color] duration-150",
+                    /* Shrink-only: fixed 32px like before, but allowed to compress
+                       when the sidebar is dragged narrow — never grows with width. */
+                    "group relative inline-flex h-8 w-8 min-w-0 shrink cursor-pointer items-center justify-center rounded-md outline-none transition-[background-color,color] duration-150",
                     "focus-visible:ring-1 focus-visible:ring-[#11c700]/40 focus-visible:ring-offset-0",
                     "disabled:cursor-not-allowed disabled:opacity-40",
                     isActive
