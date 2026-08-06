@@ -42,6 +42,11 @@ export function WorkspacePath() {
           >
             ⚑ Pin as project root
           </button>
+          <div className="ws-bm-help">
+            Bookmarks jump to a folder. A ⚑ project root groups the folder and everything
+            under it into one workspace and one timeline — no git needed. Inside git
+            repos this grouping happens automatically.
+          </div>
           {projectRoots.length > 0 ? (
             <>
               <div className="ws-bm-empty">Project roots</div>

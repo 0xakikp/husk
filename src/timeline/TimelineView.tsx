@@ -123,6 +123,12 @@ export function TimelineView({ inline }: { inline?: boolean }) {
         <span className="min-w-0 flex-1 truncate text-[9.5px] text-muted-foreground/70" title={root ? `Timeline of ${root}` : ""}>
           {root ? `📂 ${root.split("/").pop() || root}` : "no workspace"}
         </span>
+        <span
+          className="shrink-0 cursor-help text-[9.5px] text-muted-foreground/50 hover:text-muted-foreground"
+          title={"How the timeline groups your work:\n⚑ pinned project root (header ★ menu)\n→ git repository root (automatic)\n→ the current folder"}
+        >
+          ⓘ
+        </span>
         <button
           type="button"
           onClick={toggleRecording}
