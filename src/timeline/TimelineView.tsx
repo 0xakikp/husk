@@ -204,7 +204,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
               )}
             >
               <span className="shrink-0 text-[10px]">{f.glyph}</span>
-              <span className="hidden truncate @[300px]:inline">{f.label}</span>
+              <span className="hidden truncate @[320px]:inline">{f.label}</span>
             </button>
           ))}
         </div>

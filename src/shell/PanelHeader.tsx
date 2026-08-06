@@ -35,11 +35,11 @@ export function PanelHeader({
       <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
         <HugeiconsIcon icon={icon} size={11} strokeWidth={1.9} />
       </span>
-      {/* Space priority: context text hides below 300px panel width, the title
-          truncates after that, icons never clip or shrink below full size. */}
-      <span className="min-w-0 truncate text-[11.5px] font-semibold text-foreground">{title}</span>
+      {/* Space priority: context hides below 340px panel width; the title
+          NEVER truncates; icons never clip or shrink below full size. */}
+      <span className="shrink-0 text-[11.5px] font-semibold text-foreground">{title}</span>
       {context ? (
-        <span className="hidden min-w-0 truncate text-[10px] text-muted-foreground/60 @[300px]:block">{context}</span>
+        <span className="hidden min-w-0 truncate text-[10px] text-muted-foreground/60 @[340px]:block">{context}</span>
       ) : null}
       {status || actions ? (
         <div className="ml-auto flex shrink-0 items-center gap-1">
