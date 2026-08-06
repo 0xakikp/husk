@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWorkspaceRoot, gotoWorkspace, pickWorkspaceFolder } from "../workspace/store";
 import { addBookmark, removeBookmark, useBookmarks } from "../workspace/bookmarks";
+import { addProjectRoot, removeProjectRoot, useProjectRoots } from "../workspace/projectRoots";
 
 const base = (p: string) => p.split("/").filter(Boolean).pop() || p;
 
@@ -8,6 +9,7 @@ export function WorkspacePath() {
   const root = useWorkspaceRoot();
   const [open, setOpen] = useState(false);
   const bookmarks = useBookmarks();
+  const projectRoots = useProjectRoots();
 
   return (
     <div className="ws-path">
@@ -29,6 +31,45 @@ export function WorkspacePath() {
           >
             + Bookmark current
           </button>
+          <button
+            type="button"
+            className="ws-bm-add"
+            title="Everything under this folder shares one workspace and one timeline — git or not"
+            onClick={() => {
+              if (root) addProjectRoot(root);
+              setOpen(false);
+            }}
+          >
+            ⚑ Pin as project root
+          </button>
+          {projectRoots.length > 0 ? (
+            <>
+              <div className="ws-bm-empty">Project roots</div>
+              {projectRoots.map((p) => (
+                <div key={p} className="ws-bm-row">
+                  <button
+                    type="button"
+                    className="ws-bm-item"
+                    title={p}
+                    onClick={() => {
+                      gotoWorkspace(p);
+                      setOpen(false);
+                    }}
+                  >
+                    ⚑ {base(p)}
+                  </button>
+                  <button
+                    type="button"
+                    className="ws-bm-del"
+                    aria-label="Unpin project root"
+                    onClick={() => removeProjectRoot(p)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </>
+          ) : null}
           {bookmarks.length === 0 ? (
             <div className="ws-bm-empty">No bookmarks</div>
           ) : (

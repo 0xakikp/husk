@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getActiveTerminalCwd, runInActiveTerminal } from "../ai/terminalContext";
+import { findProjectRoot } from "./projectRoots";
 import { shq } from "../lib/shellQuote";
 
 const LS_KEY = "huskv2.workspaceRoot";
@@ -66,11 +67,16 @@ export async function pickWorkspaceFolder(): Promise<string | null> {
     gotoWorkspace cd-s the terminal, which reports its new cwd right back here,
     so both directions converge instead of drifting apart.
 
-    Git-root keying: inside a repository the root is the repo top-level, so a
-    whole project shares one timeline no matter how deep you cd. Outside repos
-    the folder itself is the root (home, /tmp scratch buckets). */
+    Resolution order: pinned project root (user-declared, git or not) → git
+    top-level → the folder itself (home, /tmp scratch buckets). */
 export function syncWorkspaceRootToCwd(cwd: string): void {
   if (!cwd) return;
+  /* Pinned roots win outright — synchronous, no probe needed. */
+  const pinned = findProjectRoot(cwd);
+  if (pinned) {
+    if (pinned !== root) setWorkspaceRoot(pinned);
+    return;
+  }
   /* Skip the git probe only when this cwd is already resolved AND applied —
      a persisted root that merely equals cwd has not been git-resolved yet. */
   const known = gitRootCache.get(cwd);
