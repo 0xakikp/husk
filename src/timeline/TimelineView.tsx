@@ -9,11 +9,13 @@ import { useWorkspaceRoot } from "../workspace/store";
 import {
   clearWorkspaceTimeline,
   isTimelineRecordingEnabled,
+  listTimelineWorkspaces,
   queryTimeline,
   setTimelineRecordingEnabled,
   subscribeTimeline,
   type TimelineEvent,
   type TimelineEventType,
+  type TimelineWorkspace,
 } from "./store";
 import { toast } from "../toast";
 
@@ -35,6 +37,82 @@ const FILTERS: { id: FilterId; label: string; glyph: string; types: TimelineEven
   { id: "git", label: "Git", glyph: "⌥", types: ["git"] },
   { id: "errors", label: "Errors", glyph: "✕", types: ["command_failed"] },
 ];
+
+const baseName = (p: string) => p.split("/").filter(Boolean).pop() || p;
+
+/** Bucket switcher — peek at another project's timeline without cd-ing there.
+    Lives in the header actions; the folder name yields to an icon under 340px. */
+function FolderSwitch({
+  root,
+  viewRoot,
+  onSelect,
+}: {
+  root: string;
+  viewRoot: string | null;
+  onSelect: (bucket: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [buckets, setBuckets] = useState<TimelineWorkspace[]>([]);
+  const effective = viewRoot ?? root;
+
+  useEffect(() => {
+    if (open) void listTimelineWorkspaces().then(setBuckets).catch(() => setBuckets([]));
+  }, [open]);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title={effective ? `Timeline of ${effective} — switch bucket` : "No workspace"}
+        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9.5px] text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+      >
+        <span className="shrink-0">📂</span>
+        <span className="hidden max-w-24 truncate @[340px]:inline">{effective ? baseName(effective) : "—"}</span>
+        <span className="shrink-0 text-[8px] opacity-60">▾</span>
+      </button>
+      {open ? (
+        <div
+          className="absolute right-0 top-6 z-40 min-w-44 rounded-md border border-border/60 bg-zinc-950 p-1 shadow-lg shadow-black/40"
+          onMouseLeave={() => setOpen(false)}
+        >
+          {viewRoot ? (
+            <button
+              type="button"
+              onClick={() => {
+                onSelect(null);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[10.5px] text-primary transition-colors hover:bg-muted/40"
+            >
+              ← back to current ({baseName(root)})
+            </button>
+          ) : null}
+          {buckets.length === 0 ? (
+            <div className="px-2 py-1.5 text-[10px] text-muted-foreground">No recorded workspaces yet</div>
+          ) : (
+            buckets.map((b) => (
+              <button
+                key={b.workspace_id}
+                type="button"
+                title={b.workspace_id}
+                onClick={() => {
+                  onSelect(b.workspace_id === root ? null : b.workspace_id);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[10.5px] text-foreground/90 transition-colors hover:bg-muted/40"
+              >
+                <span className="min-w-0 flex-1 truncate">{baseName(b.workspace_id)}</span>
+                {b.workspace_id === root ? <span className="shrink-0 text-[8.5px] text-primary">current</span> : null}
+                <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground/60">{b.event_count}</span>
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function dayLabel(ts: number): string {
   const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -72,17 +150,22 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [recording, setRecording] = useState(() => isTimelineRecordingEnabled());
+  /* Folder switcher: peek at another bucket without cd-ing there. null means
+     "follow the current workspace root". */
+  const [viewRoot, setViewRoot] = useState<string | null>(null);
+  const effectiveRoot = viewRoot ?? root;
+  const viewingCurrent = viewRoot === null || viewRoot === root;
 
   const load = useCallback(async () => {
     const types = FILTERS.find((f) => f.id === filter)?.types ?? [];
     try {
-      setEvents(await queryTimeline(types));
+      setEvents(await queryTimeline(types, 30, 200, effectiveRoot));
     } catch (e) {
       console.warn("[timeline] query failed:", e);
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, effectiveRoot]);
 
   useEffect(() => {
     setLoading(true);
@@ -108,8 +191,11 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   };
 
   const clearAll = () => {
-    void clearWorkspaceTimeline()
-      .then(() => toast({ title: "Timeline cleared", message: "Only this workspace was affected.", variant: "success" }))
+    void clearWorkspaceTimeline(effectiveRoot)
+      .then(() => {
+        if (viewRoot && viewRoot !== root) setViewRoot(null);
+        toast({ title: "Timeline cleared", message: "Only this workspace was affected.", variant: "success" });
+      })
       .catch((e) => toast({ title: "Could not clear timeline", message: String(e), variant: "error" }));
   };
 
@@ -127,33 +213,37 @@ export function TimelineView({ inline }: { inline?: boolean }) {
       <PanelHeader
         icon={Clock01Icon}
         title="Timeline"
-        context={root ? `📂 ${root.split("/").pop() || root}` : "no workspace"}
         status={
-          <button
-            type="button"
-            onClick={toggleRecording}
-            title={recording ? "Stop recording this workspace" : "Resume recording this workspace"}
-            className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-muted/40"
-          >
-            {recording ? (
-              <>
-                {/* Camera-style REC: pulsing red halo + solid core. */}
-                <span className="relative flex size-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                  <span className="relative inline-flex size-1.5 rounded-full bg-red-500" />
-                </span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-red-400">rec</span>
-              </>
-            ) : (
-              <>
-                <span className="inline-flex size-1.5 rounded-full border border-muted-foreground/60" />
-                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">off</span>
-              </>
-            )}
-          </button>
+          viewingCurrent ? (
+            <button
+              type="button"
+              onClick={toggleRecording}
+              title={recording ? "Stop recording this workspace" : "Resume recording this workspace"}
+              className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-muted/40"
+            >
+              {recording ? (
+                <>
+                  {/* Camera-style REC: pulsing red halo + solid core. */}
+                  <span className="relative flex size-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex size-1.5 rounded-full bg-red-500" />
+                  </span>
+                  <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-red-400">rec</span>
+                </>
+              ) : (
+                <>
+                  <span className="inline-flex size-1.5 rounded-full border border-muted-foreground/60" />
+                  <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">off</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <span className="px-1.5 text-[9px] uppercase tracking-[0.14em] text-muted-foreground/60">viewing</span>
+          )
         }
         actions={
           <>
+            <FolderSwitch root={root} viewRoot={viewRoot} onSelect={setViewRoot} />
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>

@@ -190,3 +190,41 @@ pub fn timeline_clear(
         Ok(())
     })
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TimelineWorkspace {
+    pub workspace_id: String,
+    pub event_count: i64,
+    pub last_ts: i64,
+}
+
+#[tauri::command]
+pub fn timeline_workspaces(
+    state: tauri::State<'_, TimelineState>,
+) -> Result<Vec<TimelineWorkspace>, String> {
+    /* Every bucket that has events, most recent first — the header folder
+    switcher lets the user peek at another project's timeline without
+    cd-ing there. */
+    with_conn(&state, |conn| {
+        let mut stmt = conn
+            .prepare(
+                "SELECT workspace_id, COUNT(*) AS n, MAX(ts) AS last
+                 FROM events GROUP BY workspace_id ORDER BY last DESC",
+            )
+            .map_err(|e| format!("timeline workspaces failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(TimelineWorkspace {
+                    workspace_id: row.get(0)?,
+                    event_count: row.get(1)?,
+                    last_ts: row.get(2)?,
+                })
+            })
+            .map_err(|e| format!("timeline workspaces failed: {e}"))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| format!("timeline workspace row failed: {e}"))?);
+        }
+        Ok(out)
+    })
+}

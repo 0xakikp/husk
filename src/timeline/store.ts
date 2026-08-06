@@ -82,8 +82,8 @@ export async function queryTimeline(
   eventTypes: TimelineEventType[] = [],
   sinceDays = 30,
   limit = 200,
+  root = getWorkspaceRoot(),
 ): Promise<TimelineEvent[]> {
-  const root = getWorkspaceRoot();
   if (!root) return [];
   return invoke<TimelineEvent[]>("timeline_query", {
     workspaceId: root,
@@ -93,11 +93,24 @@ export async function queryTimeline(
   });
 }
 
-export async function clearWorkspaceTimeline(): Promise<void> {
-  const root = getWorkspaceRoot();
+export async function clearWorkspaceTimeline(root = getWorkspaceRoot()): Promise<void> {
   if (!root) return;
   await invoke("timeline_clear", { workspaceId: root });
   emit();
+}
+
+/* ── Buckets ─────────────────────────────────────────────────────────────── */
+
+export type TimelineWorkspace = {
+  workspace_id: string;
+  event_count: number;
+  last_ts: number;
+};
+
+/** Every bucket that has events, most recent first — powers the header
+    folder switcher (peek at another project's timeline without cd-ing). */
+export function listTimelineWorkspaces(): Promise<TimelineWorkspace[]> {
+  return invoke<TimelineWorkspace[]>("timeline_workspaces");
 }
 
 /* ── Change notification (recording + clears refresh open views) ─────────── */
