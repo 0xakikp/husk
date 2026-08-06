@@ -185,11 +185,13 @@ export function ProjectFile() {
   return (
     <ConfigEditor>
       <CfgSection name="project" />
-      <CfgComment>This is what Husk knows about the open folder — taught once, remembered forever.</CfgComment>
-      <CfgComment>Instructions are attached to every AI request here, runbooks fire from ⌘K, and</CfgComment>
-      <CfgComment>environment labels drive safety warnings. It all lives at .husk/ inside the repo:</CfgComment>
-      <CfgComment>commit it to share with your team. Personal settings stay in Husk, and Git is</CfgComment>
-      <CfgComment>never touched unless you do it yourself.</CfgComment>
+      <CfgComment>A "project" is one folder you work in — a repo, a client site, whatever.</CfgComment>
+      <CfgComment>Without a profile, every AI request here starts from zero: it doesn't know you</CfgComment>
+      <CfgComment>use pnpm not npm, your test command, or which files to never touch. With it,</CfgComment>
+      <CfgComment>this folder has a .husk/ directory — taught once, remembered forever: instructions</CfgComment>
+      <CfgComment>attached to every AI request, runbooks from ⌘K, environment labels for safety</CfgComment>
+      <CfgComment>warnings. Commit .husk/ to share it with your team. Personal settings stay in</CfgComment>
+      <CfgComment>Husk, and Git is never touched unless you do it yourself.</CfgComment>
       <CfgBlank />
 
       <ProjectsSection workspace={workspace} refreshKey={`${profile?.exists}:${profile?.enabled}`} />
