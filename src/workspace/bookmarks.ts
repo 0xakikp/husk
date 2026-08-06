@@ -2,8 +2,7 @@ import { useSyncExternalStore } from "react";
 
 /**
  * Shared workspace bookmarks — folders the user wants to jump back to.
- * Backed by localStorage, subscribed by the header (WorkspacePath) and
- * Settings → Project so both always show the same list.
+ * Backed by localStorage, subscribed by the header (WorkspacePath).
  */
 
 const LS_KEY = "huskv2.bookmarks";

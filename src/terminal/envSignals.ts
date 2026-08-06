@@ -43,14 +43,6 @@ export function isProtectedTarget(value: string | null): boolean {
   return value != null && PROTECTED_RE.test(value);
 }
 
-/** Supports exact names and simple "release/*" style globs. */
-export function matchesPattern(pattern: string, value: string): boolean {
-  if (pattern === value) return true;
-  if (!pattern.includes("*")) return false;
-  const re = new RegExp(`^${pattern.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
-  return re.test(value);
-}
-
 export type ProtectedKind = "kubernetes" | "aws" | "docker" | "git";
 
 /**
