@@ -1,15 +1,43 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Add01Icon,
+  ArrowDown01Icon,
+  ArrowUp01Icon,
+  Cancel01Icon,
+  ClipboardPasteIcon,
+  Copy01Icon,
+  Delete02Icon,
+  Download01Icon,
+  Edit02Icon,
+  File02Icon,
+  Folder01Icon,
+  FolderDownloadIcon,
+  FolderUploadIcon,
+  GridViewIcon,
+  LinkSquare01Icon,
+  ListViewIcon,
+  Move01Icon,
+  MoreHorizontalIcon,
+  Refresh01Icon,
+  Upload01Icon,
+} from "@hugeicons/core-free-icons";
 import {
   sftpConnect,
+  sftpCopy,
+  sftpDelete,
+  sftpDeleteRecursive,
   sftpDisconnect,
-  sftpListDir,
   sftpDownload,
-  sftpUpload,
+  sftpDownloadDir,
+  sftpListDir,
   sftpMkdir,
   sftpRename,
-  sftpDelete,
+  sftpUpload,
+  sftpUploadDir,
   type SftpEntry,
 } from "../remote/sftpApi";
 import { cn } from "@/lib/utils";
@@ -31,6 +59,120 @@ interface TransferProgress {
   done?: boolean;
 }
 
+type RemoteClipboard = {
+  entry: SftpEntry;
+  operation: "copy" | "move";
+};
+
+type ContextMenuState = {
+  x: number;
+  y: number;
+  entry?: SftpEntry;
+};
+
+function remoteJoin(parent: string, child: string): string {
+  if (parent === "/") return `/${child}`;
+  return `${parent.replace(/\/+$/, "")}/${child}`;
+}
+
+function remoteParent(path: string): string {
+  if (path === "." || path === "/") return path;
+  const trimmed = path.replace(/\/+$/, "");
+  const parent = trimmed.slice(0, Math.max(0, trimmed.lastIndexOf("/")));
+  if (!parent || parent === ".") return ".";
+  return parent;
+}
+
+function oneDialogPath(value: string | string[] | null): string | null {
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatDate(timestamp?: number): string {
+  if (!timestamp) return "—";
+  const date = new Date(timestamp * 1000);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return `Today, ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function ToolbarButton({
+  label,
+  icon,
+  onClick,
+  danger = false,
+  active = false,
+}: {
+  label: string;
+  icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
+  onClick: () => void;
+  danger?: boolean;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        active && "bg-primary/12 text-primary",
+        danger && "hover:bg-red-500/10 hover:text-red-400",
+      )}
+    >
+      <HugeiconsIcon icon={icon} size={14} strokeWidth={1.7} />
+    </button>
+  );
+}
+
+function ContextAction({
+  children,
+  icon,
+  onClick,
+  danger = false,
+  disabled = false,
+}: {
+  children: ReactNode;
+  icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-mono text-[10.5px] text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40",
+        danger && "text-red-400 hover:bg-red-500/10",
+      )}
+    >
+      <HugeiconsIcon icon={icon} size={13} strokeWidth={1.65} className="shrink-0 opacity-75" />
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+    </button>
+  );
+}
+
+function ContextDivider() {
+  return <div className="my-1 h-px bg-border/60" />;
+}
+
+/** A details-first SFTP browser. It intentionally behaves like a file manager:
+    click selects, double-click opens a folder, and all destructive work is
+    confirmed. Transfers use the Tauri SFTP backend rather than shelling out. */
 export function SftpView({ host, onClose }: SftpViewProps) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -38,511 +180,527 @@ export function SftpView({ host, onClose }: SftpViewProps) {
   const [entries, setEntries] = useState<SftpEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry?: SftpEntry } | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [transfers, setTransfers] = useState<TransferProgress[]>([]);
+  const [clipboard, setClipboard] = useState<RemoteClipboard | null>(null);
   const [renameTarget, setRenameTarget] = useState<SftpEntry | null>(null);
   const [newName, setNewName] = useState("");
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [mkdirName, setMkdirName] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "details">("list");
+  const [deleteTarget, setDeleteTarget] = useState<SftpEntry | null>(null);
+  const [viewMode, setViewMode] = useState<"details" | "compact">("details");
+
+  const selectedEntry = useMemo(
+    () => entries.find((entry) => entry.path === selectedPath) ?? null,
+    [entries, selectedPath],
+  );
 
   const load = useCallback(
     async (path: string) => {
       setLoading(true);
       try {
-        // Normalize path: remove trailing slashes, handle empty paths
         const normalized = path.replace(/\/+$/, "") || "/";
         const list = await sftpListDir(host, normalized);
         setEntries(list);
         setCwd(normalized);
-      } catch (e) {
-        toast({ title: String(e), variant: "error" });
+        setSelectedPath(null);
+      } catch (error) {
+        toast({ title: "Could not list remote folder", message: String(error), variant: "error" });
       } finally {
         setLoading(false);
       }
     },
-    [host]
+    [host],
   );
 
   useEffect(() => {
     let mounted = true;
-    let progressUnlisten: (() => void) | null = null;
+    let progressUnlisten: (() => void) | undefined;
 
-    // Listen for transfer progress events
-    listen<TransferProgress>(`sftp://progress/${host}`, (e) => {
+    void listen<TransferProgress>(`sftp://progress/${host}`, (event) => {
       if (!mounted) return;
-      const data = e.payload;
-      setTransfers((prev) => {
-        const existing = prev.findIndex((t) => t.path === data.path && t.type === data.type);
-        if (existing >= 0) {
-          const next = [...prev];
-          if (data.done) {
-            next.splice(existing, 1);
-          } else {
-            next[existing] = data;
-          }
-          return next;
-        }
-        return data.done ? prev : [...prev, data];
+      const data = event.payload;
+      setTransfers((previous) => {
+        const index = previous.findIndex((transfer) => transfer.path === data.path && transfer.type === data.type);
+        if (data.done) return index < 0 ? previous : previous.filter((_, itemIndex) => itemIndex !== index);
+        if (index < 0) return [...previous, data];
+        const next = [...previous];
+        next[index] = data;
+        return next;
       });
     }).then((unlisten) => {
       if (mounted) progressUnlisten = unlisten;
+      else unlisten();
     });
 
-    sftpConnect(host)
-      .then(() => {
+    void sftpConnect(host)
+      .then(async () => {
         if (!mounted) return;
         setConnected(true);
         markHostConnected(host);
-        return load(".");
+        await load(".");
       })
-      .catch((e) => {
+      .catch((error) => {
         if (!mounted) return;
-        toast({ title: `SFTP connect failed: ${e}`, variant: "error" });
+        toast({ title: "SFTP connect failed", message: String(error), variant: "error" });
         onCloseRef.current();
       });
 
     return () => {
       mounted = false;
       progressUnlisten?.();
-      sftpDisconnect(host).catch(() => {});
+      void sftpDisconnect(host);
       markHostDisconnected(host);
     };
   }, [host, load]);
 
+  const openFolder = (entry: SftpEntry) => {
+    if (entry.is_dir) void load(entry.path);
+  };
+
   const handleDownload = async (entry: SftpEntry) => {
     try {
       const home = await getHomeDir();
-      // Show save dialog with default filename in Downloads
-      const localPath = await save({
-        defaultPath: `${home}/Downloads/${entry.name}`,
-      });
-      if (!localPath) {
-        setContextMenu(null);
-        return; // User cancelled
+      if (entry.is_dir) {
+        const destination = oneDialogPath(await open({
+          title: `Download ${entry.name} to…`,
+          directory: true,
+          defaultPath: `${home}/Downloads`,
+        }));
+        if (!destination) return;
+        await sftpDownloadDir(host, entry.path, destination);
+        toast({ title: `Downloaded ${entry.name}`, message: `Saved folder in ${destination}`, variant: "success" });
+      } else {
+        const destination = await save({
+          title: `Download ${entry.name}`,
+          defaultPath: `${home}/Downloads/${entry.name}`,
+        });
+        if (!destination) return;
+        await sftpDownload(host, entry.path, destination);
+        toast({ title: `Downloaded ${entry.name}`, message: `Saved to ${destination}`, variant: "success" });
       }
-      await sftpDownload(host, entry.path, localPath);
-      toast({
-        title: `Downloaded ${entry.name}`,
-        message: `Saved to ${localPath}`,
-        variant: "info",
-      });
-    } catch (e) {
-      toast({ title: String(e), variant: "error" });
+    } catch (error) {
+      toast({ title: "Download failed", message: String(error), variant: "error" });
+    } finally {
+      setContextMenu(null);
     }
-    setContextMenu(null);
   };
 
-  const handleUpload = async () => {
+  const confirmOverwrite = (name: string): boolean => {
+    if (!entries.some((entry) => entry.name === name)) return true;
+    return window.confirm(`“${name}” already exists in this remote folder. Replace it?`);
+  };
+
+  const handleUploadFiles = async () => {
     try {
       const home = await getHomeDir();
-      // Show open dialog to pick file(s)
-      const selected = await open({
-        multiple: true,
-        defaultPath: home,
-      });
-      if (!selected) return; // User cancelled
-
-      const files = Array.isArray(selected) ? selected : [selected];
-      for (const filePath of files) {
-        const fileName = filePath.split("/").pop() || filePath;
-        const remotePath = cwd === "/" ? `/${fileName}` : `${cwd}/${fileName}`;
-        await sftpUpload(host, filePath, remotePath);
+      const picked = await open({ title: "Upload files", multiple: true, defaultPath: home });
+      if (!picked) return;
+      const files = Array.isArray(picked) ? picked : [picked];
+      for (const localPath of files) {
+        const fileName = localPath.split(/[\\/]/).pop() || localPath;
+        if (!confirmOverwrite(fileName)) continue;
+        await sftpUpload(host, localPath, remoteJoin(cwd, fileName));
       }
-      toast({
-        title: `Uploaded ${files.length} file(s)`,
-        message: `To ${cwd}`,
-        variant: "info",
-      });
-      load(cwd);
-    } catch (e) {
-      toast({ title: String(e), variant: "error" });
+      toast({ title: `Uploaded ${files.length} file${files.length === 1 ? "" : "s"}`, message: `To ${cwd}`, variant: "success" });
+      await load(cwd);
+    } catch (error) {
+      toast({ title: "Upload failed", message: String(error), variant: "error" });
+    } finally {
+      setContextMenu(null);
     }
   };
 
-  const handleDelete = async (entry: SftpEntry) => {
+  const handleUploadFolder = async () => {
     try {
-      await sftpDelete(host, entry.path, entry.is_dir);
-      toast({ title: `Deleted ${entry.name}`, variant: "info" });
-      load(cwd);
-    } catch (e) {
-      toast({ title: String(e), variant: "error" });
+      const home = await getHomeDir();
+      const localPath = oneDialogPath(await open({
+        title: "Upload folder",
+        directory: true,
+        recursive: true,
+        defaultPath: home,
+      }));
+      if (!localPath) return;
+      const name = localPath.split(/[\\/]/).filter(Boolean).pop() || localPath;
+      if (!confirmOverwrite(name)) return;
+      await sftpUploadDir(host, localPath, cwd);
+      toast({ title: `Uploaded ${name}`, message: `To ${cwd}`, variant: "success" });
+      await load(cwd);
+    } catch (error) {
+      toast({ title: "Folder upload failed", message: String(error), variant: "error" });
+    } finally {
+      setContextMenu(null);
     }
+  };
+
+  const queueClipboard = (entry: SftpEntry, operation: RemoteClipboard["operation"]) => {
+    setClipboard({ entry, operation });
     setContextMenu(null);
+    toast({
+      title: operation === "copy" ? `Copied ${entry.name}` : `Ready to move ${entry.name}`,
+      message: "Open a remote folder and choose Paste.",
+      variant: "info",
+    });
+  };
+
+  const pasteClipboard = async () => {
+    if (!clipboard) return;
+    const destination = remoteJoin(cwd, clipboard.entry.name);
+    if (destination === clipboard.entry.path) {
+      toast({ title: "Choose a different destination folder", variant: "info" });
+      return;
+    }
+    if (!confirmOverwrite(clipboard.entry.name)) return;
+    try {
+      if (clipboard.operation === "move") {
+        await sftpRename(host, clipboard.entry.path, destination);
+        setClipboard(null);
+        toast({ title: `Moved ${clipboard.entry.name}`, message: `To ${cwd}`, variant: "success" });
+      } else {
+        await sftpCopy(host, clipboard.entry.path, destination);
+        toast({ title: `Copied ${clipboard.entry.name}`, message: `To ${cwd}`, variant: "success" });
+      }
+      await load(cwd);
+    } catch (error) {
+      toast({ title: clipboard.operation === "move" ? "Move failed" : "Copy failed", message: String(error), variant: "error" });
+    } finally {
+      setContextMenu(null);
+    }
   };
 
   const handleRename = async () => {
-    if (!renameTarget || !newName) return;
+    const nextName = newName.trim();
+    if (!renameTarget || !nextName) return;
+    if (/[\\/]/.test(nextName) || nextName === "." || nextName === "..") {
+      toast({ title: "Enter a valid item name", message: "Names cannot be . , .. , or contain a path separator.", variant: "error" });
+      return;
+    }
     try {
-      const to = `${cwd}/${newName}`;
-      await sftpRename(host, renameTarget.path, to);
-      toast({ title: `Renamed to ${newName}`, variant: "info" });
+      await sftpRename(host, renameTarget.path, remoteJoin(remoteParent(renameTarget.path), nextName));
+      toast({ title: `Renamed to ${nextName}`, variant: "success" });
       setRenameTarget(null);
       setNewName("");
-      load(cwd);
-    } catch (e) {
-      toast({ title: String(e), variant: "error" });
+      await load(cwd);
+    } catch (error) {
+      toast({ title: "Rename failed", message: String(error), variant: "error" });
     }
   };
 
   const handleMkdir = async () => {
-    if (!mkdirName) return;
+    const name = mkdirName.trim();
+    if (!name) return;
+    if (/[\\/]/.test(name) || name === "." || name === "..") {
+      toast({ title: "Enter a valid folder name", message: "Names cannot be . , .. , or contain a path separator.", variant: "error" });
+      return;
+    }
     try {
-      const path = cwd === "." ? mkdirName : `${cwd}/${mkdirName}`;
-      await sftpMkdir(host, path);
-      toast({ title: `Created ${mkdirName}`, variant: "info" });
+      await sftpMkdir(host, remoteJoin(cwd, name));
+      toast({ title: `Created ${name}`, variant: "success" });
       setMkdirOpen(false);
       setMkdirName("");
-      load(cwd);
-    } catch (e) {
-      toast({ title: String(e), variant: "error" });
+      await load(cwd);
+    } catch (error) {
+      toast({ title: "Could not create folder", message: String(error), variant: "error" });
     }
   };
 
-  const breadcrumbs = cwd === "." ? ["~"] : cwd.split("/").filter(Boolean);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      if (deleteTarget.is_dir) await sftpDeleteRecursive(host, deleteTarget.path);
+      else await sftpDelete(host, deleteTarget.path);
+      toast({ title: `Deleted ${deleteTarget.name}`, variant: "success" });
+      setDeleteTarget(null);
+      await load(cwd);
+    } catch (error) {
+      toast({ title: "Delete failed", message: String(error), variant: "error" });
+    }
+  };
+
+  const breadcrumbParts = cwd === "." || cwd === "/" ? [] : cwd.replace(/^\.\//, "").split("/").filter(Boolean);
+  const breadcrumbBase = cwd.startsWith("/") ? "/" : ".";
+
+  const showContextMenu = (event: React.MouseEvent, entry?: SftpEntry) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (entry) setSelectedPath(entry.path);
+    setContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 208),
+      y: Math.min(event.clientY, window.innerHeight - 300),
+      entry,
+    });
+  };
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xs font-medium text-muted-foreground truncate">{host}</span>
-          <span className={cn("w-1.5 h-1.5 rounded-full", connected ? "bg-green-500" : "bg-red-500")} />
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background font-mono text-foreground">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-muted/15 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn("size-1.5 shrink-0 rounded-full", connected ? "bg-emerald-400 shadow-[0_0_8px_rgba(74,222,128,.7)]" : "bg-red-400")} />
+          <span className="truncate text-[11.5px] font-semibold text-foreground">{host}</span>
+          <span className="hidden text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground/65 sm:inline">SFTP</span>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-            onClick={handleUpload}
-            title="Upload"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-            onClick={() => setMkdirOpen(true)}
-            title="New Folder"
-          >
-            +
-          </button>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              className={cn(
-                "p-1 rounded text-[11px] w-6 h-6 flex items-center justify-center",
-                viewMode === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
-              onClick={() => setViewMode("list")}
-              title="List view"
-            >
-              ☰
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "p-1 rounded text-[11px] w-6 h-6 flex items-center justify-center",
-                viewMode === "details" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
-              onClick={() => setViewMode("details")}
-              title="Details view"
-            >
-              ☰☰
-            </button>
-          </div>
-          <button
-            type="button"
-            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-red-500"
+        <div className="flex shrink-0 items-center gap-0.5">
+          <ToolbarButton label="Upload files" icon={Upload01Icon} onClick={() => void handleUploadFiles()} />
+          <ToolbarButton label="Upload folder" icon={FolderUploadIcon} onClick={() => void handleUploadFolder()} />
+          <ToolbarButton label="New remote folder" icon={Add01Icon} onClick={() => setMkdirOpen(true)} />
+          <ToolbarButton label="Refresh" icon={Refresh01Icon} onClick={() => void load(cwd)} />
+          <span className="mx-0.5 h-4 w-px bg-border/65" />
+          <ToolbarButton label="Details view" icon={ListViewIcon} active={viewMode === "details"} onClick={() => setViewMode("details")} />
+          <ToolbarButton label="Compact view" icon={GridViewIcon} active={viewMode === "compact"} onClick={() => setViewMode("compact")} />
+          <ToolbarButton
+            label="Disconnect SFTP"
+            icon={Cancel01Icon}
+            danger
             onClick={() => {
-              sftpDisconnect(host).catch(() => {});
+              void sftpDisconnect(host);
               markHostDisconnected(host);
               onCloseRef.current();
             }}
-            title="Disconnect"
-          >
-            ⏻
-          </button>
+          />
         </div>
-      </div>
+      </header>
 
-      {/* Breadcrumbs */}
-      <div className="flex items-center gap-1 px-3 py-1.5 text-[11px] border-b border-border/50 overflow-x-auto">
-        <button
-          type="button"
-          className="hover:text-foreground text-muted-foreground transition-colors mr-1"
-          onClick={() => load("/")}
-          title="Root"
-        >
-          /
-        </button>
-        {cwd !== "/" && (
+      <nav className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border/50 px-3 py-1.5 text-[10px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Remote path">
+        <button type="button" onClick={() => void load(".")} className="shrink-0 rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">~</button>
+        {cwd !== "." && (
+          <>
+            <span className="text-muted-foreground/45">/</span>
+            <button type="button" onClick={() => void load("/")} className="shrink-0 rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">root</button>
+          </>
+        )}
+        {breadcrumbParts.map((part, index) => {
+          const path = breadcrumbBase === "/"
+            ? `/${breadcrumbParts.slice(0, index + 1).join("/")}`
+            : `./${breadcrumbParts.slice(0, index + 1).join("/")}`;
+          return (
+            <span key={`${path}-${part}`} className="flex shrink-0 items-center gap-1">
+              <span className="text-muted-foreground/45">/</span>
+              <button type="button" onClick={() => void load(path)} className="rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">{part}</button>
+            </span>
+          );
+        })}
+        {cwd !== "." && (
           <button
             type="button"
-            className="hover:text-foreground text-muted-foreground transition-colors mr-1"
-            onClick={() => {
-              const parent = cwd.split("/").filter(Boolean).slice(0, -1).join("/") || "/";
-              load(parent);
-            }}
-            title="Parent"
+            title="Parent folder"
+            onClick={() => void load(remoteParent(cwd))}
+            className="ml-auto shrink-0 rounded px-1 py-0.5 text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
           >
             ..
           </button>
         )}
-        {breadcrumbs.map((crumb, i) => (
-          <span key={i} className="flex items-center gap-1">
-            {i > 0 && <span className="text-muted-foreground">/</span>}
-            <button
-              type="button"
-              className="hover:text-foreground text-muted-foreground transition-colors"
-              onClick={() => {
-                const path = breadcrumbs.slice(0, i + 1).join("/");
-                load(path || ".");
-              }}
-            >
-              {crumb}
-            </button>
-          </span>
-        ))}
-      </div>
+      </nav>
 
-      {/* File list */}
-      <div className="flex-1 overflow-y-auto">
+      <main
+        className="min-h-0 flex-1 overflow-auto"
+        onContextMenu={(event) => {
+          if ((event.target as HTMLElement).closest("[data-sftp-entry]")) return;
+          showContextMenu(event);
+        }}
+      >
         {loading ? (
-          <div className="p-4 text-xs text-muted-foreground">Loading…</div>
+          <div className="flex h-36 items-center justify-center gap-2 text-[11px] text-muted-foreground"><span className="size-1.5 animate-pulse rounded-full bg-primary" />Loading remote folder…</div>
         ) : entries.length === 0 ? (
-          <div className="p-4 text-xs text-muted-foreground">Empty directory</div>
+          <div className="flex h-36 flex-col items-center justify-center gap-2 text-center">
+            <HugeiconsIcon icon={Folder01Icon} size={20} className="text-muted-foreground/45" />
+            <p className="m-0 text-[11px] text-muted-foreground">This remote folder is empty.</p>
+            <button type="button" onClick={() => setMkdirOpen(true)} className="text-[10px] text-primary hover:underline">[ create folder ]</button>
+          </div>
         ) : viewMode === "details" ? (
-          /* Details view */
-          <table className="w-full text-[12px]">
-            <thead className="sticky top-0 bg-background border-b border-border">
-              <tr className="text-muted-foreground text-[10px] uppercase">
-                <th className="text-left px-3 py-1 font-medium">Name</th>
-                <th className="text-right px-3 py-1 font-medium w-24">Size</th>
-                <th className="text-left px-3 py-1 font-medium w-32">Modified</th>
+          <table className="w-full min-w-[620px] table-fixed border-collapse text-[11px]">
+            <thead className="sticky top-0 z-10 bg-background/95 text-left text-[9px] uppercase tracking-[0.11em] text-muted-foreground backdrop-blur">
+              <tr className="border-b border-border/70">
+                <th className="w-[48%] px-3 py-2 font-medium">Name</th>
+                <th className="w-24 px-3 py-2 font-medium">Type</th>
+                <th className="w-24 px-3 py-2 text-right font-medium">Size</th>
+                <th className="w-40 px-3 py-2 font-medium">Modified</th>
+                <th className="w-9 px-1 py-2" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
-                <tr
-                  key={entry.path}
-                  className={cn(
-                    "cursor-pointer hover:bg-accent/50 border-b border-border/30",
-                    selected.has(entry.path) && "bg-accent"
-                  )}
-                  onClick={() => {
-                    if (entry.is_dir) {
-                      load(entry.path);
-                    } else {
-                      setSelected((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(entry.path)) next.delete(entry.path);
-                        else next.add(entry.path);
-                        return next;
-                      });
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setContextMenu({ x: e.clientX, y: e.clientY, entry });
-                  }}
-                >
-                  <td className="px-3 py-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">{entry.is_dir ? "📁" : "📄"}</span>
-                      <span className="truncate">{entry.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5 text-right text-muted-foreground">
-                    {entry.is_dir ? "—" : formatSize(entry.size)}
-                  </td>
-                  <td className="px-3 py-1.5 text-muted-foreground text-[10px]">
-                    {entry.modified ? formatDate(entry.modified) : "—"}
-                  </td>
-                </tr>
-              ))}
+              {entries.map((entry) => {
+                const isSelected = selectedPath === entry.path;
+                return (
+                  <tr
+                    key={entry.path}
+                    data-sftp-entry
+                    tabIndex={0}
+                    className={cn("group cursor-default border-b border-border/35 outline-none transition-colors hover:bg-muted/55 focus-visible:bg-primary/10", isSelected && "bg-primary/10 shadow-[inset_2px_0_0_var(--primary)]")}
+                    onClick={() => setSelectedPath(entry.path)}
+                    onDoubleClick={() => openFolder(entry)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") openFolder(entry);
+                      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                        event.preventDefault();
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        setContextMenu({ x: Math.min(rect.left + 44, window.innerWidth - 208), y: Math.min(rect.bottom, window.innerHeight - 300), entry });
+                      }
+                    }}
+                    onContextMenu={(event) => showContextMenu(event, entry)}
+                  >
+                    <td className="px-3 py-1.5">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <HugeiconsIcon icon={entry.is_dir ? Folder01Icon : File02Icon} size={14} strokeWidth={1.6} className={cn("shrink-0", entry.is_dir ? "text-primary" : "text-muted-foreground")} />
+                        <span className="truncate font-medium text-foreground">{entry.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5 text-[10px] text-muted-foreground">{entry.is_dir ? "Folder" : "File"}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{entry.is_dir ? "—" : formatSize(entry.size)}</td>
+                    <td className="px-3 py-1.5 tabular-nums text-[10px] text-muted-foreground">{formatDate(entry.modified)}</td>
+                    <td className="px-1 py-1">
+                      <button
+                        type="button"
+                        title={`Actions for ${entry.name}`}
+                        aria-label={`Actions for ${entry.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setSelectedPath(entry.path);
+                          setContextMenu({ x: Math.min(rect.right - 188, window.innerWidth - 208), y: Math.min(rect.bottom + 2, window.innerHeight - 300), entry });
+                        }}
+                        className="inline-flex size-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.7} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : (
-          /* List view (default) */
-          entries.map((entry) => (
-            <div
-              key={entry.path}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 text-[12px] cursor-pointer hover:bg-accent/50",
-                selected.has(entry.path) && "bg-accent"
-              )}
-              onClick={() => {
-                if (entry.is_dir) {
-                  load(entry.path);
-                } else {
-                  setSelected((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(entry.path)) next.delete(entry.path);
-                    else next.add(entry.path);
-                    return next;
-                  });
-                }
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setContextMenu({ x: e.clientX, y: e.clientY, entry });
-              }}
-            >
-              <span className="text-muted-foreground w-4">
-                {entry.is_dir ? "📁" : "📄"}
-              </span>
-              <span className="flex-1 truncate">{entry.name}</span>
-              <span className="text-muted-foreground text-[10px]">
-                {entry.is_dir ? "—" : formatSize(entry.size)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Context menu */}
-      {contextMenu && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setContextMenu(null)}
-          />
-          <div
-            className="fixed z-50 min-w-[140px] rounded-lg border border-border/60 bg-popover shadow-lg py-1"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-          >
-            {contextMenu.entry && !contextMenu.entry.is_dir && (
-              <button
-                type="button"
-                className="w-full text-left px-2.5 py-1 text-[12px] hover:bg-accent"
-                onClick={() => contextMenu.entry && handleDownload(contextMenu.entry)}
-              >
-                Download
-              </button>
-            )}
-            <button
-              type="button"
-              className="w-full text-left px-2.5 py-1 text-[12px] hover:bg-accent"
-              onClick={() => {
-                if (contextMenu.entry) {
-                  setRenameTarget(contextMenu.entry);
-                  setNewName(contextMenu.entry.name);
-                }
-                setContextMenu(null);
-              }}
-            >
-              Rename
-            </button>
-            <button
-              type="button"
-              className="w-full text-left px-2.5 py-1 text-[12px] hover:bg-accent text-red-500"
-              onClick={() => contextMenu.entry && handleDelete(contextMenu.entry)}
-            >
-              Delete
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Transfer progress */}
-      {transfers.length > 0 && (
-        <div className="absolute inset-x-0 bottom-0 bg-popover border-t border-border p-2 space-y-1.5 max-h-32 overflow-y-auto">
-          {transfers.map((t) => (
-            <div key={`${t.type}-${t.path}`} className="flex items-center gap-2 text-[11px]">
-              <span className="text-muted-foreground w-16 shrink-0">
-                {t.type === "download" ? "↓ Download" : "↑ Upload"}
-              </span>
-              <span className="flex-1 truncate text-foreground">{t.path.split("/").pop()}</span>
-              <span className="text-muted-foreground w-12 text-right shrink-0">{t.progress}%</span>
-              <div className="w-16 h-1 bg-muted rounded-full overflow-hidden shrink-0">
+          <div className="py-1">
+            {entries.map((entry) => {
+              const isSelected = selectedPath === entry.path;
+              return (
                 <div
-                  className="h-full bg-primary transition-all duration-200"
-                  style={{ width: `${t.progress}%` }}
-                />
-              </div>
+                  key={entry.path}
+                  role="button"
+                  tabIndex={0}
+                  data-sftp-entry
+                  onClick={() => setSelectedPath(entry.path)}
+                  onDoubleClick={() => openFolder(entry)}
+                  onContextMenu={(event) => showContextMenu(event, entry)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") openFolder(entry);
+                    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                      event.preventDefault();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setContextMenu({ x: Math.min(rect.left + 44, window.innerWidth - 208), y: Math.min(rect.bottom, window.innerHeight - 300), entry });
+                    }
+                  }}
+                  className={cn("group flex w-full cursor-default items-center gap-2 border-l-2 border-transparent px-3 py-1.5 text-left text-[11px] outline-none transition-colors hover:bg-muted/55 focus-visible:bg-primary/10", isSelected && "border-primary bg-primary/10")}
+                >
+                  <HugeiconsIcon icon={entry.is_dir ? Folder01Icon : File02Icon} size={14} strokeWidth={1.6} className={cn("shrink-0", entry.is_dir ? "text-primary" : "text-muted-foreground")} />
+                  <span className="min-w-0 flex-1 truncate text-foreground">{entry.name}</span>
+                  <span className="shrink-0 tabular-nums text-[9.5px] text-muted-foreground">{entry.is_dir ? "folder" : formatSize(entry.size)}</span>
+                  <button
+                    type="button"
+                    aria-label={`Actions for ${entry.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setSelectedPath(entry.path);
+                      setContextMenu({ x: Math.min(rect.right - 188, window.innerWidth - 208), y: Math.min(rect.bottom + 2, window.innerHeight - 300), entry });
+                    }}
+                    className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                  >
+                    <HugeiconsIcon icon={MoreHorizontalIcon} size={12} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </main>
+
+      <footer className="flex shrink-0 items-center gap-2 border-t border-border/60 bg-muted/10 px-3 py-1.5 text-[9.5px] text-muted-foreground">
+        <span>{entries.length} item{entries.length === 1 ? "" : "s"}</span>
+        {selectedEntry ? <span className="truncate text-foreground/80">• {selectedEntry.name}</span> : null}
+        {clipboard ? (
+          <button type="button" onClick={() => setContextMenu({ x: 12, y: window.innerHeight - 240 })} className="ml-auto truncate text-primary hover:underline">
+            {clipboard.operation === "copy" ? "copy" : "move"}: {clipboard.entry.name}
+          </button>
+        ) : <span className="ml-auto">right-click for actions</span>}
+      </footer>
+
+      {transfers.length > 0 && (
+        <div className="shrink-0 space-y-1 border-t border-primary/25 bg-primary/[0.05] px-3 py-2">
+          {transfers.map((transfer) => (
+            <div key={`${transfer.type}-${transfer.path}`} className="flex items-center gap-2 text-[10px]">
+              <HugeiconsIcon icon={transfer.type === "download" ? ArrowDown01Icon : ArrowUp01Icon} size={12} className="shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate">{transfer.path.split("/").pop()}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{transfer.progress}%</span>
+              <span className="h-1 w-20 shrink-0 overflow-hidden rounded-full bg-muted">
+                <span className="block h-full bg-primary transition-[width] duration-200" style={{ width: `${transfer.progress}%` }} />
+              </span>
             </div>
           ))}
         </div>
       )}
 
-      {/* Rename dialog */}
-      {renameTarget && (
-        <div className="absolute inset-x-0 bottom-0 bg-popover border-t border-border p-3">
-          <div className="flex items-center gap-2">
-            <input
-              autoFocus
-              className="flex-1 bg-transparent border border-border rounded px-2 py-1 text-[12px] outline-none focus:border-ring"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleRename();
-                if (e.key === "Escape") {
-                  setRenameTarget(null);
-                  setNewName("");
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="px-2 py-1 text-[11px] rounded bg-primary text-primary-foreground"
-              onClick={handleRename}
-            >
-              Rename
-            </button>
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); }} />
+          <div
+            role="menu"
+            className="fixed z-50 w-48 overflow-hidden rounded-md border border-border/80 bg-popover py-1 shadow-xl shadow-black/45"
+            style={{ left: Math.max(8, contextMenu.x), top: Math.max(8, contextMenu.y) }}
+          >
+            {contextMenu.entry ? (
+              <>
+                {contextMenu.entry.is_dir ? <ContextAction icon={Folder01Icon} onClick={() => { openFolder(contextMenu.entry!); setContextMenu(null); }}>Open folder</ContextAction> : null}
+                <ContextAction icon={contextMenu.entry.is_dir ? FolderDownloadIcon : Download01Icon} onClick={() => void handleDownload(contextMenu.entry!)}>Download{contextMenu.entry.is_dir ? " folder" : ""}…</ContextAction>
+                <ContextDivider />
+                <ContextAction icon={Copy01Icon} onClick={() => queueClipboard(contextMenu.entry!, "copy")}>Copy</ContextAction>
+                <ContextAction icon={Move01Icon} onClick={() => queueClipboard(contextMenu.entry!, "move")}>Move</ContextAction>
+                <ContextAction icon={LinkSquare01Icon} onClick={() => { void writeText(contextMenu.entry!.path); toast({ title: "Remote path copied", variant: "success" }); setContextMenu(null); }}>Copy remote path</ContextAction>
+                <ContextDivider />
+                <ContextAction icon={Edit02Icon} onClick={() => { setRenameTarget(contextMenu.entry!); setNewName(contextMenu.entry!.name); setContextMenu(null); }}>Rename…</ContextAction>
+                <ContextAction icon={Delete02Icon} danger onClick={() => { setDeleteTarget(contextMenu.entry!); setContextMenu(null); }}>Delete{contextMenu.entry.is_dir ? " folder" : ""}…</ContextAction>
+              </>
+            ) : (
+              <>
+                <ContextAction icon={Upload01Icon} onClick={() => void handleUploadFiles()}>Upload files…</ContextAction>
+                <ContextAction icon={FolderUploadIcon} onClick={() => void handleUploadFolder()}>Upload folder…</ContextAction>
+                <ContextAction icon={Add01Icon} onClick={() => { setMkdirOpen(true); setContextMenu(null); }}>New folder…</ContextAction>
+                {clipboard ? <ContextAction icon={ClipboardPasteIcon} onClick={() => void pasteClipboard()}>Paste {clipboard.operation === "copy" ? "copy" : "move"}</ContextAction> : null}
+                <ContextDivider />
+                <ContextAction icon={Refresh01Icon} onClick={() => { void load(cwd); setContextMenu(null); }}>Refresh</ContextAction>
+              </>
+            )}
           </div>
-        </div>
+        </>
       )}
 
-      {/* Mkdir dialog */}
-      {mkdirOpen && (
-        <div className="absolute inset-x-0 bottom-0 bg-popover border-t border-border p-3">
-          <div className="flex items-center gap-2">
-            <input
-              autoFocus
-              className="flex-1 bg-transparent border border-border rounded px-2 py-1 text-[12px] outline-none focus:border-ring"
-              placeholder="Folder name"
-              value={mkdirName}
-              onChange={(e) => setMkdirName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleMkdir();
-                if (e.key === "Escape") {
-                  setMkdirOpen(false);
-                  setMkdirName("");
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="px-2 py-1 text-[11px] rounded bg-primary text-primary-foreground"
-              onClick={handleMkdir}
-            >
-              Create
-            </button>
+      {(renameTarget || mkdirOpen || deleteTarget) && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/65 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-popover p-3 shadow-xl shadow-black/45">
+            {renameTarget ? (
+              <>
+                <p className="m-0 text-[11px] font-semibold">Rename {renameTarget.name}</p>
+                <p className="mb-3 mt-1 text-[9.5px] text-muted-foreground">Only the name changes; the item stays in this remote folder.</p>
+                <input autoFocus value={newName} onChange={(event) => setNewName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void handleRename(); if (event.key === "Escape") setRenameTarget(null); }} className="box-border w-full rounded-md border border-border bg-background px-2 py-1.5 text-[11px] outline-none focus:border-primary" />
+                <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => setRenameTarget(null)} className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted">Cancel</button><button type="button" onClick={() => void handleRename()} className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground">Rename</button></div>
+              </>
+            ) : mkdirOpen ? (
+              <>
+                <p className="m-0 text-[11px] font-semibold">New remote folder</p>
+                <p className="mb-3 mt-1 text-[9.5px] text-muted-foreground">Create inside {cwd}.</p>
+                <input autoFocus placeholder="Folder name" value={mkdirName} onChange={(event) => setMkdirName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void handleMkdir(); if (event.key === "Escape") setMkdirOpen(false); }} className="box-border w-full rounded-md border border-border bg-background px-2 py-1.5 text-[11px] outline-none focus:border-primary" />
+                <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => setMkdirOpen(false)} className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted">Cancel</button><button type="button" onClick={() => void handleMkdir()} className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground">Create</button></div>
+              </>
+            ) : deleteTarget ? (
+              <>
+                <p className="m-0 text-[11px] font-semibold text-red-300">Delete {deleteTarget.name}?</p>
+                <p className="mb-3 mt-1 text-[9.5px] leading-relaxed text-muted-foreground">{deleteTarget.is_dir ? "This permanently removes the folder and everything inside it from the remote host." : "This permanently removes the remote file."} This cannot be undone.</p>
+                <div className="flex justify-end gap-2"><button type="button" onClick={() => setDeleteTarget(null)} className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted">Cancel</button><button type="button" onClick={() => void handleDelete()} className="rounded bg-red-500/90 px-2 py-1 text-[10px] text-white hover:bg-red-500">Delete permanently</button></div>
+              </>
+            ) : null}
           </div>
         </div>
       )}
     </div>
   );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}G`;
-}
-
-function formatDate(timestamp: number): string {
-  const d = new Date(timestamp * 1000);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  if (isToday) {
-    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  }
-  const isThisYear = d.getFullYear() === now.getFullYear();
-  if (isThisYear) {
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  }
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }

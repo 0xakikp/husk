@@ -134,17 +134,11 @@ function App() {
 
   const cycleSidebarView = useCallback(
     (view: SidebarViewId) => {
-      const collapsed = !explorerOpen;
-      if (collapsed) {
-        setExplorerOpen(true);
-        if (view !== sidebarView) persistSidebarView(view);
-        return;
-      }
-      if (view === sidebarView) {
-        setExplorerOpen(false);
-        return;
-      }
-      persistSidebarView(view);
+      /* Rail items are view selectors, not toggles. Re-clicking the active
+         icon should leave the panel in place; the dedicated sidebar command
+         and shortcut remain responsible for collapsing it. */
+      if (!explorerOpen) setExplorerOpen(true);
+      if (view !== sidebarView) persistSidebarView(view);
     },
     [persistSidebarView, sidebarView, explorerOpen],
   );

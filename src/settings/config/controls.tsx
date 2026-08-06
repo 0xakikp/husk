@@ -47,11 +47,13 @@ export function CfgBlank() {
 
 export function CfgSection({ name, array = false }: { name: string; array?: boolean }) {
   return (
-    <div className="cfg-line">
-      <span className="cfg-punct">{array ? "[[" : "["}</span>
-      <span className="cfg-sec">{settingLabel(name)}</span>
-      <span className="cfg-punct">{array ? "]]" : "]"}</span>
-    </div>
+    <section className="cfg-section" aria-label={settingLabel(name)}>
+      <div className="cfg-line">
+        <span className="cfg-punct">{array ? "[[" : "["}</span>
+        <span className="cfg-sec">{settingLabel(name)}</span>
+        <span className="cfg-punct">{array ? "]]" : "]"}</span>
+      </div>
+    </section>
   );
 }
 

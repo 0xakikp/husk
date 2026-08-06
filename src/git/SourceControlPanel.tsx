@@ -125,14 +125,17 @@ export function SourceControlPanel({
   };
 
 
+  const headerActionClass =
+    "inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+
   const headerActions = (
-    <div className="flex items-center gap-0.5">
+    <div className="flex shrink-0 items-center gap-0.5">
       <button
         type="button"
         aria-label="GitHub Issues"
         title="GitHub Issues"
         onClick={openIssues}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className={headerActionClass}
       >
         <HugeiconsIcon icon={Bug01Icon} size={14} strokeWidth={1.5} />
       </button>
@@ -141,7 +144,7 @@ export function SourceControlPanel({
         aria-label="Git Graph"
         title="Git Graph"
         onClick={openGraph}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className={headerActionClass}
       >
         <HugeiconsIcon icon={GitForkIcon} size={14} strokeWidth={1.5} />
       </button>
@@ -151,7 +154,7 @@ export function SourceControlPanel({
         title="Fetch"
         disabled={busy}
         onClick={() => void act(gitFetch)}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+        className={`${headerActionClass} disabled:opacity-40`}
       >
         <HugeiconsIcon icon={FolderCloudIcon} size={14} strokeWidth={1.5} />
       </button>
@@ -161,7 +164,7 @@ export function SourceControlPanel({
         title="Pull"
         disabled={busy}
         onClick={() => void act(pull)}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+        className={`${headerActionClass} disabled:opacity-40`}
       >
         <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.5} />
       </button>
@@ -170,7 +173,7 @@ export function SourceControlPanel({
         aria-label="Refresh"
         title="Refresh"
         onClick={() => void refresh()}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className={headerActionClass}
       >
         <HugeiconsIcon icon={Refresh01Icon} size={14} strokeWidth={1.5} />
       </button>
@@ -180,8 +183,15 @@ export function SourceControlPanel({
   return (
     <Modal
       icon={FolderGitTwoIcon}
-      context={branch || undefined}
-      title="Source control"
+      context={
+        branch ? <span className="hidden @[440px]:inline">{branch}</span> : undefined
+      }
+      title={
+        <>
+          <span className="@[360px]:hidden">Git</span>
+          <span className="hidden @[360px]:inline">Source control</span>
+        </>
+      }
       onClose={onClose}
       inline={inline}
       headerActions={headerActions}

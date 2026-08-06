@@ -7,7 +7,7 @@ import {
   WorkflowCircle01Icon,
   PuzzleIcon,
   NotebookIcon,
-  Clock01Icon,
+  TimelineListIcon,
 } from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -63,7 +63,7 @@ export function SidebarRail({
     { kind: "view", id: "remotes", label: "Remotes", icon: DatabaseIcon },
     { kind: "view", id: "workflows", label: "Workflows", icon: WorkflowCircle01Icon },
     { kind: "view", id: "vault", label: "Notes", icon: NotebookIcon },
-    { kind: "view", id: "timeline", label: "Timeline", icon: Clock01Icon },
+    { kind: "view", id: "timeline", label: "Timeline", icon: TimelineListIcon },
     { kind: "view", id: "tools-hub", label: "Plugins", icon: PuzzleIcon },
   ];
 

@@ -182,16 +182,16 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
                   onClick={() => onSelectView(tool.id)}
                   title={tool.description}
                   className={cn(
-                    /* Compact single-line rows: centred tile, truncated one-line
-                       description — more tools fit the sidebar at any width. */
-                    "group flex items-center gap-2 rounded-lg border px-2 py-1 text-left transition-colors",
+                    /* Keep the sidebar narrow without hiding what a tool does:
+                       its name gets a line and the description may use two. */
+                    "group flex items-start gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors",
                     disabled
                       ? "border-border/20 bg-card/20 opacity-50 cursor-not-allowed"
                       : "border-border/40 bg-card/30 hover:border-border/60 hover:bg-card/50",
                   )}
                 >
                   <div
-                    className="flex size-6 shrink-0 items-center justify-center rounded-md"
+                    className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md"
                     /* Tile tinted from the mark's own colour, so each row reads
                        as that product rather than as five identical green
                        chips. color-mix keeps it subtle at 14%. */
@@ -207,14 +207,16 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
                       className={disabled ? "text-muted-foreground" : undefined}
                     />
                   </div>
-                  <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                    <span className="shrink-0 text-[11.5px] font-medium text-foreground">{tool.name}</span>
-                    {disabled && (
-                      <span className="rounded bg-muted/30 px-1.5 py-0 text-[9px] text-muted-foreground uppercase tracking-wide">
-                        Soon
-                      </span>
-                    )}
-                    <span className="min-w-0 truncate text-[10px] text-muted-foreground">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[11.5px] font-medium text-foreground">{tool.name}</span>
+                      {disabled && (
+                        <span className="shrink-0 rounded bg-muted/30 px-1.5 py-0 text-[9px] text-muted-foreground uppercase tracking-wide">
+                          Soon
+                        </span>
+                      )}
+                    </div>
+                    <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">
                       {tool.description}
                     </span>
                   </div>

@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
@@ -371,6 +371,278 @@ pub struct SftpEntry {
     pub modified: Option<u64>,
 }
 
+fn remote_join(parent: &str, child: &str) -> String {
+    if parent == "/" {
+        format!("/{}", child)
+    } else {
+        format!("{}/{}", parent.trim_end_matches('/'), child)
+    }
+}
+
+fn remote_basename(path: &str) -> Result<&str, String> {
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .ok_or_else(|| "The remote path has no file name".to_string())
+}
+
+async fn copy_remote_file(
+    sftp: &mut SftpSession,
+    from: &str,
+    to: &str,
+) -> Result<(), String> {
+    let mut source = sftp
+        .open(from)
+        .await
+        .map_err(|e| format!("SFTP open failed: {}", e))?;
+    let mut destination = sftp
+        .create(to)
+        .await
+        .map_err(|e| format!("SFTP create failed: {}", e))?;
+
+    let mut buffer = vec![0u8; 65536];
+    loop {
+        let read = source
+            .read(&mut buffer)
+            .await
+            .map_err(|e| format!("SFTP read failed: {}", e))?;
+        if read == 0 {
+            break;
+        }
+        destination
+            .write_all(&buffer[..read])
+            .await
+            .map_err(|e| format!("SFTP write failed: {}", e))?;
+    }
+    Ok(())
+}
+
+async fn copy_remote_path(
+    sftp: &mut SftpSession,
+    from: &str,
+    to: &str,
+) -> Result<(), String> {
+    if from == to {
+        return Err("Choose a different destination to copy this item".to_string());
+    }
+
+    let source_meta = sftp
+        .metadata(from)
+        .await
+        .map_err(|e| format!("SFTP stat failed: {}", e))?;
+
+    if !source_meta.file_type().is_dir() {
+        return copy_remote_file(sftp, from, to).await;
+    }
+
+    let source_root = from.trim_end_matches('/');
+    if source_root.is_empty() || to.starts_with(&format!("{}/", source_root)) {
+        return Err("A folder cannot be copied inside itself".to_string());
+    }
+
+    sftp.create_dir(to)
+        .await
+        .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
+
+    let mut pending = vec![(from.to_string(), to.to_string())];
+    while let Some((source_dir, destination_dir)) = pending.pop() {
+        let entries = sftp
+            .read_dir(&source_dir)
+            .await
+            .map_err(|e| format!("SFTP readdir failed: {}", e))?;
+
+        for entry in entries {
+            let name = entry.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
+            let source_child = remote_join(&source_dir, &name);
+            let destination_child = remote_join(&destination_dir, &name);
+            if entry.metadata().file_type().is_dir() {
+                sftp.create_dir(&destination_child)
+                    .await
+                    .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
+                pending.push((source_child, destination_child));
+            } else {
+                copy_remote_file(sftp, &source_child, &destination_child).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn delete_remote_tree(sftp: &mut SftpSession, path: &str) -> Result<(), String> {
+    let meta = sftp
+        .metadata(path)
+        .await
+        .map_err(|e| format!("SFTP stat failed: {}", e))?;
+    if !meta.file_type().is_dir() {
+        return sftp
+            .remove_file(path)
+            .await
+            .map_err(|e| format!("SFTP delete failed: {}", e));
+    }
+
+    /* Post-order traversal: files are removed as they are discovered; folders
+       are only removed after every child has completed. */
+    let mut pending = vec![(path.to_string(), false)];
+    while let Some((directory, visited)) = pending.pop() {
+        if visited {
+            sftp.remove_dir(&directory)
+                .await
+                .map_err(|e| format!("SFTP rmdir failed: {}", e))?;
+            continue;
+        }
+
+        pending.push((directory.clone(), true));
+        let entries = sftp
+            .read_dir(&directory)
+            .await
+            .map_err(|e| format!("SFTP readdir failed: {}", e))?;
+        for entry in entries {
+            let name = entry.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
+            let child = remote_join(&directory, &name);
+            if entry.metadata().file_type().is_dir() {
+                pending.push((child, false));
+            } else {
+                sftp.remove_file(&child)
+                    .await
+                    .map_err(|e| format!("SFTP delete failed: {}", e))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn download_remote_file(
+    app: &AppHandle,
+    host: &str,
+    sftp: &mut SftpSession,
+    remote_path: &str,
+    local_path: &Path,
+) -> Result<(), String> {
+    let meta = sftp
+        .metadata(remote_path)
+        .await
+        .map_err(|e| format!("SFTP stat failed: {}", e))?;
+    let total_size = meta.len();
+
+    let mut remote = sftp
+        .open(remote_path)
+        .await
+        .map_err(|e| format!("SFTP open failed: {}", e))?;
+    let mut local = tokio::fs::File::create(local_path)
+        .await
+        .map_err(|e| format!("Local file create failed: {}", e))?;
+
+    let mut copied = 0u64;
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = remote
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("SFTP read failed: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        local
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("Local write failed: {}", e))?;
+        copied += n as u64;
+
+        if total_size > 0 {
+            let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
+            let _ = app.emit(
+                &format!("sftp://progress/{}", host),
+                serde_json::json!({
+                    "type": "download",
+                    "path": remote_path,
+                    "progress": progress,
+                    "copied": copied,
+                    "total": total_size,
+                }),
+            );
+        }
+    }
+
+    let _ = app.emit(
+        &format!("sftp://progress/{}", host),
+        serde_json::json!({
+            "type": "download",
+            "path": remote_path,
+            "progress": 100,
+            "done": true,
+        }),
+    );
+    Ok(())
+}
+
+async fn upload_local_file(
+    app: &AppHandle,
+    host: &str,
+    sftp: &mut SftpSession,
+    local_path: &Path,
+    remote_path: &str,
+) -> Result<(), String> {
+    let total_size = tokio::fs::metadata(local_path)
+        .await
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let mut local = tokio::fs::File::open(local_path)
+        .await
+        .map_err(|e| format!("Local file open failed: {}", e))?;
+    let mut remote = sftp
+        .create(remote_path)
+        .await
+        .map_err(|e| format!("SFTP create failed: {}", e))?;
+
+    let mut copied = 0u64;
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = local
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("Local read failed: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        remote
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("SFTP write failed: {}", e))?;
+        copied += n as u64;
+
+        if total_size > 0 {
+            let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
+            let _ = app.emit(
+                &format!("sftp://progress/{}", host),
+                serde_json::json!({
+                    "type": "upload",
+                    "path": remote_path,
+                    "progress": progress,
+                    "copied": copied,
+                    "total": total_size,
+                }),
+            );
+        }
+    }
+
+    let _ = app.emit(
+        &format!("sftp://progress/{}", host),
+        serde_json::json!({
+            "type": "upload",
+            "path": remote_path,
+            "progress": 100,
+            "done": true,
+        }),
+    );
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn sftp_connect(
     host: String,
@@ -458,65 +730,50 @@ pub async fn sftp_download(
     let conn = conns
         .get_mut(&host)
         .ok_or_else(|| "Not connected".to_string())?;
+    download_remote_file(&app, &host, &mut conn.sftp, &remote_path, Path::new(&local_path)).await
+}
 
-    let meta = conn
-        .sftp
-        .metadata(&remote_path)
+#[tauri::command]
+pub async fn sftp_download_dir(
+    app: AppHandle,
+    host: String,
+    remote_path: String,
+    local_parent: String,
+    manager: State<'_, SftpManager>,
+) -> Result<(), String> {
+    let destination = PathBuf::from(local_parent).join(remote_basename(&remote_path)?);
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    tokio::fs::create_dir(&destination)
         .await
-        .map_err(|e| format!("SFTP stat failed: {}", e))?;
-    let total_size = meta.len();
+        .map_err(|e| format!("Local folder create failed: {}", e))?;
 
-    let mut remote = conn
-        .sftp
-        .open(&remote_path)
-        .await
-        .map_err(|e| format!("SFTP open failed: {}", e))?;
-
-    let mut local = tokio::fs::File::create(&local_path)
-        .await
-        .map_err(|e| format!("Local file create failed: {}", e))?;
-
-    let mut copied = 0u64;
-    let mut buf = vec![0u8; 65536];
-    loop {
-        let n = remote
-            .read(&mut buf)
+    let mut pending = vec![(remote_path, destination)];
+    while let Some((remote_dir, local_dir)) = pending.pop() {
+        let entries = conn
+            .sftp
+            .read_dir(&remote_dir)
             .await
-            .map_err(|e| format!("SFTP read failed: {}", e))?;
-        if n == 0 {
-            break;
-        }
-        local
-            .write_all(&buf[..n])
-            .await
-            .map_err(|e| format!("Local write failed: {}", e))?;
-        copied += n as u64;
-
-        if total_size > 0 {
-            let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
-            let _ = app.emit(
-                &format!("sftp://progress/{}", host),
-                serde_json::json!({
-                    "type": "download",
-                    "path": remote_path,
-                    "progress": progress,
-                    "copied": copied,
-                    "total": total_size,
-                }),
-            );
+            .map_err(|e| format!("SFTP readdir failed: {}", e))?;
+        for entry in entries {
+            let name = entry.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
+            let remote_child = remote_join(&remote_dir, &name);
+            let local_child = local_dir.join(&name);
+            if entry.metadata().file_type().is_dir() {
+                tokio::fs::create_dir(&local_child)
+                    .await
+                    .map_err(|e| format!("Local folder create failed: {}", e))?;
+                pending.push((remote_child, local_child));
+            } else {
+                download_remote_file(&app, &host, &mut conn.sftp, &remote_child, &local_child).await?;
+            }
         }
     }
-
-    let _ = app.emit(
-        &format!("sftp://progress/{}", host),
-        serde_json::json!({
-            "type": "download",
-            "path": remote_path,
-            "progress": 100,
-            "done": true,
-        }),
-    );
-
     Ok(())
 }
 
@@ -532,64 +789,89 @@ pub async fn sftp_upload(
     let conn = conns
         .get_mut(&host)
         .ok_or_else(|| "Not connected".to_string())?;
+    upload_local_file(&app, &host, &mut conn.sftp, Path::new(&local_path), &remote_path).await
+}
 
-    let total_size = tokio::fs::metadata(&local_path)
+#[tauri::command]
+pub async fn sftp_upload_dir(
+    app: AppHandle,
+    host: String,
+    local_path: String,
+    remote_parent: String,
+    manager: State<'_, SftpManager>,
+) -> Result<(), String> {
+    let local_root = PathBuf::from(&local_path);
+    let name = local_root
+        .file_name()
+        .and_then(|part| part.to_str())
+        .filter(|part| !part.is_empty())
+        .ok_or_else(|| "The local folder has no name".to_string())?;
+    let remote_root = remote_join(&remote_parent, name);
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    conn.sftp
+        .create_dir(&remote_root)
         .await
-        .map(|m| m.len())
-        .unwrap_or(0);
+        .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
 
-    let mut local = tokio::fs::File::open(&local_path)
-        .await
-        .map_err(|e| format!("Local file open failed: {}", e))?;
-
-    let mut remote = conn
-        .sftp
-        .create(&remote_path)
-        .await
-        .map_err(|e| format!("SFTP create failed: {}", e))?;
-
-    let mut copied = 0u64;
-    let mut buf = vec![0u8; 65536];
-    loop {
-        let n = local
-            .read(&mut buf)
+    let mut pending = vec![(local_root, remote_root)];
+    while let Some((local_dir, remote_dir)) = pending.pop() {
+        let mut entries = tokio::fs::read_dir(&local_dir)
             .await
-            .map_err(|e| format!("Local read failed: {}", e))?;
-        if n == 0 {
-            break;
-        }
-        remote
-            .write_all(&buf[..n])
+            .map_err(|e| format!("Local folder read failed: {}", e))?;
+        while let Some(entry) = entries
+            .next_entry()
             .await
-            .map_err(|e| format!("SFTP write failed: {}", e))?;
-        copied += n as u64;
-
-        if total_size > 0 {
-            let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
-            let _ = app.emit(
-                &format!("sftp://progress/{}", host),
-                serde_json::json!({
-                    "type": "upload",
-                    "path": remote_path,
-                    "progress": progress,
-                    "copied": copied,
-                    "total": total_size,
-                }),
-            );
+            .map_err(|e| format!("Local folder read failed: {}", e))?
+        {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let remote_child = remote_join(&remote_dir, &name);
+            let file_type = entry
+                .file_type()
+                .await
+                .map_err(|e| format!("Local file type failed: {}", e))?;
+            if file_type.is_dir() {
+                conn.sftp
+                    .create_dir(&remote_child)
+                    .await
+                    .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
+                pending.push((path, remote_child));
+            } else if file_type.is_file() {
+                upload_local_file(&app, &host, &mut conn.sftp, &path, &remote_child).await?;
+            }
         }
     }
-
-    let _ = app.emit(
-        &format!("sftp://progress/{}", host),
-        serde_json::json!({
-            "type": "upload",
-            "path": remote_path,
-            "progress": 100,
-            "done": true,
-        }),
-    );
-
     Ok(())
+}
+
+#[tauri::command]
+pub async fn sftp_copy(
+    host: String,
+    from: String,
+    to: String,
+    manager: State<'_, SftpManager>,
+) -> Result<(), String> {
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    copy_remote_path(&mut conn.sftp, &from, &to).await
+}
+
+#[tauri::command]
+pub async fn sftp_delete_recursive(
+    host: String,
+    path: String,
+    manager: State<'_, SftpManager>,
+) -> Result<(), String> {
+    let mut conns = manager.connections.lock().await;
+    let conn = conns
+        .get_mut(&host)
+        .ok_or_else(|| "Not connected".to_string())?;
+    delete_remote_tree(&mut conn.sftp, &path).await
 }
 
 #[tauri::command]

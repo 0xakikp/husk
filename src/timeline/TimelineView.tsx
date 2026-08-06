@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Clock01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Folder01Icon, InformationCircleIcon, TimelineListIcon } from "@hugeicons/core-free-icons";
 
 import { cn } from "../lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PanelHeader } from "../shell/PanelHeader";
 import { useWorkspaceRoot } from "../workspace/store";
@@ -53,29 +54,62 @@ function FolderSwitch({
 }) {
   const [open, setOpen] = useState(false);
   const [buckets, setBuckets] = useState<TimelineWorkspace[]>([]);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const effective = viewRoot ?? root;
+
+  const keepOpen = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+    setOpen(true);
+  };
+
+  const closeAfterPointerLeaves = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    // The menu is portalled outside its trigger. A tiny grace period lets the
+    // pointer cross that seam without the hover menu blinking closed.
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
+      setOpen(false);
+    }, 110);
+  };
+
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }, []);
 
   useEffect(() => {
     if (open) void listTimelineWorkspaces().then(setBuckets).catch(() => setBuckets([]));
   }, [open]);
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        title={effective ? `Timeline of ${effective} — switch bucket` : "No workspace"}
-        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9.5px] text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
-      >
-        <span className="shrink-0">📂</span>
-        <span className="hidden max-w-24 truncate @[340px]:inline">{effective ? baseName(effective) : "—"}</span>
-        <span className="shrink-0 text-[8px] opacity-60">▾</span>
-      </button>
-      {open ? (
-        <div
-          className="absolute right-0 top-6 z-40 min-w-44 rounded-md border border-border/60 bg-zinc-950 p-1 shadow-lg shadow-black/40"
-          onMouseLeave={() => setOpen(false)}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={effective ? `Timeline of ${effective} — switch workspace` : "No workspace"}
+          onPointerEnter={keepOpen}
+          onPointerLeave={closeAfterPointerLeaves}
+          className="flex items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 text-[9.5px] text-muted-foreground transition-colors hover:border-border/60 hover:bg-muted/40 hover:text-foreground data-[state=open]:border-primary/45 data-[state=open]:bg-primary/10 data-[state=open]:text-primary"
         >
+          <HugeiconsIcon icon={Folder01Icon} size={12} strokeWidth={1.75} className="shrink-0" />
+          {/* Clear is an always-visible action in this small header; the folder
+              name is useful context but yields sooner when horizontal space is tight. */}
+          <span className="hidden max-w-24 truncate @[480px]:inline">{effective ? baseName(effective) : "—"}</span>
+          <span className="shrink-0 text-[8px] opacity-60">▾</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={6}
+        onPointerEnter={keepOpen}
+        onPointerLeave={closeAfterPointerLeaves}
+        className="w-52 gap-0 overflow-hidden rounded-md border border-border/70 bg-background/95 p-0 font-mono text-[10px] shadow-lg shadow-black/50 backdrop-blur-xl"
+      >
+        <div className="flex items-center justify-between border-b border-border/50 px-2.5 py-1.5">
+          <span className="uppercase tracking-[0.14em] text-muted-foreground">timeline folders</span>
+          <span className="tabular-nums text-[9px] text-muted-foreground/60">{buckets.length}</span>
+        </div>
+        <div className="max-h-60 overflow-y-auto p-1 [scrollbar-width:thin]">
           {viewRoot ? (
             <button
               type="button"
@@ -83,13 +117,13 @@ function FolderSwitch({
                 onSelect(null);
                 setOpen(false);
               }}
-              className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[10.5px] text-primary transition-colors hover:bg-muted/40"
+              className="mb-1 flex w-full items-center gap-1.5 rounded-sm border border-primary/25 bg-primary/8 px-2 py-1.5 text-left text-[10px] text-primary transition-colors hover:bg-primary/15"
             >
-              ← back to current ({baseName(root)})
+              ← current workspace · {baseName(root)}
             </button>
           ) : null}
           {buckets.length === 0 ? (
-            <div className="px-2 py-1.5 text-[10px] text-muted-foreground">No recorded workspaces yet</div>
+            <div className="px-2 py-3 text-center leading-relaxed text-muted-foreground/70">No workspace timelines recorded yet.</div>
           ) : (
             buckets.map((b) => (
               <button
@@ -100,17 +134,23 @@ function FolderSwitch({
                   onSelect(b.workspace_id === root ? null : b.workspace_id);
                   setOpen(false);
                 }}
-                className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[10.5px] text-foreground/90 transition-colors hover:bg-muted/40"
+                className={cn(
+                  "group flex w-full items-center gap-1.5 rounded-sm border border-transparent px-2 py-1.5 text-left text-[10px] transition-colors",
+                  b.workspace_id === effective
+                    ? "border-primary/35 bg-primary/10 text-primary"
+                    : "text-foreground/85 hover:border-border/60 hover:bg-muted/45 hover:text-foreground",
+                )}
               >
+                <HugeiconsIcon icon={Folder01Icon} size={12} strokeWidth={1.65} className="shrink-0 opacity-70" />
                 <span className="min-w-0 flex-1 truncate">{baseName(b.workspace_id)}</span>
-                {b.workspace_id === root ? <span className="shrink-0 text-[8.5px] text-primary">current</span> : null}
-                <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground/60">{b.event_count}</span>
+                {b.workspace_id === root ? <span className="shrink-0 text-[8px] uppercase tracking-wide text-primary/80">current</span> : null}
+                <span className="shrink-0 tabular-nums text-[9px] text-muted-foreground/60">{b.event_count}</span>
               </button>
             ))
           )}
         </div>
-      ) : null}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -211,7 +251,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   return (
     <div className={cn("@container flex h-full flex-col font-mono", inline && "text-[11px]")}>
       <PanelHeader
-        icon={Clock01Icon}
+        icon={TimelineListIcon}
         title="Timeline"
         status={
           viewingCurrent ? (
@@ -228,17 +268,17 @@ export function TimelineView({ inline }: { inline?: boolean }) {
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
                     <span className="relative inline-flex size-1.5 rounded-full bg-red-500" />
                   </span>
-                  <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-red-400">rec</span>
+                  <span className="hidden text-[9px] font-bold uppercase tracking-[0.14em] text-red-400 @[480px]:inline">rec</span>
                 </>
               ) : (
                 <>
                   <span className="inline-flex size-1.5 rounded-full border border-muted-foreground/60" />
-                  <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">off</span>
+                  <span className="hidden text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground @[480px]:inline">off</span>
                 </>
               )}
             </button>
           ) : (
-            <span className="px-1.5 text-[9px] uppercase tracking-[0.14em] text-muted-foreground/60">viewing</span>
+            <span className="hidden px-1.5 text-[9px] uppercase tracking-[0.14em] text-muted-foreground/60 @[480px]:inline">viewing</span>
           )
         }
         actions={
@@ -250,7 +290,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
                   <button
                     type="button"
                     aria-label="How the timeline groups your work"
-                    className="inline-flex size-6 cursor-help items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+                    className="inline-flex size-6 shrink-0 cursor-help items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-muted-foreground"
                   >
                     <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={1.75} />
                   </button>
@@ -266,7 +306,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
               type="button"
               onClick={clearAll}
               title="Delete this workspace's timeline (cannot be undone)"
-              className="rounded-md border border-border/50 px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:border-red-400/40 hover:text-red-400"
+              className="shrink-0 rounded-md border border-border/50 px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:border-red-400/40 hover:text-red-400"
             >
               clear
             </button>
@@ -274,24 +314,31 @@ export function TimelineView({ inline }: { inline?: boolean }) {
         }
       />
 
-      <div className="shrink-0 border-b border-border/30 px-2 py-1.5">
-        {/* Individual filter chips, labels always on. The grid reflows instead
-            of ever hiding text: 2-up when narrow, 3-up mid, 6-up from 480px. */}
-        <div className="grid grid-cols-2 gap-1 @[320px]:grid-cols-3 @[480px]:grid-cols-6">
+      <div className="shrink-0 px-2 py-1">
+        {/* Standalone controls, not a segmented group. Their compact intrinsic
+            widths fit the rail in one or two rows without tile-sized gaps. */}
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
           {FILTERS.map((f) => (
             <button
               key={f.id}
               type="button"
               onClick={() => setFilter(f.id)}
               title={f.label}
+              aria-pressed={filter === f.id}
+              style={filter === f.id ? {
+                borderColor: "color-mix(in srgb, var(--primary) 82%, var(--border))",
+                backgroundColor: "color-mix(in srgb, var(--primary) 16%, transparent)",
+                color: "var(--primary)",
+                boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent), 0 0 10px color-mix(in srgb, var(--primary) 10%, transparent)",
+              } : undefined}
               className={cn(
-                "flex min-w-0 items-center justify-center gap-1 rounded-md border px-1.5 py-0.5 text-[9.5px] transition-colors",
+                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.75 text-[9.5px] shadow-sm transition-[transform,background-color,border-color,color,box-shadow] duration-150 ease-out hover:-translate-y-px hover:shadow-md active:translate-y-0 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70 motion-reduce:transform-none",
                 filter === f.id
-                  ? "border-primary/40 bg-primary/15 text-primary"
-                  : "border-border/40 bg-card/30 text-muted-foreground hover:border-border/70 hover:bg-muted/40 hover:text-foreground",
+                  ? "animate-in fade-in-0 zoom-in-95"
+                  : "border-border/70 bg-card/70 text-muted-foreground hover:border-primary/35 hover:bg-muted/70 hover:text-foreground",
               )}
             >
-              <span className="shrink-0 text-[10px]">{f.glyph}</span>
+              <span className={cn("shrink-0 text-[10px] transition-transform duration-150", filter === f.id && "scale-110")}>{f.glyph}</span>
               <span className="truncate">{f.label}</span>
             </button>
           ))}

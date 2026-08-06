@@ -510,34 +510,40 @@ export function NotesView({
     );
   };
 
-  const renderQuickNote = (item: { path: string; name: string; openedAt?: number }, pinnedNote = false) => (
-    <div
-      key={item.path}
-      className={cn(
-        "group flex min-h-9 cursor-pointer items-center gap-2 border-l-2 border-transparent py-0.5 pl-2 pr-1 transition-colors hover:bg-muted/45",
-        activeNotePath === item.path && "border-primary bg-primary/[0.08]",
-      )}
-      onClick={() => handleOpenNote(item.path)}
-    >
-      <HugeiconsIcon icon={File02Icon} size={13} strokeWidth={1.6} className={cn("shrink-0 text-muted-foreground/65", activeNotePath === item.path && "text-primary")} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-mono text-[11px] text-foreground">{noteTitle(item.name)}</span>
-        <span className="block truncate pt-0.5 text-[9px] text-muted-foreground/65">{noteFolder(item.path, notesDirRef.current)}</span>
-      </span>
-      {!pinnedNote && <span className="shrink-0 font-mono text-[9px] text-muted-foreground/55">{lastOpenedLabel(item.openedAt)}</span>}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          togglePin(item.path);
-        }}
-        className={cn("rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground", pinnedNote && "text-primary")}
-        title={pinnedNote ? "Unpin note" : "Pin note"}
+  const renderQuickNote = (item: { path: string; name: string; openedAt?: number }, pinnedNote = false) => {
+    const isActive = activeNotePath === item.path;
+    return (
+      <div
+        key={item.path}
+        className={cn(
+          /* Recent notes are list rows, not content-sized chips. Keep the
+             selection aligned with the list while tightening each row's
+             vertical rhythm so recents stay compact and scannable. */
+          "group flex w-full min-h-8 cursor-pointer items-center gap-1.5 border-l-2 border-transparent py-0 pl-2 pr-1 transition-colors hover:bg-muted/45",
+          isActive && "border-primary bg-primary/[0.08]",
+        )}
+        onClick={() => handleOpenNote(item.path)}
       >
-        <HugeiconsIcon icon={pinnedNote ? PinOffIcon : PinIcon} size={8} />
-      </button>
-    </div>
-  );
+        <HugeiconsIcon icon={File02Icon} size={13} strokeWidth={1.6} className={cn("shrink-0 text-muted-foreground/65", isActive && "text-primary")} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-[11px] text-foreground">{noteTitle(item.name)}</span>
+          <span className="block truncate text-[9px] leading-3 text-muted-foreground/65">{noteFolder(item.path, notesDirRef.current)}</span>
+        </span>
+        {!pinnedNote && <span className="shrink-0 font-mono text-[9px] text-muted-foreground/55">{lastOpenedLabel(item.openedAt)}</span>}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePin(item.path);
+          }}
+          className={cn("rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground", pinnedNote && "text-primary")}
+          title={pinnedNote ? "Unpin note" : "Pin note"}
+        >
+          <HugeiconsIcon icon={pinnedNote ? PinOffIcon : PinIcon} size={8} />
+        </button>
+      </div>
+    );
+  };
 
   const searchIsActive = searchActive && search.trim().length > 0;
   const builtinTemplateIds = useMemo(() => new Set(["builtin-daily", "builtin-incident", "builtin-todo"]), []);

@@ -35,9 +35,11 @@ export function PanelHeader({
       <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
         <HugeiconsIcon icon={icon} size={11} strokeWidth={1.9} />
       </span>
-      {/* Space priority: context hides below 340px panel width; the title
-          NEVER truncates; icons never clip or shrink below full size. */}
-      <span className="shrink-0 text-[11.5px] font-semibold text-foreground">{title}</span>
+      {/* Space priority: controls are always available. Context yields first,
+          then the title can truncate rather than forcing action icons out of
+          a resized sidebar. Views with many controls can also provide a
+          compact title at their own container-query breakpoint. */}
+      <span className="min-w-0 truncate text-[11.5px] font-semibold text-foreground">{title}</span>
       {context ? (
         <span className="hidden min-w-0 truncate text-[10px] text-muted-foreground/60 @[340px]:block">{context}</span>
       ) : null}

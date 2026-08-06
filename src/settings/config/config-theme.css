@@ -453,10 +453,16 @@
 .settings-native-form .cfg-line--art,
 .settings-native-form .cfg-blank,
 .settings-native-form .cfg-comment-mark { display: none; }
-.settings-native-form .cfg-line:has(.cfg-sec) { margin: 24px 0 7px; }
-.settings-native-form .cfg-line:has(.cfg-sec):first-child { margin-top: 0; }
-.settings-native-form .cfg-line:has(.cfg-sec) .cfg-punct { display: none; }
-.settings-native-form .cfg-sec { color: var(--foreground); font-size: 12px; font-weight: 650; letter-spacing: .02em; text-shadow: none; }
+/* A settings section is a real visual boundary, not just another bold label.
+   This matters most in AI Models, where several provider configurations have
+   identical rows back-to-back. The quiet rule and accent marker make the next
+   section obvious without turning the page into a stack of cards. */
+.settings-native-form .cfg-section { margin: 26px 0 8px; border-top: 1px solid color-mix(in srgb, var(--border) 82%, transparent); padding-top: 11px; }
+.settings-native-form .cfg-section:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+.settings-native-form .cfg-section .cfg-line { min-height: 18px; margin: 0; }
+.settings-native-form .cfg-section .cfg-punct { display: none; }
+.settings-native-form .cfg-section .cfg-sec { display: inline-flex; align-items: center; gap: 7px; color: var(--foreground); font-size: 10px; font-weight: 700; letter-spacing: .11em; text-shadow: none; text-transform: uppercase; }
+.settings-native-form .cfg-section .cfg-sec::before { width: 5px; height: 5px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 9px color-mix(in srgb, var(--primary) 60%, transparent); content: ""; }
 
 .settings-native-form .cfg-setting { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 54px; margin: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 10px 0; background: transparent; }
 .settings-native-form .cfg-setting-copy { min-width: 0; flex: 1 1 auto; }
@@ -507,7 +513,7 @@
 .settings-integration-notice p { margin: 0; max-width: 680px; font-size: 10.5px; line-height: 1.45; }
 .settings-integration-notice strong { color: var(--foreground); font-weight: 600; }
 /* The notice provides the spacing before the first service section. */
-.settings-native-form .settings-github-integration .cfg-line:has(.cfg-sec) { margin-top: 0; }
+.settings-native-form .settings-github-integration .cfg-section { margin-top: 0; border-top: 0; padding-top: 0; }
 
 /* Keep navigation functional but deliberately quiet: it is a directory, not a
    second dashboard competing with the controls. */
