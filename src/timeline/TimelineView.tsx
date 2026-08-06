@@ -25,13 +25,15 @@ import { toast } from "../toast";
 
 type FilterId = "all" | "commands" | "files" | "ai" | "git" | "errors";
 
-const FILTERS: { id: FilterId; label: string; types: TimelineEventType[] }[] = [
-  { id: "all", label: "All", types: [] },
-  { id: "commands", label: "Commands", types: ["command", "command_failed"] },
-  { id: "files", label: "Files", types: ["file"] },
-  { id: "ai", label: "AI", types: ["ai"] },
-  { id: "git", label: "Git", types: ["git"] },
-  { id: "errors", label: "Errors", types: ["command_failed"] },
+/* Glyphs match the event markers in the list — the filter row teaches the
+   icon language, so scanning events gets faster every time it's used. */
+const FILTERS: { id: FilterId; label: string; glyph: string; types: TimelineEventType[] }[] = [
+  { id: "all", label: "All", glyph: "≡", types: [] },
+  { id: "commands", label: "Commands", glyph: "✓", types: ["command", "command_failed"] },
+  { id: "files", label: "Files", glyph: "✎", types: ["file"] },
+  { id: "ai", label: "AI", glyph: "✦", types: ["ai"] },
+  { id: "git", label: "Git", glyph: "⌥", types: ["git"] },
+  { id: "errors", label: "Errors", glyph: "✕", types: ["command_failed"] },
 ];
 
 function dayLabel(ts: number): string {
@@ -121,7 +123,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   }
 
   return (
-    <div className={cn("flex h-full flex-col font-mono", inline && "text-[11px]")}>
+    <div className={cn("@container flex h-full flex-col font-mono", inline && "text-[11px]")}>
       <PanelHeader
         icon={Clock01Icon}
         title="Timeline"
@@ -182,24 +184,28 @@ export function TimelineView({ inline }: { inline?: boolean }) {
         }
       />
 
-      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/30 px-2 py-1.5">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            className={cn(
-              /* shrink-1 + wrap: at narrow sidebar widths the row folds to two
-                 lines instead of clipping "Errors" off the right edge. */
-              "min-w-0 shrink rounded-md px-2 py-0.5 text-[9.5px] transition-colors",
-              filter === f.id
-                ? "bg-primary/15 text-primary"
-                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="shrink-0 border-b border-border/30 px-2 py-1.5">
+        {/* Segmented control: equal segments, active filled. Labels yield to
+            glyph-only below 280px panel width instead of wrapping or clipping. */}
+        <div className="flex rounded-md border border-border/40 bg-muted/15 p-0.5">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFilter(f.id)}
+              title={f.label}
+              className={cn(
+                "flex min-w-0 flex-1 items-center justify-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] transition-colors",
+                filter === f.id
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+              )}
+            >
+              <span className="shrink-0 text-[10px]">{f.glyph}</span>
+              <span className="hidden truncate @[280px]:inline">{f.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
