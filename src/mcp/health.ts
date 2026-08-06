@@ -32,7 +32,15 @@ function setHealth(serverId: string, patch: Partial<McpHealth>): void {
 }
 
 export function getMcpHealth(serverId: string): McpHealth {
-  return health.get(serverId) ?? { serverId, state: "idle" };
+  /* useSyncExternalStore compares snapshots by identity — a fresh `?? {}`
+     object per call reads as "changed" forever and React throws an
+     infinite-loop error. Cache the idle entry so the snapshot is stable. */
+  let h = health.get(serverId);
+  if (!h) {
+    h = { serverId, state: "idle" };
+    health.set(serverId, h);
+  }
+  return h;
 }
 
 export function subscribeMcpHealth(fn: () => void): () => void {
