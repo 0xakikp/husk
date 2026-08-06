@@ -275,11 +275,9 @@ export function TimelineView({ inline }: { inline?: boolean }) {
       />
 
       <div className="shrink-0 border-b border-border/30 px-2 py-1.5">
-        {/* Segmented grid: 3×2 labeled rows by default; one row of six only
-            from 480px panel width — six labeled segments need ~76px each, so
-            a lower threshold just truncates every label. Below 300px the
-            labels drop out entirely (clean glyphs, tooltips carry names). */}
-        <div className="grid grid-cols-3 gap-0.5 rounded-md border border-border/40 bg-muted/15 p-0.5 @[480px]:grid-cols-6">
+        {/* Individual filter chips — own border per option instead of one
+            shared segmented box, so the gaps between them stay usable space. */}
+        <div className="grid grid-cols-3 gap-1 @[480px]:grid-cols-6">
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -287,10 +285,10 @@ export function TimelineView({ inline }: { inline?: boolean }) {
               onClick={() => setFilter(f.id)}
               title={f.label}
               className={cn(
-                "flex min-w-0 items-center justify-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] transition-colors",
+                "flex min-w-0 items-center justify-center gap-1 rounded-md border px-1.5 py-0.5 text-[9.5px] transition-colors",
                 filter === f.id
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border/40 bg-card/30 text-muted-foreground hover:border-border/70 hover:bg-muted/40 hover:text-foreground",
               )}
             >
               <span className="shrink-0 text-[10px]">{f.glyph}</span>
