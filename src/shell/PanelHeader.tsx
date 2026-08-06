@@ -28,21 +28,21 @@ export function PanelHeader({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-2 border-b border-border/40 bg-muted/20 px-2.5 py-[7px]",
+        "@container flex shrink-0 items-center gap-2 border-b border-border/40 bg-muted/20 px-2.5 py-[7px]",
         className,
       )}
     >
       <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
         <HugeiconsIcon icon={icon} size={11} strokeWidth={1.9} />
       </span>
-      <span className="shrink-0 text-[11.5px] font-semibold text-foreground">{title}</span>
+      {/* Space priority: context text hides below 240px panel width, the title
+          truncates after that, icons never clip or shrink below full size. */}
+      <span className="min-w-0 truncate text-[11.5px] font-semibold text-foreground">{title}</span>
       {context ? (
-        <span className="min-w-0 truncate text-[10px] text-muted-foreground/60">{context}</span>
+        <span className="hidden min-w-0 truncate text-[10px] text-muted-foreground/60 @[260px]:block">{context}</span>
       ) : null}
       {status || actions ? (
-        // Actions shrink like the rail: context truncates first, then buttons
-        // compress (never grow) instead of overflowing a narrow sidebar.
-        <div className="ml-auto flex min-w-0 shrink items-center gap-1 overflow-hidden [&_button]:min-w-0 [&_button]:shrink">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {status}
           {actions}
         </div>
