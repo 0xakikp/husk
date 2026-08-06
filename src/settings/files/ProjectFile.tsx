@@ -51,7 +51,15 @@ export function ProjectFile() {
     return (
       <ConfigEditor>
         <CfgSection name="project" />
-        <CfgComment>Open a folder to give it a project profile.</CfgComment>
+        <CfgComment>A "project" is just the folder you're working in.</CfgComment>
+        <CfgComment>Husk keeps everything it knows about that folder in a .husk/ directory inside it:</CfgComment>
+        <CfgComment>{"  instructions.md    — what the AI should know about this repo (stack, conventions,"}</CfgComment>
+        <CfgComment>{"                       preferred commands). Attached to every AI request in this folder."}</CfgComment>
+        <CfgComment>{"  runbooks/          — saved commands you re-run from ⌘K (“Run: …”)"}</CfgComment>
+        <CfgComment>{"  environments.toml  — labels like staging / production that drive safety warnings"}</CfgComment>
+        <CfgComment>Nothing is global and nothing touches Git on its own — it all lives in the folder.</CfgComment>
+        <CfgComment>Commit .husk/ to share the profile with your team, or keep it local.</CfgComment>
+        <CfgBlank />
         <CfgRow name="folder" comment="Pick a project folder — instructions, runbooks, and environments will live in its .husk/ directory.">
           <CfgAct onClick={() => void pickWorkspaceFolder().catch(failPick)}>
             open folder…
@@ -94,10 +102,10 @@ export function ProjectFile() {
   return (
     <ConfigEditor>
       <CfgSection name="project" />
-      <CfgComment>
-        A project profile lives in this repository at .husk/ — instructions for the AI, repeatable command
-        runbooks, and environment labels. It belongs to the repo, not to you; personal settings stay in Husk.
-      </CfgComment>
+      <CfgComment>This is what Husk knows about the open folder. It lives at .husk/ inside the repo —</CfgComment>
+      <CfgComment>instructions for the AI, repeatable command runbooks, and environment labels.</CfgComment>
+      <CfgComment>It belongs to the repo, not to you: personal settings stay in Husk, and nothing here</CfgComment>
+      <CfgComment>is committed or changed in Git unless you do it yourself.</CfgComment>
       <CfgBlank />
 
       {!profile?.exists ? (
