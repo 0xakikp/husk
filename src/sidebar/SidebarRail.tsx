@@ -59,7 +59,7 @@ export function SidebarRail({
 }) {
   const slots: RailSlot[] = [
     { kind: "view", id: "explorer", label: "Files", icon: FolderTreeIcon },
-    { kind: "view", id: "source-control", label: "Source Control", icon: FolderGitTwoIcon, badge: changedCount },
+    { kind: "view", id: "source-control", label: "Source control", icon: FolderGitTwoIcon, badge: changedCount },
     { kind: "view", id: "remotes", label: "Remotes", icon: DatabaseIcon },
     { kind: "view", id: "workflows", label: "Workflows", icon: WorkflowCircle01Icon },
     { kind: "view", id: "vault", label: "Notes", icon: NotebookIcon },
