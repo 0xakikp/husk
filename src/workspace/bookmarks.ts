@@ -10,7 +10,11 @@ const LS_KEY = "huskv2.bookmarks";
 
 function load(): string[] {
   try {
-    return JSON.parse(localStorage.getItem(LS_KEY) || "[]") as string[];
+    const parsed: unknown = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+    /* localStorage is untrusted — an older build (or a hand-edited value) may
+       have stored a different shape. Only string entries are valid paths. */
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === "string");
   } catch {
     return [];
   }
