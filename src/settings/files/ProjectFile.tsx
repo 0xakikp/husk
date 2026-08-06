@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 
 import {
@@ -13,7 +14,8 @@ import {
   CfgStr,
   CfgText,
 } from "../config/controls";
-import { pickWorkspaceFolder, useWorkspaceRoot } from "../../workspace/store";
+import { gotoWorkspace, pickWorkspaceFolder, useWorkspaceRoot } from "../../workspace/store";
+import { addBookmark, removeBookmark, useBookmarks } from "../../workspace/bookmarks";
 import {
   GITIGNORE_SUGGESTION,
   deleteRunbook,
@@ -22,9 +24,86 @@ import {
   saveRunbook,
   setProjectProfileEnabled,
   useProjectProfile,
+  type ProjectProfile,
   type Runbook,
 } from "../../project/profile";
 import { toast } from "../../toast";
+
+const base = (p: string) => p.split("/").filter(Boolean).pop() || p;
+
+type Summary = { exists: boolean; enabled: boolean } | null;
+
+/**
+ * [[projects]] — every folder Husk knows: the open one plus bookmarks. Badges
+ * are loaded per folder via project_profile_load (read-only, no state change).
+ * `refreshKey` re-loads badges when the current profile changes on this page.
+ */
+function ProjectsSection({ workspace, refreshKey }: { workspace: string; refreshKey: string }) {
+  const bookmarks = useBookmarks();
+  const [summaries, setSummaries] = useState<Record<string, Summary>>({});
+  const paths = [...new Set([...(workspace ? [workspace] : []), ...bookmarks])];
+  const listKey = paths.join("|");
+
+  useEffect(() => {
+    let cancelled = false;
+    for (const p of listKey ? listKey.split("|") : []) {
+      invoke<ProjectProfile>("project_profile_load", { root: p })
+        .then((prof) => {
+          if (!cancelled) setSummaries((s) => ({ ...s, [p]: { exists: prof.exists, enabled: prof.enabled } }));
+        })
+        .catch(() => {
+          if (!cancelled) setSummaries((s) => ({ ...s, [p]: null }));
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [listKey, refreshKey]);
+
+  if (paths.length === 0) return null;
+
+  const badge = (p: string): string => {
+    const s = summaries[p];
+    if (s === undefined) return "…";
+    if (s === null) return "unreadable";
+    if (!s.exists) return "no profile";
+    return s.enabled ? "profile active" : "profile off";
+  };
+
+  const openFail = (cause: unknown) =>
+    toast({ title: "Could not open folder", message: cause instanceof Error ? cause.message : String(cause), variant: "error" });
+
+  return (
+    <>
+      <CfgSection name="projects" array />
+      <CfgComment>Folders Husk knows — the open folder plus your bookmarks. Switch jumps the</CfgComment>
+      <CfgComment>workspace (and terminal) into it. Remove only forgets it here — files stay.</CfgComment>
+      {paths.map((p) => (
+        <CfgRow key={p} comment={p}>
+          <CfgStr>{base(p)}</CfgStr>
+          <span className="cfg-hint">{badge(p)}</span>
+          {p === workspace ? (
+            <>
+              <span className="cfg-hint">current</span>
+              {!bookmarks.includes(p) && <CfgAct onClick={() => addBookmark(p)}>bookmark</CfgAct>}
+            </>
+          ) : (
+            <>
+              <CfgAct onClick={() => gotoWorkspace(p)}>switch</CfgAct>
+              <CfgAct danger onClick={() => removeBookmark(p)}>
+                remove
+              </CfgAct>
+            </>
+          )}
+        </CfgRow>
+      ))}
+      <CfgRow>
+        <CfgAct onClick={() => void pickWorkspaceFolder().catch(openFail)}>+ add folder…</CfgAct>
+      </CfgRow>
+      <CfgBlank />
+    </>
+  );
+}
 
 /**
  * Project profile panel — per-repository instructions, runbooks, and
@@ -67,6 +146,8 @@ export function ProjectFile() {
             open folder…
           </CfgAct>
         </CfgRow>
+        <CfgBlank />
+        <ProjectsSection workspace="" refreshKey="" />
       </ConfigEditor>
     );
   }
@@ -110,6 +191,8 @@ export function ProjectFile() {
       <CfgComment>commit it to share with your team. Personal settings stay in Husk, and Git is</CfgComment>
       <CfgComment>never touched unless you do it yourself.</CfgComment>
       <CfgBlank />
+
+      <ProjectsSection workspace={workspace} refreshKey={`${profile?.exists}:${profile?.enabled}`} />
 
       {!profile?.exists ? (
         <>

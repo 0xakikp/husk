@@ -1,23 +1,7 @@
 import { useState } from "react";
 import { useWorkspaceRoot, gotoWorkspace, pickWorkspaceFolder } from "../workspace/store";
+import { addBookmark, removeBookmark, useBookmarks } from "../workspace/bookmarks";
 import { useProjectProfile } from "../project/profile";
-
-const BM_KEY = "huskv2.bookmarks";
-
-function loadBookmarks(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(BM_KEY) || "[]") as string[];
-  } catch {
-    return [];
-  }
-}
-function persist(b: string[]) {
-  try {
-    localStorage.setItem(BM_KEY, JSON.stringify(b));
-  } catch {
-    // ignore
-  }
-}
 
 const base = (p: string) => p.split("/").filter(Boolean).pop() || p;
 
@@ -25,12 +9,7 @@ export function WorkspacePath() {
   const root = useWorkspaceRoot();
   const profile = useProjectProfile();
   const [open, setOpen] = useState(false);
-  const [bookmarks, setBookmarks] = useState<string[]>(loadBookmarks);
-
-  const setBm = (b: string[]) => {
-    setBookmarks(b);
-    persist(b);
-  };
+  const bookmarks = useBookmarks();
 
   return (
     <div className="ws-path">
@@ -58,7 +37,7 @@ export function WorkspacePath() {
             type="button"
             className="ws-bm-add"
             onClick={() => {
-              if (root && !bookmarks.includes(root)) setBm([...bookmarks, root]);
+              if (root) addBookmark(root);
               setOpen(false);
             }}
           >
@@ -84,7 +63,7 @@ export function WorkspacePath() {
                   type="button"
                   className="ws-bm-del"
                   aria-label="Remove bookmark"
-                  onClick={() => setBm(bookmarks.filter((x) => x !== p))}
+                  onClick={() => removeBookmark(p)}
                 >
                   ×
                 </button>
