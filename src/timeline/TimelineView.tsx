@@ -275,9 +275,9 @@ export function TimelineView({ inline }: { inline?: boolean }) {
       />
 
       <div className="shrink-0 border-b border-border/30 px-2 py-1.5">
-        {/* Individual filter chips — own border per option instead of one
-            shared segmented box, so the gaps between them stay usable space. */}
-        <div className="grid grid-cols-3 gap-1 @[480px]:grid-cols-6">
+        {/* Individual filter chips, labels always on. The grid reflows instead
+            of ever hiding text: 2-up when narrow, 3-up mid, 6-up from 480px. */}
+        <div className="grid grid-cols-2 gap-1 @[320px]:grid-cols-3 @[480px]:grid-cols-6">
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -292,7 +292,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
               )}
             >
               <span className="shrink-0 text-[10px]">{f.glyph}</span>
-              <span className="hidden truncate @[320px]:inline">{f.label}</span>
+              <span className="truncate">{f.label}</span>
             </button>
           ))}
         </div>
