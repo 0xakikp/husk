@@ -122,7 +122,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   return (
     <div className={cn("flex h-full flex-col font-mono", inline && "text-[11px]")}>
       <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-3 py-2">
-        <span className="text-[11px] font-semibold text-foreground">Timeline</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">Timeline</span>
         <span className="min-w-0 flex-1 truncate text-[9.5px] text-muted-foreground/70" title={root ? `Timeline of ${root}` : ""}>
           {root ? `📂 ${root.split("/").pop() || root}` : "no workspace"}
         </span>
