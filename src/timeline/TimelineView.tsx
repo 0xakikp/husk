@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 
 import { cn } from "../lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspaceRoot } from "../workspace/store";
 import {
   clearWorkspaceTimeline,
@@ -123,12 +126,24 @@ export function TimelineView({ inline }: { inline?: boolean }) {
         <span className="min-w-0 flex-1 truncate text-[9.5px] text-muted-foreground/70" title={root ? `Timeline of ${root}` : ""}>
           {root ? `📂 ${root.split("/").pop() || root}` : "no workspace"}
         </span>
-        <span
-          className="shrink-0 cursor-help text-[9.5px] text-muted-foreground/50 hover:text-muted-foreground"
-          title={"How the timeline groups your work:\n⚑ pinned project root (header ★ menu)\n→ git repository root (automatic)\n→ the current folder"}
-        >
-          ⓘ
-        </span>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="How the timeline groups your work"
+                className="shrink-0 cursor-help text-muted-foreground/50 transition-colors hover:text-muted-foreground"
+              >
+                <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={6} className="max-w-56 border border-border/60 bg-zinc-950 text-[10.5px] leading-relaxed text-zinc-100 shadow-lg">
+              The timeline groups your work by project: a ⚑ pinned root (header ★ menu)
+              first, then the git repository root, then the current folder. Commands,
+              saves, AI and git events land in whichever bucket you're inside.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <button
           type="button"
           onClick={toggleRecording}
