@@ -185,10 +185,11 @@ export function TimelineView({ inline }: { inline?: boolean }) {
       />
 
       <div className="shrink-0 border-b border-border/30 px-2 py-1.5">
-        {/* Segmented grid: 3×2 when narrow, one row of six from 360px panel
-            width. Labels only render with room for them (300px+) — below
-            that the grid is clean glyphs instead of truncated fragments. */}
-        <div className="grid grid-cols-3 gap-0.5 rounded-md border border-border/40 bg-muted/15 p-0.5 @[360px]:grid-cols-6">
+        {/* Segmented grid: 3×2 labeled rows by default; one row of six only
+            from 480px panel width — six labeled segments need ~76px each, so
+            a lower threshold just truncates every label. Below 300px the
+            labels drop out entirely (clean glyphs, tooltips carry names). */}
+        <div className="grid grid-cols-3 gap-0.5 rounded-md border border-border/40 bg-muted/15 p-0.5 @[480px]:grid-cols-6">
           {FILTERS.map((f) => (
             <button
               key={f.id}
