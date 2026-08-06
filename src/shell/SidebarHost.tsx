@@ -53,7 +53,6 @@ export function SidebarHost({
   setSelectedDockerResource,
   persistSidebarView,
   cycleSidebarView,
-  setPaletteOpen,
   setExplorerWidth,
   persistSidebarWidth,
   sidebarMinWidth,
@@ -75,7 +74,6 @@ export function SidebarHost({
   setSelectedDockerResource: (sel: DockerResourceSelection | null) => void;
   persistSidebarView: (view: SidebarViewId) => void;
   cycleSidebarView: (view: SidebarViewId) => void;
-  setPaletteOpen: (open: boolean) => void;
   setExplorerWidth: (width: number) => void;
   persistSidebarWidth: (width: number) => void;
   sidebarMinWidth: number;
@@ -203,7 +201,6 @@ export function SidebarHost({
         <SidebarRail
           view={sidebarView}
           onSelectView={(v) => cycleSidebarView(v)}
-          onCommandPalette={() => setPaletteOpen(true)}
         />
       </div>
       {/* Sidebar resize handle */}

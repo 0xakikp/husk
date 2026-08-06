@@ -980,7 +980,6 @@ function App() {
             setSelectedDockerResource={setSelectedDockerResource}
             persistSidebarView={persistSidebarView}
             cycleSidebarView={cycleSidebarView}
-            setPaletteOpen={setPaletteOpen}
             setExplorerWidth={setExplorerWidth}
             persistSidebarWidth={persistSidebarWidth}
             sidebarMinWidth={SIDEBAR_MIN_WIDTH}

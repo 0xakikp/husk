@@ -6,7 +6,6 @@ import {
   DatabaseIcon,
   WorkflowCircle01Icon,
   PuzzleIcon,
-  CommandIcon,
   NotebookIcon,
   Clock01Icon,
 } from "@hugeicons/core-free-icons";
@@ -52,12 +51,10 @@ type RailSlot =
 export function SidebarRail({
   view,
   onSelectView,
-  onCommandPalette,
   changedCount = 0,
 }: {
   view: SidebarViewId;
   onSelectView: (v: SidebarViewId) => void;
-  onCommandPalette: () => void;
   changedCount?: number;
 }) {
   const slots: RailSlot[] = [
@@ -68,7 +65,6 @@ export function SidebarRail({
     { kind: "view", id: "vault", label: "Notes", icon: NotebookIcon },
     { kind: "view", id: "timeline", label: "Timeline", icon: Clock01Icon },
     { kind: "view", id: "tools-hub", label: "Plugins", icon: PuzzleIcon },
-    { kind: "action", id: "command-palette", label: "Command Palette", icon: CommandIcon, onTrigger: onCommandPalette },
   ];
 
   return (
