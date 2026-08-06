@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { usePrefs, setPrefs } from "../preferences";
 import {
   allPresets,
@@ -53,28 +53,6 @@ export function AppearanceFile() {
   const [newPresetName, setNewPresetName] = useState("");
   const presets = useMemo(() => allPresets(), [presetTick]);
   const bg = p.background;
-
-  const [ttsVoices, setTtsVoices] = useState<SpeechSynthesisVoice[]>([]);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    const load = () => setTtsVoices(window.speechSynthesis.getVoices());
-    load();
-    window.speechSynthesis.addEventListener("voiceschanged", load);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
-  }, []);
-
-  const testVoice = () => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance("Hi, I'm Husk — your AI assistant.");
-    const v =
-      ttsVoices.find((v) => v.name === p.aiTtsVoice) ??
-      ttsVoices.find((v) => /samantha|victoria|karen|moira|tessa|fiona|zira|serena/i.test(v.name));
-    if (v) u.voice = v;
-    u.rate = 1.05;
-    u.pitch = 1.1;
-    window.speechSynthesis.speak(u);
-  };
 
   const pickImage = useCallback(async () => {
     const selected = await openDialog({
@@ -318,17 +296,6 @@ export function AppearanceFile() {
       </CfgRow>
       <CfgRow name="bgColor" comment="Used by gradient / solid.">
         <CfgColor value={p.aiComposerBgColor} onChange={(v) => setPrefs({ aiComposerBgColor: v })} />
-      </CfgRow>
-      <CfgRow name="talkBackVoice" comment="Voice used when reading AI replies aloud.">
-        <CfgEnum
-          value={p.aiTtsVoice}
-          onChange={(aiTtsVoice) => setPrefs({ aiTtsVoice })}
-          options={[
-            { value: "", label: "Auto (female)" },
-            ...ttsVoices.map((v) => ({ value: v.name, label: `${v.name} (${v.lang})` })),
-          ]}
-        />
-        <CfgAct onClick={testVoice}>test</CfgAct>
       </CfgRow>
       <CfgBlank />
 

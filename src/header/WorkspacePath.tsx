@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useWorkspaceRoot, gotoWorkspace, pickWorkspaceFolder } from "../workspace/store";
-import { addBookmark, removeBookmark, useBookmarks } from "../workspace/bookmarks";
+import { addBookmark, removeBookmark, useBookmarks } from "../bookmarks/store";
 import { addProjectRoot, removeProjectRoot, useProjectRoots } from "../workspace/projectRoots";
 
 const base = (p: string) => p.split("/").filter(Boolean).pop() || p;
@@ -8,7 +8,7 @@ const base = (p: string) => p.split("/").filter(Boolean).pop() || p;
 export function WorkspacePath() {
   const root = useWorkspaceRoot();
   const [open, setOpen] = useState(false);
-  const bookmarks = useBookmarks();
+  const bookmarks = useBookmarks().filter((bookmark) => bookmark.type === "directory" && bookmark.path);
   const projectRoots = useProjectRoots();
 
   return (
@@ -25,7 +25,9 @@ export function WorkspacePath() {
             type="button"
             className="ws-bm-add"
             onClick={() => {
-              if (root) addBookmark(root);
+              if (root && !bookmarks.some((bookmark) => bookmark.path === root)) {
+                addBookmark({ type: "directory", label: base(root), path: root });
+              }
               setOpen(false);
             }}
           >
@@ -78,24 +80,24 @@ export function WorkspacePath() {
           {bookmarks.length === 0 ? (
             <div className="ws-bm-empty">No bookmarks</div>
           ) : (
-            bookmarks.map((p) => (
-              <div key={p} className="ws-bm-row">
+            bookmarks.map((bookmark) => (
+              <div key={bookmark.id} className="ws-bm-row">
                 <button
                   type="button"
                   className="ws-bm-item"
-                  title={p}
+                  title={bookmark.path}
                   onClick={() => {
-                    gotoWorkspace(p);
+                    gotoWorkspace(bookmark.path!);
                     setOpen(false);
                   }}
                 >
-                  {base(p)}
+                  {bookmark.label}
                 </button>
                 <button
                   type="button"
                   className="ws-bm-del"
                   aria-label="Remove bookmark"
-                  onClick={() => removeBookmark(p)}
+                  onClick={() => removeBookmark(bookmark.id)}
                 >
                   ×
                 </button>

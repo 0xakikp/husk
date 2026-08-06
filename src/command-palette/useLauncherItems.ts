@@ -32,7 +32,7 @@ import { getPrefs } from "../settings/preferences";
 import { loadAccounts as loadTotpAccounts } from "../totp/store";
 import { generateCode as generateTotpCode } from "../totp/totp";
 import { useClipHistory, deleteClip } from "../clipboard/store";
-import { useBookmarks, addBookmark, toggleBookmarkPin, type Bookmark } from "../bookmarks/store";
+import { useBookmarks, addBookmark, removeBookmark, toggleBookmarkPin, type Bookmark } from "../bookmarks/store";
 import { parseQuery, matchScopeTokens } from "./CommandPalette";
 import {
   searchCodebase,
@@ -663,6 +663,12 @@ function bookmarkToCommand(b: Bookmark, ctx: LauncherCtx): Command {
     actions: [
       { label: "Copy target", run: () => copy(target) },
       { label: b.pinned ? "Unpin" : "Pin", run: () => void toggleBookmarkPin(b.id) },
+      {
+        label: "Remove bookmark",
+        run: () => {
+          if (removeBookmark(b.id)) toast({ title: "Bookmark removed", variant: "success" });
+        },
+      },
       { label: "Open bookmarks panel", run: () => ctx.openBookmarks() },
     ],
   };

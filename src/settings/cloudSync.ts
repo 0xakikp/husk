@@ -1,3 +1,5 @@
+import { replaceBookmarks } from "../bookmarks/store";
+
 const LS_KEYS = [
   "huskv2.connections",
   "huskv2.bookmarks",
@@ -86,6 +88,16 @@ export async function importSettings(blob: string, passphrase: string): Promise<
   const decrypted = await decrypt(blob, passphrase);
   const payload = JSON.parse(decrypted) as Record<string, string | null>;
   for (const key of LS_KEYS) {
+    if (key === "huskv2.bookmarks") {
+      const raw = payload[key];
+      if (raw === undefined) continue;
+      try {
+        replaceBookmarks(raw ? JSON.parse(raw) : []);
+      } catch {
+        replaceBookmarks([]);
+      }
+      continue;
+    }
     if (payload[key] !== undefined && payload[key] !== null) {
       localStorage.setItem(key, payload[key]);
     } else {

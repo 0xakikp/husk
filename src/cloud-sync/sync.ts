@@ -1,3 +1,5 @@
+import { getBookmarks, replaceBookmarks } from "../bookmarks/store";
+
 export type CloudSyncData = {
   version: number;
   exportedAt: number;
@@ -45,7 +47,7 @@ function decodeBase64(str: string): Uint8Array {
 
 export function exportSettings(): CloudSyncData {
   const connections = JSON.parse(localStorage.getItem("huskv2.connections") || "[]");
-  const bookmarks = JSON.parse(localStorage.getItem("huskv2.bookmarks") || "[]");
+  const bookmarks = getBookmarks();
   const settings = JSON.parse(localStorage.getItem("huskv2.preferences") || "{}");
   const sshConfig = localStorage.getItem("huskv2.sshConfig") || "";
 
@@ -77,8 +79,8 @@ export function importSettings(data: CloudSyncData): { success: boolean; importe
 
   try {
     if (data.bookmarks?.length) {
-      localStorage.setItem("huskv2.bookmarks", JSON.stringify(data.bookmarks));
-      result.imported.push(`${data.bookmarks.length} bookmarks`);
+      const imported = replaceBookmarks(data.bookmarks);
+      result.imported.push(`${imported.length} bookmarks`);
     }
   } catch (e) { result.errors.push(`Bookmarks: ${e}`); }
 

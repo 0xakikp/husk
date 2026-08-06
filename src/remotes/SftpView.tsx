@@ -189,7 +189,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [mkdirName, setMkdirName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<SftpEntry | null>(null);
-  const [viewMode, setViewMode] = useState<"details" | "compact">("details");
+  const [viewMode, setViewMode] = useState<"details" | "tiles">("details");
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.path === selectedPath) ?? null,
@@ -447,7 +447,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
           <ToolbarButton label="Refresh" icon={Refresh01Icon} onClick={() => void load(cwd)} />
           <span className="mx-0.5 h-4 w-px bg-border/65" />
           <ToolbarButton label="Details view" icon={ListViewIcon} active={viewMode === "details"} onClick={() => setViewMode("details")} />
-          <ToolbarButton label="Compact view" icon={GridViewIcon} active={viewMode === "compact"} onClick={() => setViewMode("compact")} />
+          <ToolbarButton label="Tiles view" icon={GridViewIcon} active={viewMode === "tiles"} onClick={() => setViewMode("tiles")} />
           <ToolbarButton
             label="Disconnect SFTP"
             icon={Cancel01Icon}
@@ -570,7 +570,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
             </tbody>
           </table>
         ) : (
-          <div className="py-1">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] gap-2 p-3">
             {entries.map((entry) => {
               const isSelected = selectedPath === entry.path;
               return (
@@ -590,11 +590,16 @@ export function SftpView({ host, onClose }: SftpViewProps) {
                       setContextMenu({ x: Math.min(rect.left + 44, window.innerWidth - 208), y: Math.min(rect.bottom, window.innerHeight - 300), entry });
                     }
                   }}
-                  className={cn("group flex w-full cursor-default items-center gap-2 border-l-2 border-transparent px-3 py-1.5 text-left text-[11px] outline-none transition-colors hover:bg-muted/55 focus-visible:bg-primary/10", isSelected && "border-primary bg-primary/10")}
+                  title={entry.name}
+                  className={cn(
+                    "group relative flex min-h-28 cursor-default flex-col rounded-md border border-border/60 bg-card/45 p-2 text-left outline-none transition-[transform,background-color,border-color,box-shadow] duration-150 hover:-translate-y-px hover:border-primary/45 hover:bg-muted/55 hover:shadow-md focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary/60",
+                    isSelected && "border-primary/75 bg-primary/10 shadow-[inset_2px_0_0_var(--primary)]",
+                  )}
                 >
-                  <HugeiconsIcon icon={entry.is_dir ? Folder01Icon : File02Icon} size={14} strokeWidth={1.6} className={cn("shrink-0", entry.is_dir ? "text-primary" : "text-muted-foreground")} />
-                  <span className="min-w-0 flex-1 truncate text-foreground">{entry.name}</span>
-                  <span className="shrink-0 tabular-nums text-[9.5px] text-muted-foreground">{entry.is_dir ? "folder" : formatSize(entry.size)}</span>
+                  <HugeiconsIcon icon={entry.is_dir ? Folder01Icon : File02Icon} size={22} strokeWidth={1.5} className={cn("mb-auto shrink-0", entry.is_dir ? "text-primary" : "text-muted-foreground/80")} />
+                  <span className="mt-2 w-full truncate text-[10.5px] font-medium text-foreground">{entry.name}</span>
+                  <span className="mt-0.5 w-full truncate text-[9px] text-muted-foreground">{entry.is_dir ? "Folder" : formatSize(entry.size)}</span>
+                  <span className="mt-1 w-full truncate text-[8.5px] tabular-nums text-muted-foreground/65">{formatDate(entry.modified)}</span>
                   <button
                     type="button"
                     aria-label={`Actions for ${entry.name}`}
@@ -604,7 +609,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
                       setSelectedPath(entry.path);
                       setContextMenu({ x: Math.min(rect.right - 188, window.innerWidth - 208), y: Math.min(rect.bottom + 2, window.innerHeight - 300), entry });
                     }}
-                    className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                    className="absolute right-1 top-1 inline-flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                   >
                     <HugeiconsIcon icon={MoreHorizontalIcon} size={12} />
                   </button>

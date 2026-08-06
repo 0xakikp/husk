@@ -13,8 +13,6 @@ import {
   StopIcon,
   Copy01Icon,
   TickDouble01Icon,
-  VolumeHighIcon,
-  VolumeOffIcon,
   ArrowDown01Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
@@ -284,8 +282,6 @@ export function TerminalAiComposer({
      whole-scrollback chip, which mixes unrelated commands together. */
   const [attachedRuns, setAttachedRuns] = useState<CommandRun[]>([]);
   const [runPickerOpen, setRunPickerOpen] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const speakUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const prefs = usePrefs();
   const agents = useAgents();
@@ -835,11 +831,6 @@ export function TerminalAiComposer({
       setBusy(false);
       setStatus(null);
       setAttachedFiles([]);
-      const finalMessages = getSession(sessionId).messages;
-      const assistantMsg = [...finalMessages].reverse().find((m: AiMessage) => m.role === "assistant" && !m.streaming);
-      if (assistantMsg?.content) {
-        speakText(assistantMsg.content);
-      }
     }
   }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled]);
 
@@ -1050,52 +1041,6 @@ export function TerminalAiComposer({
     }
   };
 
-  const stopSpeaking = () => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    setSpeaking(false);
-  };
-
-  const speakText = (text: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    stopSpeaking();
-    const clean = stripCodeBlocks(text).replace(/!\[.*?\]\(.*?\)/g, "[image]").slice(0, 4000);
-    const FEMALE_VOICE_RE =
-      /samantha|victoria|karen|joanna|kimberly|salli|emma|amy|catherine|moira|zira|zhiyu|laila|meijia|serena|allison|ava(?!lanche)|susan|kate|stephanie|melissa|nicky|joelle|fiona|tessa/i;
-    const speak = (voices: SpeechSynthesisVoice[]) => {
-      const utterance = new SpeechSynthesisUtterance(clean);
-      const prefName = prefs.aiTtsVoice;
-      let voice = prefName ? voices.find((v) => v.name === prefName) : undefined;
-      if (!voice) voice = voices.find((v) => FEMALE_VOICE_RE.test(v.name));
-      if (!voice) voice = voices.find((v) => /female/i.test(v.name));
-      if (voice) utterance.voice = voice;
-      utterance.rate = 1.05;
-      utterance.pitch = 1.1;
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
-      speakUtteranceRef.current = utterance;
-      setSpeaking(true);
-      window.speechSynthesis.speak(utterance);
-    };
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length) {
-      speak(voices);
-    } else {
-      // Voices load asynchronously in some environments — wait once.
-      const onChanged = () => {
-        window.speechSynthesis.removeEventListener("voiceschanged", onChanged);
-        speak(window.speechSynthesis.getVoices());
-      };
-      window.speechSynthesis.addEventListener("voiceschanged", onChanged);
-      setTimeout(() => window.speechSynthesis.removeEventListener("voiceschanged", onChanged), 1500);
-    }
-  };
-
-  useEffect(() => {
-    return () => stopSpeaking();
-  }, []);
-
   /* useConfig, not loadConfig: switching provider or model from the footer has to
      re-render the composer, or the model shown on each message and the
      missing-key warning would keep reporting the old choice. Safe above the early
@@ -1273,17 +1218,6 @@ export function TerminalAiComposer({
               <HugeiconsIcon icon={StopIcon} size={12} strokeWidth={1.75} />
             </button>
           )}
-          <button
-            type="button"
-            onClick={speaking ? stopSpeaking : () => {
-              const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && !m.streaming);
-              if (lastAssistant?.content) speakText(lastAssistant.content);
-            }}
-            className={cn("composer-icon-btn", speaking && "composer-icon-btn-speaking")}
-            title={speaking ? "Stop speaking" : "Read last response"}
-          >
-            <HugeiconsIcon icon={speaking ? VolumeOffIcon : VolumeHighIcon} size={12} strokeWidth={1.75} />
-          </button>
           {variant === "docked" && onOpenInAiTab && (
             <button
               type="button"

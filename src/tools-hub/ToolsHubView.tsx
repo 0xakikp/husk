@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { cn } from "@/lib/utils";
-import { InformationCircleIcon, PlusSignIcon, AlertCircleIcon, PuzzleIcon } from "@hugeicons/core-free-icons";
+import { InformationCircleIcon, PlusSignIcon, AlertCircleIcon, PuzzleIcon, SecurityCheckIcon } from "@hugeicons/core-free-icons";
 import { usePrefs, setPrefs } from "../settings/preferences";
 import { loadPlugins, type LoadedPlugin } from "../plugins/loader";
 import { PluginPanel } from "../plugins/PluginPanel";
@@ -91,9 +91,10 @@ type Props = {
   onSelectView: (view: SidebarViewId) => void;
   onTypeCommand: (cmd: string) => void;
   onRunCommand: (cmd: string) => void;
+  onOpenTotp: () => void;
 };
 
-export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Props) {
+export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand, onOpenTotp }: Props) {
   const dir = usePrefs().pluginsDir;
   const [loaded, setLoaded] = useState<LoadedPlugin[]>([]);
   const [active, setActive] = useState<Plugin | null>(null);
@@ -127,7 +128,7 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
         <PanelHeader
           icon={PuzzleIcon}
           title="Plugins"
-          context={`${TOOLS.length} built-in`}
+          context={`${TOOLS.length + 1} built-in`}
           actions={
             <>
               <Tooltip>
@@ -145,7 +146,7 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
                   sideOffset={6}
                   className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
                 >
-                  Built-in plugins for infrastructure tools: Kubernetes, Docker, Terraform, CI/CD and Tailscale. Support for your own plugins is planned.
+                  Built-in tools for infrastructure work and local 2FA codes. Support for your own plugins is planned.
                 </TooltipContent>
               </Tooltip>
               <button
@@ -160,6 +161,26 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
           }
         />
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="px-0.5 pb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50">
+            Utilities
+          </div>
+          <button
+            type="button"
+            onClick={onOpenTotp}
+            title="Open 2FA Codes"
+            className="group flex w-full items-start gap-2 rounded-lg border border-border/40 bg-card/30 px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.05]"
+          >
+            <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/12 text-primary">
+              <HugeiconsIcon icon={SecurityCheckIcon} size={13} strokeWidth={1.75} />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-[11.5px] font-medium text-foreground">2FA Codes</span>
+              <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">
+                Generate and copy locally stored time-based codes.
+              </span>
+            </div>
+          </button>
+
           {/* gap-1 and py-1.5: five rows of two lines each had gap-2 between
               them plus py-2.5 inside, which spread the list over more height
               than it had content for. */}
@@ -167,7 +188,7 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
               cannot be added or removed, so presenting them under a bare
               "Plugins" heading — with nothing to install — would promise a
               capability that does not exist yet. */}
-          <div className="px-0.5 pb-1 text-[9px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase">
+          <div className="mt-3 px-0.5 pb-1 text-[9px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase">
             Built-in
           </div>
           <div className="flex flex-col gap-1">

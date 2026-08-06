@@ -264,11 +264,6 @@
   color: var(--foreground);
 }
 
-.composer-icon-btn-speaking {
-  color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-}
-
 /* ── Message stream ─────────────────────────────────────────────────────── */
 
 .composer-messages {

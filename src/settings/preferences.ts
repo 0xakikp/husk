@@ -147,9 +147,6 @@ export type Prefs = {
   aiPanelDock: "left" | "right";
   aiComposerSideWidth: number;
 
-  // AI talk-back (TTS) voice — empty = auto female
-  aiTtsVoice: string;
-
   // Setup assistant
   setupAssistantDismissed?: boolean;
 
@@ -290,25 +287,27 @@ const DEFAULT: Prefs = {
   aiSidebarWidth: 240,
   aiPanelDock: "left",
   aiComposerSideWidth: 380,
-  aiTtsVoice: "",
   setupAssistantDismissed: false,
 
   notesDirectory: "",
 };
 export const PREFS_STORAGE_KEY = "huskv2.prefs.v2";
 
-function mergePrefs(saved: Partial<Prefs>): Prefs {
-  const merged = { ...DEFAULT, ...saved };
+function mergePrefs(saved: Partial<Prefs> & { aiTtsVoice?: unknown }): Prefs {
+  // TTS was removed from Husk. Ignore its old persisted key rather than
+  // carrying a dead setting forward into localStorage or config.toml.
+  const { aiTtsVoice: _legacyTtsVoice, ...current } = saved;
+  const merged = { ...DEFAULT, ...current };
   /* Shallow merge alone would let a stored nested object (e.g. background)
      permanently hide keys added to the defaults later — deep-merge those. */
-  merged.background = { ...DEFAULT.background, ...(saved.background ?? {}) };
+  merged.background = { ...DEFAULT.background, ...(current.background ?? {}) };
 
   /* `dim` was a second black overlay above the wallpaper, while `opacity`
      faded the wallpaper toward the same black underneath it — so the two
      multiplied out to one value, image x opacity x (1 - dim). Only `opacity`
      remains; fold any stored dim into it so an existing wallpaper keeps the
      brightness it had rather than jumping. */
-  const legacyDim = (saved.background as { dim?: number } | undefined)?.dim;
+  const legacyDim = (current.background as { dim?: number } | undefined)?.dim;
   if (typeof legacyDim === "number" && legacyDim > 0) {
     merged.background = {
       ...merged.background,

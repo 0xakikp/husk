@@ -99,11 +99,11 @@ function FolderSwitch({
         </button>
       </PopoverTrigger>
       <PopoverContent
-        align="end"
+        align="center"
         sideOffset={6}
         onPointerEnter={keepOpen}
         onPointerLeave={closeAfterPointerLeaves}
-        className="w-52 gap-0 overflow-hidden rounded-md border border-border/70 bg-background/95 p-0 font-mono text-[10px] shadow-lg shadow-black/50 backdrop-blur-xl"
+        className="w-44 gap-0 overflow-hidden rounded-md border border-border/70 bg-background/95 p-0 font-mono text-[10px] shadow-lg shadow-black/50 backdrop-blur-xl"
       >
         <div className="flex items-center justify-between border-b border-border/50 px-2.5 py-1.5">
           <span className="uppercase tracking-[0.14em] text-muted-foreground">timeline folders</span>

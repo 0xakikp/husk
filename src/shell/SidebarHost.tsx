@@ -49,6 +49,7 @@ export function SidebarHost({
   openGitGraph,
   openIssues,
   openSftp,
+  openTotp,
   setSelectedK8sResource,
   setSelectedDockerResource,
   persistSidebarView,
@@ -70,6 +71,7 @@ export function SidebarHost({
   openGitGraph: () => void;
   openIssues: () => void;
   openSftp: (host: string) => void;
+  openTotp: () => void;
   setSelectedK8sResource: (sel: K8sResourceSelection | null) => void;
   setSelectedDockerResource: (sel: DockerResourceSelection | null) => void;
   persistSidebarView: (view: SidebarViewId) => void;
@@ -155,6 +157,7 @@ export function SidebarHost({
                     onSelectView={(v) => persistSidebarView(v)}
                     onTypeCommand={(cmd) => typeInActiveTerminal(cmd)}
                     onRunCommand={(cmd) => runInActiveTerminal(cmd)}
+                    onOpenTotp={openTotp}
                   />,
                   "Plugins",
                 )

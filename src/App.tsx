@@ -31,6 +31,7 @@ import { StatusBar } from "./statusbar/StatusBar";
 import type { OpenPanelKind } from "./git/types";
 import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId, runInActiveTerminal } from "./ai/terminalContext";
 import { openActiveTerminalLogs } from "./terminal/registry";
+import { loadAccounts as loadTotpAccounts } from "./totp/store";
 import { useLauncherItems, type LauncherCtx } from "./command-palette/useLauncherItems";
 import { pinNote, unpinNote } from "./notes/store";
 import { useContext as k8sUseContext } from "./kubernetes/client";
@@ -499,6 +500,7 @@ function App() {
   }, [prefs.aiEnabled]);
 
   const remoteHost = useActiveSshHost();
+  const totpAccountCount = loadTotpAccounts().length;
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const term = useTerminalTabs();
@@ -539,10 +541,11 @@ function App() {
       { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
       { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
       {
-        id: "totp",
+        id: totpAccountCount ? "totp" : "setup-totp",
         /* Keywords because nobody types "authenticator". The palette ranks over
            label + id + keywords, so totp/otp/2fa/mfa/code/token all land here. */
-        label: "Open authenticator (2FA)",
+        label: totpAccountCount ? "Open 2FA Codes" : "Set up 2FA Codes",
+        hint: totpAccountCount ? `${totpAccountCount} account${totpAccountCount === 1 ? "" : "s"}` : "authenticator",
         keywords: "totp otp 2fa mfa auth code token verification",
         run: () => setTotpOpen(true),
       },
@@ -605,7 +608,7 @@ function App() {
       { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind(n.sftpOpen ? "sftp" : "term"); } } },
       { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind(p.sftpOpen ? "sftp" : "term"); } } },
     ],
-    [prefs.aiEnabled, prefs.theme, term],
+    [prefs.aiEnabled, prefs.theme, term, totpAccountCount],
   );
 
   // ── Terminal tab universal shortcuts ──
@@ -970,6 +973,7 @@ function App() {
             openGitGraph={openGitGraph}
             openIssues={openIssues}
             openSftp={openSftp}
+            openTotp={() => setTotpOpen(true)}
             setSelectedK8sResource={setSelectedK8sResource}
             setSelectedDockerResource={setSelectedDockerResource}
             persistSidebarView={persistSidebarView}
