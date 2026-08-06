@@ -134,10 +134,10 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
+                    className="inline-flex size-6 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
                     aria-label="What is this?"
                   >
-                    <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+                    <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={1.75} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent
@@ -152,9 +152,9 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
                 type="button"
                 onClick={pickDir}
                 title={dir ? `Plugins folder: ${dir}` : "Choose a plugins folder"}
-                className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+                className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
               >
-                <HugeiconsIcon icon={PlusSignIcon} size={13} strokeWidth={2} />
+                <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
               </button>
             </>
           }

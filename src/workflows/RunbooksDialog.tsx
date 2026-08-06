@@ -58,9 +58,9 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
       aria-label="New workflow"
       title="New workflow"
       onClick={() => setMode({ kind: "edit", wf: null })}
-      className="inline-flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
-      <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.5} />
+      <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.5} />
     </button>
   );
 

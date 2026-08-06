@@ -134,7 +134,7 @@ export function SourceControlPanel({
         onClick={openIssues}
         className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
-        <HugeiconsIcon icon={Bug01Icon} size={16} strokeWidth={1.5} />
+        <HugeiconsIcon icon={Bug01Icon} size={14} strokeWidth={1.5} />
       </button>
       <button
         type="button"
@@ -143,7 +143,7 @@ export function SourceControlPanel({
         onClick={openGraph}
         className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
-        <HugeiconsIcon icon={GitForkIcon} size={16} strokeWidth={1.5} />
+        <HugeiconsIcon icon={GitForkIcon} size={14} strokeWidth={1.5} />
       </button>
       <button
         type="button"
@@ -153,7 +153,7 @@ export function SourceControlPanel({
         onClick={() => void act(gitFetch)}
         className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
       >
-        <HugeiconsIcon icon={FolderCloudIcon} size={16} strokeWidth={1.5} />
+        <HugeiconsIcon icon={FolderCloudIcon} size={14} strokeWidth={1.5} />
       </button>
       <button
         type="button"
@@ -163,7 +163,7 @@ export function SourceControlPanel({
         onClick={() => void act(pull)}
         className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
       >
-        <HugeiconsIcon icon={Download01Icon} size={16} strokeWidth={1.5} />
+        <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.5} />
       </button>
       <button
         type="button"
@@ -172,7 +172,7 @@ export function SourceControlPanel({
         onClick={() => void refresh()}
         className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
-        <HugeiconsIcon icon={Refresh01Icon} size={16} strokeWidth={1.5} />
+        <HugeiconsIcon icon={Refresh01Icon} size={14} strokeWidth={1.5} />
       </button>
     </div>
   );

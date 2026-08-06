@@ -55,9 +55,9 @@ function ExBtn({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="inline-flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
-      <HugeiconsIcon icon={icon} size={16} strokeWidth={1.5} />
+      <HugeiconsIcon icon={icon} size={14} strokeWidth={1.5} />
     </button>
   );
 }

@@ -556,10 +556,10 @@ export function NotesView({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
+                    className="inline-flex size-6 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
                     aria-label="What is this?"
                   >
-                    <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+                    <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={1.75} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent
@@ -573,22 +573,22 @@ export function NotesView({
               <button
                 type="button"
                 onClick={() => setShowTemplatePicker(true)}
-                className="inline-flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                 title="New note from template"
               >
-                <HugeiconsIcon icon={File02Icon} size={10} />
+                <HugeiconsIcon icon={File02Icon} size={14} />
               </button>
               {tree.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setSearchActive(true)}
                   className={cn(
-                    "inline-flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+                    "inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
                     searchActive && "bg-muted/60 text-foreground"
                   )}
                   title="Search notes"
                 >
-                  <HugeiconsIcon icon={Search01Icon} size={10} />
+                  <HugeiconsIcon icon={Search01Icon} size={14} />
                 </button>
               )}
               <button
@@ -598,10 +598,10 @@ export function NotesView({
                   setCreateDir(notesDirRef.current);
                   setShowCreate(true);
                 }}
-                className="inline-flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                 title="New note"
               >
-                <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
+                <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
               </button>
             </>
           }

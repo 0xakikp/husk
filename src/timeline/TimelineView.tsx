@@ -158,9 +158,9 @@ export function TimelineView({ inline }: { inline?: boolean }) {
                   <button
                     type="button"
                     aria-label="How the timeline groups your work"
-                    className="inline-flex size-5 cursor-help items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+                    className="inline-flex size-6 cursor-help items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-muted-foreground"
                   >
-                    <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+                    <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={1.75} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" sideOffset={6} className="max-w-56 border border-border/60 bg-zinc-950 text-[10.5px] leading-relaxed text-zinc-100 shadow-lg">
