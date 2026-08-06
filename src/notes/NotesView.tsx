@@ -21,7 +21,9 @@ import {
   PencilEdit01Icon,
   Cancel01Icon,
   InformationCircleIcon,
+  NotebookIcon,
 } from "@hugeicons/core-free-icons";
+import { PanelHeader } from "../shell/PanelHeader";
 import { folderIconUrl } from "../explorer/iconResolver";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -544,64 +546,66 @@ export function NotesView({
     <TooltipProvider delayDuration={200}>
       <div className={cn("box-border flex h-full min-h-0 flex-col", inline ? "p-2" : "p-4")}>
         {/* Header */}
-        <div className="mb-3 flex items-center gap-1 border-b border-border/55 pb-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <h3 className="sidebar-rail-title truncate">
-              VAULT
-            </h3>
-            <Tooltip>
-              <TooltipTrigger asChild>
+        <PanelHeader
+          icon={NotebookIcon}
+          title="Notes"
+          className={inline ? "-mx-2 -mt-2 mb-3" : "-mx-4 -mt-4 mb-3"}
+          actions={
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
+                    aria-label="What is this?"
+                  >
+                    <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  sideOffset={6}
+                  className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
+                >
+                  Markdown notes tied to the workspace. Pin important notes, search content, and create new notes from templates.
+                </TooltipContent>
+              </Tooltip>
+              <button
+                type="button"
+                onClick={() => setShowTemplatePicker(true)}
+                className="inline-flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                title="New note from template"
+              >
+                <HugeiconsIcon icon={File02Icon} size={10} />
+              </button>
+              {tree.length > 0 && (
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="What is this?"
+                  onClick={() => setSearchActive(true)}
+                  className={cn(
+                    "inline-flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+                    searchActive && "bg-muted/60 text-foreground"
+                  )}
+                  title="Search notes"
                 >
-                  <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+                  <HugeiconsIcon icon={Search01Icon} size={10} />
                 </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                sideOffset={6}
-                className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
-              >
-                Markdown notes tied to the workspace. Pin important notes, search content, and create new notes from templates.
-              </TooltipContent>
-            </Tooltip>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowTemplatePicker(true)}
-            className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
-            title="New note from template"
-          >
-            <HugeiconsIcon icon={File02Icon} size={10} />
-          </button>
-          {tree.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setSearchActive(true)}
-              className={cn(
-                "inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors",
-                searchActive && "bg-muted/60 text-foreground"
               )}
-              title="Search notes"
-            >
-              <HugeiconsIcon icon={Search01Icon} size={10} />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setCreateType("file");
-              setCreateDir(notesDirRef.current);
-              setShowCreate(true);
-            }}
-            className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
-            title="New note"
-          >
-            <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
-          </button>
-        </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateType("file");
+                  setCreateDir(notesDirRef.current);
+                  setShowCreate(true);
+                }}
+                className="inline-flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                title="New note"
+              >
+                <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={2} />
+              </button>
+            </>
+          }
+        />
 
       {/* Search */}
       {searchActive && (

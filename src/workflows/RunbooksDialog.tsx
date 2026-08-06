@@ -10,6 +10,7 @@ import {
   Delete02Icon,
   Add01Icon,
   InformationCircleIcon,
+  WorkflowCircle01Icon,
 } from "@hugeicons/core-free-icons";
 import {
   Tooltip,
@@ -67,6 +68,8 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
     <>
       <TooltipProvider delayDuration={200}>
         <Modal
+          icon={WorkflowCircle01Icon}
+          context={editing ? undefined : `${workflows.length} saved`}
           title={
             editing ? (
               mode.wf ? "Edit Workflow" : "New Workflow"

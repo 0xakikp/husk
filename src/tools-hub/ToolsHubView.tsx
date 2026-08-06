@@ -21,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { SidebarViewId } from "../sidebar/SidebarRail";
+import { PanelHeader } from "../shell/PanelHeader";
 
 /**
  * Real brand marks, from simple-icons via @icons-pack/react-simple-icons —
@@ -123,37 +124,41 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand }: Prop
   return (
     <TooltipProvider delayDuration={200}>
       <div className="flex h-full flex-col">
-        <div className="flex h-8 shrink-0 items-center border-b border-border/40 px-3">
-          <div className="flex items-center gap-1.5">
-            <span className="sidebar-rail-title">Plugins</span>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="What is this?"
+        <PanelHeader
+          icon={PuzzleIcon}
+          title="Plugins"
+          context={`${TOOLS.length} built-in`}
+          actions={
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex size-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
+                    aria-label="What is this?"
+                  >
+                    <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  sideOffset={6}
+                  className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
                 >
-                  <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                sideOffset={6}
-                className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
+                  Built-in plugins for infrastructure tools: Kubernetes, Docker, Terraform, CI/CD and Tailscale. Support for your own plugins is planned.
+                </TooltipContent>
+              </Tooltip>
+              <button
+                type="button"
+                onClick={pickDir}
+                title={dir ? `Plugins folder: ${dir}` : "Choose a plugins folder"}
+                className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
               >
-                Built-in plugins for infrastructure tools: Kubernetes, Docker, Terraform, CI/CD and Tailscale. Support for your own plugins is planned.
-              </TooltipContent>
-            </Tooltip>
-          </div>
-          <button
-            type="button"
-            onClick={pickDir}
-            title={dir ? `Plugins folder: ${dir}` : "Choose a plugins folder"}
-            className="ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <HugeiconsIcon icon={PlusSignIcon} size={13} strokeWidth={2} />
-          </button>
-        </div>
+                <HugeiconsIcon icon={PlusSignIcon} size={13} strokeWidth={2} />
+              </button>
+            </>
+          }
+        />
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* gap-1 and py-1.5: five rows of two lines each had gap-2 between
               them plus py-2.5 inside, which spread the list over more height

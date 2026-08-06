@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Clock01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 
 import { cn } from "../lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PanelHeader } from "../shell/PanelHeader";
 import { useWorkspaceRoot } from "../workspace/store";
 import {
   clearWorkspaceTimeline,
@@ -121,51 +122,56 @@ export function TimelineView({ inline }: { inline?: boolean }) {
 
   return (
     <div className={cn("flex h-full flex-col font-mono", inline && "text-[11px]")}>
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-3 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">Timeline</span>
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="How the timeline groups your work"
-                className="shrink-0 cursor-help text-muted-foreground/50 transition-colors hover:text-muted-foreground"
-              >
-                <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={6} className="max-w-56 border border-border/60 bg-zinc-950 text-[10.5px] leading-relaxed text-zinc-100 shadow-lg">
-              The timeline groups your work by project: a ⚑ pinned root (header ★ menu)
-              first, then the git repository root, then the current folder. Commands,
-              saves, AI and git events land in whichever bucket you're inside.
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <span className="min-w-0 flex-1 truncate text-[9.5px] text-muted-foreground/70" title={root ? `Timeline of ${root}` : ""}>
-          {root ? `📂 ${root.split("/").pop() || root}` : "no workspace"}
-        </span>
-        <button
-          type="button"
-          onClick={toggleRecording}
-          title={recording ? "Stop recording this workspace" : "Resume recording this workspace"}
-          className={cn(
-            "shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] transition-colors",
-            recording
-              ? "border-emerald-400/30 text-emerald-400/90 hover:bg-emerald-400/10"
-              : "border-border/50 text-muted-foreground hover:bg-muted/40",
-          )}
-        >
-          {recording ? "● rec" : "○ off"}
-        </button>
-        <button
-          type="button"
-          onClick={clearAll}
-          title="Delete this workspace's timeline (cannot be undone)"
-          className="shrink-0 rounded-md border border-border/50 px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:border-red-400/40 hover:text-red-400"
-        >
-          clear
-        </button>
-      </div>
+      <PanelHeader
+        icon={Clock01Icon}
+        title="Timeline"
+        context={root ? root.split("/").pop() || root : "no workspace"}
+        status={
+          <button
+            type="button"
+            onClick={toggleRecording}
+            title={recording ? "Stop recording this workspace" : "Resume recording this workspace"}
+            className={cn(
+              "rounded-md border px-1.5 py-0.5 text-[9px] transition-colors",
+              recording
+                ? "border-emerald-400/30 text-emerald-400/90 hover:bg-emerald-400/10"
+                : "border-border/50 text-muted-foreground hover:bg-muted/40",
+            )}
+          >
+            {recording ? "● rec" : "○ off"}
+          </button>
+        }
+        actions={
+          <>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="How the timeline groups your work"
+                    className="inline-flex size-5 cursor-help items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+                  >
+                    <HugeiconsIcon icon={InformationCircleIcon} size={12} strokeWidth={1.75} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={6} className="max-w-56 border border-border/60 bg-zinc-950 text-[10.5px] leading-relaxed text-zinc-100 shadow-lg">
+                  The timeline groups your work by project: a ⚑ pinned root (header ★ menu)
+                  first, then the git repository root, then the current folder. Commands,
+                  saves, AI and git events land in whichever bucket you're inside.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <button
+              type="button"
+              onClick={clearAll}
+              title="Delete this workspace's timeline (cannot be undone)"
+              className="rounded-md border border-border/50 px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:border-red-400/40 hover:text-red-400"
+            >
+              clear
+            </button>
+          </>
+        }
+      />
 
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/30 px-2 py-1.5">
         {FILTERS.map((f) => (

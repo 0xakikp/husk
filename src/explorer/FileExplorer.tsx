@@ -21,7 +21,8 @@ import {
 } from "../remote/remoteFs";
 import { fileIconUrl, folderIconUrl } from "./iconResolver";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { FileAddIcon, FolderAddIcon, Refresh01Icon, Search01Icon, Cancel01Icon, GlobalIcon, Location01Icon } from "@hugeicons/core-free-icons";
+import { FileAddIcon, FolderAddIcon, Refresh01Icon, Search01Icon, Cancel01Icon, GlobalIcon, Location01Icon, FolderTreeIcon } from "@hugeicons/core-free-icons";
+import { PanelHeader } from "../shell/PanelHeader";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useWorkspaceRoot } from "../workspace/store";
 import { useActiveTerminalCwd, runInActiveTerminal } from "../ai/terminalContext";
@@ -148,52 +149,51 @@ export function FileExplorer({
 
   return (
     <div className="explorer">
-      {/* husk v1's explorer header: workspace name + new/refresh/collapse actions. */}
-      <div className="flex h-8 items-center gap-1 px-2">
-        <span className="sidebar-rail-title flex flex-1 items-center gap-1.5 truncate" title={root}>
-          {remoteHost ? (
-            <HugeiconsIcon icon={GlobalIcon} size={14} strokeWidth={1.75} className="shrink-0 text-[var(--accent)]" />
-          ) : (
-            <img src={folderIconUrl(name, false)} alt="" width={15} height={15} className="shrink-0" />
-          )}
-          {name}
-        </span>
-        {!remoteHost && (
-          <ExBtn icon={Search01Icon} label="Search files" onClick={() => setFilterOpen((v) => !v)} />
-        )}
-        {remoteHost && (
+      {/* Banded-chip header (PanelHeader): rail glyph + workspace context + actions. */}
+      <PanelHeader
+        icon={remoteHost ? GlobalIcon : FolderTreeIcon}
+        title="Files"
+        context={remoteHost ?? name}
+        actions={
           <>
-            <ExBtn
-              icon={Location01Icon}
-              label="Sync CWD"
-              onClick={async () => {
-                if (!remoteHost) return;
-                try {
-                  const pwd = await sshPwd(remoteHost);
-                  if (pwd) {
-                    setRemoteHome(pwd);
-                    setRefreshKey((k) => k + 1);
-                    toast({ title: `CWD: ${pwd}`, variant: "info" });
-                  }
-                } catch (err) {
-                  toast({ title: String(err), variant: "error" });
-                }
-              }}
-            />
-            <ExBtn
-              icon={Cancel01Icon}
-              label="Disconnect"
-              onClick={() => {
-                setActiveSshHost(null);
-                setRemoteHome(null);
-              }}
-            />
+            {!remoteHost && (
+              <ExBtn icon={Search01Icon} label="Search files" onClick={() => setFilterOpen((v) => !v)} />
+            )}
+            {remoteHost && (
+              <>
+                <ExBtn
+                  icon={Location01Icon}
+                  label="Sync CWD"
+                  onClick={async () => {
+                    if (!remoteHost) return;
+                    try {
+                      const pwd = await sshPwd(remoteHost);
+                      if (pwd) {
+                        setRemoteHome(pwd);
+                        setRefreshKey((k) => k + 1);
+                        toast({ title: `CWD: ${pwd}`, variant: "info" });
+                      }
+                    } catch (err) {
+                      toast({ title: String(err), variant: "error" });
+                    }
+                  }}
+                />
+                <ExBtn
+                  icon={Cancel01Icon}
+                  label="Disconnect"
+                  onClick={() => {
+                    setActiveSshHost(null);
+                    setRemoteHome(null);
+                  }}
+                />
+              </>
+            )}
+            <ExBtn icon={FileAddIcon} label="New file" onClick={() => setRootCreate("file")} />
+            <ExBtn icon={FolderAddIcon} label="New folder" onClick={() => setRootCreate("dir")} />
+            <ExBtn icon={Refresh01Icon} label="Refresh" onClick={() => setRefreshKey((k) => k + 1)} />
           </>
-        )}
-        <ExBtn icon={FileAddIcon} label="New file" onClick={() => setRootCreate("file")} />
-        <ExBtn icon={FolderAddIcon} label="New folder" onClick={() => setRootCreate("dir")} />
-        <ExBtn icon={Refresh01Icon} label="Refresh" onClick={() => setRefreshKey((k) => k + 1)} />
-      </div>
+        }
+      />
       {filterOpen ? (
         <div className="px-2 pb-1">
           <input

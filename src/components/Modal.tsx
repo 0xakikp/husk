@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
+import { PanelHeader, type PanelIcon } from "../shell/PanelHeader";
 import { SHEET_HOST_ID, sheetHost, useIsSidebarSheet } from "./sheetHost";
 
 /**
@@ -18,6 +19,8 @@ export function Modal({
   children,
   inline = false,
   headerActions,
+  icon,
+  context,
 }: {
   title: ReactNode;
   onClose?: () => void;
@@ -25,6 +28,8 @@ export function Modal({
   children: ReactNode;
   inline?: boolean;
   headerActions?: ReactNode;
+  icon?: PanelIcon;
+  context?: ReactNode;
 }) {
   const isSheet = useIsSidebarSheet();
   // Safety net: Radix's modal Dialog sets `pointer-events: none` on <body>
@@ -44,10 +49,14 @@ export function Modal({
        behind every rail panel except the file explorer. */
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="flex h-8 shrink-0 items-center justify-between gap-1 border-b border-border/40 px-3">
-          <span className="sidebar-rail-title truncate">{title}</span>
-          {headerActions ? <div className="flex items-center gap-0.5">{headerActions}</div> : null}
-        </div>
+        {icon ? (
+          <PanelHeader icon={icon} title={title} context={context} actions={headerActions} />
+        ) : (
+          <div className="flex h-8 shrink-0 items-center justify-between gap-1 border-b border-border/40 px-3">
+            <span className="sidebar-rail-title truncate">{title}</span>
+            {headerActions ? <div className="flex items-center gap-0.5">{headerActions}</div> : null}
+          </div>
+        )}
         <div className="min-h-0 flex-1 overflow-y-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {children}
         </div>

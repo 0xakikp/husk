@@ -23,6 +23,7 @@ import {
   FolderCloudIcon,
   Download01Icon,
   Tick02Icon,
+  FolderGitTwoIcon,
 } from "@hugeicons/core-free-icons";
 
 export function SourceControlPanel({
@@ -178,12 +179,9 @@ export function SourceControlPanel({
 
   return (
     <Modal
-      title={
-        <span className="inline-flex items-center gap-1 text-primary">
-          <HugeiconsIcon icon={GitForkIcon} size={12} strokeWidth={1.9} />
-          {branch || "Source Control"}
-        </span>
-      }
+      icon={FolderGitTwoIcon}
+      context={branch || undefined}
+      title="Source control"
       onClose={onClose}
       inline={inline}
       headerActions={headerActions}

@@ -165,7 +165,7 @@ export function RemotesView({
 
   return (
     <>
-      <Modal title="Remotes" onClose={onClose} inline={inline} headerActions={headerActions}>
+      <Modal title="Remotes" icon={DatabaseIcon} context={`${savedConnections.length} saved`} onClose={onClose} inline={inline} headerActions={headerActions}>
         {/* Quick Connect — Recent */}
         {recentConns.length > 0 && (
           <div className="mb-3">
