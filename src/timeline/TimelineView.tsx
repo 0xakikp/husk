@@ -131,14 +131,23 @@ export function TimelineView({ inline }: { inline?: boolean }) {
             type="button"
             onClick={toggleRecording}
             title={recording ? "Stop recording this workspace" : "Resume recording this workspace"}
-            className={cn(
-              "rounded-md border px-1.5 py-0.5 text-[9px] transition-colors",
-              recording
-                ? "border-emerald-400/30 text-emerald-400/90 hover:bg-emerald-400/10"
-                : "border-border/50 text-muted-foreground hover:bg-muted/40",
-            )}
+            className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-muted/40"
           >
-            {recording ? "● rec" : "○ off"}
+            {recording ? (
+              <>
+                {/* Camera-style REC: pulsing red halo + solid core. */}
+                <span className="relative flex size-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-red-500" />
+                </span>
+                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-red-400">rec</span>
+              </>
+            ) : (
+              <>
+                <span className="inline-flex size-1.5 rounded-full border border-muted-foreground/60" />
+                <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">off</span>
+              </>
+            )}
           </button>
         }
         actions={
