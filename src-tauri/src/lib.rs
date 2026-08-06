@@ -5,7 +5,6 @@ mod fs;
 mod jobs;
 mod mcp;
 mod port_forward;
-mod project;
 mod pty;
 mod remote;
 mod secrets;
@@ -186,12 +185,6 @@ pub fn run() {
             jobs::shell_bg_remove,
             jobs::shell_bg_list,
             shell_history::pty_shell_history,
-            project::project_profile_load,
-            project::project_profile_init,
-            project::project_profile_write_instructions,
-            project::project_profile_set_enabled,
-            project::project_runbook_save,
-            project::project_runbook_delete,
             timeline::timeline_record,
             timeline::timeline_query,
             timeline::timeline_clear,

@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { useWorkspaceRoot, gotoWorkspace, pickWorkspaceFolder } from "../workspace/store";
 import { addBookmark, removeBookmark, useBookmarks } from "../workspace/bookmarks";
-import { useProjectProfile } from "../project/profile";
 
 const base = (p: string) => p.split("/").filter(Boolean).pop() || p;
 
 export function WorkspacePath() {
   const root = useWorkspaceRoot();
-  const profile = useProjectProfile();
   const [open, setOpen] = useState(false);
   const bookmarks = useBookmarks();
 
@@ -16,18 +14,6 @@ export function WorkspacePath() {
       <button type="button" className="ws-name" title="Open folder" onClick={() => void pickWorkspaceFolder()}>
         📂 {root ? base(root) : "~"}
       </button>
-      {profile?.exists && (
-        <span
-          className="ws-profile-badge"
-          title={
-            profile.enabled
-              ? `Project profile active — ${profile.husk_dir}${profile.include_instructions ? " · instructions attached to AI" : ""}`
-              : "Project profile disabled for this workspace"
-          }
-        >
-          {profile.enabled ? "◈ profile" : "◇ profile off"}
-        </span>
-      )}
       <button type="button" className="ws-star" title="Bookmarks" onClick={() => setOpen((o) => !o)}>
         ★
       </button>

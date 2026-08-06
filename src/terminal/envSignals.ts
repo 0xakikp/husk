@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getProjectProfile } from "../project/profile";
 
 /**
  * Environment Safety Signals.
@@ -36,8 +35,8 @@ function emit(): void {
   for (const fn of subscribers) fn();
 }
 
-/* Until Project Profiles land (Release 2), protected matching is conservative
-   and hardcoded: anything that looks like production gets the accent. */
+/* Protected matching is conservative and hardcoded: anything that looks like
+   production gets the accent. */
 const PROTECTED_RE = /prod|production|live/i;
 
 export function isProtectedTarget(value: string | null): boolean {
@@ -55,26 +54,24 @@ export function matchesPattern(pattern: string, value: string): boolean {
 export type ProtectedKind = "kubernetes" | "aws" | "docker" | "git";
 
 /**
- * Why a target is protected, or null when it is safe. A project profile's
- * [safety] lists win first; the generic production pattern is the fallback so
- * even profile-less projects get warned about obvious prod targets. Git
- * branches only warn when the profile lists them — "main" alone is not an
- * incident waiting to happen.
+ * Why a target is protected, or null when it is safe. Driven by the generic
+ * production pattern so every project gets warned about obvious prod targets.
+ * Git branches never warn on pattern alone — "main" is not an incident
+ * waiting to happen.
  */
 export function protectedReason(kind: ProtectedKind, value: string | null): string | null {
   if (!value) return null;
-  const safety = getProjectProfile()?.safety;
-  const listed =
-    kind === "kubernetes"
-      ? (safety?.protected_kubernetes_contexts ?? [])
-      : kind === "aws"
-        ? (safety?.protected_aws_profiles ?? [])
-        : kind === "git"
-          ? (safety?.protected_git_branches ?? [])
-          : [];
-  if (listed.some((p) => matchesPattern(p, value))) return "protected by project profile";
   if (kind !== "git" && PROTECTED_RE.test(value)) return "matches production pattern";
   return null;
+}
+
+/** Current protected targets from live environment signals. */
+export function protectedTargets(): string[] {
+  const env = getEnvSignals();
+  const hits: string[] = [];
+  if (env.kubeContext && isProtectedTarget(env.kubeContext)) hits.push(`kubernetes/${env.kubeContext}`);
+  if (env.awsProfile && isProtectedTarget(env.awsProfile)) hits.push(`aws/${env.awsProfile}`);
+  return hits;
 }
 
 /* Commands that mutate shared infrastructure. Combined with protectedReason

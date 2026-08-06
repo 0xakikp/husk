@@ -15,7 +15,6 @@ import { loadMcpServers, hydrateMcpServersFromNative, saveMcpServers } from "./m
 import { getCustomPresets, hydrateAppearancePresetsFromNative } from "./settings/appearancePresets";
 import { initialiseNativeConfig, readNativeConfig } from "./settings/nativeConfig";
 import { loadAiAgentsFromFiles, migrateLegacyAiAgents } from "./ai/agentFiles";
-import { initProjectProfileTracking } from "./project/profile";
 /* No ?v=N cache-busting queries on these imports: the query becomes part of
    the module id, so when Tailwind finishes its cold-start candidate scan and
    invalidates the stylesheet by its plain id, the update misses this module —
@@ -156,7 +155,6 @@ async function startApplication() {
   hydrateMcpServersFromNative(configDocument.mcp);
   hydrateAppearancePresetsFromNative(configDocument.appearance_presets);
   applyStartupChrome();
-  initProjectProfileTracking();
 
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>

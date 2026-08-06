@@ -5,7 +5,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Input } from "@/components/ui/input";
 import { GeneralFile } from "./files/GeneralFile";
 import { AppearanceFile } from "./files/AppearanceFile";
-import { ProjectFile } from "./files/ProjectFile";
 import { ModelsFile } from "./files/ModelsFile";
 import { AgentsFile } from "./files/AgentsFile";
 import { PromptsFile } from "./files/PromptsFile";
@@ -19,7 +18,6 @@ import "./config/config-theme.css";
 type FileId =
   | "config"
   | "appearance"
-  | "project"
   | "models"
   | "agents"
   | "prompts"
@@ -43,7 +41,6 @@ type FileDef = {
 const FILES: FileDef[] = [
   { id: "config", label: "Workspace", description: "Editor, terminal, and startup", path: "workspace", component: GeneralFile, group: "Workspace", mark: "⌘", keywords: ["general", "editor", "terminal", "font", "cursor", "vim", "startup"] },
   { id: "appearance", label: "Appearance", description: "Theme, wallpaper, and effects", path: "appearance", component: AppearanceFile, group: "Workspace", mark: "◐", keywords: ["appearance", "theme", "wallpaper", "color", "opacity", "blur", "glow", "effects"] },
-  { id: "project", label: "Project", description: "What Husk knows about the open folder", path: "project", component: ProjectFile, group: "Workspace", mark: "◈", keywords: ["project", "profile", "husk", "instructions", "runbook", "recipe", "environment"] },
   { id: "models", label: "AI & Models", description: "Default model and provider access", path: "ai-models", component: ModelsFile, group: "AI", mark: "✦", keywords: ["models", "provider", "api", "key", "anthropic", "openai", "claude", "deepseek", "local"] },
   { id: "agents", label: "Agents", description: "Personas and assistant behavior", path: "agents", component: AgentsFile, group: "AI", mark: "◎", keywords: ["agents", "persona", "system", "prompt", "composer"] },
   { id: "prompts", label: "Prompts", description: "Templates and quick actions", path: "prompts", component: PromptsFile, group: "AI", mark: "✎", keywords: ["prompts", "templates", "quick", "actions", "slash"] },
