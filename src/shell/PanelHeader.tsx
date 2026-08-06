@@ -40,7 +40,9 @@ export function PanelHeader({
         <span className="min-w-0 truncate text-[10px] text-muted-foreground/60">{context}</span>
       ) : null}
       {status || actions ? (
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        // Actions shrink like the rail: context truncates first, then buttons
+        // compress (never grow) instead of overflowing a narrow sidebar.
+        <div className="ml-auto flex min-w-0 shrink items-center gap-1 overflow-hidden [&_button]:min-w-0 [&_button]:shrink">
           {status}
           {actions}
         </div>
