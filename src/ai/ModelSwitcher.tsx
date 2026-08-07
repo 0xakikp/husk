@@ -46,10 +46,21 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
   const [maxHeight, setMaxHeight] = useState(320);
 
   useEffect(() => {
-    void Promise.all([claudeCliAvailable(), codexCliAvailable()]).then(([claude, codex]) => {
-      setCliAvailability({ claude, codex });
-    });
+    const refreshCliAvailability = (refresh = false) => {
+      void Promise.all([claudeCliAvailable(refresh), codexCliAvailable(refresh)]).then(([claude, codex]) => {
+        setCliAvailability({ claude, codex });
+      });
+    };
+    refreshCliAvailability();
     void codexCliModels().then(setCodexModels);
+    const onAvailabilityChanged = () => refreshCliAvailability();
+    const onWindowFocus = () => refreshCliAvailability(true);
+    window.addEventListener("husk-cli-availability-changed", onAvailabilityChanged);
+    window.addEventListener("focus", onWindowFocus);
+    return () => {
+      window.removeEventListener("husk-cli-availability-changed", onAvailabilityChanged);
+      window.removeEventListener("focus", onWindowFocus);
+    };
   }, []);
 
   useEffect(() => {

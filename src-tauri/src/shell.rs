@@ -12,6 +12,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+#[cfg(unix)]
+use std::ffi::CStr;
+
 use serde::Serialize;
 
 const MAX_OUT: usize = 256 * 1024;
@@ -61,10 +64,85 @@ fn program_has_metachar(program: &str) -> bool {
     })
 }
 
+/// Return the shell selected for this account, even when Husk was launched by
+/// Finder/Dock and therefore did not inherit a terminal's `$SHELL` or `$PATH`.
+/// On Unix the account record is the durable source of truth; `$SHELL` wins
+/// when it is available because it reflects the user's active preference.
+fn user_login_shell() -> PathBuf {
+    if let Some(shell) = std::env::var_os("SHELL") {
+        let path = PathBuf::from(shell);
+        if path.is_file() {
+            return path;
+        }
+    }
+
+    #[cfg(unix)]
+    // SAFETY: `getpwuid` returns a pointer owned by libc for the current user.
+    // We immediately copy the `pw_shell` string while reading it and never keep
+    // the returned pointer beyond this block.
+    unsafe {
+        let passwd = libc::getpwuid(libc::geteuid());
+        if !passwd.is_null() && !(*passwd).pw_shell.is_null() {
+            let shell = CStr::from_ptr((*passwd).pw_shell).to_string_lossy();
+            let path = PathBuf::from(shell.as_ref());
+            if path.is_file() {
+                return path;
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let zsh = PathBuf::from("/bin/zsh");
+        if zsh.is_file() {
+            return zsh;
+        }
+    }
+
+    PathBuf::from("sh")
+}
+
+fn uses_interactive_config(shell: &Path) -> bool {
+    matches!(
+        shell.file_name().and_then(|name| name.to_str()),
+        Some("bash" | "zsh" | "fish" | "ksh" | "mksh")
+    )
+}
+
+/// Run `command -v` in the user's actual login shell. Interactive config is
+/// intentionally loaded for shells that support it: CLIs installed through
+/// nvm, fnm, asdf, Homebrew, or a user-managed `~/.local/bin` often appear
+/// only there, while GUI applications otherwise inherit a minimal PATH.
+fn resolve_via_login_shell(program: &str) -> Option<PathBuf> {
+    let shell = user_login_shell();
+    let script = format!("command -v {}", shell_quote(program));
+    let args = if uses_interactive_config(&shell) {
+        "-lic"
+    } else {
+        "-lc"
+    };
+    let output = Command::new(shell).arg(args).arg(script).output().ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    // Startup files occasionally print a banner. `command -v` writes its
+    // result last, so scanning backwards makes detection robust without
+    // treating any arbitrary line as executable input.
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .rev()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .find(|candidate| candidate.is_file())
+}
+
 /// Resolve a binary name or absolute path to an executable path.
-/// Uses the current process PATH first, then falls back to the user's
-/// login shell so PATH modifications from .zshrc/.bash_profile are honored.
-/// This lets GUI-launched apps find Homebrew, OrbStack, and other tools.
+/// Uses the current process PATH first, then falls back to the actual user's
+/// login shell. This lets GUI-launched apps find Homebrew, nvm, and other
+/// tools configured for the user's terminal.
 fn resolve_binary_path(program: &str) -> Result<PathBuf, String> {
     if program.is_empty() {
         return Err("program is empty".to_string());
@@ -84,7 +162,7 @@ fn resolve_binary_path(program: &str) -> Result<PathBuf, String> {
 
     // Absolute path: use as-is if it exists.
     if path.is_absolute() {
-        if !path.exists() {
+        if !path.is_file() {
             return Err(format!("program does not exist: {program}"));
         }
         return Ok(path.to_path_buf());
@@ -94,28 +172,14 @@ fn resolve_binary_path(program: &str) -> Result<PathBuf, String> {
     if let Some(paths) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&paths) {
             let candidate = dir.join(program);
-            if candidate.exists() {
+            if candidate.is_file() {
                 return Ok(candidate);
             }
         }
     }
 
-    // Fall back to login shell resolution (macOS GUI apps inherit a minimal PATH).
-    let script = format!("command -v {}", shell_quote(program));
-    let output = Command::new("sh")
-        .arg("-lc")
-        .arg(&script)
-        .output()
-        .map_err(|e| format!("failed to resolve program via login shell: {e}"))?;
-
-    if output.status.success() {
-        let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !line.is_empty() {
-            let candidate = PathBuf::from(line);
-            if candidate.exists() {
-                return Ok(candidate);
-            }
-        }
+    if let Some(candidate) = resolve_via_login_shell(program) {
+        return Ok(candidate);
     }
 
     Err(format!("program not found on PATH: {program}"))
@@ -212,18 +276,8 @@ pub fn detect_binaries(bins: Vec<String>) -> Result<Vec<String>, String> {
             continue;
         }
 
-        let script = format!("command -v {}", shell_quote(&bin));
-        let output = Command::new("sh")
-            .arg("-lc")
-            .arg(&script)
-            .output()
-            .map_err(|e| e.to_string())?;
-
-        if output.status.success() {
-            let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !line.is_empty() && PathBuf::from(&line).exists() {
-                found.push(bin);
-            }
+        if resolve_binary_path(&bin).is_ok() {
+            found.push(bin);
         }
     }
 

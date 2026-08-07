@@ -12,10 +12,11 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
  * calling the API as if it were Claude Code. See src-tauri/src/ai_cli.rs for why.
  */
 
-/** Cached: the answer cannot change without the app restarting in practice. */
+/** Cached between checks, but refreshable after an install or PATH change. */
 let availability: Promise<boolean> | null = null;
 
-export function claudeCliAvailable(): Promise<boolean> {
+export function claudeCliAvailable(refresh = false): Promise<boolean> {
+  if (refresh) availability = null;
   availability ??= invoke<boolean>("ai_cli_available").catch(() => false);
   return availability;
 }

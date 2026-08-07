@@ -71,10 +71,22 @@ function ProviderBlock({ provider }: { provider: Provider }) {
   const cliName = isCodexCli ? "Codex" : "Claude Code";
   const cliCommand = isCodexCli ? "codex" : "claude";
   const [cliReady, setCliReady] = useState(false);
+  const [checkingCli, setCheckingCli] = useState(false);
   useEffect(() => {
     if (!isCli) return;
     void (isCodexCli ? codexCliAvailable() : claudeCliAvailable()).then(setCliReady);
   }, [isCli, isCodexCli]);
+
+  const refreshCli = () => {
+    if (!isCli) return;
+    setCheckingCli(true);
+    void (isCodexCli ? codexCliAvailable(true) : claudeCliAvailable(true))
+      .then((ready) => {
+        setCliReady(ready);
+        window.dispatchEvent(new Event("husk-cli-availability-changed"));
+      })
+      .finally(() => setCheckingCli(false));
+  };
 
   const startEdit = () => {
     setDraft(apiKey || "");
@@ -110,10 +122,11 @@ function ProviderBlock({ provider }: { provider: Provider }) {
               ? `Uses the ${cliName} CLI you are already signed into. No API key; usage draws on that account instead of per-token billing.`
               : isCodexCli
                 ? "Not found. Install the codex CLI and sign in with your ChatGPT account, then reopen settings."
-                : "Not found. Install the claude CLI and run `claude login`, then reopen settings."
+                : "Not detected from your login shell. Confirm `claude` works in a new terminal, then press refresh."
           }
         >
           <CfgStr>{cliReady ? `${cliCommand} CLI detected` : `${cliCommand} CLI not on PATH`}</CfgStr>
+          <CfgAct onClick={refreshCli}>{checkingCli ? "checking…" : "refresh"}</CfgAct>
         </CfgRow>
       ) : provider.keyless ? (
         <CfgRow name="keyless" comment="This provider needs no API key.">

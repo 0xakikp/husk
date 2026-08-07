@@ -19,7 +19,8 @@ export type CodexCliModel = {
   description: string;
 };
 
-export function codexCliAvailable(): Promise<boolean> {
+export function codexCliAvailable(refresh = false): Promise<boolean> {
+  if (refresh) availability = null;
   availability ??= invoke<boolean>("codex_cli_available").catch(() => false);
   return availability;
 }
