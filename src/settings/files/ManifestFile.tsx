@@ -2,17 +2,8 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { checkForUpdates } from "../../updater";
-import {
-  ConfigEditor,
-  CfgAct,
-  CfgArt,
-  CfgBlank,
-  CfgComment,
-  CfgRow,
-  CfgSection,
-  CfgStr,
-} from "../config/controls";
-import { BANNERS } from "../config/banners";
+import { ConfigEditor } from "../config/controls";
+import { useNativeConfigStatus } from "../nativeConfig";
 
 const REPO_URL = "https://github.com/0xakikp/husk";
 const FEEDBACK_URL = "https://github.com/0xakikp/husk/issues/new";
@@ -26,112 +17,138 @@ function platformLabel(): string {
   return "desktop";
 }
 
+type Capability = {
+  label: string;
+  summary: string;
+};
+
+const CAPABILITIES: Capability[] = [
+  {
+    label: "Terminal",
+    summary: "Shells, panes, output, and logs",
+  },
+  {
+    label: "Workspace",
+    summary: "Files, diffs, and Vault notes",
+  },
+  {
+    label: "AI",
+    summary: "Context with clear boundaries",
+  },
+  {
+    label: "Operations",
+    summary: "Git, remotes, and tool views",
+  },
+];
+
 export function ManifestFile() {
   const [version, setVersion] = useState("");
+  const config = useNativeConfigStatus();
+
   useEffect(() => {
     void getVersion()
       .then(setVersion)
-      .catch(() => setVersion("0.1.0"));
+      .catch(() => setVersion("0.7.5"));
   }, []);
+
+  const configPath = config.path ?? "~/.husk/config.toml";
+  const configState = config.error
+    ? "Local settings need attention"
+    : config.ready
+      ? "Local settings ready"
+      : "Preparing local settings";
 
   return (
     <ConfigEditor>
-      <CfgArt lines={BANNERS.manifest} />
-      <CfgBlank />
+      <div className="about-workbench">
+        <section className="about-profile" aria-label="About Husk">
+          <header className="about-profile-header">
+            <div className="about-hero-mark" aria-hidden="true">
+              <img src="/logo.png" alt="" draggable={false} />
+            </div>
+            <div className="about-hero-copy">
+              <p className="about-kicker">HUSK</p>
+              <h2>Terminal-native workspace</h2>
+              <p>Build, operate, and understand your systems from one terminal-native workspace.</p>
+              <div className="about-build-line" aria-label="Build information">
+                <span>Husk {version || "…"}</span>
+                <i />
+                <span>{platformLabel()}</span>
+                <i />
+                <span>MIT licensed</span>
+              </div>
+            </div>
+            <div className="about-hero-actions">
+              <button type="button" className="about-primary-action" onClick={() => void checkForUpdates(true)}>check for updates</button>
+              <button type="button" className="about-text-action" onClick={() => void openUrl(REPO_URL)}>view on GitHub ↗</button>
+            </div>
+          </header>
 
-      <CfgSection name="husk" />
-      <CfgRow name="name">
-        <img src="/logo.png" alt="" className="cfg-logo" draggable={false} />
-        <CfgStr>Husk</CfgStr>
-      </CfgRow>
-      <CfgRow name="version">
-        <CfgStr>{version || "—"}</CfgStr>
-      </CfgRow>
-      <CfgRow name="tagline">
-        <CfgStr>Intelligence, stripped to the shell.</CfgStr>
-      </CfgRow>
-      <CfgRow name="build">
-        <CfgStr>{platformLabel()}</CfgStr>
-      </CfgRow>
-      <CfgRow name="maker">
-        <CfgStr>@akikp</CfgStr>
-      </CfgRow>
-      <CfgRow name="license">
-        <CfgStr>Apache 2.0</CfgStr>
-      </CfgRow>
-      <CfgBlank />
+          <div className="about-profile-divider" />
 
-      <CfgSection name="links" />
-      <CfgRow>
-        <CfgAct onClick={() => void checkForUpdates(true)}>check for updates</CfgAct>
-        <CfgAct onClick={() => void openUrl(REPO_URL)}>github</CfgAct>
-        <CfgAct onClick={() => void openUrl(FEEDBACK_URL)}>feedback</CfgAct>
-        <CfgAct onClick={() => void openUrl(BUY_ME_A_COFFEE_URL)}>support</CfgAct>
-      </CfgRow>
-      <CfgBlank />
+          <section className="about-profile-section" aria-label="Husk capabilities">
+            <p className="about-kicker">AT A GLANCE</p>
+            <div className="about-capability-strip">
+              {CAPABILITIES.map((capability) => (
+                <article key={capability.label} className="about-capability-item">
+                  <strong>{capability.label}</strong>
+                  <span>{capability.summary}</span>
+                </article>
+              ))}
+            </div>
+          </section>
 
-      <CfgSection name="overview" />
-      <CfgComment>Husk is a terminal-first development environment for the desktop.</CfgComment>
-      <CfgComment>It combines a full terminal emulator, a code editor, an AI</CfgComment>
-      <CfgComment>assistant and infrastructure tooling in a single application, so</CfgComment>
-      <CfgComment>that work normally spread across a terminal, a browser dashboard,</CfgComment>
-      <CfgComment>an editor and a chat window happens in one place.</CfgComment>
-      <CfgBlank />
-      <CfgComment>Sessions run on a native PTY. The application is built with Rust</CfgComment>
-      <CfgComment>and Tauri with a React interface, and ships for macOS, Windows and</CfgComment>
-      <CfgComment>Linux.</CfgComment>
-      <CfgBlank />
+          <div className="about-profile-divider" />
 
-      <CfgSection name="designed_for" />
-      <CfgComment>Engineers who spend most of the working day in a shell — platform</CfgComment>
-      <CfgComment>and infrastructure teams, SREs, and backend developers whose work</CfgComment>
-      <CfgComment>runs through ssh, kubectl, docker, terraform and git.</CfgComment>
-      <CfgBlank />
+          <details className="about-trust-disclosure">
+            <summary>
+              <span>
+                <b>Private by default</b>
+                <small>Preferences, agents, and notes stay local. API and integration secrets use the operating system keychain.</small>
+              </span>
+            </summary>
+            <div className="about-trust-details">
+              <dl className="about-trust-map">
+                <div className={`about-trust-row${config.error ? " is-attention" : ""}`}>
+                  <dt>Configuration</dt>
+                  <dd><code>{configPath}</code><small><i className="about-status-dot" />{configState}. Non-secret preferences and presets live here.</small>{config.error ? <em>{config.error}</em> : null}</dd>
+                </div>
+                <div className="about-trust-row">
+                  <dt>Credentials</dt>
+                  <dd><b>Operating system keychain</b><small>API and integration secrets stay out of the config file.</small></dd>
+                </div>
+                <div className="about-trust-row">
+                  <dt>AI requests</dt>
+                  <dd><b>Selected provider, on request</b><small>Only terminal output, files, attachments, or memory you include are sent.</small></dd>
+                </div>
+                <div className="about-trust-row">
+                  <dt>Your files</dt>
+                  <dd><code>~/.husk/agents/ · ~/.husk/notes/</code><small>Custom agents and Vault notes remain editable, local Markdown.</small></dd>
+                </div>
+              </dl>
+            </div>
+          </details>
 
-      <CfgSection name="capabilities" />
-      <CfgRow name="terminal">
-        <CfgStr>Tabs, splits, shell integration, searchable history</CfgStr>
-      </CfgRow>
-      <CfgRow name="ai">
-        <CfgStr>Assistant docked beside the shell, with terminal and file context</CfgStr>
-      </CfgRow>
-      <CfgRow name="editor">
-        <CfgStr>Monaco, with optional vim mode</CfgStr>
-      </CfgRow>
-      <CfgRow name="kubernetes">
-        <CfgStr>Contexts, workloads, logs and resource inspection</CfgStr>
-      </CfgRow>
-      <CfgRow name="containers">
-        <CfgStr>Docker images, containers and logs</CfgStr>
-      </CfgRow>
-      <CfgRow name="infrastructure">
-        <CfgStr>Terraform state, CI/CD pipelines, Tailscale devices</CfgStr>
-      </CfgRow>
-      <CfgRow name="remote">
-        <CfgStr>Saved SSH connections, SFTP, port forwarding</CfgStr>
-      </CfgRow>
-      <CfgRow name="automation">
-        <CfgStr>Multi-step workflows, runnable from any terminal</CfgStr>
-      </CfgRow>
-      <CfgRow name="search">
-        <CfgStr>One launcher across files, history, notes and actions</CfgStr>
-      </CfgRow>
-      <CfgRow name="extensibility">
-        <CfgStr>MCP servers, to give the assistant external tools</CfgStr>
-      </CfgRow>
-      <CfgBlank />
+          <div className="about-profile-divider" />
 
-      <CfgSection name="security" />
-      <CfgComment>API keys are stored in the operating system keychain, never in</CfgComment>
-      <CfgComment>application config. Assistant file access is confined to the open</CfgComment>
-      <CfgComment>workspace. File edits are presented as a diff for review before</CfgComment>
-      <CfgComment>they are applied, and commands identified as destructive require</CfgComment>
-      <CfgComment>explicit confirmation.</CfgComment>
-      <CfgBlank />
+          <section className="about-profile-section about-next-section">
+            <p className="about-kicker">START HERE</p>
+            <div className="about-next-grid">
+              <div><kbd>⌘/Ctrl K</kbd><span>Command palette and Beautiful Logs</span></div>
+              <div><kbd>AI &amp; Models</kbd><span>Choose API access or a CLI subscription</span></div>
+              <div><kbd>Privacy</kbd><span>Control optional crash reporting</span></div>
+            </div>
+          </section>
 
-      <CfgSection name="status" />
-      <CfgComment>Under active development. Issues and feature requests are welcome</CfgComment>
-      <CfgComment>on GitHub.</CfgComment>
+          <footer className="about-footer">
+            <p>Husk is open source under the MIT License.</p>
+            <div>
+              <button type="button" onClick={() => void openUrl(FEEDBACK_URL)}>report an issue ↗</button>
+              <button type="button" onClick={() => void openUrl(BUY_ME_A_COFFEE_URL)}>support Husk ↗</button>
+            </div>
+          </footer>
+        </section>
+      </div>
     </ConfigEditor>
   );
 }

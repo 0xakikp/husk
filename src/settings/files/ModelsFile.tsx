@@ -19,6 +19,8 @@ import {
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
 
+type ModelsView = { kind: "overview" } | { kind: "provider"; id: string };
+
 function maskKey(k: string): string {
   if (!k) return "";
   if (k.length <= 10) return "••••••••";
@@ -54,7 +56,7 @@ function SubscriptionModeNotice({ provider }: { provider: Provider }) {
   );
 }
 
-/** One provider's config block with keychain-backed API key editing. */
+/** One provider's inspector content with keychain-backed API key editing. */
 function ProviderBlock({ provider }: { provider: Provider }) {
   const apiKey = useKey(provider.id);
   const [editing, setEditing] = useState(false);
@@ -92,7 +94,6 @@ function ProviderBlock({ provider }: { provider: Provider }) {
 
   return (
     <>
-      <CfgSection name={`providers.${provider.id}`} />
       <CfgRow name="label" comment="Display name for this provider in the model picker.">
         <CfgStr>{provider.label}</CfgStr>
       </CfgRow>
@@ -148,15 +149,189 @@ function ProviderBlock({ provider }: { provider: Provider }) {
       {isCli ? (
         <CfgComment>Subscription mode is read-only. Its available and unavailable features are shown above when selected.</CfgComment>
       ) : null}
-      <CfgBlank />
     </>
+  );
+}
+
+function useProviderAvailability(provider: Provider) {
+  const apiKey = useKey(provider.id);
+  const isCli = provider.kind === "cli";
+  const isCodexCli = provider.cli === "codex";
+  const cliCommand = isCodexCli ? "codex" : "claude";
+  const [cliReady, setCliReady] = useState(false);
+
+  useEffect(() => {
+    if (!isCli) return;
+    void (isCodexCli ? codexCliAvailable() : claudeCliAvailable()).then(setCliReady);
+  }, [isCli, isCodexCli]);
+
+  if (isCli) {
+    return {
+      ready: cliReady,
+      state: cliReady ? `${cliCommand} CLI detected` : `${cliCommand} CLI not found`,
+    };
+  }
+  if (provider.id === "local") return { ready: true, state: "local endpoint" };
+  if (provider.keyless) return { ready: true, state: "ready" };
+  return { ready: !!apiKey, state: apiKey ? "API key configured" : "API key needed" };
+}
+
+function ModelProviderCard({
+  provider,
+  active,
+  onOpen,
+}: {
+  provider: Provider;
+  active: boolean;
+  onOpen: () => void;
+}) {
+  const availability = useProviderAvailability(provider);
+  const detail = provider.kind === "cli"
+    ? "Uses your signed-in subscription"
+    : provider.id === "local"
+      ? "LM Studio, Ollama, or compatible server"
+      : provider.baseURL ?? "API-key model access";
+
+  return (
+    <button
+      type="button"
+      className={`model-provider-card ${active ? "is-active" : ""}`}
+      onClick={onOpen}
+    >
+      <span className={`model-provider-dot ${availability.ready ? "is-ready" : ""}`} aria-hidden="true" />
+      <span className="model-provider-copy">
+        <strong>{provider.label}</strong>
+        <small>{detail}</small>
+        <em className={availability.ready ? "is-ready" : ""}>{availability.state}</em>
+      </span>
+      {active ? <span className="model-provider-active">default</span> : null}
+      <span className="model-provider-chevron" aria-hidden="true">›</span>
+    </button>
+  );
+}
+
+function ProviderDirectory({
+  config,
+  onOpen,
+}: {
+  config: ReturnType<typeof loadConfig>;
+  onOpen: (id: string) => void;
+}) {
+  const cliProviders = PROVIDERS.filter((provider) => provider.kind === "cli");
+  const apiProviders = PROVIDERS.filter((provider) => provider.kind !== "cli");
+
+  return (
+    <>
+      <CfgSection name="providers" />
+      <section className="model-provider-directory" aria-label="AI providers">
+        <div className="model-provider-directory-head">
+          <div>
+            <p>Provider access <span>{PROVIDERS.length}</span></p>
+            <small>Open a provider to manage its connection and credentials.</small>
+          </div>
+        </div>
+
+        <div className="model-provider-group">
+          <p className="model-provider-group-label">Subscription / CLI</p>
+          <div className="model-provider-grid">
+            {cliProviders.map((provider) => (
+              <ModelProviderCard
+                key={provider.id}
+                provider={provider}
+                active={config.providerId === provider.id}
+                onOpen={() => onOpen(provider.id)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div id="api-provider-access" className="settings-provider-anchor" aria-hidden="true" />
+        <div className="model-provider-group">
+          <p className="model-provider-group-label">API and local</p>
+          <div className="model-provider-grid">
+            {apiProviders.map((provider) => (
+              <ModelProviderCard
+                key={provider.id}
+                provider={provider}
+                active={config.providerId === provider.id}
+                onOpen={() => onOpen(provider.id)}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function LocalProviderBlock({
+  config,
+  onUpdate,
+}: {
+  config: ReturnType<typeof loadConfig>;
+  onUpdate: (patch: Partial<ReturnType<typeof loadConfig>>) => void;
+}) {
+  return (
+    <>
+      <CfgComment>LM Studio, Ollama, or any OpenAI-compatible server. No key needed.</CfgComment>
+      <CfgRow name="baseURL" comment="Endpoint for the local server, e.g. http://localhost:11434 for Ollama.">
+        <CfgText
+          value={config.baseURL}
+          onChange={(baseURL) => onUpdate({ baseURL })}
+          placeholder="http://localhost:1234/v1"
+          widthCh={30}
+        />
+      </CfgRow>
+      <CfgRow name="model" comment="Model sent with each request. Must match a model the provider actually serves.">
+        <CfgText
+          value={config.providerId === "local" ? config.model : ""}
+          onChange={(model) => onUpdate({ model, providerId: "local" })}
+          placeholder="model id"
+          widthCh={22}
+        />
+      </CfgRow>
+    </>
+  );
+}
+
+function ModelProviderInspector({
+  provider,
+  config,
+  onUpdate,
+  onBack,
+}: {
+  provider: Provider;
+  config: ReturnType<typeof loadConfig>;
+  onUpdate: (patch: Partial<ReturnType<typeof loadConfig>>) => void;
+  onBack: () => void;
+}) {
+  return (
+    <section className="model-provider-inspector" aria-label={`${provider.label} provider settings`}>
+      <header className="model-provider-inspector-head">
+        <button type="button" onClick={onBack}>← all providers</button>
+        <div>
+          <h2>{provider.label}</h2>
+          <p>{provider.kind === "cli" ? "Subscription CLI connection" : provider.id === "local" ? "Local model connection" : "API provider connection"}</p>
+        </div>
+      </header>
+      <CfgSection name="connection" />
+      {provider.id === "local" ? (
+        <LocalProviderBlock config={config} onUpdate={onUpdate} />
+      ) : (
+        <ProviderBlock provider={provider} />
+      )}
+    </section>
   );
 }
 
 export function ModelsFile() {
   const [config, setConfig] = useState(() => loadConfig());
   const [codexModels, setCodexModels] = useState<CodexCliModel[]>([]);
+  const [view, setView] = useState<ModelsView>({ kind: "overview" });
   const subscriptionProvider = PROVIDERS.find((provider) => provider.id === config.providerId && provider.kind === "cli");
+  const selectedProvider = view.kind === "provider"
+    ? PROVIDERS.find((provider) => provider.id === view.id) ?? null
+    : null;
 
   useEffect(() => {
     void codexCliModels().then(setCodexModels);
@@ -189,50 +364,35 @@ export function ModelsFile() {
       <CfgArt lines={BANNERS.models} />
       <CfgBlank />
 
-      <CfgSection name="ai" />
-      <CfgRow name="defaultModel" comment="Used by the composer, suggestions, and quick actions.">
-        <CfgEnum
-          value={config.model}
-          options={modelOptions}
-          onChange={(model) => {
-            const option = modelOptions.find((item) => item.value === model);
-            if (option) updateConfig({ model, providerId: option.providerId });
-          }}
+      {view.kind === "overview" ? (
+        <>
+          <CfgSection name="ai" />
+          <CfgRow name="defaultModel" comment="Used by the composer, suggestions, and quick actions.">
+            <CfgEnum
+              value={config.model}
+              options={modelOptions}
+              onChange={(model) => {
+                const option = modelOptions.find((item) => item.value === model);
+                if (option) updateConfig({ model, providerId: option.providerId });
+              }}
+            />
+          </CfgRow>
+          <CfgComment>An agent can optionally override this model in Settings → Agents. Leave its model blank to use this default.</CfgComment>
+          {subscriptionProvider ? <SubscriptionModeNotice provider={subscriptionProvider} /> : null}
+          <CfgBlank />
+          <ProviderDirectory config={config} onOpen={(id) => setView({ kind: "provider", id })} />
+          <CfgComment>Keys never leave the OS keychain; nothing is synced.</CfgComment>
+        </>
+      ) : selectedProvider ? (
+        <ModelProviderInspector
+          provider={selectedProvider}
+          config={config}
+          onUpdate={updateConfig}
+          onBack={() => setView({ kind: "overview" })}
         />
-      </CfgRow>
-      <CfgComment>An agent can optionally override this model in Settings → Agents. Leave its model blank to use this default.</CfgComment>
-      {subscriptionProvider ? <SubscriptionModeNotice provider={subscriptionProvider} /> : null}
-      <CfgBlank />
-
-      {PROVIDERS.filter((p) => p.kind === "cli").map((provider) => (
-        <ProviderBlock key={provider.id} provider={provider} />
-      ))}
-
-      <div id="api-provider-access" className="settings-provider-anchor" aria-hidden="true" />
-      {PROVIDERS.filter((p) => p.id !== "local" && p.kind !== "cli").map((provider) => (
-        <ProviderBlock key={provider.id} provider={provider} />
-      ))}
-
-      <CfgSection name="providers.local" />
-      <CfgComment>LM Studio, Ollama, or any OpenAI-compatible server. No key needed.</CfgComment>
-      <CfgRow name="baseURL" comment="Endpoint for the local server, e.g. http://localhost:11434 for Ollama.">
-        <CfgText
-          value={config.baseURL}
-          onChange={(baseURL) => updateConfig({ baseURL })}
-          placeholder="http://localhost:1234/v1"
-          widthCh={30}
-        />
-      </CfgRow>
-      <CfgRow name="model" comment="Model sent with each request. Must match a model the provider actually serves.">
-        <CfgText
-          value={config.providerId === "local" ? config.model : ""}
-          onChange={(model) => updateConfig({ model, providerId: "local" })}
-          placeholder="model id"
-          widthCh={22}
-        />
-      </CfgRow>
-      <CfgBlank />
-      <CfgComment>keys never leave the OS keychain; nothing is synced</CfgComment>
+      ) : (
+        <CfgRow><CfgAct onClick={() => setView({ kind: "overview" })}>back to providers</CfgAct></CfgRow>
+      )}
     </ConfigEditor>
   );
 }

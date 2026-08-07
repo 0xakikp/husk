@@ -24,3 +24,12 @@ export const browserClose = (label: string) => invoke<void>("browser_close", { l
 /** Fired by the Rust side on every navigation the child webview performs. */
 export const onBrowserNav = (cb: (label: string, url: string) => void) =>
   listen<{ label: string; url: string }>("browser://nav", (e) => cb(e.payload.label, e.payload.url));
+
+export type BrowserLoadPhase = "started" | "finished";
+
+/** Native load events let the toolbar reflect actual page transitions rather
+ * than guessing from an address-bar submission. */
+export const onBrowserLoad = (cb: (label: string, url: string, phase: BrowserLoadPhase) => void) =>
+  listen<{ label: string; url: string; phase: BrowserLoadPhase }>("browser://load", (e) =>
+    cb(e.payload.label, e.payload.url, e.payload.phase),
+  );

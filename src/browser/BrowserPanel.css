@@ -1,0 +1,60 @@
+/* React owns the browser chrome; the page itself is a native child webview
+   placed over .browser-viewport by Rust. Keep that viewport plain and exact. */
+.browser-panel { display: flex; height: 100%; min-width: 0; flex-direction: column; overflow: hidden; background: var(--background); color: var(--foreground); }
+.browser-chrome { position: relative; display: flex; min-height: 48px; flex: 0 0 auto; align-items: center; gap: 8px; border-bottom: 1px solid color-mix(in srgb, var(--border) 88%, transparent); padding: 0 12px; background: color-mix(in srgb, var(--background) 95%, transparent); }
+.browser-brand { display: inline-flex; width: 26px; height: 26px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border)); border-radius: 7px; color: var(--primary); background: color-mix(in srgb, var(--primary) 7%, transparent); }
+.browser-nav-group, .browser-action-group { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 1px; border: 1px solid color-mix(in srgb, var(--border) 78%, transparent); border-radius: 7px; padding: 2px; background: color-mix(in srgb, var(--background) 75%, transparent); }
+.browser-action-group { margin-left: 1px; }
+.browser-icon-button { display: inline-flex; width: 25px; height: 25px; align-items: center; justify-content: center; border: 0; border-radius: 5px; color: var(--muted-foreground); background: transparent; cursor: pointer; transition: color .14s ease, background .14s ease, transform .14s ease; }
+.browser-icon-button:hover { color: var(--foreground); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.browser-icon-button:active { transform: scale(.94); }
+.browser-icon-button:focus-visible { outline: 1px solid var(--primary); outline-offset: 1px; }
+.browser-icon-button.is-close:hover { color: #f87171; background: color-mix(in srgb, #f87171 9%, transparent); }
+.browser-icon-button.is-loading svg { animation: browser-spin .85s linear infinite; }
+.browser-location { display: flex; min-width: 120px; height: 30px; flex: 1 1 auto; align-items: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--border) 88%, transparent); border-radius: 7px; padding: 0 8px; background: color-mix(in srgb, var(--muted) 26%, var(--background)); transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.browser-location:focus-within { border-color: color-mix(in srgb, var(--primary) 60%, var(--border)); background: color-mix(in srgb, var(--primary) 4%, var(--background)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 10%, transparent); }
+.browser-location-dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--muted-foreground); opacity: .65; }
+.browser-location-dot.is-ready { background: var(--primary); opacity: 1; box-shadow: 0 0 8px color-mix(in srgb, var(--primary) 62%, transparent); }
+.browser-location-dot.is-loading, .browser-location-dot.is-connecting { background: #fbbf24; opacity: 1; animation: browser-pulse 1s ease-in-out infinite; }
+.browser-location-dot.is-error { background: #f87171; opacity: 1; }
+.browser-location input { min-width: 0; width: 100%; border: 0; padding: 0; color: var(--foreground); background: transparent; outline: 0; font-family: "Iosevka", "Fira Code Variable", ui-monospace, monospace; font-size: 11px; line-height: 1; }
+.browser-location input::placeholder { color: var(--muted-foreground); }
+.browser-location kbd { flex: 0 0 auto; border: 1px solid color-mix(in srgb, var(--border) 85%, transparent); border-radius: 3px; padding: 1px 4px; color: color-mix(in srgb, var(--muted-foreground) 82%, var(--foreground)); background: color-mix(in srgb, var(--background) 82%, transparent); font-family: inherit; font-size: 8px; line-height: 1.25; }
+.browser-page-state { max-width: 130px; overflow: hidden; color: var(--muted-foreground); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.browser-page-state.is-loading, .browser-page-state.is-connecting { color: #fbbf24; }
+.browser-page-state.is-error { color: #f87171; }
+.browser-load-indicator { position: absolute; z-index: 2; bottom: -1px; left: 0; width: 0; height: 1px; background: var(--primary); opacity: 0; transition: opacity .16s ease, width .35s ease; }
+.browser-load-indicator.is-loading, .browser-load-indicator.is-connecting { width: 65%; opacity: .95; animation: browser-load 1.25s ease-in-out infinite; }
+.browser-load-indicator.is-ready { width: 100%; opacity: 0; transition: width .16s ease, opacity .45s ease .08s; }
+.browser-alert { display: flex; min-height: 31px; flex: 0 0 auto; align-items: center; gap: 8px; border-bottom: 1px solid color-mix(in srgb, #fbbf24 32%, var(--border)); padding: 0 12px; color: var(--muted-foreground); background: color-mix(in srgb, #fbbf24 6%, var(--background)); font-size: 9.5px; }
+.browser-alert > span { color: #fbbf24; font-weight: 650; white-space: nowrap; }
+.browser-alert p { min-width: 0; flex: 1; overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; }
+.browser-alert button { flex: 0 0 auto; border: 0; border-bottom: 1px solid transparent; padding: 1px 0; color: var(--foreground); background: transparent; cursor: pointer; font: inherit; font-size: 9px; white-space: nowrap; }
+.browser-alert button:hover { border-color: currentColor; }
+.browser-viewport { position: relative; min-width: 0; min-height: 0; flex: 1 1 auto; background: #08090b; }
+.browser-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted-foreground); font-size: 10px; }
+.browser-placeholder span { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 9px color-mix(in srgb, var(--primary) 60%, transparent); animation: browser-pulse 1s ease-in-out infinite; }
+.browser-placeholder p { margin: 0; }
+.browser-error { position: absolute; top: 50%; left: 50%; z-index: 1; width: min(390px, calc(100% - 36px)); box-sizing: border-box; transform: translate(-50%, -50%); border: 1px solid color-mix(in srgb, #f87171 40%, var(--border)); border-radius: 8px; padding: 15px; background: color-mix(in srgb, var(--background) 94%, #120708); box-shadow: 0 14px 40px rgba(0,0,0,.28); }
+.browser-error > span { color: var(--foreground); font-size: 11px; font-weight: 600; }
+.browser-error p { margin: 5px 0 0; color: var(--muted-foreground); font-size: 10px; line-height: 1.45; }
+.browser-error > div { display: flex; gap: 11px; margin-top: 13px; }
+.browser-error button { border: 0; border-bottom: 1px solid transparent; padding: 2px 0; color: var(--primary); background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; }
+.browser-error button:hover { border-color: currentColor; }
+.browser-error button:first-child { color: var(--foreground); }
+@keyframes browser-spin { to { transform: rotate(360deg); } }
+@keyframes browser-pulse { 50% { opacity: .35; transform: scale(.82); } }
+@keyframes browser-load { 50% { width: 84%; } }
+@media (prefers-reduced-motion: reduce) {
+  .browser-icon-button, .browser-location, .browser-load-indicator { transition: none; }
+  .browser-icon-button.is-loading svg, .browser-location-dot.is-loading, .browser-location-dot.is-connecting, .browser-placeholder span, .browser-load-indicator.is-loading, .browser-load-indicator.is-connecting { animation: none; }
+}
+@media (max-width: 700px) {
+  .browser-chrome { gap: 5px; padding: 0 8px; }
+  .browser-brand { display: none; }
+  .browser-page-state { display: none; }
+  .browser-location kbd { display: none; }
+  .browser-nav-group, .browser-action-group { padding: 1px; }
+  .browser-alert { gap: 6px; padding: 0 8px; }
+  .browser-alert > span { display: none; }
+}

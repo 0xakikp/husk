@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { disconnectMcpServer } from "@/mcp/client";
 import { getMcpHealth, testMcpConnection, useMcpHealth } from "@/mcp/health";
@@ -26,6 +26,12 @@ import {
 import { BANNERS } from "../config/banners";
 
 const GITHUB_TOKEN_ACCOUNT = "mcp.github.personal-access-token";
+
+type McpView =
+  | { kind: "overview" }
+  | { kind: "github" }
+  | { kind: "server"; id: string }
+  | { kind: "add" };
 
 function githubServerConfig(readOnly: boolean): Omit<McpServerConfig, "id"> {
   return {
@@ -55,8 +61,7 @@ export function McpFile() {
   const [servers, setServers] = useState<McpServerConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<McpServerConfig | null>(null);
+  const [view, setView] = useState<McpView>({ kind: "overview" });
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; msg: string } | null>(null);
   const [githubTokenStored, setGithubTokenStored] = useState(false);
@@ -122,6 +127,7 @@ export function McpFile() {
     await disconnectMcpServer(id);
     await removeMcpServer(id);
     setServers((prev) => prev.filter((s) => s.id !== id));
+    setView({ kind: "overview" });
   };
 
   const handleTest = async (server: McpServerConfig) => {
@@ -142,17 +148,18 @@ export function McpFile() {
   };
 
   const handleSave = async (config: Omit<McpServerConfig, "id"> & { id?: string }) => {
+    let saved: McpServerConfig;
     if (config.id) {
+      saved = { ...(servers.find((server) => server.id === config.id) as McpServerConfig), ...config, id: config.id };
       await updateMcpServer(config.id, config);
       setServers((prev) =>
         prev.map((s) => (s.id === config.id ? { ...(s as McpServerConfig), ...config, id: config.id } : s)),
       );
     } else {
-      const added = await addMcpServer(config);
-      setServers((prev) => [...prev, added]);
+      saved = await addMcpServer(config);
+      setServers((prev) => [...prev, saved]);
     }
-    setFormOpen(false);
-    setEditing(null);
+    setView({ kind: "server", id: saved.id });
   };
 
   const handleGithubSave = async ({ token, readOnly }: { token: string; readOnly: boolean }) => {
@@ -192,104 +199,325 @@ export function McpFile() {
     setTestResult(null);
   };
 
+  const selectedServer = view.kind === "server"
+    ? servers.find((server) => server.id === view.id) ?? null
+    : null;
+
   return (
     <ConfigEditor>
       <CfgArt lines={BANNERS.mcp} />
       <CfgBlank />
 
-      <IntegrationAccessNotice />
-      <GitHubIntegration
-        server={githubServer}
-        tokenStored={githubTokenStored}
-        testing={testingId === githubServer?.id}
-        testResult={testResult?.id === githubServer?.id ? testResult : null}
-        onSave={handleGithubSave}
-        onToggle={(enabled) => githubServer && handleToggle(githubServer.id, enabled)}
-        onTest={() => githubServer && handleTest(githubServer)}
-        onDisconnect={handleGithubDisconnect}
-      />
-      <CfgBlank />
-
-      {loading ? (
-        <CfgComment>loading servers…</CfgComment>
-      ) : error ? (
+      {view.kind === "overview" ? (
         <>
-          <CfgComment>failed to load servers: {error}</CfgComment>
-          <CfgRow>
-            <CfgAct onClick={reload}>retry</CfgAct>
-          </CfgRow>
+          <IntegrationAccessNotice />
+          {loading ? (
+            <CfgComment>loading servers…</CfgComment>
+          ) : error ? (
+            <>
+              <CfgComment>failed to load servers: {error}</CfgComment>
+              <CfgRow><CfgAct onClick={reload}>retry</CfgAct></CfgRow>
+            </>
+          ) : (
+            <McpOverview
+              githubServer={githubServer}
+              customServers={customServers}
+              testingId={testingId}
+              testResult={testResult}
+              onOpenGithub={() => setView({ kind: "github" })}
+              onOpenServer={(id) => setView({ kind: "server", id })}
+              onAdd={() => setView({ kind: "add" })}
+              onToggle={handleToggle}
+              onTest={handleTest}
+            />
+          )}
         </>
-      ) : customServers.length === 0 ? (
-        <CfgComment>no custom servers configured — add one to give the AI more external tools</CfgComment>
-      ) : (
-        <>
-          {customServers.map((server) => (
-            <div key={server.id}>
-              <CfgSection name="servers" array />
-              <CfgRow name="name" comment="Server name, used to namespace its tools.">
-                <CfgStr>{server.name}</CfgStr>
-                {testResult?.id === server.id ? (
-                  <span className={testResult.ok ? "cfg-num" : "cfg-hint"} style={testResult.ok ? undefined : { color: "#f87171" }}>
-                    {testResult.ok ? testResult.msg : `failed: ${testResult.msg}`}
-                  </span>
-                ) : null}
-              </CfgRow>
-              <CfgRow name="command" comment="Executable that starts the server, e.g. npx or uvx.">
-                <CfgStr>{server.command}</CfgStr>
-              </CfgRow>
-              <CfgRow name="args" comment="Arguments passed to the command, one per line.">
-                <span className="cfg-punct">[</span>
-                <span className="cfg-str">{server.args.map((a) => `"${a}"`).join(", ")}</span>
-                <span className="cfg-punct">]</span>
-              </CfgRow>
-              <CfgRow name="enabled" comment="Load this server's tools into the AI. Disable to keep the config without running it.">
-                <Switch checked={server.enabled} onCheckedChange={(v) => void handleToggle(server.id, v)} />
-              </CfgRow>
-              <McpHealthRow serverId={server.id} readOnly={server.readOnly} />
-              <CfgRow>
-                <CfgAct onClick={() => void handleTest(server)}>
-                  {testingId === server.id ? "testing…" : "test"}
-                </CfgAct>
-                <CfgAct
-                  onClick={() => {
-                    setEditing(server);
-                    setFormOpen(true);
-                  }}
-                >
-                  edit
-                </CfgAct>
-                <CfgAct onClick={() => void handleDelete(server.id)} danger>
-                  delete
-                </CfgAct>
-              </CfgRow>
-              <CfgBlank />
-            </div>
-          ))}
-        </>
-      )}
-
-      {formOpen ? (
-        <McpServerForm
-          editing={editing}
-          onCancel={() => {
-            setFormOpen(false);
-            setEditing(null);
-          }}
+      ) : view.kind === "github" ? (
+        <McpInspectorFrame
+          title="GitHub"
+          subtitle="Official GitHub MCP server"
+          onBack={() => setView({ kind: "overview" })}
+        >
+          <GitHubIntegration
+            server={githubServer}
+            tokenStored={githubTokenStored}
+            testing={testingId === githubServer?.id}
+            testResult={testResult?.id === githubServer?.id ? testResult : null}
+            onSave={handleGithubSave}
+            onToggle={(enabled) => githubServer && handleToggle(githubServer.id, enabled)}
+            onTest={() => githubServer && handleTest(githubServer)}
+            onDisconnect={handleGithubDisconnect}
+          />
+        </McpInspectorFrame>
+      ) : view.kind === "add" ? (
+        <McpInspectorFrame
+          title="Connect server"
+          subtitle="Add a custom MCP server"
+          onBack={() => setView({ kind: "overview" })}
+        >
+          <McpServerForm editing={null} onCancel={() => setView({ kind: "overview" })} onSave={handleSave} />
+        </McpInspectorFrame>
+      ) : selectedServer ? (
+        <McpServerInspector
+          server={selectedServer}
+          testing={testingId === selectedServer.id}
+          testResult={testResult?.id === selectedServer.id ? testResult : null}
+          onBack={() => setView({ kind: "overview" })}
           onSave={handleSave}
+          onToggle={(enabled) => handleToggle(selectedServer.id, enabled)}
+          onTest={() => handleTest(selectedServer)}
+          onDelete={() => handleDelete(selectedServer.id)}
         />
       ) : (
-        <CfgRow>
-          <CfgAct
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            + add custom server
-          </CfgAct>
-        </CfgRow>
+        <CfgRow><CfgAct onClick={() => setView({ kind: "overview" })}>back to servers</CfgAct></CfgRow>
       )}
     </ConfigEditor>
+  );
+}
+
+function McpOverview({
+  githubServer,
+  customServers,
+  testingId,
+  testResult,
+  onOpenGithub,
+  onOpenServer,
+  onAdd,
+  onToggle,
+  onTest,
+}: {
+  githubServer: McpServerConfig | null;
+  customServers: McpServerConfig[];
+  testingId: string | null;
+  testResult: { id: string; ok: boolean; msg: string } | null;
+  onOpenGithub: () => void;
+  onOpenServer: (id: string) => void;
+  onAdd: () => void;
+  onToggle: (id: string, enabled: boolean) => Promise<void>;
+  onTest: (server: McpServerConfig) => Promise<void>;
+}) {
+  const count = customServers.length + (githubServer ? 1 : 0);
+
+  return (
+    <>
+      <CfgSection name="servers" />
+      <section className="mcp-overview" aria-label="MCP servers">
+        <div className="mcp-overview-topline">
+          <div>
+            <p className="mcp-overview-title">Connected services <span>{count}</span></p>
+            <p className="mcp-overview-copy">Open a server to inspect or change its configuration.</p>
+          </div>
+          <CfgAct onClick={onAdd}>+ connect server</CfgAct>
+        </div>
+
+        <div className="mcp-summary-list">
+          <McpServerSummary
+            title="GitHub"
+            description={githubServer ? "Official GitHub MCP server · credentials in OS keychain" : "Official GitHub MCP server · not connected"}
+            server={githubServer}
+            testing={testingId === githubServer?.id}
+            testResult={testResult?.id === githubServer?.id ? testResult : null}
+            onOpen={onOpenGithub}
+            onToggle={onToggle}
+            onTest={onTest}
+          />
+          {customServers.map((server) => (
+            <McpServerSummary
+              key={server.id}
+              title={server.name}
+              description={formatMcpCommand(server)}
+              server={server}
+              testing={testingId === server.id}
+              testResult={testResult?.id === server.id ? testResult : null}
+              onOpen={() => onOpenServer(server.id)}
+              onToggle={onToggle}
+              onTest={onTest}
+            />
+          ))}
+        </div>
+
+        {customServers.length === 0 ? (
+          <p className="mcp-overview-empty">No custom servers yet. Connect one when you want the assistant to reach another service.</p>
+        ) : null}
+      </section>
+    </>
+  );
+}
+
+function formatMcpCommand(server: McpServerConfig) {
+  const args = server.args.join(" ");
+  return args ? `${server.command} · ${args}` : server.command;
+}
+
+function McpServerSummary({
+  title,
+  description,
+  server,
+  testing,
+  testResult,
+  onOpen,
+  onToggle,
+  onTest,
+}: {
+  title: string;
+  description: string;
+  server: McpServerConfig | null;
+  testing: boolean;
+  testResult: { ok: boolean; msg: string } | null;
+  onOpen: () => void;
+  onToggle: (id: string, enabled: boolean) => Promise<void>;
+  onTest: (server: McpServerConfig) => Promise<void>;
+}) {
+  const health = useMcpHealth(server?.id ?? "github-mcp");
+  const state = testResult
+    ? testResult.ok ? testResult.msg : `failed: ${testResult.msg}`
+    : !server ? "not connected"
+      : health.state === "connected" ? `connected${health.toolCount != null ? ` · ${health.toolCount} tool${health.toolCount === 1 ? "" : "s"}` : ""}`
+        : health.state === "error" ? "connection error"
+          : server.enabled ? "configured" : "disabled";
+
+  return (
+    <article className="mcp-summary-row">
+      <button type="button" className="mcp-summary-main" onClick={onOpen}>
+        <span className={`mcp-summary-dot ${server?.enabled ? "is-enabled" : ""}`} aria-hidden="true" />
+        <span className="mcp-summary-copy">
+          <span className="mcp-summary-name">{title}</span>
+          <span className="mcp-summary-description">{description}</span>
+        </span>
+        <span className={testResult && !testResult.ok ? "mcp-summary-state is-error" : "mcp-summary-state"}>{state}</span>
+        <span className="mcp-summary-chevron" aria-hidden="true">›</span>
+      </button>
+      {server ? (
+        <div className="mcp-summary-controls" onClick={(event) => event.stopPropagation()}>
+          <Switch checked={server.enabled} onCheckedChange={(enabled) => void onToggle(server.id, enabled)} />
+          <button type="button" className="mcp-summary-test" onClick={() => void onTest(server)}>
+            {testing ? "testing…" : "test"}
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function McpInspectorFrame({
+  title,
+  subtitle,
+  onBack,
+  actions,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  onBack: () => void;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="mcp-inspector" aria-label={`${title} MCP server`}>
+      <div className="mcp-inspector-head">
+        <button type="button" className="mcp-inspector-back" onClick={onBack}>← all servers</button>
+        <div className="mcp-inspector-title">
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+        {actions ? <div className="mcp-inspector-actions">{actions}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function McpServerInspector({
+  server,
+  testing,
+  testResult,
+  onBack,
+  onSave,
+  onToggle,
+  onTest,
+  onDelete,
+}: {
+  server: McpServerConfig;
+  testing: boolean;
+  testResult: { ok: boolean; msg: string } | null;
+  onBack: () => void;
+  onSave: (config: Omit<McpServerConfig, "id"> & { id?: string }) => Promise<void>;
+  onToggle: (enabled: boolean) => Promise<void>;
+  onTest: () => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+  }, [server.id]);
+
+  return (
+    <McpInspectorFrame
+      title={server.name}
+      subtitle={formatMcpCommand(server)}
+      onBack={onBack}
+      actions={
+        editing ? undefined : (
+          <>
+            <CfgAct onClick={() => void onTest()}>{testing ? "testing…" : "test"}</CfgAct>
+            <CfgAct onClick={() => setEditing(true)}>edit</CfgAct>
+          </>
+        )
+      }
+    >
+      {editing ? (
+        <McpServerForm
+          editing={server}
+          onCancel={() => setEditing(false)}
+          onSave={(config) => void onSave(config).then(() => setEditing(false))}
+        />
+      ) : (
+        <>
+          <CfgSection name="connection" />
+          <CfgRow name="command" comment="Executable Husk runs when the AI needs this integration.">
+            <CfgStr>{server.command}</CfgStr>
+          </CfgRow>
+          <CfgRow name="enabled" comment="Load this server's tools into an API-key-backed AI model.">
+            <Switch checked={server.enabled} onCheckedChange={(enabled) => void onToggle(enabled)} />
+          </CfgRow>
+          {testResult ? (
+            <CfgRow name="lastTest" comment="Result from the latest manual connection test.">
+              <span className={testResult.ok ? "cfg-num" : "cfg-hint"} style={testResult.ok ? undefined : { color: "#f87171" }}>
+                {testResult.ok ? testResult.msg : `failed: ${testResult.msg}`}
+              </span>
+            </CfgRow>
+          ) : null}
+          <McpHealthRow serverId={server.id} readOnly={server.readOnly} />
+
+          <details className="mcp-advanced">
+            <summary>
+              <span>Advanced configuration</span>
+              <small>Arguments, environment, working directory</small>
+            </summary>
+            <div className="mcp-advanced-content">
+              <McpReadOnlyValue label="Arguments" value={server.args.length ? server.args.join(" ") : "No arguments"} />
+              <McpReadOnlyValue label="Environment" value={Object.keys(server.env).length ? Object.entries(server.env).map(([key, value]) => `${key}=${value}`).join("\n") : "No environment variables"} />
+              <McpReadOnlyValue label="Working directory" value={server.cwd ?? "Use the current workspace"} />
+            </div>
+          </details>
+
+          <div className="mcp-danger-zone">
+            <span>Remove this server and disconnect its tools.</span>
+            <CfgAct onClick={() => void onDelete()} danger>disconnect</CfgAct>
+          </div>
+        </>
+      )}
+    </McpInspectorFrame>
+  );
+}
+
+function McpReadOnlyValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mcp-advanced-value">
+      <span>{label}</span>
+      <code>{value}</code>
+    </div>
   );
 }
 
@@ -476,8 +704,8 @@ function GitHubIntegration({
   );
 }
 
-/** In-place editor using the same section-and-row pattern as every other
- * settings surface. Its validation and saved payload are unchanged. */
+/** The editor keeps primary fields visible and folds technical launch details
+ * away until needed. Its validation and saved payload remain unchanged. */
 function McpServerForm({
   editing,
   onCancel,
@@ -538,7 +766,7 @@ function McpServerForm({
 
   return (
     <section className="mcp-inline-form" aria-label={editing ? "Edit MCP server" : "Add MCP server"}>
-      <CfgSection name={editing ? "edit_server" : "add_custom_server"} />
+      <CfgSection name={editing ? "edit_connection" : "new_connection"} />
       <form onSubmit={handleSubmit}>
         <CfgRow name="name" comment="A short label for this server in the integrations list.">
           <Input className="mcp-inline-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Filesystem" required />
@@ -546,18 +774,26 @@ function McpServerForm({
         <CfgRow name="command" comment="The executable that starts the server, for example npx or uvx.">
           <Input className="mcp-inline-input" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="e.g. npx" required />
         </CfgRow>
-        <CfgRow name="arguments" comment="Arguments passed to the command, separated by spaces.">
-          <Input className="mcp-inline-input" value={args} onChange={(e) => setArgs(e.target.value)} placeholder="e.g. -y @modelcontextprotocol/server-filesystem /path" />
-        </CfgRow>
-        <CfgRow name="environment" comment="Optional KEY=value entries, one per line. Token, secret, password, and API-key values are moved to your OS keychain automatically.">
-          <textarea className="mcp-inline-textarea" value={env} onChange={(e) => setEnv(e.target.value)} placeholder={`LOG_LEVEL=debug\nAPI_TOKEN=stored securely`} rows={4} />
-        </CfgRow>
-        <CfgRow name="workingDirectory" comment="Optional directory where Husk starts the server.">
-          <Input className="mcp-inline-input" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/dir" />
-        </CfgRow>
         <CfgRow name="enabled" comment="Load this server's tools into the AI as soon as it is saved.">
           <Switch checked={enabled} onCheckedChange={setEnabled} />
         </CfgRow>
+        <details className="mcp-advanced">
+          <summary>
+            <span>Advanced configuration</span>
+            <small>Arguments, environment, working directory</small>
+          </summary>
+          <div className="mcp-advanced-content">
+            <CfgRow name="arguments" comment="Arguments passed to the command, separated by spaces.">
+              <Input className="mcp-inline-input" value={args} onChange={(e) => setArgs(e.target.value)} placeholder="e.g. -y @modelcontextprotocol/server-filesystem /path" />
+            </CfgRow>
+            <CfgRow name="environment" comment="Optional KEY=value entries, one per line. Token, secret, password, and API-key values are moved to your OS keychain automatically.">
+              <textarea className="mcp-inline-textarea" value={env} onChange={(e) => setEnv(e.target.value)} placeholder={`LOG_LEVEL=debug\nAPI_TOKEN=stored securely`} rows={4} />
+            </CfgRow>
+            <CfgRow name="workingDirectory" comment="Optional directory where Husk starts the server.">
+              <Input className="mcp-inline-input" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/dir" />
+            </CfgRow>
+          </div>
+        </details>
         <CfgRow>
           <CfgAct onClick={onCancel}>cancel</CfgAct>
           <button type="submit" className="cfg-act">[ {editing ? "save changes" : "add server"} ]</button>

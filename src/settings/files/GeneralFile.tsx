@@ -96,29 +96,6 @@ export function GeneralFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="cursorStyle" comment="Shape of the editor caret.">
-        <CfgEnum<EditorCursorStyle>
-          value={p.editorCursorStyle}
-          onChange={(editorCursorStyle) => setPrefs({ editorCursorStyle })}
-          options={[
-            { value: "line", label: "Line" },
-            { value: "block", label: "Block" },
-            { value: "underline", label: "Underline" },
-          ]}
-        />
-      </CfgRow>
-      <CfgRow name="lineHighlight" comment="How the line your caret sits on is marked.">
-        <CfgEnum<LineHighlight>
-          value={p.editorLineHighlight}
-          onChange={(editorLineHighlight) => setPrefs({ editorLineHighlight })}
-          options={[
-            { value: "none", label: "None" },
-            { value: "line", label: "Line" },
-            { value: "gutter", label: "Gutter" },
-            { value: "all", label: "All" },
-          ]}
-        />
-      </CfgRow>
       <CfgRow name="lineNumbers" comment="Gutter numbering: off, absolute, or relative to the caret (handy with vim).">
         <CfgEnum<LineNumbers>
           value={p.editorLineNumbers}
@@ -130,29 +107,57 @@ export function GeneralFile() {
           ]}
         />
       </CfgRow>
-      <CfgRow name="whitespace" comment="Render spaces and tabs as faint dots.">
-        <CfgEnum<RenderWhitespace>
-          value={p.editorWhitespace}
-          onChange={(editorWhitespace) => setPrefs({ editorWhitespace })}
-          options={[
-            { value: "none", label: "None" },
-            { value: "boundary", label: "Boundary" },
-            { value: "all", label: "All" },
-          ]}
-        />
-      </CfgRow>
-      <CfgRow name="ligatures" comment="Combine character pairs like != and => into single glyphs. Needs a font that supports them.">
-        <CfgBool value={p.editorLigatures} onChange={(v) => setPrefs({ editorLigatures: v })} />
-      </CfgRow>
-      <CfgRow name="bracketColors" comment="Colour matching bracket pairs so nesting is easier to follow.">
-        <CfgBool value={p.editorBracketColors} onChange={(v) => setPrefs({ editorBracketColors: v })} />
-      </CfgRow>
-      <CfgRow name="smoothScroll" comment="Animate scrolling instead of jumping.">
-        <CfgBool value={p.editorSmoothScroll} onChange={(v) => setPrefs({ editorSmoothScroll: v })} />
-      </CfgRow>
-      <CfgRow name="formatOnPaste" comment="Reindent pasted code to match the surrounding file.">
-        <CfgBool value={p.editorFormatOnPaste} onChange={(v) => setPrefs({ editorFormatOnPaste: v })} />
-      </CfgRow>
+      <details className="settings-advanced-group">
+        <summary><span>Advanced editor</span><small>Caret, highlighting, whitespace, and formatting</small></summary>
+        <div className="settings-advanced-group-content">
+          <CfgRow name="cursorStyle" comment="Shape of the editor caret.">
+            <CfgEnum<EditorCursorStyle>
+              value={p.editorCursorStyle}
+              onChange={(editorCursorStyle) => setPrefs({ editorCursorStyle })}
+              options={[
+                { value: "line", label: "Line" },
+                { value: "block", label: "Block" },
+                { value: "underline", label: "Underline" },
+              ]}
+            />
+          </CfgRow>
+          <CfgRow name="lineHighlight" comment="How the line your caret sits on is marked.">
+            <CfgEnum<LineHighlight>
+              value={p.editorLineHighlight}
+              onChange={(editorLineHighlight) => setPrefs({ editorLineHighlight })}
+              options={[
+                { value: "none", label: "None" },
+                { value: "line", label: "Line" },
+                { value: "gutter", label: "Gutter" },
+                { value: "all", label: "All" },
+              ]}
+            />
+          </CfgRow>
+          <CfgRow name="whitespace" comment="Render spaces and tabs as faint dots.">
+            <CfgEnum<RenderWhitespace>
+              value={p.editorWhitespace}
+              onChange={(editorWhitespace) => setPrefs({ editorWhitespace })}
+              options={[
+                { value: "none", label: "None" },
+                { value: "boundary", label: "Boundary" },
+                { value: "all", label: "All" },
+              ]}
+            />
+          </CfgRow>
+          <CfgRow name="ligatures" comment="Combine character pairs like != and => into single glyphs. Needs a font that supports them.">
+            <CfgBool value={p.editorLigatures} onChange={(v) => setPrefs({ editorLigatures: v })} />
+          </CfgRow>
+          <CfgRow name="bracketColors" comment="Colour matching bracket pairs so nesting is easier to follow.">
+            <CfgBool value={p.editorBracketColors} onChange={(v) => setPrefs({ editorBracketColors: v })} />
+          </CfgRow>
+          <CfgRow name="smoothScroll" comment="Animate scrolling instead of jumping.">
+            <CfgBool value={p.editorSmoothScroll} onChange={(v) => setPrefs({ editorSmoothScroll: v })} />
+          </CfgRow>
+          <CfgRow name="formatOnPaste" comment="Reindent pasted code to match the surrounding file.">
+            <CfgBool value={p.editorFormatOnPaste} onChange={(v) => setPrefs({ editorFormatOnPaste: v })} />
+          </CfgRow>
+        </div>
+      </details>
       <CfgBlank />
 
       <CfgSection name="explorer" />
@@ -173,33 +178,6 @@ export function GeneralFile() {
           value={p.terminalFontSize}
           onChange={(terminalFontSize) => setPrefs({ terminalFontSize })}
           options={px([11, 12, 13, 14, 16, 18])}
-        />
-      </CfgRow>
-      <CfgRow name="boldFont" comment="Draw all terminal text bold. Bold output goes heavier still, so it stays distinct.">
-        <CfgBool
-          value={p.terminalBoldFont}
-          onChange={(terminalBoldFont) => setPrefs({ terminalBoldFont })}
-        />
-      </CfgRow>
-      <CfgRow name="scrollback" comment="Lines of history kept.">
-        <CfgEnum<number>
-          value={p.terminalScrollback}
-          onChange={(terminalScrollback) => setPrefs({ terminalScrollback })}
-          options={[1000, 5000, 10000, 50000].map((n) => ({
-            value: n,
-            label: `${n.toLocaleString()} lines`,
-          }))}
-        />
-      </CfgRow>
-      <CfgRow name="cursorStyle" comment="Shape of the terminal cursor.">
-        <CfgEnum<TerminalCursorStyle>
-          value={p.terminalCursorStyle}
-          onChange={(terminalCursorStyle) => setPrefs({ terminalCursorStyle })}
-          options={[
-            { value: "block", label: "Block" },
-            { value: "bar", label: "Bar" },
-            { value: "underline", label: "Underline" },
-          ]}
         />
       </CfgRow>
       <CfgRow name="theme" comment="Terminal colour palette. Applies to output only, not the app chrome.">
@@ -227,6 +205,38 @@ export function GeneralFile() {
           />
         </CfgRow>
       ) : null}
+      <details className="settings-advanced-group">
+        <summary><span>Advanced terminal</span><small>Font weight, scrollback, and cursor styling</small></summary>
+        <div className="settings-advanced-group-content">
+          <CfgRow name="boldFont" comment="Draw all terminal text bold. Bold output goes heavier still, so it stays distinct.">
+            <CfgBool
+              value={p.terminalBoldFont}
+              onChange={(terminalBoldFont) => setPrefs({ terminalBoldFont })}
+            />
+          </CfgRow>
+          <CfgRow name="scrollback" comment="Lines of history kept.">
+            <CfgEnum<number>
+              value={p.terminalScrollback}
+              onChange={(terminalScrollback) => setPrefs({ terminalScrollback })}
+              options={[1000, 5000, 10000, 50000].map((n) => ({
+                value: n,
+                label: `${n.toLocaleString()} lines`,
+              }))}
+            />
+          </CfgRow>
+          <CfgRow name="cursorStyle" comment="Shape of the terminal cursor.">
+            <CfgEnum<TerminalCursorStyle>
+              value={p.terminalCursorStyle}
+              onChange={(terminalCursorStyle) => setPrefs({ terminalCursorStyle })}
+              options={[
+                { value: "block", label: "Block" },
+                { value: "bar", label: "Bar" },
+                { value: "underline", label: "Underline" },
+              ]}
+            />
+          </CfgRow>
+        </div>
+      </details>
       <CfgRow name="notesDirectory" comment="Leave empty to use ~/.husk/notes/">
         <CfgText
           value={p.notesDirectory}

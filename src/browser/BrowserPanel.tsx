@@ -16,131 +16,297 @@ import {
   browserNavigate,
   browserSetBounds,
   browserSetVisible,
+  onBrowserLoad,
   onBrowserNav,
   type BrowserRect,
 } from "./client";
+import "./BrowserPanel.css";
 
 const LABEL = "husk-browser";
 const STORAGE_KEY = "husk.browser.url";
 const DEFAULT_URL = "https://www.google.com";
 
+type BrowserPhase = "connecting" | "loading" | "ready" | "error";
+
+function errorText(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error:\s*/i, "") || "The embedded browser could not complete that action.";
+}
+
+function hostName(value: string): string {
+  try {
+    return new URL(value).host || "web";
+  } catch {
+    return "web";
+  }
+}
+
 /**
- * Embedded browser panel. The visible web page is a NATIVE child webview
- * (Tauri WebviewView) parked over the placeholder div — not a React element.
- * It floats above every React surface (dialogs, palette, other panels), so
- * the `visible` prop must be false whenever anything can cover this panel.
+ * Embedded browser panel. The visible web page is a native child webview,
+ * parked over `browser-viewport`. React owns the chrome and error states;
+ * Rust owns navigation and keeps the child view in the exact same rectangle.
  */
 export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const hostRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const createdRef = useRef(false);
-  const [url, setUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || DEFAULT_URL);
-  const [input, setInput] = useState(url);
+  const initialUrlRef = useRef(localStorage.getItem(STORAGE_KEY) || DEFAULT_URL);
+  const lastBoundsRef = useRef("");
+  const visibleRef = useRef(visible);
+  const [url, setUrl] = useState(initialUrlRef.current);
+  const [input, setInput] = useState(initialUrlRef.current);
+  const [phase, setPhase] = useState<BrowserPhase>("connecting");
+  const [failure, setFailure] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  visibleRef.current = visible;
 
   const rect = useCallback((): BrowserRect | null => {
-    const el = hostRef.current;
+    const el = viewportRef.current;
     if (!el) return null;
-    const r = el.getBoundingClientRect();
-    if (r.width < 2 || r.height < 2) return null;
-    return { x: r.x, y: r.y, width: r.width, height: r.height };
+    const bounds = el.getBoundingClientRect();
+    if (bounds.width < 2 || bounds.height < 2) return null;
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }, []);
 
-  // Create the native webview once per mount and track the placeholder's rect.
-  useEffect(() => {
-    const el = hostRef.current;
-    const r = rect();
-    if (!el || !r) return;
-    createdRef.current = true;
-    void browserCreate(LABEL, url, r);
-
-    const ro = new ResizeObserver(() => {
-      const b = rect();
-      if (b && createdRef.current) void browserSetBounds(LABEL, b);
+  const syncBounds = useCallback(() => {
+    const bounds = rect();
+    if (!bounds || !createdRef.current) return;
+    const key = `${Math.round(bounds.x)}:${Math.round(bounds.y)}:${Math.round(bounds.width)}:${Math.round(bounds.height)}`;
+    if (key === lastBoundsRef.current) return;
+    lastBoundsRef.current = key;
+    void browserSetBounds(LABEL, bounds).catch(() => {
+      // A close can race a final layout pass. The next successful creation
+      // resets this key and owns positioning again.
     });
-    ro.observe(el);
+  }, [rect]);
 
-    return () => {
-      ro.disconnect();
-      createdRef.current = false;
-      void browserClose(LABEL);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Keep the address bar in sync with real navigations (link clicks etc.).
+  // Receive browser events before creating the child view, so redirects and
+  // fast initial loads cannot leave the address bar or loading indicator stale.
   useEffect(() => {
-    const unlisten = onBrowserNav((label, next) => {
+    const nav = onBrowserNav((label, next) => {
       if (label !== LABEL) return;
+      initialUrlRef.current = next;
       setUrl(next);
       setInput(next);
+      setFailure(null);
+      setPhase("loading");
+      localStorage.setItem(STORAGE_KEY, next);
+    });
+    const load = onBrowserLoad((label, next, nextPhase) => {
+      if (label !== LABEL) return;
+      if (nextPhase === "started") {
+        setPhase("loading");
+        return;
+      }
+      initialUrlRef.current = next;
+      setUrl(next);
+      setInput(next);
+      setPhase("ready");
       localStorage.setItem(STORAGE_KEY, next);
     });
     return () => {
-      void unlisten.then((f) => f());
+      void Promise.all([nav, load]).then((listeners) => listeners.forEach((unlisten) => unlisten()));
     };
   }, []);
 
-  // Park/show the native layer as React surfaces cover or reveal this panel.
+  // Create the native webview once per mount. A retry explicitly tears down a
+  // failed child first, so it cannot leave an invisible stale browser behind.
+  useEffect(() => {
+    let cancelled = false;
+    let frame = 0;
+
+    const create = async () => {
+      const bounds = rect();
+      if (!bounds) {
+        frame = requestAnimationFrame(() => void create());
+        return;
+      }
+      setFailure(null);
+      setPhase("connecting");
+      try {
+        await browserCreate(LABEL, initialUrlRef.current, bounds);
+        if (cancelled) return;
+        createdRef.current = true;
+        lastBoundsRef.current = "";
+        syncBounds();
+        await browserSetVisible(LABEL, visibleRef.current);
+        if (!cancelled) setPhase("loading");
+      } catch (error) {
+        if (!cancelled) {
+          createdRef.current = false;
+          setPhase("error");
+          setFailure(errorText(error));
+        }
+      }
+    };
+
+    frame = requestAnimationFrame(() => void create());
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      const wasCreated = createdRef.current;
+      createdRef.current = false;
+      lastBoundsRef.current = "";
+      if (wasCreated) void browserClose(LABEL);
+    };
+  }, [attempt, rect, syncBounds]);
+
+  // Position can change without a ResizeObserver callback when a neighbouring
+  // workspace panel moves. Compare rectangles while the browser is visible,
+  // but only invoke native code when a value actually changed.
+  useEffect(() => {
+    if (!visible || !createdRef.current) return;
+    let frame = 0;
+    const track = () => {
+      syncBounds();
+      frame = requestAnimationFrame(track);
+    };
+    frame = requestAnimationFrame(track);
+    return () => cancelAnimationFrame(frame);
+  }, [syncBounds, visible]);
+
   useEffect(() => {
     if (!createdRef.current) return;
-    void browserSetVisible(LABEL, visible);
+    void browserSetVisible(LABEL, visible).catch((error) => {
+      if (visible) {
+        setPhase("error");
+        setFailure(errorText(error));
+      }
+    });
     if (visible) {
-      const b = rect();
-      if (b) void browserSetBounds(LABEL, b);
+      lastBoundsRef.current = "";
+      requestAnimationFrame(syncBounds);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncBounds, visible]);
+
+  useEffect(() => {
+    const focusLocation = (event: KeyboardEvent) => {
+      if (!visible || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "l") return;
+      event.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    window.addEventListener("keydown", focusLocation);
+    return () => window.removeEventListener("keydown", focusLocation);
   }, [visible]);
 
-  const go = (target: string) => {
-    const t = target.trim();
-    if (!t) return;
-    void browserNavigate(LABEL, t);
-  };
+  const navigate = useCallback(async (target: string) => {
+    const next = target.trim();
+    if (!next) return;
+    initialUrlRef.current = next;
+    setFailure(null);
+    setPhase("loading");
+    if (!createdRef.current) {
+      setAttempt((value) => value + 1);
+      return;
+    }
+    try {
+      await browserNavigate(LABEL, next);
+    } catch (error) {
+      setPhase("error");
+      setFailure(errorText(error));
+    }
+  }, []);
 
-  const iconBtn =
-    "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+  const history = useCallback(async (action: "back" | "forward" | "reload") => {
+    if (!createdRef.current) return;
+    setFailure(null);
+    setPhase("loading");
+    try {
+      await browserGo(LABEL, action);
+    } catch (error) {
+      setPhase("error");
+      setFailure(errorText(error));
+    }
+  }, []);
+
+  const retry = useCallback(async () => {
+    setFailure(null);
+    setPhase("connecting");
+    if (createdRef.current) {
+      await browserClose(LABEL).catch(() => undefined);
+      createdRef.current = false;
+      lastBoundsRef.current = "";
+    }
+    setAttempt((value) => value + 1);
+  }, []);
+
+  const openExternal = useCallback(async () => {
+    try {
+      await openUrl(url);
+    } catch (error) {
+      setFailure(errorText(error));
+    }
+  }, [url]);
+
+  const statusLabel = phase === "connecting" ? "Opening browser" : phase === "loading" ? "Loading page" : phase === "error" ? "Needs attention" : hostName(url);
+  const iconButton = "browser-icon-button";
 
   return (
-    <div className="flex h-full flex-col bg-background">
-      {/* Chrome bar */}
-      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-3">
-        <HugeiconsIcon icon={Globe02Icon} size={13} strokeWidth={1.9} className="mx-1 shrink-0 text-accent" />
-        <button type="button" className={iconBtn} title="Back" onClick={() => void browserGo(LABEL, "back")}>
-          <HugeiconsIcon icon={ArrowLeft01Icon} size={14} strokeWidth={1.75} />
-        </button>
-        <button type="button" className={iconBtn} title="Forward" onClick={() => void browserGo(LABEL, "forward")}>
-          <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={1.75} />
-        </button>
-        <button type="button" className={iconBtn} title="Reload" onClick={() => void browserGo(LABEL, "reload")}>
-          <HugeiconsIcon icon={RefreshIcon} size={13} strokeWidth={1.75} />
-        </button>
-        <form
-          className="min-w-0 flex-1"
-          onSubmit={(e) => {
-            e.preventDefault();
-            go(input);
-          }}
-        >
+    <div className="browser-panel">
+      <header className="browser-chrome">
+        <div className="browser-brand" title="Embedded browser" aria-hidden="true">
+          <HugeiconsIcon icon={Globe02Icon} size={14} strokeWidth={1.8} />
+        </div>
+        <div className="browser-nav-group" aria-label="Navigation">
+          <button type="button" className={iconButton} title="Back" aria-label="Back" onClick={() => void history("back")}>
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={14} strokeWidth={1.75} />
+          </button>
+          <button type="button" className={iconButton} title="Forward" aria-label="Forward" onClick={() => void history("forward")}>
+            <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={1.75} />
+          </button>
+          <button type="button" className={`${iconButton}${phase === "loading" ? " is-loading" : ""}`} title="Reload" aria-label="Reload" onClick={() => void history("reload")}>
+            <HugeiconsIcon icon={RefreshIcon} size={13} strokeWidth={1.75} />
+          </button>
+        </div>
+        <form className="browser-location" onSubmit={(event) => { event.preventDefault(); void navigate(input); }}>
+          <span className={`browser-location-dot is-${phase}`} aria-hidden="true" />
           <input
+            ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="h-7 w-full rounded-md border border-border/60 bg-muted/20 px-2.5 font-mono text-[12px] text-foreground outline-none transition-colors focus:border-accent/60"
-            placeholder="Search or enter URL"
+            onChange={(event) => setInput(event.target.value)}
+            onFocus={(event) => event.currentTarget.select()}
+            placeholder="Search the web or enter a URL"
+            aria-label="Search or enter a web address"
             spellCheck={false}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
           />
+          <kbd>⌘L</kbd>
         </form>
-        <button type="button" className={iconBtn} title="Open in system browser" onClick={() => void openUrl(url)}>
-          <HugeiconsIcon icon={LinkSquare01Icon} size={13} strokeWidth={1.75} />
-        </button>
-        <button type="button" className={iconBtn} title="Close browser" onClick={onClose}>
-          <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.75} />
-        </button>
-      </div>
+        <span className={`browser-page-state is-${phase}`} title={statusLabel}>{statusLabel}</span>
+        <div className="browser-action-group">
+          <button type="button" className={iconButton} title="Open in system browser" aria-label="Open in system browser" onClick={() => void openExternal()}>
+            <HugeiconsIcon icon={LinkSquare01Icon} size={13} strokeWidth={1.75} />
+          </button>
+          <button type="button" className={`${iconButton} is-close`} title="Close browser" aria-label="Close browser" onClick={onClose}>
+            <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.75} />
+          </button>
+        </div>
+        <span className={`browser-load-indicator is-${phase}`} aria-hidden="true" />
+      </header>
 
-      {/* Placeholder the native webview is parked over */}
-      <div ref={hostRef} className="min-h-0 min-w-0 flex-1" />
+      {failure ? (
+        <div className="browser-alert" role="alert">
+          <span>Browser notice</span>
+          <p>{failure}</p>
+          <button type="button" onClick={() => void retry()}>try again</button>
+          <button type="button" onClick={() => void openExternal()}>open externally ↗</button>
+        </div>
+      ) : null}
+
+      <div ref={viewportRef} className="browser-viewport">
+        {phase === "connecting" ? <div className="browser-placeholder" aria-live="polite"><span /><p>Opening browser…</p></div> : null}
+        {failure ? (
+          <div className="browser-error" role="alert">
+            <span>Browser needs attention</span>
+            <p>{failure}</p>
+            <div><button type="button" onClick={() => void retry()}>try again</button><button type="button" onClick={() => void openExternal()}>open externally ↗</button></div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

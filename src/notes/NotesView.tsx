@@ -519,8 +519,9 @@ export function NotesView({
           /* Recent notes are list rows, not content-sized chips. Keep the
              selection aligned with the list while tightening each row's
              vertical rhythm so recents stay compact and scannable. */
-          "group flex w-full min-h-8 cursor-pointer items-center gap-1.5 border-l-2 border-transparent py-0 pl-2 pr-1 transition-colors hover:bg-muted/45",
-          isActive && "border-primary bg-primary/[0.08]",
+          "group mx-1 flex min-h-8 cursor-pointer items-center gap-1.5 border-l-2 border-transparent py-0 pl-2 pr-1 transition-colors hover:bg-muted/45",
+          isActive && !pinnedNote && "rounded-md border border-l-2 border-primary/55 border-l-primary bg-primary/[0.08] shadow-[inset_2px_0_0_var(--primary)]",
+          isActive && pinnedNote && "border-primary bg-primary/[0.08]",
         )}
         onClick={() => handleOpenNote(item.path)}
       >
