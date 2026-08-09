@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -31,32 +30,31 @@ import {
   sftpDelete,
   sftpDeleteRecursive,
   sftpDisconnect,
-  sftpDownload,
-  sftpDownloadDir,
   sftpListDir,
   sftpMkdir,
   sftpRename,
-  sftpUpload,
-  sftpUploadDir,
   type SftpEntry,
 } from "../remote/sftpApi";
 import { cn } from "@/lib/utils";
 import { toast } from "../toast";
 import { getHomeDir } from "../fs";
 import { markHostConnected, markHostDisconnected } from "../remote/connectionStore";
+import {
+  activateSftpTransferQueue,
+  clearCompletedSftpTransfers,
+  enqueueSftpTransfer,
+  pauseSftpTransfer,
+  removeSftpTransfer,
+  resumeSftpTransfer,
+  retrySftpTransfer,
+  useSftpTransfers,
+  type SftpFolderConflictStrategy,
+  type SftpTransfer,
+} from "../remote/sftpTransfers";
 
 interface SftpViewProps {
   host: string;
   onClose: () => void;
-}
-
-interface TransferProgress {
-  type: "download" | "upload";
-  path: string;
-  progress: number;
-  copied?: number;
-  total?: number;
-  done?: boolean;
 }
 
 type RemoteClipboard = {
@@ -68,6 +66,13 @@ type ContextMenuState = {
   x: number;
   y: number;
   entry?: SftpEntry;
+};
+
+type FolderUploadConflict = {
+  localPath: string;
+  name: string;
+  remoteParent: string;
+  existing: SftpEntry;
 };
 
 function remoteJoin(parent: string, child: string): string {
@@ -170,6 +175,70 @@ function ContextDivider() {
   return <div className="my-1 h-px bg-border/60" />;
 }
 
+function transferStateLabel(task: SftpTransfer): string {
+  if (task.state === "completed") return "done";
+  if (task.state === "running") return task.total ? `${task.progress}%` : "working";
+  if (task.state === "queued") return "queued";
+  if (task.state === "paused") return "paused";
+  return "needs retry";
+}
+
+function TransferQueue({ host, transfers }: { host: string; transfers: SftpTransfer[] }) {
+  const active = transfers.filter((task) => task.state === "running" || task.state === "queued").length;
+  const completed = transfers.some((task) => task.state === "completed");
+  const visible = transfers.slice(0, 4);
+
+  return (
+    <section className="shrink-0 border-t border-border/70 bg-muted/[0.09]" aria-label="SFTP transfer queue">
+      <header className="flex h-8 items-center gap-2 border-b border-border/45 px-3 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
+        <span className={cn("size-1.5 rounded-full", active ? "bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-muted-foreground/35")} />
+        <span className="font-semibold text-foreground/85">Transfer queue</span>
+        <span>{active ? `${active} active` : transfers.length ? `${transfers.length} saved` : "idle"}</span>
+        {completed ? (
+          <button type="button" onClick={() => clearCompletedSftpTransfers(host)} className="ml-auto text-[9px] normal-case tracking-normal text-muted-foreground transition-colors hover:text-foreground">clear finished</button>
+        ) : null}
+      </header>
+      {visible.length === 0 ? (
+        <div className="flex items-center gap-2 px-3 py-2 text-[10px] text-muted-foreground">
+          <span className="h-1 w-24 overflow-hidden rounded-full bg-border/70"><span className="block h-full w-0 bg-primary" /></span>
+          <span>Transfers will stay here while they run.</span>
+        </div>
+      ) : (
+        <div className="divide-y divide-border/35">
+          {visible.map((task) => {
+            const indeterminate = task.state === "running" && !task.total;
+            return (
+              <div key={task.id} className="flex min-h-10 items-center gap-2 px-3 py-1.5 text-[10px]">
+                <HugeiconsIcon icon={task.direction === "download" ? ArrowDown01Icon : ArrowUp01Icon} size={12} className={cn("shrink-0", task.state === "failed" ? "text-red-400" : task.state === "paused" ? "text-amber-400" : task.state === "completed" ? "text-muted-foreground/55" : "text-primary")} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-foreground/90" title={task.label}>{task.label}</span>
+                    <span className="shrink-0 tabular-nums text-[9px] text-muted-foreground">{transferStateLabel(task)}</span>
+                  </div>
+                  <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-border/65">
+                    <span
+                      className={cn("block h-full bg-primary transition-[width] duration-200", indeterminate && "w-1/3 animate-pulse")}
+                      style={indeterminate ? undefined : { width: `${task.state === "completed" ? 100 : task.progress}%` }}
+                    />
+                  </div>
+                  {task.error && task.state !== "completed" ? <p className="mt-1 truncate text-[8.5px] text-muted-foreground/75" title={task.error}>{task.error}</p> : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {task.state === "running" ? <button type="button" onClick={() => pauseSftpTransfer(task.id)} className="rounded px-1.5 py-1 text-[9px] text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400">cancel</button> : null}
+                  {task.state === "paused" ? <button type="button" onClick={() => resumeSftpTransfer(task.id)} className="rounded px-1.5 py-1 text-[9px] text-primary transition-colors hover:bg-primary/10">resume</button> : null}
+                  {task.state === "failed" ? <button type="button" onClick={() => retrySftpTransfer(task.id)} className="rounded px-1.5 py-1 text-[9px] text-primary transition-colors hover:bg-primary/10">retry</button> : null}
+                  {task.state !== "running" ? <button type="button" onClick={() => removeSftpTransfer(task.id)} className="rounded px-1.5 py-1 text-[9px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">×</button> : null}
+                </div>
+              </div>
+            );
+          })}
+          {transfers.length > visible.length ? <p className="px-3 py-1.5 text-[9px] text-muted-foreground">+ {transfers.length - visible.length} more saved transfers</p> : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** A details-first SFTP browser. It intentionally behaves like a file manager:
     click selects, double-click opens a folder, and all destructive work is
     confirmed. Transfers use the Tauri SFTP backend rather than shelling out. */
@@ -182,14 +251,15 @@ export function SftpView({ host, onClose }: SftpViewProps) {
   const [connected, setConnected] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [transfers, setTransfers] = useState<TransferProgress[]>([]);
   const [clipboard, setClipboard] = useState<RemoteClipboard | null>(null);
   const [renameTarget, setRenameTarget] = useState<SftpEntry | null>(null);
   const [newName, setNewName] = useState("");
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [mkdirName, setMkdirName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<SftpEntry | null>(null);
+  const [folderUploadConflict, setFolderUploadConflict] = useState<FolderUploadConflict | null>(null);
   const [viewMode, setViewMode] = useState<"details" | "tiles">("details");
+  const transfers = useSftpTransfers(host);
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.path === selectedPath) ?? null,
@@ -216,29 +286,14 @@ export function SftpView({ host, onClose }: SftpViewProps) {
 
   useEffect(() => {
     let mounted = true;
-    let progressUnlisten: (() => void) | undefined;
-
-    void listen<TransferProgress>(`sftp://progress/${host}`, (event) => {
-      if (!mounted) return;
-      const data = event.payload;
-      setTransfers((previous) => {
-        const index = previous.findIndex((transfer) => transfer.path === data.path && transfer.type === data.type);
-        if (data.done) return index < 0 ? previous : previous.filter((_, itemIndex) => itemIndex !== index);
-        if (index < 0) return [...previous, data];
-        const next = [...previous];
-        next[index] = data;
-        return next;
-      });
-    }).then((unlisten) => {
-      if (mounted) progressUnlisten = unlisten;
-      else unlisten();
-    });
+    let deactivateQueue: (() => void) | undefined;
 
     void sftpConnect(host)
       .then(async () => {
         if (!mounted) return;
         setConnected(true);
         markHostConnected(host);
+        deactivateQueue = activateSftpTransferQueue(host);
         await load(".");
       })
       .catch((error) => {
@@ -249,11 +304,19 @@ export function SftpView({ host, onClose }: SftpViewProps) {
 
     return () => {
       mounted = false;
-      progressUnlisten?.();
+      deactivateQueue?.();
       void sftpDisconnect(host);
       markHostDisconnected(host);
     };
   }, [host, load]);
+
+  useEffect(() => {
+    const refreshAfterTransfer = (event: Event) => {
+      if ((event as CustomEvent<{ host?: string }>).detail?.host === host) void load(cwd);
+    };
+    window.addEventListener("husk-sftp-transfer-complete", refreshAfterTransfer);
+    return () => window.removeEventListener("husk-sftp-transfer-complete", refreshAfterTransfer);
+  }, [cwd, host, load]);
 
   const openFolder = (entry: SftpEntry) => {
     if (entry.is_dir) void load(entry.path);
@@ -269,16 +332,16 @@ export function SftpView({ host, onClose }: SftpViewProps) {
           defaultPath: `${home}/Downloads`,
         }));
         if (!destination) return;
-        await sftpDownloadDir(host, entry.path, destination);
-        toast({ title: `Downloaded ${entry.name}`, message: `Saved folder in ${destination}`, variant: "success" });
+        enqueueSftpTransfer({ host, direction: "download", kind: "folder", remotePath: entry.path, localPath: destination, label: entry.name });
+        toast({ title: `Queued ${entry.name}`, message: `Folder will download to ${destination}`, variant: "success" });
       } else {
         const destination = await save({
           title: `Download ${entry.name}`,
           defaultPath: `${home}/Downloads/${entry.name}`,
         });
         if (!destination) return;
-        await sftpDownload(host, entry.path, destination);
-        toast({ title: `Downloaded ${entry.name}`, message: `Saved to ${destination}`, variant: "success" });
+        enqueueSftpTransfer({ host, direction: "download", kind: "file", remotePath: entry.path, localPath: destination, label: entry.name });
+        toast({ title: `Queued ${entry.name}`, message: `Download will be saved to ${destination}`, variant: "success" });
       }
     } catch (error) {
       toast({ title: "Download failed", message: String(error), variant: "error" });
@@ -292,19 +355,51 @@ export function SftpView({ host, onClose }: SftpViewProps) {
     return window.confirm(`“${name}” already exists in this remote folder. Replace it?`);
   };
 
+  const queueFolderUpload = (
+    localPath: string,
+    name: string,
+    remoteParent: string,
+    folderConflictStrategy: SftpFolderConflictStrategy,
+  ) => {
+    enqueueSftpTransfer({
+      host,
+      direction: "upload",
+      kind: "folder",
+      localPath,
+      remotePath: remoteParent,
+      label: name,
+      folderConflictStrategy,
+    });
+    toast({
+      title: `Queued ${name}`,
+      message: folderConflictStrategy === "replace"
+        ? `The existing destination will be replaced in ${remoteParent}.`
+        : `Folder will merge into ${remoteParent}.`,
+      variant: "success",
+    });
+  };
+
+  const resolveFolderUploadConflict = (folderConflictStrategy: SftpFolderConflictStrategy) => {
+    const conflict = folderUploadConflict;
+    if (!conflict) return;
+    queueFolderUpload(conflict.localPath, conflict.name, conflict.remoteParent, folderConflictStrategy);
+    setFolderUploadConflict(null);
+  };
+
   const handleUploadFiles = async () => {
     try {
       const home = await getHomeDir();
       const picked = await open({ title: "Upload files", multiple: true, defaultPath: home });
       if (!picked) return;
       const files = Array.isArray(picked) ? picked : [picked];
+      let queued = 0;
       for (const localPath of files) {
         const fileName = localPath.split(/[\\/]/).pop() || localPath;
         if (!confirmOverwrite(fileName)) continue;
-        await sftpUpload(host, localPath, remoteJoin(cwd, fileName));
+        enqueueSftpTransfer({ host, direction: "upload", kind: "file", localPath, remotePath: remoteJoin(cwd, fileName), label: fileName });
+        queued += 1;
       }
-      toast({ title: `Uploaded ${files.length} file${files.length === 1 ? "" : "s"}`, message: `To ${cwd}`, variant: "success" });
-      await load(cwd);
+      if (queued) toast({ title: `${queued} upload${queued === 1 ? "" : "s"} queued`, message: `To ${cwd}`, variant: "success" });
     } catch (error) {
       toast({ title: "Upload failed", message: String(error), variant: "error" });
     } finally {
@@ -323,10 +418,12 @@ export function SftpView({ host, onClose }: SftpViewProps) {
       }));
       if (!localPath) return;
       const name = localPath.split(/[\\/]/).filter(Boolean).pop() || localPath;
-      if (!confirmOverwrite(name)) return;
-      await sftpUploadDir(host, localPath, cwd);
-      toast({ title: `Uploaded ${name}`, message: `To ${cwd}`, variant: "success" });
-      await load(cwd);
+      const existing = entries.find((entry) => entry.name === name);
+      if (existing) {
+        setFolderUploadConflict({ localPath, name, remoteParent: cwd, existing });
+        return;
+      }
+      queueFolderUpload(localPath, name, cwd, "merge");
     } catch (error) {
       toast({ title: "Folder upload failed", message: String(error), variant: "error" });
     } finally {
@@ -630,20 +727,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
         ) : <span className="ml-auto">right-click for actions</span>}
       </footer>
 
-      {transfers.length > 0 && (
-        <div className="shrink-0 space-y-1 border-t border-primary/25 bg-primary/[0.05] px-3 py-2">
-          {transfers.map((transfer) => (
-            <div key={`${transfer.type}-${transfer.path}`} className="flex items-center gap-2 text-[10px]">
-              <HugeiconsIcon icon={transfer.type === "download" ? ArrowDown01Icon : ArrowUp01Icon} size={12} className="shrink-0 text-primary" />
-              <span className="min-w-0 flex-1 truncate">{transfer.path.split("/").pop()}</span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">{transfer.progress}%</span>
-              <span className="h-1 w-20 shrink-0 overflow-hidden rounded-full bg-muted">
-                <span className="block h-full bg-primary transition-[width] duration-200" style={{ width: `${transfer.progress}%` }} />
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      <TransferQueue host={host} transfers={transfers} />
 
       {contextMenu && (
         <>
@@ -679,10 +763,24 @@ export function SftpView({ host, onClose }: SftpViewProps) {
         </>
       )}
 
-      {(renameTarget || mkdirOpen || deleteTarget) && (
+      {(renameTarget || mkdirOpen || deleteTarget || folderUploadConflict) && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/65 p-4 backdrop-blur-[1px]">
           <div className="w-full max-w-sm rounded-lg border border-border bg-popover p-3 shadow-xl shadow-black/45">
-            {renameTarget ? (
+            {folderUploadConflict ? (
+              <>
+                <p className={cn("m-0 text-[11px] font-semibold", folderUploadConflict.existing.is_dir ? "" : "text-amber-300")}>{folderUploadConflict.existing.is_dir ? `Folder ${folderUploadConflict.name} already exists` : `A file named ${folderUploadConflict.name} already exists`}</p>
+                {folderUploadConflict.existing.is_dir ? (
+                  <p className="mb-3 mt-1 text-[9.5px] leading-relaxed text-muted-foreground">Choose how to upload the local folder into <span className="text-foreground">{folderUploadConflict.remoteParent}</span>. Merging keeps remote-only content; matching files and incompatible paths are replaced by the local folder.</p>
+                ) : (
+                  <p className="mb-3 mt-1 text-[9.5px] leading-relaxed text-muted-foreground">A folder cannot merge with a file. Replacing it permanently deletes the remote file before the folder transfer starts.</p>
+                )}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button type="button" onClick={() => setFolderUploadConflict(null)} className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
+                  {folderUploadConflict.existing.is_dir ? <button type="button" onClick={() => resolveFolderUploadConflict("merge")} className="rounded border border-border px-2 py-1 text-[10px] text-foreground transition-colors hover:border-primary/60 hover:bg-primary/10">Merge contents</button> : null}
+                  <button type="button" onClick={() => resolveFolderUploadConflict("replace")} className="rounded bg-red-500/90 px-2 py-1 text-[10px] text-white hover:bg-red-500">{folderUploadConflict.existing.is_dir ? "Replace folder" : "Replace with folder"}</button>
+                </div>
+              </>
+            ) : renameTarget ? (
               <>
                 <p className="m-0 text-[11px] font-semibold">Rename {renameTarget.name}</p>
                 <p className="mb-3 mt-1 text-[9.5px] text-muted-foreground">Only the name changes; the item stays in this remote folder.</p>

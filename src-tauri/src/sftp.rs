@@ -8,15 +8,18 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SeekFrom};
 use tokio::sync::Mutex;
 
 use russh::client;
 use russh::client::AuthResult;
 use russh::keys::*;
 use russh::Disconnect;
-use russh_sftp::client::SftpSession;
+use russh_sftp::{client::SftpSession, protocol::OpenFlags};
 use tauri::{AppHandle, Emitter, State};
 
 /// SSH client handler (required by russh, minimal implementation).
@@ -81,6 +84,7 @@ struct Connection {
 pub struct SftpManager {
     connections: Arc<Mutex<HashMap<String, Connection>>>,
     known_hosts: Arc<Mutex<HashMap<String, String>>>,
+    transfer_cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     app_data_dir: Option<PathBuf>,
 }
 
@@ -89,6 +93,7 @@ impl SftpManager {
         Self {
             connections: Arc::new(Mutex::new(HashMap::new())),
             known_hosts: Arc::new(Mutex::new(HashMap::new())),
+            transfer_cancellations: Arc::new(Mutex::new(HashMap::new())),
             app_data_dir: None,
         }
     }
@@ -98,6 +103,7 @@ impl SftpManager {
         Self {
             connections: Arc::new(Mutex::new(HashMap::new())),
             known_hosts: Arc::new(Mutex::new(known_hosts)),
+            transfer_cancellations: Arc::new(Mutex::new(HashMap::new())),
             app_data_dir,
         }
     }
@@ -353,6 +359,31 @@ impl SftpManager {
         }
         self.save_known_hosts().await;
     }
+
+    /// A transfer id belongs to one queued transfer. Reusing it after a pause
+    /// creates a fresh cancellation flag while retaining the staged partial
+    /// file on disk or on the remote host.
+    async fn begin_transfer(&self, id: &str) -> Arc<AtomicBool> {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        self.transfer_cancellations
+            .lock()
+            .await
+            .insert(id.to_string(), cancelled.clone());
+        cancelled
+    }
+
+    async fn finish_transfer(&self, id: &str) {
+        self.transfer_cancellations.lock().await.remove(id);
+    }
+
+    async fn cancel_transfer(&self, id: &str) -> bool {
+        let transfers = self.transfer_cancellations.lock().await;
+        let Some(cancelled) = transfers.get(id) else {
+            return false;
+        };
+        cancelled.store(true, Ordering::Relaxed);
+        true
+    }
 }
 
 impl Default for SftpManager {
@@ -517,30 +548,135 @@ async fn delete_remote_tree(sftp: &mut SftpSession, path: &str) -> Result<(), St
     Ok(())
 }
 
+fn local_staging_path(local_path: &Path, transfer_id: &str) -> Result<PathBuf, String> {
+    let name = local_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| "The local destination has no file name".to_string())?;
+    Ok(local_path.with_file_name(format!(".{name}.husk-{transfer_id}.part")))
+}
+
+fn remote_staging_path(remote_path: &str, transfer_id: &str) -> String {
+    format!("{remote_path}.husk-{transfer_id}.part")
+}
+
+fn ensure_not_cancelled(cancelled: &AtomicBool) -> Result<(), String> {
+    if cancelled.load(Ordering::Relaxed) {
+        Err("Transfer cancelled".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn emit_transfer_progress(
+    app: &AppHandle,
+    host: &str,
+    transfer_id: &str,
+    transfer_type: &str,
+    path: &str,
+    copied: u64,
+    total: u64,
+) {
+    let progress = if total == 0 {
+        0
+    } else {
+        ((copied as f64 / total as f64) * 100.0).round().min(100.0) as u32
+    };
+    let _ = app.emit(
+        &format!("sftp://progress/{host}"),
+        serde_json::json!({
+            "id": transfer_id,
+            "type": transfer_type,
+            "path": path,
+            "progress": progress,
+            "copied": copied,
+            "total": total,
+        }),
+    );
+}
+
 async fn download_remote_file(
     app: &AppHandle,
     host: &str,
     sftp: &mut SftpSession,
     remote_path: &str,
     local_path: &Path,
+    transfer_id: &str,
+    cancelled: &AtomicBool,
+    resume: bool,
 ) -> Result<(), String> {
+    ensure_not_cancelled(cancelled)?;
     let meta = sftp
         .metadata(remote_path)
         .await
         .map_err(|e| format!("SFTP stat failed: {}", e))?;
     let total_size = meta.len();
+    let staging_path = local_staging_path(local_path, transfer_id)?;
+    let staging_exists = tokio::fs::try_exists(&staging_path)
+        .await
+        .map_err(|e| format!("Local staging file check failed: {}", e))?;
+
+    // A directory retry re-walks its contents. Files that completed before the
+    // interruption have already been finalized, so do not download them again.
+    if resume && !staging_exists {
+        if let Ok(existing) = tokio::fs::metadata(local_path).await {
+            if existing.len() == total_size {
+                emit_transfer_progress(
+                    app,
+                    host,
+                    transfer_id,
+                    "download",
+                    remote_path,
+                    total_size,
+                    total_size,
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    let mut copied = if resume && staging_exists {
+        tokio::fs::metadata(&staging_path)
+            .await
+            .map(|metadata| metadata.len())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    if copied > total_size {
+        copied = 0;
+    }
 
     let mut remote = sftp
         .open(remote_path)
         .await
         .map_err(|e| format!("SFTP open failed: {}", e))?;
-    let mut local = tokio::fs::File::create(local_path)
+    if copied > 0 {
+        remote
+            .seek(SeekFrom::Start(copied))
+            .await
+            .map_err(|e| format!("SFTP seek failed: {}", e))?;
+    }
+    let mut local_options = tokio::fs::OpenOptions::new();
+    local_options.create(true).write(true).read(true);
+    if copied == 0 {
+        local_options.truncate(true);
+    }
+    let mut local = local_options
+        .open(&staging_path)
         .await
         .map_err(|e| format!("Local file create failed: {}", e))?;
+    if copied > 0 {
+        local
+            .seek(SeekFrom::Start(copied))
+            .await
+            .map_err(|e| format!("Local seek failed: {}", e))?;
+    }
 
-    let mut copied = 0u64;
     let mut buf = vec![0u8; 65536];
     loop {
+        ensure_not_cancelled(cancelled)?;
         let n = remote
             .read(&mut buf)
             .await
@@ -553,31 +689,33 @@ async fn download_remote_file(
             .await
             .map_err(|e| format!("Local write failed: {}", e))?;
         copied += n as u64;
-
-        if total_size > 0 {
-            let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
-            let _ = app.emit(
-                &format!("sftp://progress/{}", host),
-                serde_json::json!({
-                    "type": "download",
-                    "path": remote_path,
-                    "progress": progress,
-                    "copied": copied,
-                    "total": total_size,
-                }),
-            );
-        }
+        emit_transfer_progress(
+            app,
+            host,
+            transfer_id,
+            "download",
+            remote_path,
+            copied,
+            total_size,
+        );
     }
-
-    let _ = app.emit(
-        &format!("sftp://progress/{}", host),
-        serde_json::json!({
-            "type": "download",
-            "path": remote_path,
-            "progress": 100,
-            "done": true,
-        }),
-    );
+    ensure_not_cancelled(cancelled)?;
+    local
+        .sync_all()
+        .await
+        .map_err(|e| format!("Local file sync failed: {}", e))?;
+    drop(local);
+    if tokio::fs::try_exists(local_path)
+        .await
+        .map_err(|e| format!("Local file check failed: {}", e))?
+    {
+        tokio::fs::remove_file(local_path)
+            .await
+            .map_err(|e| format!("Local file replace failed: {}", e))?;
+    }
+    tokio::fs::rename(&staging_path, local_path)
+        .await
+        .map_err(|e| format!("Local file finalize failed: {}", e))?;
     Ok(())
 }
 
@@ -587,22 +725,72 @@ async fn upload_local_file(
     sftp: &mut SftpSession,
     local_path: &Path,
     remote_path: &str,
+    transfer_id: &str,
+    cancelled: &AtomicBool,
+    resume: bool,
 ) -> Result<(), String> {
+    ensure_not_cancelled(cancelled)?;
     let total_size = tokio::fs::metadata(local_path)
         .await
         .map(|metadata| metadata.len())
         .unwrap_or(0);
+    let staging_path = remote_staging_path(remote_path, transfer_id);
+    let staging_size = sftp.metadata(&staging_path).await.ok().map(|metadata| metadata.len());
+
+    // As with downloads, a resumed directory walk skips children that had
+    // already been atomically finalized before the interruption.
+    if resume && staging_size.is_none() {
+        if let Ok(existing) = sftp.metadata(remote_path).await {
+            if existing.len() == total_size {
+                emit_transfer_progress(
+                    app,
+                    host,
+                    transfer_id,
+                    "upload",
+                    remote_path,
+                    total_size,
+                    total_size,
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    let mut copied = if resume { staging_size.unwrap_or(0) } else { 0 };
+    if copied > total_size {
+        copied = 0;
+    }
     let mut local = tokio::fs::File::open(local_path)
         .await
         .map_err(|e| format!("Local file open failed: {}", e))?;
-    let mut remote = sftp
-        .create(remote_path)
+    if copied > 0 {
+        local
+            .seek(SeekFrom::Start(copied))
+            .await
+            .map_err(|e| format!("Local seek failed: {}", e))?;
+    }
+    let mut remote = if copied > 0 {
+        sftp.open_with_flags(
+            &staging_path,
+            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::READ,
+        )
         .await
-        .map_err(|e| format!("SFTP create failed: {}", e))?;
+        .map_err(|e| format!("SFTP open failed: {}", e))?
+    } else {
+        sftp.create(&staging_path)
+            .await
+            .map_err(|e| format!("SFTP create failed: {}", e))?
+    };
+    if copied > 0 {
+        remote
+            .seek(SeekFrom::Start(copied))
+            .await
+            .map_err(|e| format!("SFTP seek failed: {}", e))?;
+    }
 
-    let mut copied = 0u64;
     let mut buf = vec![0u8; 65536];
     loop {
+        ensure_not_cancelled(cancelled)?;
         let n = local
             .read(&mut buf)
             .await
@@ -615,32 +803,56 @@ async fn upload_local_file(
             .await
             .map_err(|e| format!("SFTP write failed: {}", e))?;
         copied += n as u64;
-
-        if total_size > 0 {
-            let progress = ((copied as f64 / total_size as f64) * 100.0) as u32;
-            let _ = app.emit(
-                &format!("sftp://progress/{}", host),
-                serde_json::json!({
-                    "type": "upload",
-                    "path": remote_path,
-                    "progress": progress,
-                    "copied": copied,
-                    "total": total_size,
-                }),
-            );
+        emit_transfer_progress(
+            app,
+            host,
+            transfer_id,
+            "upload",
+            remote_path,
+            copied,
+            total_size,
+        );
+    }
+    ensure_not_cancelled(cancelled)?;
+    remote
+        .sync_all()
+        .await
+        .map_err(|e| format!("SFTP sync failed: {}", e))?;
+    drop(remote);
+    if let Ok(existing) = sftp.metadata(remote_path).await {
+        if existing.file_type().is_dir() {
+            delete_remote_tree(sftp, remote_path).await?;
+        } else {
+            sftp.remove_file(remote_path)
+                .await
+                .map_err(|e| format!("SFTP replace failed: {}", e))?;
         }
     }
-
-    let _ = app.emit(
-        &format!("sftp://progress/{}", host),
-        serde_json::json!({
-            "type": "upload",
-            "path": remote_path,
-            "progress": 100,
-            "done": true,
-        }),
-    );
+    sftp.rename(&staging_path, remote_path)
+        .await
+        .map_err(|e| format!("SFTP finalize failed: {}", e))?;
     Ok(())
+}
+
+/// Make `path` a directory. A local upload is the authority for its own path,
+/// so a remote file at that path is replaced. Existing remote directories are
+/// deliberately preserved for a merge upload.
+async fn ensure_remote_directory(sftp: &mut SftpSession, path: &str) -> Result<(), String> {
+    match sftp.metadata(path).await {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => {
+            sftp.remove_file(path)
+                .await
+                .map_err(|e| format!("SFTP replace file with folder failed: {}", e))?;
+            sftp.create_dir(path)
+                .await
+                .map_err(|e| format!("SFTP mkdir failed: {}", e))
+        }
+        Err(_) => sftp
+            .create_dir(path)
+            .await
+            .map_err(|e| format!("SFTP mkdir failed: {}", e)),
+    }
 }
 
 #[tauri::command]
@@ -656,6 +868,14 @@ pub async fn sftp_connect(
 pub async fn sftp_disconnect(host: String, manager: State<'_, SftpManager>) -> Result<(), String> {
     manager.disconnect(&host).await;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn sftp_transfer_cancel(
+    transfer_id: String,
+    manager: State<'_, SftpManager>,
+) -> Result<bool, String> {
+    Ok(manager.cancel_transfer(&transfer_id).await)
 }
 
 #[tauri::command]
@@ -724,13 +944,30 @@ pub async fn sftp_download(
     host: String,
     remote_path: String,
     local_path: String,
+    transfer_id: String,
+    resume: bool,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let mut conns = manager.connections.lock().await;
-    let conn = conns
-        .get_mut(&host)
-        .ok_or_else(|| "Not connected".to_string())?;
-    download_remote_file(&app, &host, &mut conn.sftp, &remote_path, Path::new(&local_path)).await
+    let cancelled = manager.begin_transfer(&transfer_id).await;
+    let result = {
+        let mut conns = manager.connections.lock().await;
+        let conn = conns
+            .get_mut(&host)
+            .ok_or_else(|| "Not connected".to_string())?;
+        download_remote_file(
+            &app,
+            &host,
+            &mut conn.sftp,
+            &remote_path,
+            Path::new(&local_path),
+            &transfer_id,
+            &cancelled,
+            resume,
+        )
+        .await
+    };
+    manager.finish_transfer(&transfer_id).await;
+    result
 }
 
 #[tauri::command]
@@ -739,42 +976,68 @@ pub async fn sftp_download_dir(
     host: String,
     remote_path: String,
     local_parent: String,
+    transfer_id: String,
+    resume: bool,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
     let destination = PathBuf::from(local_parent).join(remote_basename(&remote_path)?);
-    let mut conns = manager.connections.lock().await;
-    let conn = conns
-        .get_mut(&host)
-        .ok_or_else(|| "Not connected".to_string())?;
-    tokio::fs::create_dir(&destination)
-        .await
-        .map_err(|e| format!("Local folder create failed: {}", e))?;
+    let cancelled = manager.begin_transfer(&transfer_id).await;
+    let result = async {
+        let mut conns = manager.connections.lock().await;
+        let conn = conns
+            .get_mut(&host)
+            .ok_or_else(|| "Not connected".to_string())?;
+        if resume {
+            tokio::fs::create_dir_all(&destination)
+                .await
+                .map_err(|e| format!("Local folder create failed: {}", e))?;
+        } else {
+            tokio::fs::create_dir(&destination)
+                .await
+                .map_err(|e| format!("Local folder create failed: {}", e))?;
+        }
 
-    let mut pending = vec![(remote_path, destination)];
-    while let Some((remote_dir, local_dir)) = pending.pop() {
-        let entries = conn
-            .sftp
-            .read_dir(&remote_dir)
-            .await
-            .map_err(|e| format!("SFTP readdir failed: {}", e))?;
-        for entry in entries {
-            let name = entry.file_name();
-            if name == "." || name == ".." {
-                continue;
-            }
-            let remote_child = remote_join(&remote_dir, &name);
-            let local_child = local_dir.join(&name);
-            if entry.metadata().file_type().is_dir() {
-                tokio::fs::create_dir(&local_child)
-                    .await
-                    .map_err(|e| format!("Local folder create failed: {}", e))?;
-                pending.push((remote_child, local_child));
-            } else {
-                download_remote_file(&app, &host, &mut conn.sftp, &remote_child, &local_child).await?;
+        let mut pending = vec![(remote_path, destination)];
+        while let Some((remote_dir, local_dir)) = pending.pop() {
+            ensure_not_cancelled(&cancelled)?;
+            let entries = conn
+                .sftp
+                .read_dir(&remote_dir)
+                .await
+                .map_err(|e| format!("SFTP readdir failed: {}", e))?;
+            for entry in entries {
+                ensure_not_cancelled(&cancelled)?;
+                let name = entry.file_name();
+                if name == "." || name == ".." {
+                    continue;
+                }
+                let remote_child = remote_join(&remote_dir, &name);
+                let local_child = local_dir.join(&name);
+                if entry.metadata().file_type().is_dir() {
+                    tokio::fs::create_dir_all(&local_child)
+                        .await
+                        .map_err(|e| format!("Local folder create failed: {}", e))?;
+                    pending.push((remote_child, local_child));
+                } else {
+                    download_remote_file(
+                        &app,
+                        &host,
+                        &mut conn.sftp,
+                        &remote_child,
+                        &local_child,
+                        &transfer_id,
+                        &cancelled,
+                        resume,
+                    )
+                    .await?;
+                }
             }
         }
+        Ok(())
     }
-    Ok(())
+    .await;
+    manager.finish_transfer(&transfer_id).await;
+    result
 }
 
 #[tauri::command]
@@ -783,13 +1046,30 @@ pub async fn sftp_upload(
     host: String,
     local_path: String,
     remote_path: String,
+    transfer_id: String,
+    resume: bool,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
-    let mut conns = manager.connections.lock().await;
-    let conn = conns
-        .get_mut(&host)
-        .ok_or_else(|| "Not connected".to_string())?;
-    upload_local_file(&app, &host, &mut conn.sftp, Path::new(&local_path), &remote_path).await
+    let cancelled = manager.begin_transfer(&transfer_id).await;
+    let result = {
+        let mut conns = manager.connections.lock().await;
+        let conn = conns
+            .get_mut(&host)
+            .ok_or_else(|| "Not connected".to_string())?;
+        upload_local_file(
+            &app,
+            &host,
+            &mut conn.sftp,
+            Path::new(&local_path),
+            &remote_path,
+            &transfer_id,
+            &cancelled,
+            resume,
+        )
+        .await
+    };
+    manager.finish_transfer(&transfer_id).await;
+    result
 }
 
 #[tauri::command]
@@ -798,8 +1078,14 @@ pub async fn sftp_upload_dir(
     host: String,
     local_path: String,
     remote_parent: String,
+    transfer_id: String,
+    resume: bool,
+    conflict_mode: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    if conflict_mode != "merge" && conflict_mode != "replace" {
+        return Err("Unsupported folder conflict mode".to_string());
+    }
     let local_root = PathBuf::from(&local_path);
     let name = local_root
         .file_name()
@@ -807,44 +1093,62 @@ pub async fn sftp_upload_dir(
         .filter(|part| !part.is_empty())
         .ok_or_else(|| "The local folder has no name".to_string())?;
     let remote_root = remote_join(&remote_parent, name);
-    let mut conns = manager.connections.lock().await;
-    let conn = conns
-        .get_mut(&host)
-        .ok_or_else(|| "Not connected".to_string())?;
-    conn.sftp
-        .create_dir(&remote_root)
-        .await
-        .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
+    let cancelled = manager.begin_transfer(&transfer_id).await;
+    let result = async {
+        let mut conns = manager.connections.lock().await;
+        let conn = conns
+            .get_mut(&host)
+            .ok_or_else(|| "Not connected".to_string())?;
+        // A replacement applies only to the initial attempt. Retrying or
+        // resuming must retain staged partial data, so it merges the remaining
+        // local tree into whatever the first attempt already created.
+        if !resume && conflict_mode == "replace" && conn.sftp.metadata(&remote_root).await.is_ok() {
+            delete_remote_tree(&mut conn.sftp, &remote_root).await?;
+        }
+        ensure_remote_directory(&mut conn.sftp, &remote_root).await?;
 
-    let mut pending = vec![(local_root, remote_root)];
-    while let Some((local_dir, remote_dir)) = pending.pop() {
-        let mut entries = tokio::fs::read_dir(&local_dir)
-            .await
-            .map_err(|e| format!("Local folder read failed: {}", e))?;
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|e| format!("Local folder read failed: {}", e))?
-        {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-            let remote_child = remote_join(&remote_dir, &name);
-            let file_type = entry
-                .file_type()
+        let mut pending = vec![(local_root, remote_root)];
+        while let Some((local_dir, remote_dir)) = pending.pop() {
+            ensure_not_cancelled(&cancelled)?;
+            let mut entries = tokio::fs::read_dir(&local_dir)
                 .await
-                .map_err(|e| format!("Local file type failed: {}", e))?;
-            if file_type.is_dir() {
-                conn.sftp
-                    .create_dir(&remote_child)
+                .map_err(|e| format!("Local folder read failed: {}", e))?;
+            while let Some(entry) = entries
+                .next_entry()
+                .await
+                .map_err(|e| format!("Local folder read failed: {}", e))?
+            {
+                ensure_not_cancelled(&cancelled)?;
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                let remote_child = remote_join(&remote_dir, &name);
+                let file_type = entry
+                    .file_type()
                     .await
-                    .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
-                pending.push((path, remote_child));
-            } else if file_type.is_file() {
-                upload_local_file(&app, &host, &mut conn.sftp, &path, &remote_child).await?;
+                    .map_err(|e| format!("Local file type failed: {}", e))?;
+                if file_type.is_dir() {
+                    ensure_remote_directory(&mut conn.sftp, &remote_child).await?;
+                    pending.push((path, remote_child));
+                } else if file_type.is_file() {
+                    upload_local_file(
+                        &app,
+                        &host,
+                        &mut conn.sftp,
+                        &path,
+                        &remote_child,
+                        &transfer_id,
+                        &cancelled,
+                        resume,
+                    )
+                    .await?;
+                }
             }
         }
+        Ok(())
     }
-    Ok(())
+    .await;
+    manager.finish_transfer(&transfer_id).await;
+    result
 }
 
 #[tauri::command]
@@ -969,4 +1273,29 @@ pub async fn sftp_stat(
                 .map(|d| d.as_secs())
         }),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_not_cancelled, local_staging_path, remote_staging_path};
+    use std::path::Path;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn transfer_staging_paths_stay_next_to_their_final_targets() {
+        let local = local_staging_path(Path::new("/tmp/archive.zip"), "sftp-abc").unwrap();
+        assert_eq!(local, Path::new("/tmp/.archive.zip.husk-sftp-abc.part"));
+        assert_eq!(
+            remote_staging_path("/srv/archive.zip", "sftp-abc"),
+            "/srv/archive.zip.husk-sftp-abc.part"
+        );
+    }
+
+    #[test]
+    fn cancellation_is_detected_before_another_transfer_chunk() {
+        let cancelled = AtomicBool::new(false);
+        assert!(ensure_not_cancelled(&cancelled).is_ok());
+        cancelled.store(true, Ordering::Relaxed);
+        assert_eq!(ensure_not_cancelled(&cancelled), Err("Transfer cancelled".to_string()));
+    }
 }

@@ -160,6 +160,7 @@ pub fn run() {
             remote::ssh_pwd,
             sftp::sftp_connect,
             sftp::sftp_disconnect,
+            sftp::sftp_transfer_cancel,
             sftp::sftp_forget_host_keys,
             sftp::sftp_list_dir,
             sftp::sftp_download,
