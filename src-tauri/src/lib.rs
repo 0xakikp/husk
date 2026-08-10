@@ -5,6 +5,7 @@ mod fs;
 mod jobs;
 mod mcp;
 mod port_forward;
+mod ports;
 mod pty;
 mod remote;
 mod secrets;
@@ -180,6 +181,8 @@ pub fn run() {
             mcp::mcp_kill,
             shell::shell_run_command,
             shell::detect_binaries,
+            ports::ports_list,
+            ports::ports_stop,
             secrets::secrets_get,
             secrets::secrets_set,
             secrets::secrets_delete,

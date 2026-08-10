@@ -209,6 +209,18 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
     }
   }, []);
 
+  // Utilities such as Ports can send a local endpoint straight to Husk's
+  // browser. The caller also persists the URL, so this event matters only
+  // when the browser panel is already mounted.
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const url = (event as CustomEvent<{ url?: unknown }>).detail?.url;
+      if (typeof url === "string" && url.trim()) void navigate(url);
+    };
+    window.addEventListener("husk-browser-navigate", onNavigate);
+    return () => window.removeEventListener("husk-browser-navigate", onNavigate);
+  }, [navigate]);
+
   const history = useCallback(async (action: "back" | "forward" | "reload") => {
     if (!createdRef.current) return;
     setFailure(null);

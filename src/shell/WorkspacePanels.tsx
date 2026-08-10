@@ -310,7 +310,7 @@ export function WorkspacePanels({
             aria-hidden={activeKind !== "ai"}
           >
             <ErrorBoundary>
-              {lazyPanel(<AiTabPanel />, "Husk AI")}
+              {lazyPanel(<AiTabPanel />, "Husk")}
             </ErrorBoundary>
           </div>
         )}

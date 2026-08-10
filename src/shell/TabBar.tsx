@@ -143,6 +143,7 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
   );
 }
 
+
 export function TabBar({
   termTabs,
   openFiles,
@@ -278,7 +279,7 @@ export function TabBar({
       className="relative min-w-0 shrink overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       <div className="flex w-max min-w-full items-center gap-0.5" ref={tabBarRef} onDragOver={handleDragOver}>
-        {/* Pinned Husk AI tab — rendered first when pinned */}
+        {/* Pinned Husk tab — rendered first when pinned */}
         {aiPinned && (
           <TabChip
             active={active.kind === "ai"}
@@ -292,7 +293,7 @@ export function TabBar({
             }}
           >
             <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.75} className="shrink-0" />
-            <span className="truncate">Husk AI</span>
+            <span className="truncate">Husk</span>
           </TabChip>
         )}
 
@@ -524,7 +525,7 @@ export function TabBar({
             }}
           >
             <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.75} className="shrink-0" />
-            <span className="truncate">Husk AI</span>
+            <span className="truncate">Husk</span>
           </TabChip>
         )}
         <Button
@@ -746,4 +747,3 @@ export function TabBar({
     </div>
   );
 }
-

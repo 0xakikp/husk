@@ -735,7 +735,11 @@ function App() {
     setActiveKind("issues");
     setOpenPanel("issues");
   };
-  const openBrowser = () => {
+  const openBrowser = (target?: string) => {
+    if (target) {
+      localStorage.setItem("husk.browser.url", target);
+      window.dispatchEvent(new CustomEvent("husk-browser-navigate", { detail: { url: target } }));
+    }
     setActiveKind("web");
     setOpenPanel("web");
   };
@@ -974,6 +978,7 @@ function App() {
             openIssues={openIssues}
             openSftp={openSftp}
             openTotp={() => setTotpOpen(true)}
+            openBrowser={openBrowser}
             setSelectedK8sResource={setSelectedK8sResource}
             setSelectedDockerResource={setSelectedDockerResource}
             persistSidebarView={persistSidebarView}

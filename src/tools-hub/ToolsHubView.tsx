@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { cn } from "@/lib/utils";
-import { InformationCircleIcon, PlusSignIcon, AlertCircleIcon, PuzzleIcon, SecurityCheckIcon } from "@hugeicons/core-free-icons";
+import { InformationCircleIcon, PlusSignIcon, AlertCircleIcon, PuzzleIcon, SecurityCheckIcon, ComputerTerminal02Icon, CodeIcon } from "@hugeicons/core-free-icons";
 import { usePrefs, setPrefs } from "../settings/preferences";
 import { loadPlugins, type LoadedPlugin } from "../plugins/loader";
 import { PluginPanel } from "../plugins/PluginPanel";
@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/tooltip";
 import type { SidebarViewId } from "../sidebar/SidebarRail";
 import { PanelHeader } from "../shell/PanelHeader";
+import { PortsView } from "../ports/PortsView";
+import { DevToolsView } from "../dev-tools/DevToolsView";
 
 /**
  * Real brand marks, from simple-icons via @icons-pack/react-simple-icons —
@@ -92,12 +94,14 @@ type Props = {
   onTypeCommand: (cmd: string) => void;
   onRunCommand: (cmd: string) => void;
   onOpenTotp: () => void;
+  onOpenBrowser: (url: string) => void;
 };
 
-export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand, onOpenTotp }: Props) {
+export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand, onOpenTotp, onOpenBrowser }: Props) {
   const dir = usePrefs().pluginsDir;
   const [loaded, setLoaded] = useState<LoadedPlugin[]>([]);
   const [active, setActive] = useState<Plugin | null>(null);
+  const [utility, setUtility] = useState<"ports" | "dev-tools" | null>(null);
 
   const reload = useCallback(() => {
     void loadPlugins(dir).then(setLoaded);
@@ -122,13 +126,21 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand, onOpen
     );
   }
 
+  if (utility === "ports") {
+    return <PortsView onBack={() => setUtility(null)} onTypeCommand={onTypeCommand} onOpenBrowser={onOpenBrowser} />;
+  }
+
+  if (utility === "dev-tools") {
+    return <DevToolsView onBack={() => setUtility(null)} />;
+  }
+
   return (
     <TooltipProvider delayDuration={200}>
       <div className="flex h-full flex-col">
         <PanelHeader
           icon={PuzzleIcon}
           title="Plugins"
-          context={`${TOOLS.length + 1} built-in`}
+          context={`${TOOLS.length + 3} built-in`}
           actions={
             <>
               <Tooltip>
@@ -146,7 +158,7 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand, onOpen
                   sideOffset={6}
                   className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
                 >
-                  Built-in tools for infrastructure work and local 2FA codes. Support for your own plugins is planned.
+                  Local utilities, infrastructure tools, and 2FA codes. Support for your own plugins is planned.
                 </TooltipContent>
               </Tooltip>
               <button
@@ -164,22 +176,50 @@ export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand, onOpen
           <div className="px-0.5 pb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50">
             Utilities
           </div>
-          <button
-            type="button"
-            onClick={onOpenTotp}
-            title="Open 2FA Codes"
-            className="group flex w-full items-start gap-2 rounded-lg border border-border/40 bg-card/30 px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.05]"
-          >
-            <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/12 text-primary">
-              <HugeiconsIcon icon={SecurityCheckIcon} size={13} strokeWidth={1.75} />
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-[11.5px] font-medium text-foreground">2FA Codes</span>
-              <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">
-                Generate and copy locally stored time-based codes.
-              </span>
-            </div>
-          </button>
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={onOpenTotp}
+              title="Open 2FA Codes"
+              className="group flex w-full items-start gap-2 rounded-lg border border-border/40 bg-card/30 px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.05]"
+            >
+              <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/12 text-primary">
+                <HugeiconsIcon icon={SecurityCheckIcon} size={13} strokeWidth={1.75} />
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-[11.5px] font-medium text-foreground">2FA Codes</span>
+                <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">Generate and copy locally stored time-based codes.</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUtility("ports")}
+              title="Inspect local ports"
+              className="group flex w-full items-start gap-2 rounded-lg border border-border/40 bg-card/30 px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.05]"
+            >
+              <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-cyan-500/10 text-cyan-300">
+                <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={1.75} />
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-[11.5px] font-medium text-foreground">Ports</span>
+                <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">Inspect local listeners, open localhost, and stop dev servers.</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUtility("dev-tools")}
+              title="Open local developer tools"
+              className="group flex w-full items-start gap-2 rounded-lg border border-border/40 bg-card/30 px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.05]"
+            >
+              <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-violet-500/10 text-violet-300">
+                <HugeiconsIcon icon={CodeIcon} size={13} strokeWidth={1.75} />
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-[11.5px] font-medium text-foreground">Dev Tools</span>
+                <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">Format, decode, convert, and generate locally.</span>
+              </div>
+            </button>
+          </div>
 
           {/* gap-1 and py-1.5: five rows of two lines each had gap-2 between
               them plus py-2.5 inside, which spread the list over more height
