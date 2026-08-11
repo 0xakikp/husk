@@ -14,6 +14,7 @@ export type AiContextKind =
   | "editor-file"
   | "selection"
   | "file"
+  | "workspace"
   | "project-memory"
   | "instructions"
   | "personal-memory";
@@ -136,6 +137,8 @@ export function scanForSecrets(label: string, text: string): string[] {
  */
 export function itemToRequestBlock(item: AiContextItem): string {
   switch (item.kind) {
+    case "workspace":
+      return `\n\nSelected workspace root for this chat: \`${item.preview}\`. Treat it as the project boundary.`;
     case "terminal":
       return `\n\nActive terminal output:\n\`\`\`\n${item.preview}\n\`\`\``;
     case "command-run":

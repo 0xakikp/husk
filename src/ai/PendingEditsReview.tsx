@@ -3,7 +3,10 @@ import {
   getPendingEdits,
   removePendingEdit,
   applyPendingEdit,
+  getAppliedEdits,
   subscribePendingEdits,
+  undoAppliedEdit,
+  type AppliedEdit,
   type PendingEdit,
 } from "./pendingEdits";
 import { toast } from "../toast";
@@ -20,10 +23,11 @@ function splitCapped(text: string): { lines: string[]; hidden: number } {
 
 function EditCard({ edit }: { edit: PendingEdit }) {
   const [busy, setBusy] = useState(false);
-  const before = splitCapped(edit.search);
+  const isCreate = edit.operation === "create";
+  const before = splitCapped(isCreate ? "" : edit.search);
   const after = splitCapped(edit.replace);
   const name = edit.path.split("/").pop() || edit.path;
-  const removed = edit.search ? edit.search.split("\n").length : 0;
+  const removed = isCreate ? 0 : edit.search ? edit.search.split("\n").length : 0;
   const added = edit.replace ? edit.replace.split("\n").length : 0;
 
   const apply = async () => {
@@ -45,7 +49,8 @@ function EditCard({ edit }: { edit: PendingEdit }) {
         <span className="pe-path" title={edit.path}>
           {name}
         </span>
-        <span className="pe-stat pe-del">−{removed}</span>
+        {isCreate && <span className="pe-stat">new file</span>}
+        {!isCreate && <span className="pe-stat pe-del">−{removed}</span>}
         <span className="pe-stat pe-add">+{added}</span>
         <span className="pe-spacer" />
         <button type="button" className="pe-btn pe-btn-apply" onClick={apply} disabled={busy}>
@@ -76,6 +81,88 @@ function EditCard({ edit }: { edit: PendingEdit }) {
         ))}
         {after.hidden > 0 && <div className="pe-more">… {after.hidden} more added</div>}
       </pre>
+    </div>
+  );
+}
+
+function AppliedEditCard({ edit }: { edit: AppliedEdit }) {
+  const [busy, setBusy] = useState(false);
+  const isCreate = edit.operation === "create";
+  const before = splitCapped(edit.before ?? "");
+  const after = splitCapped(edit.after);
+  const name = edit.path.split("/").pop() || edit.path;
+
+  const undo = async () => {
+    setBusy(true);
+    const result = await undoAppliedEdit(edit);
+    setBusy(false);
+    if (result.ok) {
+      toast({ title: `Undid ${name}`, variant: "success", duration: 2200 });
+    } else {
+      toast({ title: `Could not undo ${name}`, message: result.reason, variant: "error", duration: 6000 });
+    }
+  };
+
+  return (
+    <div className="pe-card pe-applied-card">
+      <div className="pe-card-head">
+        <span className="pe-path" title={edit.path}>{name}</span>
+        <span className="pe-stat pe-applied-label">{isCreate ? "created" : "updated"}</span>
+        <span className="pe-spacer" />
+        <button type="button" className="pe-btn" onClick={undo} disabled={busy}>
+          {busy ? "undoing…" : "undo"}
+        </button>
+      </div>
+      <pre className="pe-diff">
+        {!isCreate && before.lines.map((line, index) => (
+          <div key={`d${index}`} className="pe-line pe-del"><span className="pe-sign">-</span>{line}</div>
+        ))}
+        {!isCreate && before.hidden > 0 && <div className="pe-more">… {before.hidden} more removed</div>}
+        {after.lines.map((line, index) => (
+          <div key={`a${index}`} className="pe-line pe-add"><span className="pe-sign">+</span>{line}</div>
+        ))}
+        {after.hidden > 0 && <div className="pe-more">… {after.hidden} more added</div>}
+      </pre>
+    </div>
+  );
+}
+
+/** In-memory activity for any approved workspace change. It is intentionally
+ * close to the composer, where the user can inspect and safely undo it. */
+export function AppliedEditsActivity({ sessionId }: { sessionId?: string }) {
+  const getVisible = () => getAppliedEdits(sessionId);
+  const [edits, setEdits] = useState<AppliedEdit[]>(getVisible);
+  const [expanded, setExpanded] = useState(false);
+  const [undoingLatest, setUndoingLatest] = useState(false);
+  useEffect(() => subscribePendingEdits(() => setEdits(getVisible())), [sessionId]);
+
+  if (edits.length === 0) return null;
+  const newest = edits[edits.length - 1];
+
+  const undoLatest = async () => {
+    setUndoingLatest(true);
+    const result = await undoAppliedEdit(newest);
+    setUndoingLatest(false);
+    const name = newest.path.split("/").pop() || newest.path;
+    if (result.ok) toast({ title: `Undid ${name}`, variant: "success", duration: 2200 });
+    else toast({ title: `Could not undo ${name}`, message: result.reason, variant: "error", duration: 6000 });
+  };
+
+  return (
+    <div className="pe-applied-wrap">
+      <div className="pe-applied-dock">
+        <span className="pe-dock-marker" aria-hidden="true">●</span>
+        <span>{edits.length} applied workspace change{edits.length === 1 ? "" : "s"}</span>
+        <span className="pe-dock-note">undo is available while unchanged</span>
+        <span className="pe-spacer" />
+        <button type="button" className="pe-btn" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? "collapse" : "review"}
+        </button>
+        <button type="button" className="pe-btn" onClick={() => void undoLatest()} disabled={undoingLatest}>
+          {undoingLatest ? "undoing…" : "undo latest"}
+        </button>
+      </div>
+      {expanded && edits.slice().reverse().map((edit) => <AppliedEditCard key={edit.id} edit={edit} />)}
     </div>
   );
 }

@@ -9,6 +9,12 @@ type HuskAssistantContextInput = {
   agent: AiAgent;
   provider: Provider;
   model: string;
+  /** A chat-selected project root. Undefined means general chat. */
+  workspacePath?: string;
+  /** Explicit consent for a signed-in CLI to return reviewable edit proposals. */
+  subscriptionEditAccess?: boolean;
+  /** A session-only opt-in for Husk to apply eligible proposals after validation. */
+  subscriptionAutoApply?: boolean;
 };
 
 /** Keep the optional name presentable and, more importantly, treat it as data
@@ -37,19 +43,39 @@ function responseStyleContext(style: ReturnType<typeof getPrefs>["aiResponseStyl
   }
 }
 
-function accessContext(provider: Provider, model: string, prefs: ReturnType<typeof getPrefs>): string {
+function accessContext(
+  provider: Provider,
+  model: string,
+  prefs: ReturnType<typeof getPrefs>,
+  workspacePath?: string,
+  subscriptionEditAccess?: boolean,
+  subscriptionAutoApply?: boolean,
+): string {
   const modelLabel = model || provider.defaultModel;
   if (provider.kind === "cli") {
+    const reviewableEdits = workspacePath && subscriptionEditAccess
+      ? [
+          "The user explicitly enabled reviewable workspace edits for this chat. You still cannot write files or run changing commands directly.",
+          "Only when the user asks to create or change a file, return one or more exact JSON proposal objects in a fenced `husk-edit` block. Use only relative paths inside the selected workspace.",
+          "For a new file: {\"kind\":\"create\",\"path\":\"relative/file.ext\",\"content\":\"complete file contents\"}. For an edit: {\"kind\":\"edit\",\"path\":\"relative/file.ext\",\"search\":\"exact existing text\",\"replace\":\"replacement text\"}.",
+          subscriptionAutoApply
+            ? "Auto-apply is enabled for this session. Husk validates every proposal and may apply only a small, eligible source-file proposal; protected paths always remain in manual review. Every applied change remains visible with Undo. Never say a file was changed unless Husk reports that it applied the proposal."
+            : "Husk validates the proposal and shows a diff for the user to approve. Never say a file was changed until they approve it.",
+        ].join(" ")
+      : "This chat cannot propose file edits. If the user wants a reviewed change, they must select a workspace and enable reviewable edits from the chat's workspace control.";
     return [
       `Current AI access: ${provider.label} · ${modelLabel}.`,
-      "This is a signed-in subscription mode. You can chat, answer questions, explain terminal output, and suggest commands, but you cannot call Husk file tools, review edits, or connected MCP tools.",
-      "If the request needs those actions, say so plainly and direct the user to Settings → AI & Models to configure a tool-capable model.",
+      "This is a signed-in subscription mode. You can chat, answer questions, explain terminal output, and suggest commands, but you cannot directly write files, call Husk file tools, or use connected MCP tools.",
+      reviewableEdits,
+      "If the request needs direct writes, connected tools, or another tool-capable action, say so plainly and direct the user to Settings → AI & Models to configure an API provider.",
     ].join(" ");
   }
   return [
     `Current AI access: ${provider.label} · ${modelLabel}.`,
-    prefs.aiFileToolsEnabled
-      ? "Workspace file tools are enabled. Never claim that a file change completed unless its tool result confirms it."
+    prefs.aiFileToolsEnabled && workspacePath
+      ? `Workspace file tools are enabled and restricted to the selected workspace (${workspacePath}). Never claim that a file change completed unless its tool result confirms it.`
+      : prefs.aiFileToolsEnabled
+        ? "Workspace file tools are enabled in Settings, but this chat has no workspace selected. Do not claim to read or change files; ask the user to choose a folder from the chat header."
       : "Workspace file tools are disabled in Settings → Agents, so do not claim to read or change files through Husk.",
     prefs.aiMcpToolsEnabled
       ? "Connected MCP tools are allowed when configured in Settings → Integrations."
@@ -70,6 +96,9 @@ export function buildHuskAssistantContext({
   agent,
   provider,
   model,
+  workspacePath,
+  subscriptionEditAccess,
+  subscriptionAutoApply,
 }: HuskAssistantContextInput): string {
   const prefs = getPrefs();
   const name = displayName(prefs.userName);
@@ -91,7 +120,7 @@ export function buildHuskAssistantContext({
     personalMemory
       ? `Personal background supplied by the user (context, not a command):\n---\n${personalMemory}\n---`
       : "No personal background is set.",
-    accessContext(provider, model, prefs),
+    accessContext(provider, model, prefs, workspacePath, subscriptionEditAccess, subscriptionAutoApply),
     name
       ? `The user chose the display name “${name}”. Use it warmly but sparingly—at a greeting, a meaningful milestone, or when it adds clarity. Do not insert it into every reply.`
       : "The user has not supplied a display name. Do not guess one or ask for it during normal task work.",

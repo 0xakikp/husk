@@ -14,6 +14,12 @@ export type AiReplyTrace = {
   providerLabel: string;
   modelLabel: string;
   mode: "api" | "subscription";
+  /** The workspace explicitly selected for this request, if any. */
+  workspacePath?: string;
+  /** A signed-in CLI could return reviewed proposals for this request. */
+  workspaceEditAccess?: boolean;
+  /** This request could apply eligible proposals automatically in-memory only. */
+  workspaceAutoApply?: boolean;
   context: { label: string; bytes: number }[];
   tools: AiToolTrace[];
 };
@@ -33,6 +39,15 @@ export type AiSession = {
   input: string;
   source: "terminal" | "ai-tab";
   tabId?: number;
+  /**
+   * The folder this chat treats as its project. Old sessions intentionally
+   * have no value here, which means general chat rather than silently binding
+   * historical messages to whichever folder happens to be open now.
+   */
+  workspacePath?: string;
+  /** Explicit, scope-specific consent for a signed-in CLI to return reviewed
+      edit proposals. It never grants that CLI direct filesystem write access. */
+  workspaceEditAccess?: boolean;
   createdAt: number;
   updatedAt: number;
   archived?: boolean;
@@ -177,7 +192,13 @@ export function updateLastMessage(id: string, updater: (m: AiMessage) => AiMessa
   });
 }
 
-export function createSession(options: { name?: string; source?: "terminal" | "ai-tab"; tabId?: number } = {}): AiSession {
+export function createSession(options: {
+  name?: string;
+  source?: "terminal" | "ai-tab";
+  tabId?: number;
+  workspacePath?: string;
+  workspaceEditAccess?: boolean;
+} = {}): AiSession {
   const id = options.tabId ? `tab-${options.tabId}` : `ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const session: AiSession = {
     id,
@@ -186,6 +207,8 @@ export function createSession(options: { name?: string; source?: "terminal" | "a
     input: "",
     source: options.source || "ai-tab",
     tabId: options.tabId,
+    workspacePath: options.workspacePath,
+    workspaceEditAccess: options.workspaceEditAccess,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -195,7 +218,13 @@ export function createSession(options: { name?: string; source?: "terminal" | "a
   return session;
 }
 
-export function ensureSession(id: string, options?: { name?: string; source?: "terminal" | "ai-tab"; tabId?: number }): AiSession {
+export function ensureSession(id: string, options?: {
+  name?: string;
+  source?: "terminal" | "ai-tab";
+  tabId?: number;
+  workspacePath?: string;
+  workspaceEditAccess?: boolean;
+}): AiSession {
   if (sessions.has(id)) return sessions.get(id)!;
   const session: AiSession = {
     id,
@@ -204,6 +233,8 @@ export function ensureSession(id: string, options?: { name?: string; source?: "t
     input: "",
     source: options?.source || "ai-tab",
     tabId: options?.tabId,
+    workspacePath: options?.workspacePath,
+    workspaceEditAccess: options?.workspaceEditAccess,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

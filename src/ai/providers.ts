@@ -23,9 +23,9 @@ export type Provider = {
     Claude themselves. */
 export const CLI_SUBSCRIPTION_MODE = {
   title: "Subscription mode — read-only",
-  summary: "Uses your signed-in plan without an API key. Husk cannot run actions on your behalf in this mode.",
-  works: "Chat, code questions, terminal help, command suggestions, and commit messages.",
-  unavailable: "File edits and review, connected MCP tools, and other Husk actions that need tool access.",
+  summary: "Uses your signed-in plan without an API key. Husk keeps the CLI read-only and never gives it direct filesystem write access.",
+  works: "Chat, code questions, terminal help, command suggestions, and reviewable workspace edit proposals when a chat explicitly enables them. A session-only auto-apply option can handle small, eligible proposals with Undo.",
+  unavailable: "Direct file writes, connected MCP tools, and other Husk actions that need tool access.",
   unlock: "To use full Husk, configure an API provider. You can keep this mode and switch any time.",
 } as const;
 

@@ -52,10 +52,16 @@ Choose the access mode that fits your workflow:
 
 | Mode | Best for | What it can do in Husk |
 | --- | --- | --- |
-| **API-backed model** | Full workspace assistance | Chat, file tools when enabled, reviewable edits, and configured MCP integrations. |
-| **Claude Code or Codex subscription** | Using an existing signed-in CLI plan | Chat, code questions, terminal help, command suggestions, and commit-message help—without an API key. These modes are read-only inside Husk and cannot call file-edit/review actions or connected MCP tools. |
+| **API-backed model** | Full workspace assistance | Chat, scoped file tools when enabled, and configured MCP integrations. |
+| **Signed-in CLI subscription** | Using an existing CLI plan | Chat, code questions, terminal help, and command suggestions without an API key. It cannot directly call Husk file tools or MCP integrations, but can return guarded workspace-edit proposals when you explicitly enable them. |
 
-API-backed providers include OpenAI, Anthropic, Google, Groq, DeepSeek, OpenRouter, xAI, Mistral, Moonshot, and compatible local endpoints such as LM Studio or Ollama. The configured provider and model are always visible in the AI interface.
+Signed-in CLI modes are available for Claude Code, Codex, Gemini CLI, and Kimi Code. API-backed providers include OpenAI, Anthropic, Google, Groq, DeepSeek, OpenRouter, xAI, Mistral, Moonshot, and compatible local endpoints such as LM Studio or Ollama. The configured provider, model, and access mode are always visible in the AI interface.
+
+#### Workspace scope and safe subscription edits
+
+Each AI chat can be given its own workspace folder from the composer header. This is a deliberate per-chat boundary: terminal-originated chats begin with that terminal’s current workspace, while a general chat stays unscoped until you choose a folder. API file tools and selected context stay inside that folder.
+
+For a signed-in CLI subscription, enabling **Reviewable workspace edits** lets the model return structured file-change proposals rather than writing directly. Husk validates the path again in the native layer, renders a compact diff, and lets you apply or discard every change. You can also enable **Auto-apply safe proposals** for the current chat session: Husk considers only small batches of source changes and keeps secrets, configuration, dependency locks, generated output, and protected folders in manual review. Applied subscription changes stay visible below the composer and can be undone while the file remains unchanged.
 
 #### AI that adapts to the person and project
 
@@ -85,9 +91,10 @@ Husk’s first-run defaults are deliberately opinionated: Iosevka typography, th
 
 1. Launch Husk and choose **Open folder** from the boot screen.
 2. Open `⌘/Ctrl K` and try **Open beautiful logs**, **Open settings**, or a workspace search.
-3. In **Settings → AI & Models**, select an API-backed provider or a signed-in Codex / Claude Code subscription mode.
+3. In **Settings → AI & Models**, select an API-backed provider or a signed-in CLI subscription mode.
 4. In **Settings → Agents**, choose an agent, set a response style, and decide what context a new AI chat should attach.
-5. If you use integrations, add them in **Settings → Integrations**. Husk explains there when the selected model mode cannot use connected tools.
+5. In a Husk AI chat, choose a workspace folder from the header before attaching files or enabling reviewed subscription edits.
+6. If you use integrations, add them in **Settings → Integrations**. Husk explains there when the selected model mode cannot use connected tools.
 
 ## Keyboard shortcuts
 
@@ -116,7 +123,8 @@ Husk makes the important boundaries explicit.
 - These user-home files are kept when Husk is normally removed and reinstalled. Deleting `~/.husk/` deliberately removes them.
 - Chat history, terminal session restoration, project memory, recents, and other transient workspace state remain local application data for now; they are not placed in the readable config or agent files.
 - Terminal output, file contents, attachments, project memory, personal memory, and display name can be sent to the selected AI provider when included in an AI request. Review context chips before sending sensitive output.
-- File and MCP tool access can be disabled in **Settings → Agents**. Existing-file edits use Husk’s review flow; subscription CLI modes cannot invoke those actions at all.
+- File and MCP tool access can be disabled in **Settings → Agents**. API file tools are restricted to the workspace selected by the current chat; the native layer checks the workspace boundary again, including symlink escapes.
+- Signed-in CLI subscriptions never receive direct Husk write or MCP access. Their optional reviewed proposals must use a selected workspace. Auto-apply is off by default, lives only for the current app session and workspace, and leaves protected paths in manual review. Undo refuses to overwrite a file that changed after Husk’s edit.
 
 ## Run from source
 

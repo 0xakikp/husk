@@ -13,6 +13,7 @@ export type ContextInspectorTools = {
   providerKind: string;
   fileToolsEnabled: boolean;
   mcpToolsEnabled: boolean;
+  workspacePath?: string;
 };
 
 /**
@@ -129,7 +130,9 @@ export function ContextInspector({
               {tools.providerKind === "cli"
                 ? "unavailable in subscription mode"
                 : tools.fileToolsEnabled
-                  ? "enabled"
+                  ? tools.workspacePath
+                    ? `enabled · ${tools.workspacePath}`
+                    : "select a workspace first"
                   : "disabled"}
             </span>
           </div>

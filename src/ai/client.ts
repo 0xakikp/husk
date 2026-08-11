@@ -21,6 +21,8 @@ export type ChatConfig = {
   model: string;
   apiKey: string;
   baseURL: string;
+  /** The chat's selected local project. CLI backends start here, still read-only. */
+  workspacePath?: string;
 };
 
 /** A compact, user-facing record of Husk executing a local or connected tool.
@@ -91,15 +93,16 @@ function runSubscriptionCli(
 ) {
   switch (cfg.provider.cli) {
     case "codex":
-      return runCodexCli({ prompt, model: cfg.model, onDelta, onStatus });
+      return runCodexCli({ prompt, model: cfg.model, cwd: cfg.workspacePath ?? null, onDelta, onStatus });
     case "gemini":
-      return runGeminiCli({ prompt, model: cfg.model, onDelta, onStatus });
+      return runGeminiCli({ prompt, model: cfg.model, cwd: cfg.workspacePath ?? null, onDelta, onStatus });
     case "kimi":
-      return runKimiCli({ prompt, model: cfg.model, onDelta });
+      return runKimiCli({ prompt, model: cfg.model, cwd: cfg.workspacePath ?? null, onDelta });
     case "claude":
       return runClaudeCli({
         prompt,
         model: cfg.model,
+        cwd: cfg.workspacePath ?? null,
         onDelta,
         onStatus: (name) => onStatus?.(`🛠️ ${name}`),
         onNotice: (text) => onStatus?.(`⚠️ ${text}`),

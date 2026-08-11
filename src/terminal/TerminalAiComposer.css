@@ -218,6 +218,235 @@
   color: var(--primary);
 }
 
+/* ── Per-chat workspace scope ──────────────────────────────────────────── */
+
+.composer-workspace-scope {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 132px;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 22%, transparent);
+  padding: 2px 6px;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
+  font-family: var(--wb-mono);
+  font-size: 8.5px;
+  line-height: 1.2;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+
+.composer-workspace-scope:hover,
+.composer-workspace-scope.is-scoped {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.composer-workspace-scope:hover {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--foreground);
+}
+
+.composer-workspace-scope.is-scoped {
+  color: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+}
+
+.composer-workspace-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 60;
+  width: min(272px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--background) 96%, transparent);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: 7px;
+  font-family: var(--wb-mono);
+}
+
+.composer-workspace-menu-label {
+  margin: 0 0 5px;
+  padding: 0 2px;
+  color: color-mix(in srgb, var(--muted-foreground) 58%, transparent);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.composer-workspace-current,
+.composer-workspace-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 5px;
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  padding: 6px 7px;
+}
+
+.composer-workspace-current span {
+  color: var(--foreground);
+  font-size: 10px;
+}
+
+.composer-workspace-current small,
+.composer-workspace-empty {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+  font-size: 8.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-workspace-empty {
+  white-space: normal;
+}
+
+.composer-workspace-edit-access,
+.composer-workspace-auto-access {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 5px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 5px;
+  padding: 6px 7px;
+}
+
+.composer-workspace-edit-access > div,
+.composer-workspace-auto-access > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.composer-workspace-edit-access span,
+.composer-workspace-auto-access span {
+  color: color-mix(in srgb, var(--foreground) 90%, transparent);
+  font-size: 9px;
+}
+
+.composer-workspace-edit-access small,
+.composer-workspace-auto-access small {
+  color: color-mix(in srgb, var(--muted-foreground) 77%, transparent);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.composer-workspace-edit-toggle {
+  flex: 0 0 auto;
+  min-width: 30px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
+  font-family: inherit;
+  font-size: 8px;
+  text-transform: uppercase;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+
+.composer-workspace-edit-toggle:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--foreground);
+}
+
+.composer-workspace-edit-toggle.is-enabled {
+  border-color: color-mix(in srgb, var(--primary) 52%, transparent);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.composer-workspace-edit-toggle:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.composer-workspace-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border-radius: 5px;
+  padding: 5px 6px;
+  color: color-mix(in srgb, var(--foreground) 90%, transparent);
+  font-size: 9.5px;
+  text-align: left;
+  transition: background .15s ease, color .15s ease;
+}
+
+.composer-workspace-menu-item:hover {
+  background: color-mix(in srgb, var(--primary) 11%, transparent);
+  color: var(--primary);
+}
+
+.composer-workspace-menu-item.is-muted {
+  color: color-mix(in srgb, var(--muted-foreground) 82%, transparent);
+}
+
+.composer-workspace-moved {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--amber, #f59e0b) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--amber, #f59e0b) 7%, transparent);
+  padding: 5px 7px;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+  font-family: var(--wb-mono);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.composer-workspace-moved strong {
+  color: color-mix(in srgb, var(--amber, #f59e0b) 88%, var(--foreground));
+  font-weight: 600;
+}
+
+.composer-workspace-moved > div {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.composer-workspace-moved button {
+  border: 1px solid color-mix(in srgb, var(--amber, #f59e0b) 30%, transparent);
+  border-radius: 4px;
+  padding: 2px 4px;
+  color: color-mix(in srgb, var(--amber, #f59e0b) 88%, var(--foreground));
+  font-family: inherit;
+  font-size: 8px;
+  transition: background .15s ease, border-color .15s ease;
+}
+
+.composer-workspace-moved button:hover {
+  border-color: color-mix(in srgb, var(--amber, #f59e0b) 68%, transparent);
+  background: color-mix(in srgb, var(--amber, #f59e0b) 13%, transparent);
+}
+
+@media (max-width: 520px) {
+  .composer-crumb,
+  .composer-capability {
+    display: none;
+  }
+
+  .composer-workspace-moved {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .composer-avatar {
   display: flex;
   align-items: center;
@@ -1646,6 +1875,31 @@
 .pe-dock-note {
   color: var(--text-faint);
 }
+
+.pe-applied-wrap {
+  margin: 0 8px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 6px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.pe-applied-dock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 3px 7px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-input));
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.pe-applied-card + .pe-applied-card {
+  border-top: 1px solid var(--border);
+}
+
+.pe-applied-label { color: var(--accent); }
 
 .pe-head,
 .pe-card-head {

@@ -14,6 +14,7 @@ import {
   Copy01Icon,
   TickDouble01Icon,
   ArrowDown01Icon,
+  Folder01Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { getPrefs, usePrefs, setPrefs } from "../settings/preferences";
@@ -30,9 +31,18 @@ import {
   runInActiveTerminal,
   getRecentCommandRuns,
   getPendingRunAttachment,
+  useActiveTerminalCwd,
   type CommandRun,
 } from "../ai/terminalContext";
-import { PendingEditsReview } from "../ai/PendingEditsReview";
+import { AppliedEditsActivity, PendingEditsReview } from "../ai/PendingEditsReview";
+import { addPendingEdit, applyPendingEdit, removePendingEdit } from "../ai/pendingEdits";
+import { parseSubscriptionEditProposals } from "../ai/subscriptionEdits";
+import { canAutoApplySubscriptionEdits } from "../ai/subscriptionAutoApplySafety";
+import {
+  clearSubscriptionAutoApply,
+  setSubscriptionAutoApply,
+  useSubscriptionAutoApply,
+} from "../ai/subscriptionAutoApply";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { getProjectMemory } from "../ai/projectMemory";
 import { isEnvDestructive, protectedTargets } from "./envSignals";
@@ -52,13 +62,18 @@ import {
 import { registerComposerToggle, registerComposerOpen, registerComposerSend } from "../ai/bubbleStore";
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { readFile, readFileBase64 } from "../fs";
+import { readFile, readFileBase64, readFileScoped } from "../fs";
 import { buildMcpTools } from "../mcp/tools";
 import { buildBuiltinTools, mergeTools } from "../ai/builtinTools";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "../toast";
 import { getTerminalRunDecision } from "./commandRun";
-import { getWorkspaceRoot } from "../workspace/store";
+import { useWorkspaceRoot } from "../workspace/store";
+import {
+  isPathInWorkspace,
+  normalizeWorkspacePath,
+  workspaceDisplayName,
+} from "../ai/workspaceScope";
 import { parseWorkspaceFileReference } from "../ai/fileReferences";
 import {
   AiMessage,
@@ -126,21 +141,24 @@ function getMessageAccentClass(color?: string) {
 
 function parseCodeBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
-  const regex = /```(\w*)\n?([\s\S]*?)```/g;
+  const regex = /```([\w-]*)\n?([\s\S]*?)```/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     /* An omitted fence language is code to copy and inspect, not an implicit
        shell command. Direct Run is intentionally opt-in via sh/bash/zsh. */
-    blocks.push({ lang: (match[1] || "").toLowerCase(), code: match[2].trim() });
+    const lang = (match[1] || "").toLowerCase();
+    /* Subscription edit fences are machine-readable review proposals, not
+       source code to copy or run. PendingEditsReview renders their diff. */
+    if (lang !== "husk-edit") blocks.push({ lang, code: match[2].trim() });
   }
   return blocks;
 }
 
 function stripCodeBlocks(text: string): string {
-  return text.replace(/```(\w*)\n?([\s\S]*?)```/g, "").trim();
+  return text.replace(/```([\w-]*)\n?([\s\S]*?)```/g, "").trim();
 }
 
-function renderInline(text: string): ReactNode[] {
+function renderInline(text: string, workspaceRoot?: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   const regex = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
   let last = 0;
@@ -154,7 +172,7 @@ function renderInline(text: string): ReactNode[] {
     } else if (tok.startsWith("`")) {
       const value = tok.slice(1, -1);
       const ref = parseWorkspaceFileReference(value);
-      const root = getWorkspaceRoot()?.replace(/\/+$/, "");
+      const root = normalizeWorkspacePath(workspaceRoot);
       if (ref && root) {
         const path = `${root}/${ref.relativePath}`;
         nodes.push(
@@ -180,7 +198,7 @@ function renderInline(text: string): ReactNode[] {
   return nodes;
 }
 
-function MarkdownText({ text }: { text: string }) {
+function MarkdownText({ text, workspaceRoot }: { text: string; workspaceRoot?: string }) {
   const lines = text.split("\n");
   return (
     <div className="wb-md">
@@ -192,7 +210,7 @@ function MarkdownText({ text }: { text: string }) {
           return (
             <div key={i} className="wb-md-li">
               <span className="wb-md-marker">•</span>
-              <span className="wb-md-li-text">{renderInline(bullet[1])}</span>
+              <span className="wb-md-li-text">{renderInline(bullet[1], workspaceRoot)}</span>
             </div>
           );
         }
@@ -200,14 +218,14 @@ function MarkdownText({ text }: { text: string }) {
           return (
             <div key={i} className="wb-md-li">
               <span className="wb-md-marker">{numbered[1]}.</span>
-              <span className="wb-md-li-text">{renderInline(numbered[2])}</span>
+              <span className="wb-md-li-text">{renderInline(numbered[2], workspaceRoot)}</span>
             </div>
           );
         }
         if (!trimmed) return <div key={i} className="wb-md-gap" />;
         return (
           <div key={i} className="wb-md-p">
-            {renderInline(line)}
+            {renderInline(line, workspaceRoot)}
           </div>
         );
       })}
@@ -219,7 +237,7 @@ function MarkdownText({ text }: { text: string }) {
    response: code, diffs and file trees still render in full below. We only
    fold prose at a paragraph boundary, which avoids cutting a Markdown list or
    sentence in half. */
-function CollapsibleMarkdownText({ text }: { text: string }) {
+function CollapsibleMarkdownText({ text, workspaceRoot }: { text: string; workspaceRoot?: string }) {
   const [expanded, setExpanded] = useState(false);
   const lines = text.split("\n");
   const shouldCollapse = text.length > 1_400 || lines.length > 14;
@@ -231,11 +249,11 @@ function CollapsibleMarkdownText({ text }: { text: string }) {
     return paragraphBreak > 80 ? candidate.slice(0, paragraphBreak) : candidate;
   }, [lines, shouldCollapse, text]);
 
-  if (!shouldCollapse) return <MarkdownText text={text} />;
+  if (!shouldCollapse) return <MarkdownText text={text} workspaceRoot={workspaceRoot} />;
 
   return (
     <div className="msg-prose">
-      <MarkdownText text={expanded ? text : collapsed} />
+      <MarkdownText text={expanded ? text : collapsed} workspaceRoot={workspaceRoot} />
       <button
         type="button"
         className="msg-details-toggle"
@@ -253,7 +271,11 @@ function AiReplyTraceRow({ trace }: { trace: AiReplyTrace }) {
   const toolSummary = trace.tools.length
     ? `${completedTools.length === trace.tools.length ? "tools complete" : "tools running"} · ${trace.tools.length}`
     : trace.mode === "subscription"
-      ? "read-only"
+      ? trace.workspaceAutoApply
+        ? "auto apply"
+        : trace.workspaceEditAccess
+        ? "review proposals"
+        : "read-only"
       : "no tools used";
   return (
     <div className="ai-reply-trace">
@@ -283,7 +305,17 @@ function AiReplyTraceRow({ trace }: { trace: AiReplyTrace }) {
           </div>
           <div className="ai-reply-trace-detail-row">
             <span>access</span>
-            <strong>{trace.mode === "subscription" ? "subscription · read-only" : "API-backed · tools available"}</strong>
+            <strong>{trace.mode === "subscription"
+              ? trace.workspaceAutoApply
+                ? "subscription · auto-apply enabled"
+                : trace.workspaceEditAccess
+                  ? "subscription · reviewable proposals"
+                  : "subscription · read-only"
+              : "API-backed · tools available"}</strong>
+          </div>
+          <div className="ai-reply-trace-detail-row">
+            <span>workspace</span>
+            <strong>{trace.workspacePath || "general chat · no workspace selected"}</strong>
           </div>
           <div className="ai-reply-trace-detail-row">
             <span>context</span>
@@ -397,6 +429,8 @@ export function TerminalAiComposer({
   const [attachedRuns, setAttachedRuns] = useState<CommandRun[]>([]);
   const attachedRunsSessionRef = useRef(sessionId);
   const [runPickerOpen, setRunPickerOpen] = useState(false);
+  const [workspaceScopeOpen, setWorkspaceScopeOpen] = useState(false);
+  const [dismissedWorkspaceChange, setDismissedWorkspaceChange] = useState<string | null>(null);
 
   const prefs = usePrefs();
   const agents = useAgents();
@@ -417,6 +451,7 @@ export function TerminalAiComposer({
   const scrollRef = useRef<HTMLDivElement>(null);
   const handleSendRef = useRef<(textOverride?: string, opts?: { allowOverBudget?: boolean; allowSensitive?: boolean; fitToBudget?: boolean }) => Promise<void>>(async () => {});
   const agentDropdownRef = useRef<HTMLDivElement>(null);
+  const workspaceScopeRef = useRef<HTMLDivElement>(null);
   const slashPaletteRef = useRef<HTMLDivElement>(null);
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
@@ -426,6 +461,8 @@ export function TerminalAiComposer({
   const startHeightRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const [codeTabMap, setCodeTabMap] = useState<Record<number, number>>({});
+  const activeWorkspaceRoot = useWorkspaceRoot();
+  const activeTerminalCwd = useActiveTerminalCwd();
 
   // Right-dock (side panel) state
   /* Docked to either side. Everything about a side dock is shared except which
@@ -445,6 +482,61 @@ export function TerminalAiComposer({
   const session = getSession(sessionId);
   const messages = session.messages;
   const input = session.input;
+  const workspacePath = normalizeWorkspacePath(session.workspacePath);
+  const subscriptionAutoApply = useSubscriptionAutoApply(sessionId, workspacePath);
+  const currentWorkspacePath = normalizeWorkspacePath(activeWorkspaceRoot);
+  const workspaceChangeKey = workspacePath && currentWorkspacePath
+    ? `${workspacePath}\n${currentWorkspacePath}`
+    : "";
+  const terminalWorkspaceMoved =
+    variant === "docked" &&
+    isTabSessionId(sessionId) &&
+    !!workspacePath &&
+    !!currentWorkspacePath &&
+    !!activeTerminalCwd &&
+    !isPathInWorkspace(activeTerminalCwd, workspacePath) &&
+    dismissedWorkspaceChange !== workspaceChangeKey;
+
+  const setChatWorkspace = useCallback((path: string | null) => {
+    const nextPath = normalizeWorkspacePath(path);
+    const currentPath = normalizeWorkspacePath(getSession(sessionId).workspacePath);
+    updateSession(sessionId, (current) => ({
+      ...current,
+      workspacePath: nextPath || undefined,
+      /* Approval belongs to both this conversation and this exact folder. A
+         different folder always requires fresh consent. */
+      workspaceEditAccess:
+        nextPath && normalizeWorkspacePath(current.workspacePath) === nextPath
+          ? current.workspaceEditAccess
+          : false,
+    }));
+    if (currentPath !== nextPath) clearSubscriptionAutoApply(sessionId);
+    setWorkspaceScopeOpen(false);
+    setDismissedWorkspaceChange(null);
+  }, [sessionId]);
+
+  const setSubscriptionEditAccess = useCallback((enabled: boolean) => {
+    updateSession(sessionId, (current) => ({
+      ...current,
+      workspaceEditAccess: Boolean(enabled && normalizeWorkspacePath(current.workspacePath)),
+    }));
+    if (!enabled) clearSubscriptionAutoApply(sessionId);
+  }, [sessionId]);
+
+  const setSubscriptionAutoApplyEnabled = useCallback((enabled: boolean) => {
+    const current = getSession(sessionId);
+    const root = normalizeWorkspacePath(current.workspacePath);
+    setSubscriptionAutoApply(
+      sessionId,
+      root,
+      Boolean(enabled && root && current.workspaceEditAccess),
+    );
+  }, [sessionId]);
+
+  const chooseChatWorkspace = useCallback(async () => {
+    const selected = await openDialog({ directory: true, multiple: false });
+    if (typeof selected === "string") setChatWorkspace(selected);
+  }, [setChatWorkspace]);
 
   const setInput = (value: string) => {
     updateSession(sessionId, (s) => ({ ...s, input: value }));
@@ -531,15 +623,15 @@ export function TerminalAiComposer({
      re-reads, so a stale cache never decides what the model sees. */
   useEffect(() => {
     let cancelled = false;
-    if (!currentFile || !includeFile) {
+    if (!currentFile || !includeFile || !workspacePath || !isPathInWorkspace(currentFile, workspacePath)) {
       setFileCache(null);
       return;
     }
-    readFile(currentFile)
+    readFileScoped(currentFile, workspacePath)
       .then((content) => { if (!cancelled) setFileCache({ path: currentFile, content }); })
-      .catch(() => { if (!cancelled) setFileCache({ path: currentFile, content: "" }); });
+      .catch(() => { if (!cancelled) setFileCache(null); });
     return () => { cancelled = true; };
-  }, [currentFile, includeFile]);
+  }, [currentFile, includeFile, workspacePath]);
 
   const contextItems = useMemo<AiContextItem[]>(() => {
     const items: AiContextItem[] = [];
@@ -554,7 +646,26 @@ export function TerminalAiComposer({
         sensitiveReasons: reasons,
       };
     };
-    if (currentFile && includeFile) {
+    const fileIsInScope =
+      !!workspacePath &&
+      isPathInWorkspace(currentFile, workspacePath) &&
+      fileCache?.path === currentFile;
+    const terminalMatchesScope =
+      !workspacePath || isPathInWorkspace(activeTerminalCwd, workspacePath);
+    if (workspacePath) {
+      items.push(mk({
+        id: "workspace",
+        kind: "workspace",
+        icon: "⌂",
+        label: `workspace · ${workspaceDisplayName(workspacePath)}`,
+        source: workspacePath,
+        preview: workspacePath,
+        removable: false,
+      }));
+    }
+    /* The selected workspace is a boundary, not just a hint. An editor file
+       from another project is not silently attached to this conversation. */
+    if (currentFile && includeFile && fileIsInScope) {
       const content = fileCache?.path === currentFile ? fileCache.content : "";
       items.push(mk({
         id: "file",
@@ -566,7 +677,7 @@ export function TerminalAiComposer({
         removable: true,
       }));
     }
-    if (selection && includeSelection) {
+    if (selection && includeSelection && fileIsInScope) {
       items.push(mk({
         id: "selection",
         kind: "selection",
@@ -592,7 +703,7 @@ export function TerminalAiComposer({
         removable: true,
       }));
     }
-    if (includeTerminal) {
+    if (includeTerminal && terminalMatchesScope) {
       /* Show the size. Terminal scrollback routinely contains echoed API keys,
          kubectl output, connection strings and internal hostnames, and all of it
          leaves the machine on send — so how much is going is worth stating, and
@@ -621,7 +732,7 @@ export function TerminalAiComposer({
         isImage: f.isImage,
       }));
     });
-    const projectNote = getProjectMemory();
+    const projectNote = getProjectMemory(workspacePath);
     if (projectNote && !excludeProjectMemory) {
       items.push(mk({
         id: "project-memory",
@@ -659,7 +770,7 @@ export function TerminalAiComposer({
       }));
     }
     return items;
-  }, [currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick]);
+  }, [currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick, workspacePath, activeTerminalCwd]);
 
   const removeContextItem = useCallback((id: string) => {
     if (id === "file") setIncludeFile(false);
@@ -743,12 +854,15 @@ export function TerminalAiComposer({
     }
   }, [open]);
 
-  // Close dropdowns when clicking outside
+  // Close header and slash dropdowns when clicking outside.
   useEffect(() => {
-    if (!agentDropdownOpen && !slashOpen) return;
+    if (!agentDropdownOpen && !workspaceScopeOpen && !slashOpen) return;
     const onDocClick = (e: MouseEvent) => {
       if (!agentDropdownRef.current?.contains(e.target as Node)) {
         setAgentDropdownOpen(false);
+      }
+      if (!workspaceScopeRef.current?.contains(e.target as Node)) {
+        setWorkspaceScopeOpen(false);
       }
       if (!slashPaletteRef.current?.contains(e.target as Node)) {
         setSlashOpen(false);
@@ -756,15 +870,29 @@ export function TerminalAiComposer({
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
-  }, [agentDropdownOpen, slashOpen]);
+  }, [agentDropdownOpen, workspaceScopeOpen, slashOpen]);
 
-  // Ensure the session exists (terminal tabs get created on first composer mount)
+  // Ensure the session exists. A new terminal chat captures the resolved
+  // project root once; historical conversations intentionally stay unscoped
+  // until the user chooses a folder, rather than being rebound to today's cwd.
   useEffect(() => {
     if (isTabSessionId(sessionId)) {
       const tabId = parseInt(sessionId.slice(4), 10);
-      ensureSession(sessionId, { name: tabSessionName(sessionId), source: "terminal", tabId });
+      const ensured = ensureSession(sessionId, {
+        name: tabSessionName(sessionId),
+        source: "terminal",
+        tabId,
+        workspacePath: currentWorkspacePath || undefined,
+      });
+      if (!ensured.workspacePath && ensured.messages.length === 0 && currentWorkspacePath) {
+        updateSession(sessionId, (current) => ({ ...current, workspacePath: currentWorkspacePath }));
+      }
     }
-  }, [sessionId]);
+  }, [sessionId, currentWorkspacePath]);
+
+  useEffect(() => {
+    setDismissedWorkspaceChange(null);
+  }, [workspaceChangeKey]);
 
   /* Command output belongs to the chat it was explicitly attached to. Without
      this reset, switching conversations in the full AI view could carry a
@@ -865,6 +993,9 @@ export function TerminalAiComposer({
     const cfg = loadConfig();
     const provider = getProvider(cfg.providerId);
     const apiKey = getKey(provider.id);
+    const subscriptionEditAccess =
+      provider.kind === "cli" && Boolean(session.workspaceEditAccess && workspacePath);
+    const subscriptionAutoApplyActive = subscriptionEditAccess && subscriptionAutoApply;
     if (!provider.keyless && !apiKey) {
       setMessages((prev) => {
         const next = [...prev];
@@ -880,7 +1011,12 @@ export function TerminalAiComposer({
     if (provider.kind !== "cli" && (prefs.aiFileToolsEnabled || prefs.aiMcpToolsEnabled)) {
       try {
         const mcpTools = prefs.aiMcpToolsEnabled ? await buildMcpTools().catch(() => ({})) : {};
-        const builtinTools = prefs.aiFileToolsEnabled ? buildBuiltinTools(sessionId) : {};
+        /* Built-in filesystem access requires a chat-selected root. MCP tools
+           retain their own configured scopes and are deliberately not treated
+           as local-file access. */
+        const builtinTools = prefs.aiFileToolsEnabled && workspacePath
+          ? buildBuiltinTools(sessionId, workspacePath)
+          : {};
         tools = mergeTools(builtinTools, mcpTools);
       } catch (e) {
         if (import.meta.env.DEV) {
@@ -902,9 +1038,9 @@ export function TerminalAiComposer({
     /* Re-read the open file at send time — the render-time cache can lag the
        latest save, and the model should see the file as it is now. */
     const fileIdx = sendItems.findIndex((i) => i.kind === "editor-file");
-    if (fileIdx >= 0 && currentFile) {
+    if (fileIdx >= 0 && currentFile && workspacePath) {
       try {
-        const content = await readFile(currentFile);
+        const content = await readFileScoped(currentFile, workspacePath);
         sendItems[fileIdx] = { ...sendItems[fileIdx], preview: content, bytes: byteLength(content) };
       } catch {
         sendItems[fileIdx] = { ...sendItems[fileIdx], preview: "(could not read file)" };
@@ -918,6 +1054,9 @@ export function TerminalAiComposer({
       providerLabel: provider.label,
       modelLabel: modelId,
       mode: provider.kind === "cli" ? "subscription" : "api",
+      workspacePath: workspacePath || undefined,
+      workspaceEditAccess: subscriptionEditAccess || undefined,
+      workspaceAutoApply: subscriptionAutoApplyActive || undefined,
       context: sendItems.map((item) => ({ label: item.label, bytes: item.bytes })),
       tools: [],
     };
@@ -931,8 +1070,15 @@ export function TerminalAiComposer({
     let system =
       agent.systemPrompt +
       "\n\n" +
-      buildHuskAssistantContext({ agent, provider, model: modelId }) +
-      "\n\nIf you suggest a command the user may run, put one short command in an explicitly labelled `sh` code block. Put scripts and source code in their real language fence; do not label them `sh`. When referring to a file in the open workspace, use a backticked relative path, optionally with `:line`, so the user can open it.";
+      buildHuskAssistantContext({
+        agent,
+        provider,
+        model: modelId,
+        workspacePath: workspacePath || undefined,
+        subscriptionEditAccess,
+        subscriptionAutoApply: subscriptionAutoApplyActive,
+      }) +
+      "\n\nIf you suggest a command the user may run, put one short command in an explicitly labelled `sh` code block. Put scripts and source code in their real language fence; do not label them `sh`. When referring to a file in the selected workspace, use a backticked relative path, optionally with `:line`, so the user can open it.";
 
     for (const item of sendItems) {
       system += itemToRequestBlock(item);
@@ -946,6 +1092,7 @@ export function TerminalAiComposer({
       mode: provider.kind === "cli" ? "subscription" : "api",
     });
 
+    let assistantResponse = "";
     try {
       await streamChat(
         {
@@ -953,11 +1100,13 @@ export function TerminalAiComposer({
           model: modelId,
           apiKey,
           baseURL: cfg.baseURL,
+          workspacePath: workspacePath || undefined,
         },
         system,
         [...messages, { role: "user", content: text }],
         (delta) => {
           if (abortRef.current) return;
+          assistantResponse += delta;
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
@@ -984,6 +1133,88 @@ export function TerminalAiComposer({
           });
         },
       );
+      if (subscriptionEditAccess && assistantResponse) {
+        const parsed = parseSubscriptionEditProposals(assistantResponse, workspacePath);
+        const queued = parsed.proposals.map((proposal) =>
+          addPendingEdit(
+            proposal.kind === "create"
+              ? {
+                  path: proposal.path,
+                  search: "",
+                  replace: proposal.content,
+                  operation: "create",
+                  sessionId,
+                  workspaceRoot: workspacePath,
+                }
+              : {
+                  path: proposal.path,
+                  search: proposal.search,
+                  replace: proposal.replace,
+                  operation: "edit",
+                  sessionId,
+                  workspaceRoot: workspacePath,
+                },
+          )
+        );
+        const autoSafety = subscriptionAutoApplyActive && parsed.rejected === 0
+          ? canAutoApplySubscriptionEdits(parsed.proposals)
+          : {
+              ok: false,
+              reason: parsed.rejected > 0
+                ? "the response also contained an invalid proposal"
+                : "automatic edits are off",
+            };
+
+        if (subscriptionAutoApplyActive && autoSafety.ok) {
+          let applied = 0;
+          let failure: string | null = null;
+          for (const edit of queued) {
+            const result = await applyPendingEdit(edit);
+            if (result.ok) {
+              applied += 1;
+              removePendingEdit(edit.id);
+            } else {
+              failure = `${result.path.split("/").pop() || result.path}: ${result.reason}`;
+              break;
+            }
+          }
+          if (applied > 0) {
+            toast({
+              title: `Auto-applied ${applied} workspace change${applied === 1 ? "" : "s"}`,
+              message: "Each change is shown below and can be undone while unchanged.",
+              variant: "success",
+              duration: 4000,
+            });
+          }
+          if (failure) {
+            toast({
+              title: "Auto-apply paused",
+              message: `${failure}. Remaining proposals are ready for review.`,
+              variant: "error",
+              duration: 6000,
+            });
+          }
+        }
+        if (parsed.proposals.length > 0) {
+          if (!subscriptionAutoApplyActive || !autoSafety.ok) {
+            toast({
+              title: `${parsed.proposals.length} edit proposal${parsed.proposals.length === 1 ? "" : "s"} ready to review`,
+              message: subscriptionAutoApplyActive
+                ? `Auto-apply skipped: ${autoSafety.reason}. Nothing has been written.`
+                : "Nothing has been written yet.",
+              variant: "info",
+              duration: 4000,
+            });
+          }
+        } else if (parsed.rejected > 0) {
+          toast({
+            title: "Ignored an invalid edit proposal",
+            message: "Husk only accepts valid, workspace-relative review proposals.",
+            variant: "error",
+            duration: 4500,
+          });
+        }
+      }
     } catch (e) {
       if (abortRef.current) return;
       const msg = e instanceof Error ? e.message : String(e);
@@ -1008,7 +1239,7 @@ export function TerminalAiComposer({
       setStatus(null);
       setAttachedFiles([]);
     }
-  }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled]);
+  }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled, workspacePath, session.workspaceEditAccess, subscriptionAutoApply]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
@@ -1256,7 +1487,13 @@ export function TerminalAiComposer({
   const ctxTotalBytes = totalBytes(contextItems);
   const ctxOverBudget = ctxTotalBytes > budgetBytes(budgetKb);
   const capabilityLabel = provider.kind === "cli"
-    ? "subscription · read-only"
+    ? subscriptionAutoApply && session.workspaceEditAccess && workspacePath
+      ? "subscription · auto apply"
+      : session.workspaceEditAccess && workspacePath
+      ? "subscription · review edits"
+      : "subscription · read-only"
+    : prefs.aiFileToolsEnabled && !workspacePath
+      ? `API · select workspace${prefs.aiMcpToolsEnabled ? " + tools" : ""}`
     : prefs.aiFileToolsEnabled || prefs.aiMcpToolsEnabled
       ? `API · ${[prefs.aiFileToolsEnabled && "files", prefs.aiMcpToolsEnabled && "tools"].filter(Boolean).join(" + ")}`
       : "API · chat only";
@@ -1394,6 +1631,91 @@ export function TerminalAiComposer({
               </div>
             )}
           </div>
+          <div ref={workspaceScopeRef} className="relative min-w-0 shrink">
+            <button
+              type="button"
+              onClick={() => {
+                setWorkspaceScopeOpen((value) => !value);
+                setAgentDropdownOpen(false);
+                setSlashOpen(false);
+              }}
+              className={cn("composer-workspace-scope", workspacePath && "is-scoped")}
+              title={workspacePath
+                ? `Workspace scope: ${workspacePath}. Change the folder this chat can use.`
+                : "No workspace selected. Choose a folder to give this chat project context and API file access."}
+              aria-expanded={workspaceScopeOpen}
+            >
+              <HugeiconsIcon icon={Folder01Icon} size={10} strokeWidth={1.75} className="shrink-0" />
+              <span className="truncate">{workspaceDisplayName(workspacePath)}</span>
+              <HugeiconsIcon
+                icon={ArrowDown01Icon}
+                size={10}
+                strokeWidth={1.75}
+                className={cn("shrink-0 transition-transform", workspaceScopeOpen && "rotate-180")}
+              />
+            </button>
+            {workspaceScopeOpen && (
+              <div className="composer-workspace-menu">
+                <p className="composer-workspace-menu-label">WORKSPACE SCOPE</p>
+                {workspacePath ? (
+                  <div className="composer-workspace-current" title={workspacePath}>
+                    <span>{workspaceDisplayName(workspacePath)}</span>
+                    <small>{workspacePath}</small>
+                  </div>
+                ) : (
+                  <p className="composer-workspace-empty">General chat. No project memory or local file tools are attached.</p>
+                )}
+                {provider.kind === "cli" && (
+                  <div className="composer-workspace-edit-access">
+                    <div>
+                      <span>Reviewable workspace edits</span>
+                      <small>{workspacePath ? "Proposals stay inside this folder and require your approval." : "Choose a workspace before enabling edits."}</small>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Boolean(session.workspaceEditAccess && workspacePath)}
+                      disabled={!workspacePath}
+                      className={cn("composer-workspace-edit-toggle", session.workspaceEditAccess && workspacePath && "is-enabled")}
+                      onClick={() => setSubscriptionEditAccess(!session.workspaceEditAccess)}
+                    >
+                      {session.workspaceEditAccess && workspacePath ? "on" : "off"}
+                    </button>
+                  </div>
+                )}
+                {provider.kind === "cli" && session.workspaceEditAccess && workspacePath && (
+                  <div className="composer-workspace-auto-access">
+                    <div>
+                      <span>Auto-apply safe proposals</span>
+                      <small>Session only. Protected paths and larger changes still require review.</small>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={subscriptionAutoApply}
+                      className={cn("composer-workspace-edit-toggle", subscriptionAutoApply && "is-enabled")}
+                      onClick={() => setSubscriptionAutoApplyEnabled(!subscriptionAutoApply)}
+                    >
+                      {subscriptionAutoApply ? "on" : "off"}
+                    </button>
+                  </div>
+                )}
+                {variant === "docked" && isTabSessionId(sessionId) && currentWorkspacePath && currentWorkspacePath !== workspacePath && (
+                  <button type="button" className="composer-workspace-menu-item" onClick={() => setChatWorkspace(currentWorkspacePath)}>
+                    <HugeiconsIcon icon={Folder01Icon} size={11} strokeWidth={1.75} aria-hidden="true" /> Use current terminal workspace
+                  </button>
+                )}
+                <button type="button" className="composer-workspace-menu-item" onClick={() => void chooseChatWorkspace()}>
+                  <HugeiconsIcon icon={Folder01Icon} size={11} strokeWidth={1.75} aria-hidden="true" /> Choose folder…
+                </button>
+                {workspacePath && (
+                  <button type="button" className="composer-workspace-menu-item is-muted" onClick={() => setChatWorkspace(null)}>
+                    × Remove workspace
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <span className="composer-crumb min-w-0 truncate" title={`${activeAgentName} · ${session.name}`}>
             husk://
             <span className={cn("composer-crumb-accent", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
@@ -1471,6 +1793,27 @@ export function TerminalAiComposer({
           )}
         </div>
       </div>
+
+      {terminalWorkspaceMoved && (
+        <div className="composer-workspace-moved" role="status">
+          <span>
+            Terminal moved to <strong>{workspaceDisplayName(currentWorkspacePath)}</strong>
+          </span>
+          <div>
+            <button type="button" onClick={() => setChatWorkspace(currentWorkspacePath)}>use this workspace</button>
+            <button type="button" onClick={() => setDismissedWorkspaceChange(workspaceChangeKey)}>keep {workspaceDisplayName(workspacePath)}</button>
+            <button
+              type="button"
+              onClick={() => {
+                newSession();
+                setChatWorkspace(currentWorkspacePath);
+              }}
+            >
+              start fresh
+            </button>
+          </div>
+        </div>
+      )}
 
       <div ref={scrollRef} className="composer-messages">
         {messages.length === 0 ? (
@@ -1555,7 +1898,7 @@ export function TerminalAiComposer({
                     <div className="whitespace-pre-wrap">{msg.content}</div>
                   ) : (
                     <>
-                      {textParts && <CollapsibleMarkdownText text={textParts} />}
+                      {textParts && <CollapsibleMarkdownText text={textParts} workspaceRoot={msg.trace?.workspacePath ?? workspacePath} />}
                       {msg.streaming && !textParts && codeBlocks.length === 0 && diffBlocks.length === 0 && !tree && <LoadingIndicator />}
                       {codeBlocks.length > 0 && (
                         <CodeBlockTabs
@@ -1794,6 +2137,7 @@ export function TerminalAiComposer({
             )}
           </div>
         )}
+        <AppliedEditsActivity sessionId={sessionId} />
         <PendingEditsReview sessionId={sessionId} />
         <div className="wb-composer">
           {chipItems.length > 0 && (
@@ -1978,6 +2322,7 @@ export function TerminalAiComposer({
             providerKind: provider.kind,
             fileToolsEnabled: prefs.aiFileToolsEnabled,
             mcpToolsEnabled: prefs.aiMcpToolsEnabled,
+            workspacePath: workspacePath || undefined,
           }}
           onRemove={removeContextItem}
           onClearAll={clearAllContext}

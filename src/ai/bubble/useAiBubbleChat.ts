@@ -10,7 +10,7 @@ import { projectMemoryBlock } from "../projectMemory";
 import { getEditorFile, getEditorSelection } from "../editorStore";
 import { buildMcpTools } from "../../mcp/tools";
 import { buildBuiltinTools, mergeTools } from "../builtinTools";
-import { subscribeWorkspaceRoot } from "../../workspace/store";
+import { getWorkspaceRoot, subscribeWorkspaceRoot } from "../../workspace/store";
 import {
   loadBubbleSessions,
   saveBubbleSessions,
@@ -179,7 +179,7 @@ export function useAiBubbleChat(tabId?: number) {
       let system =
         agent.systemPrompt +
         "\n\n" +
-        buildHuskAssistantContext({ agent, provider, model: modelId }) +
+        buildHuskAssistantContext({ agent, provider, model: modelId, workspacePath: getWorkspaceRoot() || undefined }) +
         projectMemoryBlock();
 
       if (provider.kind !== "cli") {
@@ -214,7 +214,7 @@ export function useAiBubbleChat(tabId?: number) {
           ? await buildMcpTools().catch(() => ({}))
           : {};
         const builtinTools = provider.kind !== "cli" && contextDefaults.aiFileToolsEnabled
-          ? buildBuiltinTools()
+          ? buildBuiltinTools(undefined, getWorkspaceRoot() || null)
           : {};
         const tools = mergeTools(builtinTools, mcpTools);
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -223,7 +223,13 @@ export function useAiBubbleChat(tabId?: number) {
         });
         await Promise.race([
           streamChat(
-            { provider, model: modelId, apiKey, baseURL: cfg.baseURL },
+            {
+              provider,
+              model: modelId,
+              apiKey,
+              baseURL: cfg.baseURL,
+              workspacePath: getWorkspaceRoot() || undefined,
+            },
             system,
             history,
             (delta) => {
