@@ -1945,6 +1945,7 @@ export function TerminalAiComposer({
               ? new Date(msg.timestamp).toLocaleTimeString(undefined, { hour12: false })
               : "";
             const isCompact =
+              !isUser &&
               codeBlocks.length === 0 &&
               diffBlocks.length === 0 &&
               !tree &&
@@ -2051,25 +2052,6 @@ export function TerminalAiComposer({
           })
         )}
 
-        {busy && (
-          <div className="msg-block msg-block-ai">
-            <div className="msg-block-head">
-              <span className={cn("msg-role msg-role-ai", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
-                {activeAgentName.toLowerCase()}
-              </span>
-              <span className="msg-meta">streaming…</span>
-            </div>
-            <div className="msg-block-body">
-              <div className="composer-thinking">
-                <span className="composer-pulse-dot" />
-                <span className="composer-thinking-text">{status || "thinking"}</span>
-                <span className="composer-blob composer-blob-1" />
-                <span className="composer-blob composer-blob-2" />
-                <span className="composer-blob composer-blob-3" />
-              </div>
-            </div>
-          </div>
-        )}
         {/* Inside the scroll area rather than pinned beside it. These render
             only on an empty thread, so they are part of the empty state — but
             as a sibling of .composer-messages they reserved ~60px of panel
