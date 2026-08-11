@@ -2,11 +2,28 @@ import { useSyncExternalStore } from "react";
 
 type Role = "user" | "assistant";
 
+/** Immutable request evidence displayed below an assistant reply. It is stored
+ * with the session so reopening a chat never turns a tool-assisted answer into
+ * an unexplained wall of text. */
+export type AiToolTrace = {
+  name: string;
+  state: "running" | "complete";
+};
+
+export type AiReplyTrace = {
+  providerLabel: string;
+  modelLabel: string;
+  mode: "api" | "subscription";
+  context: { label: string; bytes: number }[];
+  tools: AiToolTrace[];
+};
+
 export type AiMessage = {
   role: Role;
   content: string;
   streaming?: boolean;
   timestamp?: number;
+  trace?: AiReplyTrace;
 };
 
 export type AiSession = {

@@ -27,7 +27,12 @@ const CommandPalette = lazy(() => import("../command-palette/CommandPalette").th
 const ClipboardPanel = lazy(() => import("../clipboard/ClipboardPanel").then((m) => ({ default: m.ClipboardPanel })));
 const QuickSwitcher = lazy(() => import("../switcher/QuickSwitcher").then((m) => ({ default: m.QuickSwitcher })));
 
-type ExplainCtx = { command: string; output: string; exitCode: number | null };
+type ExplainCtx = {
+  command: string;
+  output: string;
+  exitCode: number | null;
+  sensitive?: boolean;
+};
 type Setter<T> = React.Dispatch<React.SetStateAction<T>>;
 
 export function DialogHost({
@@ -171,6 +176,7 @@ export function DialogHost({
             command={explainCtx.command}
             output={explainCtx.output}
             exitCode={explainCtx.exitCode}
+            sensitive={explainCtx.sensitive}
             onClose={() => setExplainCtx(null)}
           />
         )}

@@ -40,6 +40,7 @@ import {
   Database01Icon,
   Refresh01Icon,
   ArrowDown01Icon,
+  ArrowLeft01Icon,
 } from "@hugeicons/core-free-icons";
 
 export type K8sResourceKind =
@@ -81,10 +82,13 @@ const okStatus = (s: string) => s === "Running" || s === "Completed" || s === "S
 
 export function KubernetesView({
   onClose,
+  onBack,
   inline,
   onInspectResource,
 }: {
   onClose?: () => void;
+  /** Present when this built-in panel was opened from Plugins. */
+  onBack?: () => void;
   inline?: boolean;
   onInspectResource?: (sel: K8sResourceSelection) => void;
 }) {
@@ -233,8 +237,20 @@ export function KubernetesView({
     </button>
   );
 
+  const leadingAction = onBack ? (
+    <button
+      type="button"
+      aria-label="Back to plugins"
+      title="Back to plugins"
+      onClick={onBack}
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <HugeiconsIcon icon={ArrowLeft01Icon} size={13} strokeWidth={2} />
+    </button>
+  ) : undefined;
+
   return (
-    <Modal title="Kubernetes" onClose={onClose} inline={inline} headerActions={headerActions}>
+    <Modal title="Kubernetes" onClose={onClose} inline={inline} leadingAction={leadingAction} headerActions={headerActions}>
       {loading && available === null ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           {/* Rotation, not a pulse: a fading icon can read as a static gradient,

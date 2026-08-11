@@ -8,6 +8,7 @@ import {
   Database01Icon,
   Refresh01Icon,
   PlayIcon,
+  ArrowLeft01Icon,
 } from "@hugeicons/core-free-icons";
 
 type ShellOutput = { exit_code: number | null };
@@ -34,7 +35,16 @@ const ACTIONS = [
   { id: "destroy", label: "Destroy", cmd: "terraform destroy" },
 ];
 
-export function TerraformView({ onClose, inline }: { onClose?: () => void; inline?: boolean }) {
+export function TerraformView({
+  onClose,
+  onBack,
+  inline,
+}: {
+  onClose?: () => void;
+  /** Present when this built-in panel was opened from Plugins. */
+  onBack?: () => void;
+  inline?: boolean;
+}) {
   const [available, setAvailable] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -62,8 +72,20 @@ export function TerraformView({ onClose, inline }: { onClose?: () => void; inlin
     </button>
   );
 
+  const leadingAction = onBack ? (
+    <button
+      type="button"
+      aria-label="Back to plugins"
+      title="Back to plugins"
+      onClick={onBack}
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <HugeiconsIcon icon={ArrowLeft01Icon} size={13} strokeWidth={2} />
+    </button>
+  ) : undefined;
+
   return (
-    <Modal title="Terraform" onClose={onClose} inline={inline} headerActions={headerActions}>
+    <Modal title="Terraform" onClose={onClose} inline={inline} leadingAction={leadingAction} headerActions={headerActions}>
       {available === false ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">

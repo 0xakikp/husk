@@ -8,6 +8,7 @@ import {
   Search01Icon,
   Settings01Icon,
   PencilEdit01Icon,
+  FullScreenIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { TerminalAiComposer } from "../terminal/TerminalAiComposer";
@@ -25,6 +26,7 @@ import {
   updateSession,
   isTabSessionId,
 } from "./sessionStore";
+import { getPendingEdits, subscribePendingEdits } from "./pendingEdits";
 
 function groupDate(ts: number): string {
   const d = new Date(ts);
@@ -67,6 +69,8 @@ export function AiTabPanel() {
   const [editName, setEditName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
+  const [focusMode, setFocusMode] = useState(false);
+  const [pendingEdits, setPendingEdits] = useState(getPendingEdits);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -96,6 +100,8 @@ export function AiTabPanel() {
       window.removeEventListener("mouseup", onUp);
     };
   }, []);
+
+  useEffect(() => subscribePendingEdits(() => setPendingEdits(getPendingEdits())), []);
 
   // Ensure a global session exists for the AI tab itself
   useEffect(() => {
@@ -142,11 +148,23 @@ export function AiTabPanel() {
     const isActive = activeSession.id === s.id;
     const isTerminal = isTabSessionId(s.id);
     const preview = sessionPreview(s.messages);
+    const streaming = s.messages.some((message) => message.streaming);
+    const proposedEdits = pendingEdits.filter((edit) => edit.sessionId === s.id).length;
+    const hasFailureEvidence = s.messages.some((message) =>
+      message.trace?.context.some((item) => /\bexit\s+[1-9]\d*\b/i.test(item.label)),
+    );
+    const state = streaming
+      ? { label: "thinking", className: "border-sky-400/25 text-sky-400/75" }
+      : proposedEdits > 0
+        ? { label: `${proposedEdits} edit${proposedEdits > 1 ? "s" : ""}`, className: "border-primary/25 text-primary/80" }
+        : hasFailureEvidence
+          ? { label: "failure context", className: "border-amber-400/25 text-amber-400/75" }
+          : null;
     return (
       <div
         key={s.id}
         className={cn(
-          "group relative flex items-start gap-2 rounded-md border px-2 py-1.5 font-mono text-[11px] transition-all",
+          "group relative flex items-start gap-2 rounded-md border px-2 py-1 font-mono text-[11px] transition-all",
           isActive
             ? "border-primary/60 bg-primary/[0.07] text-foreground"
             : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -183,8 +201,24 @@ export function AiTabPanel() {
                   {isTerminal ? "▸" : "✦"}
                 </span>
                 <span className="truncate font-medium">{s.name}</span>
+                {isTerminal && (
+                  <span className="hidden shrink-0 rounded border border-emerald-400/20 px-1 py-px text-[7px] font-medium uppercase tracking-wide text-emerald-400/70 min-[220px]:inline">
+                    terminal
+                  </span>
+                )}
+                {state && (
+                  <span
+                    className={cn(
+                      "hidden shrink-0 rounded border px-1 py-px text-[7px] font-medium uppercase tracking-wide min-[260px]:inline",
+                      state.className,
+                    )}
+                    title={state.label === "failure context" ? "This chat included failed terminal output as context" : state.label}
+                  >
+                    {state.label}
+                  </span>
+                )}
               </span>
-              <span className="ml-4 mt-0.5 text-[9px] text-muted-foreground/45 group-hover:text-muted-foreground/60 transition-colors line-clamp-1">
+              <span className="ml-4 mt-px text-[9px] text-muted-foreground/45 group-hover:text-muted-foreground/60 transition-colors line-clamp-1">
                 {preview}
               </span>
             </button>
@@ -234,9 +268,9 @@ export function AiTabPanel() {
   };
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    <div className="relative flex h-full w-full overflow-hidden">
       {/* Session sidebar */}
-      <div
+      {!focusMode && <div
         ref={sidebarRef}
         className="relative flex h-full shrink-0 flex-col border-r border-border/50 bg-background/95"
         style={{ width: sidebarWidth }}
@@ -255,17 +289,27 @@ export function AiTabPanel() {
             <HugeiconsIcon icon={MessageMultiple02Icon} size={13} strokeWidth={1.75} />
             ai-chats
           </span>
-          <button
-            type="button"
-            onClick={() => {
-              const s = createSession({ source: "ai-tab" });
-              setActiveSessionId(s.id);
-            }}
-            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-            title="New chat"
-          >
-            <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={1.75} />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setFocusMode(true)}
+              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Focus conversation"
+            >
+              <HugeiconsIcon icon={FullScreenIcon} size={11} strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const s = createSession({ source: "ai-tab" });
+                setActiveSessionId(s.id);
+              }}
+              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+              title="New chat"
+            >
+              <HugeiconsIcon icon={PlusSignIcon} size={12} strokeWidth={1.75} />
+            </button>
+          </div>
         </div>
         <div className="px-2 pt-2">
           <div className="relative">
@@ -316,7 +360,18 @@ export function AiTabPanel() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
+
+      {focusMode && (
+        <button
+          type="button"
+          onClick={() => setFocusMode(false)}
+          className="absolute left-0 top-1/2 z-20 -translate-y-1/2 rounded-r-md border border-l-0 border-border/60 bg-background/95 px-1.5 py-2 font-mono text-[9px] text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground"
+          title="Show chat list"
+        >
+          chats
+        </button>
+      )}
 
       {/* Chat area */}
       {/* This is a vertical flex boundary for the full composer. Without
@@ -324,7 +379,13 @@ export function AiTabPanel() {
           and the AI tab's outer overflow clips its connection footer. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {prefs.aiEnabled ? (
-          <TerminalAiComposer sessionId={activeSession.id} variant="full" registerToggle={false} registerOpen={false} registerSend={false} />
+          <TerminalAiComposer
+            sessionId={activeSession.id}
+            variant="full"
+            registerToggle={false}
+            registerOpen={false}
+            registerSend={false}
+          />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
             <div className="composer-avatar-lg opacity-40">✦</div>

@@ -9,6 +9,9 @@ import {
   splitPane,
   removePane,
   setRatio,
+  setLeafCheckpoint,
+  setLeafCwd,
+  hydratePane,
   firstLeaf,
   type Pane,
 } from "./terminalPanes";
@@ -45,20 +48,34 @@ function basename(p: string): string {
 
 const SESSION_KEY = "huskv2.session.v1";
 
-type SavedTab = { cwd?: string; title?: string; renamed?: boolean; color?: string; sftpHost?: string; sftpOpen?: boolean; pinned?: boolean };
+type SavedTab = {
+  /** v1 fallback: first pane's initial directory. */
+  cwd?: string;
+  /** v2: full pane arrangement, current pane directories, and checkpoints. */
+  root?: unknown;
+  focused?: number;
+  title?: string;
+  renamed?: boolean;
+  color?: string;
+  sftpHost?: string;
+  sftpOpen?: boolean;
+  pinned?: boolean;
+};
 type SavedSession = { tabs: SavedTab[]; activeIndex: number };
-
-function getFirstLeafCwd(p: Pane): string | undefined {
-  while (p.kind !== "leaf") {
-    p = p.a;
-  }
-  return p.initialCwd;
-}
 
 function saveSession(tabs: TermTab[], activeId: number) {
   const saved: SavedTab[] = [];
   for (const t of tabs) {
-    saved.push({ cwd: getFirstLeafCwd(t.root), title: t.renamed ? t.title : undefined, renamed: t.renamed, color: t.color, sftpHost: t.sftpHost, sftpOpen: t.sftpOpen, pinned: t.pinned });
+    saved.push({
+      root: t.root,
+      focused: t.focused,
+      title: t.renamed ? t.title : undefined,
+      renamed: t.renamed,
+      color: t.color,
+      sftpHost: t.sftpHost,
+      sftpOpen: t.sftpOpen,
+      pinned: t.pinned,
+    });
   }
   const activeIndex = tabs.findIndex((t) => t.id === activeId);
   try {
@@ -69,9 +86,26 @@ function saveSession(tabs: TermTab[], activeId: number) {
 function loadSession(): SavedSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    if (raw) return JSON.parse(raw) as SavedSession;
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      const session = parsed as { tabs?: unknown; activeIndex?: unknown };
+      if (!Array.isArray(session.tabs)) return null;
+      return {
+        tabs: session.tabs.filter((tab): tab is SavedTab => Boolean(tab) && typeof tab === "object"),
+        activeIndex: typeof session.activeIndex === "number" && Number.isFinite(session.activeIndex)
+          ? Math.trunc(session.activeIndex)
+          : 0,
+      };
+    }
   } catch { /* corrupt or unavailable */ }
   return null;
+}
+
+function isSafeCheckpointCommand(command: string): boolean {
+  /* A restart marker is convenience UI, not a terminal-history vault. Avoid
+     persisting commands that look like credentials or bearer material. */
+  return !/\b(?:token|password|passwd|secret|authorization|bearer|api[_-]?key)\b|\b(?:gh[pousr]_|github_pat_|sk-|AKIA)[\w-]+/i.test(command);
 }
 
 export type TerminalTabsApi = ReturnType<typeof useTerminalTabs>;
@@ -107,9 +141,20 @@ export function useTerminalTabs() {
       const saved = loadSession();
       if (saved && saved.tabs.length > 0) {
         const out: TermTab[] = [];
+        /* Pane IDs identify live xterm registry sessions, so they must be
+           unique across every restored tab, not merely inside one split tree. */
+        const restoredPaneIds = new Set<number>();
         let id = 1;
         for (const t of saved.tabs) {
-          out.push(makeTab(id, t.cwd || home || undefined));
+          const restoredRoot = hydratePane(t.root, restoredPaneIds);
+          const fallback = makeTab(id, t.cwd || home || undefined);
+          const root = restoredRoot ?? fallback.root;
+          const leaves = leafIds(root);
+          out.push({
+            ...fallback,
+            root,
+            focused: typeof t.focused === "number" && leaves.includes(t.focused) ? t.focused : firstLeaf(root),
+          });
           if (t.renamed && t.title) {
             out[out.length - 1].title = t.title;
             out[out.length - 1].renamed = true;
@@ -275,6 +320,21 @@ export function useTerminalTabs() {
   const ratioLeaf = (tabId: number, splitId: number, ratio: number) =>
     updateTab(tabId, (t) => ({ ...t, root: setRatio(t.root, splitId, ratio) }));
 
+  const updateLeafCwd = (tabId: number, leafId: number, cwd: string) =>
+    updateTab(tabId, (t) => ({ ...t, root: setLeafCwd(t.root, leafId, cwd) }));
+
+  const updateLeafCheckpoint = (
+    tabId: number,
+    leafId: number,
+    checkpoint: { cwd?: string; command?: string; exitCode?: number | null; at?: number },
+  ) =>
+    updateTab(tabId, (t) => {
+      const safe = checkpoint.command && !isSafeCheckpointCommand(checkpoint.command)
+        ? { ...checkpoint, command: undefined }
+        : checkpoint;
+      return { ...t, root: setLeafCheckpoint(t.root, leafId, safe) };
+    });
+
   const renameTab = (id: number, title: string) => {
     const trimmed = title.trim();
     if (!trimmed) return;
@@ -349,6 +409,8 @@ export function useTerminalTabs() {
     focusLeaf,
     focusLeafDirection,
     ratioLeaf,
+    updateLeafCwd,
+    updateLeafCheckpoint,
     renameTab,
     setTabColor,
     updateTab,

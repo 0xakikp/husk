@@ -10,13 +10,14 @@ import { toast } from "../toast";
 import { Modal } from "../components/Modal";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LoadingRow } from "@/components/Spinner";
-import { ContainerIcon, Refresh01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, ContainerIcon, Refresh01Icon } from "@hugeicons/core-free-icons";
 import { DockerDetailPanel, type DockerResourceSelection } from "./DockerDetailPanel";
 
 export type { DockerResourceSelection };
 
 export function DockerView({
   onClose,
+  onBack,
   inline,
   onInspectResource,
   /* Defaults true so the dialog/standalone use keeps polling as before; only the
@@ -24,6 +25,8 @@ export function DockerView({
   active = true,
 }: {
   onClose?: () => void;
+  /** Present when this built-in panel was opened from Plugins. */
+  onBack?: () => void;
   inline?: boolean;
   onInspectResource?: (sel: DockerResourceSelection) => void;
   /** False while another sidebar view is showing. The panel stays mounted so its
@@ -76,6 +79,18 @@ export function DockerView({
     </button>
   );
 
+  const leadingAction = onBack ? (
+    <button
+      type="button"
+      aria-label="Back to plugins"
+      title="Back to plugins"
+      onClick={onBack}
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <HugeiconsIcon icon={ArrowLeft01Icon} size={13} strokeWidth={2} />
+    </button>
+  ) : undefined;
+
   const handleSelect = (sel: DockerResourceSelection) => {
     if (onInspectResource) {
       onInspectResource(sel);
@@ -102,7 +117,7 @@ export function DockerView({
   };
 
   return (
-    <Modal title="Docker" onClose={onClose} inline={inline} headerActions={headerActions}>
+    <Modal title="Docker" onClose={onClose} inline={inline} leadingAction={leadingAction} headerActions={headerActions}>
       {available === false ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">

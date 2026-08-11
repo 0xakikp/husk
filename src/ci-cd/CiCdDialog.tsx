@@ -2,7 +2,7 @@ import { runInActiveTerminal } from "../ai/terminalContext";
 import { toast } from "../toast";
 import { Modal } from "../components/Modal";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PlayIcon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, PlayIcon } from "@hugeicons/core-free-icons";
 
 const ACTIONS = [
   { id: "runs", label: "List workflow runs", cmd: "gh run list" },
@@ -11,7 +11,16 @@ const ACTIONS = [
   { id: "view", label: "View latest run", cmd: "gh run view" },
 ];
 
-export function CiCdDialog({ onClose, inline }: { onClose?: () => void; inline?: boolean }) {
+export function CiCdDialog({
+  onClose,
+  onBack,
+  inline,
+}: {
+  onClose?: () => void;
+  /** Present when this built-in panel was opened from Plugins. */
+  onBack?: () => void;
+  inline?: boolean;
+}) {
   const run = (cmd: string) => {
     if (runInActiveTerminal(cmd)) {
       toast({ title: `Running: ${cmd}`, variant: "info" });
@@ -22,7 +31,22 @@ export function CiCdDialog({ onClose, inline }: { onClose?: () => void; inline?:
   };
 
   return (
-    <Modal title="CI / CD" onClose={onClose} inline={inline}>
+    <Modal
+      title="CI / CD"
+      onClose={onClose}
+      inline={inline}
+      leadingAction={onBack ? (
+        <button
+          type="button"
+          aria-label="Back to plugins"
+          title="Back to plugins"
+          onClick={onBack}
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={13} strokeWidth={2} />
+        </button>
+      ) : undefined}
+    >
       <div className="flex flex-col gap-3">
         <p className="text-[11px] text-muted-foreground">
           GitHub Actions via <code>gh</code> in the active terminal's repository.

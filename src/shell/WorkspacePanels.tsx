@@ -6,6 +6,12 @@ import { cn } from "@/lib/utils";
 import { TerminalStack } from "../TerminalStack";
 import { TerminalBottomBar } from "../terminal/TerminalBottomBar";
 import { FailureStrip } from "../terminal/FailureStrip";
+import type { FailureExplainRequest } from "../terminal/FailureStrip";
+import { NextStepStrip } from "../terminal/NextStepStrip";
+import { TaskStrip } from "../terminal/TaskStrip";
+import { PortDetectedStrip } from "../terminal/PortDetectedStrip";
+import { GitActivityStrip } from "../terminal/GitActivityStrip";
+import { SensitiveOutputStrip } from "../terminal/SensitiveOutputStrip";
 import { TerminalAiComposer, tabSessionId } from "../terminal/TerminalAiComposer";
 import { focusActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { TerminalLogs } from "../terminal/TerminalLogs";
@@ -89,7 +95,9 @@ export function WorkspacePanels({
   closeIssues,
   closeSftp,
   closeBrowser,
+  onOpenBrowser,
   onOpenSourceControl,
+  onExplainFailure,
   chromeOccluded,
 }: {
   term: TerminalTabsApi;
@@ -110,7 +118,9 @@ export function WorkspacePanels({
   closeIssues: () => void;
   closeSftp: () => void;
   closeBrowser: () => void;
+  onOpenBrowser: (url: string) => void;
   onOpenSourceControl: () => void;
+  onExplainFailure?: (request: FailureExplainRequest) => void;
   /** True when a React surface (palette, switcher, settings, detail panels)
       can cover the browser — the native webview must be parked. */
   chromeOccluded: boolean;
@@ -129,6 +139,8 @@ export function WorkspacePanels({
     setSelectedDockerResource(null);
     setLogsLeafId(leafId);
   }, [setSelectedDockerResource, setSelectedK8sResource]);
+
+  const activeLeafId = term.tabs.find((tab) => tab.id === term.activeId)?.focused ?? null;
 
   /* Single inspector slot. The two selections used to render as two independent
      overlays at the same z-index, so both could stack on top of each other; one
@@ -243,7 +255,18 @@ export function WorkspacePanels({
               />
             )}
           </div>
-          <FailureStrip leafId={term.tabs.find((t) => t.id === term.activeId)?.focused ?? null} />
+          <FailureStrip
+            leafId={activeLeafId}
+            onExplain={onExplainFailure}
+          />
+          <SensitiveOutputStrip leafId={activeLeafId} />
+          <TaskStrip leafId={activeLeafId} onOpenLogs={openLogs} />
+          <PortDetectedStrip leafId={activeLeafId} onOpenBrowser={onOpenBrowser} />
+          <GitActivityStrip leafId={activeLeafId} onOpenSourceControl={onOpenSourceControl} />
+          <NextStepStrip
+            leafId={activeLeafId}
+            aiEnabled={prefs.aiEnabled}
+          />
           <TerminalBottomBar
             onSendToTerminal={(text: string) => runInActiveTerminal(text)}
             onOpenSourceControl={onOpenSourceControl}

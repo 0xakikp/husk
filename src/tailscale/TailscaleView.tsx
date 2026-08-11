@@ -83,9 +83,12 @@ function DeviceRow({
 
 export function TailscaleView({
   inline,
+  onBack,
   onConnect,
 }: {
   inline?: boolean;
+  /** Present when this built-in panel was opened from Plugins. */
+  onBack?: () => void;
   onConnect?: (device: TailscaleDevice) => void;
 }) {
   const [devices, setDevices] = useState<TailscaleDevice[]>([]);
@@ -138,6 +141,17 @@ export function TailscaleView({
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              title="Back to plugins"
+              aria-label="Back to plugins"
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <HugeiconsIcon icon={ArrowLeft01Icon} size={14} strokeWidth={1.75} />
+            </button>
+          ) : null}
           <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
             <HugeiconsIcon icon={CloudIcon} size={16} strokeWidth={1.5} className="text-primary" />
           </div>

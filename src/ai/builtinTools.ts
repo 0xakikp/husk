@@ -36,7 +36,7 @@ function outsideWorkspaceMessage(path: string): string {
     : `Refused: no workspace is open, so there is nowhere safe to write. Ask the user to open a folder first.`;
 }
 
-export function buildBuiltinTools(): Record<string, Tool> {
+export function buildBuiltinTools(sessionId?: string): Record<string, Tool> {
   return {
     readFile: tool({
       description: "Read the contents of a file at the given path. Returns the full text or an error message.",
@@ -73,7 +73,7 @@ export function buildBuiltinTools(): Record<string, Tool> {
           const existing = await readFile(path).catch(() => null);
           if (existing !== null) {
             // File exists — queue as a full-file pending edit for approval
-            addPendingEdit({ path, search: existing, replace: content });
+            addPendingEdit({ path, search: existing, replace: content, sessionId });
             return `File ${path} already exists. Proposed overwrite queued for your review. Accept in the AI panel to apply.`;
           }
           // New file. Only create it without review when it lands inside the
@@ -133,7 +133,7 @@ export function buildBuiltinTools(): Record<string, Tool> {
           if (!content.includes(search)) {
             return `Error: search text not found in ${path}. The file may have changed.`;
           }
-          addPendingEdit({ path, search, replace });
+          addPendingEdit({ path, search, replace, sessionId });
           return `Edit proposed for ${path}. Review and accept in the AI panel.`;
         } catch (e) {
           return `Error proposing edit: ${e instanceof Error ? e.message : String(e)}`;
@@ -153,7 +153,9 @@ export function buildBuiltinTools(): Record<string, Tool> {
       execute: async ({ path }) => {
         try {
           const { getPendingEdits, removePendingEdit } = await import("./pendingEdits");
-          const edits = getPendingEdits().filter((e) => e.path === path);
+          const edits = getPendingEdits().filter((e) =>
+            e.path === path && (!sessionId || e.sessionId === sessionId || e.sessionId === undefined),
+          );
           if (edits.length === 0) {
             return `No pending edits found for ${path}.`;
           }

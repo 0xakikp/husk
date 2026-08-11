@@ -18,6 +18,7 @@ export function Modal({
   className,
   children,
   inline = false,
+  leadingAction,
   headerActions,
   icon,
   context,
@@ -27,6 +28,8 @@ export function Modal({
   className?: string;
   children: ReactNode;
   inline?: boolean;
+  /** A compact navigation control shown before the title in an inline panel. */
+  leadingAction?: ReactNode;
   headerActions?: ReactNode;
   icon?: PanelIcon;
   context?: ReactNode;
@@ -52,9 +55,10 @@ export function Modal({
         {icon ? (
           <PanelHeader icon={icon} title={title} context={context} actions={headerActions} />
         ) : (
-          <div className="flex h-8 shrink-0 items-center justify-between gap-1 border-b border-border/40 px-3">
+          <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border/40 px-2">
+            {leadingAction ? <div className="flex shrink-0 items-center">{leadingAction}</div> : null}
             <span className="sidebar-rail-title truncate">{title}</span>
-            {headerActions ? <div className="flex items-center gap-0.5">{headerActions}</div> : null}
+            {headerActions ? <div className="ml-auto flex shrink-0 items-center gap-0.5">{headerActions}</div> : null}
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-y-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

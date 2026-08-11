@@ -48,6 +48,35 @@ export async function explainError(
 }
 
 /**
+ * Suggest one safe, inspectable next command after a completed terminal run.
+ * This is deliberately separate from `suggestCommand`: the completed command
+ * and its bounded output are evidence, while the user has not supplied a new
+ * natural-language intent. The result is staged, never executed.
+ */
+export async function suggestNextCommand(
+  command: string,
+  output: string,
+  cwd: string,
+): Promise<string> {
+  const text = await generateOnce(
+    currentConfig(),
+    "You are a careful terminal workflow assistant. Given one SUCCESSFUL completed command and its output, " +
+      "suggest exactly one useful next shell command for verification, inspection, or a clearly safe continuation. " +
+      "Never suggest destructive commands, deploys, deletes, force-pushes, credential changes, or a command that " +
+      "would mutate remote/shared infrastructure. Reply with ONLY one raw shell command, no prose or markdown. " +
+      "If there is no responsible next command, reply exactly NONE.",
+    `Working directory: ${cwd || "(unknown)"}\n\nCompleted command:\n${command || "(unknown)"}\n\nOutput:\n${output || "(none)"}`,
+  );
+  const commandLine = text
+    .replace(/^```[\w]*\n?/, "")
+    .replace(/\n?```$/, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean) ?? "";
+  return /^(?:none|no\s+(?:safe\s+)?next\s+command)\.?$/i.test(commandLine) ? "" : commandLine;
+}
+
+/**
  * A conventional-commit subject line describing a diff.
  *
  * The model is asked for one line and then held to it: replies routinely arrive

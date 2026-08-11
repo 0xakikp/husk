@@ -25,7 +25,7 @@ import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
 import type { Command } from "./command-palette/CommandPalette";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
-import { pickWorkspaceFolder } from "./workspace/store";
+import { getWorkspaceRoot, pickWorkspaceFolder } from "./workspace/store";
 import { useActiveSshHost, setActiveSshHost } from "./remote/store";
 import { StatusBar } from "./statusbar/StatusBar";
 import type { OpenPanelKind } from "./git/types";
@@ -179,7 +179,13 @@ function App() {
   const [jobsOpen, setJobsOpen] = useState(false);
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
-  const [explainCtx, setExplainCtx] = useState<{ command: string; output: string; exitCode: number | null } | null>(null);
+  const [explainCtx, setExplainCtx] = useState<{
+    command: string;
+    output: string;
+    exitCode: number | null;
+    /** A focused failure can identify possible credentials before analysis. */
+    sensitive?: boolean;
+  } | null>(null);
 
   const explainLastError = () => setExplainCtx({ command: "", output: readActiveTerminal(), exitCode: getActiveTerminalExit() });
   const [dockerOpen, setDockerOpen] = useState(false);
@@ -777,6 +783,29 @@ function App() {
     setActiveKind("file");
   }, [remoteHost]);
 
+  /* Assistant replies can turn a verified workspace-relative `path:line`
+     reference into a normal editor navigation. The composer validates the
+     reference before emitting this event; App owns the actual editor action so
+     the behavior matches Spotlight and file explorer navigation. */
+  useEffect(() => {
+    const openAiFile = (event: Event) => {
+      const detail = (event as CustomEvent<{ path?: string; line?: number }>).detail;
+      if (!detail?.path) return;
+      const root = getWorkspaceRoot()?.replace(/\/+$/, "");
+      /* The event is UI glue, not an authority boundary. Re-checking here keeps
+         an arbitrary page script or devtools event from opening a file outside
+         the currently open workspace. */
+      if (!root || !detail.path.startsWith(`${root}/`)) return;
+      const name = detail.path.split("/").pop() || detail.path;
+      openFile(detail.path, name);
+      if (detail.line && detail.line > 0) {
+        window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path: detail.path, line: detail.line } }));
+      }
+    };
+    window.addEventListener("husk:open-ai-file", openAiFile);
+    return () => window.removeEventListener("husk:open-ai-file", openAiFile);
+  }, [openFile]);
+
   const selectFile = (path: string) => {
     setActiveFile(path);
     setActiveKind("file");
@@ -1037,7 +1066,9 @@ function App() {
             closeIssues={closeIssues}
             closeSftp={closeSftp}
             closeBrowser={closeBrowser}
+            onOpenBrowser={openBrowser}
             onOpenSourceControl={() => showSidebarView("source-control")}
+            onExplainFailure={prefs.aiEnabled ? setExplainCtx : undefined}
             chromeOccluded={paletteOpen || switcherOpen}
           />
           </div>

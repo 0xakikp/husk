@@ -5,6 +5,8 @@ export interface PendingEdit {
   path: string;
   search: string;
   replace: string;
+  /** The chat that proposed this edit. Older in-memory edits may not have one. */
+  sessionId?: string;
   timestamp: number;
 }
 

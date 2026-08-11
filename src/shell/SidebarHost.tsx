@@ -166,17 +166,22 @@ export function SidebarHost({
                 )
               ) : id === "kubernetes" ? (
                 lazyPanel(
-                  <KubernetesView inline onInspectResource={(sel) => setSelectedK8sResource(sel)} />,
+                  <KubernetesView
+                    inline
+                    onBack={() => persistSidebarView("tools-hub")}
+                    onInspectResource={(sel) => setSelectedK8sResource(sel)}
+                  />,
                   "Kubernetes",
                 )
               ) : id === "ci-cd" ? (
-                lazyPanel(<CiCdDialog inline />, "CI/CD")
+                lazyPanel(<CiCdDialog inline onBack={() => persistSidebarView("tools-hub")} />, "CI/CD")
               ) : id === "terraform" ? (
-                lazyPanel(<TerraformView inline />, "Terraform")
+                lazyPanel(<TerraformView inline onBack={() => persistSidebarView("tools-hub")} />, "Terraform")
               ) : id === "docker" ? (
                 lazyPanel(
                   <DockerView
                     inline
+                    onBack={() => persistSidebarView("tools-hub")}
                     /* The only view with a timer. Kept mounted it would poll
                        `docker ps` every 5s while you were reading Notes. */
                     active={sidebarView === "docker"}
@@ -188,6 +193,7 @@ export function SidebarHost({
                 lazyPanel(
                   <TailscaleView
                     inline
+                    onBack={() => persistSidebarView("tools-hub")}
                     onConnect={(device) => {
                       const sshUser = device.user || "root";
                       typeInActiveTerminal(`ssh ${sshUser}@${device.ipv4}`);

@@ -92,19 +92,25 @@ export function ExplainDialog({
   command,
   output,
   exitCode,
+  sensitive = false,
   onClose,
 }: {
   command: string;
   output: string;
   exitCode: number | null;
+  /** Focused terminal failures check this before sending output to a provider. */
+  sensitive?: boolean;
   onClose: () => void;
 }) {
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(true);
+  const [approved, setApproved] = useState(!sensitive);
+  const [busy, setBusy] = useState(!sensitive);
   const [err, setErr] = useState("");
 
   useEffect(() => {
+    if (!approved) return;
     let alive = true;
+    setBusy(true);
     void explainError(command, output, exitCode)
       .then((t) => alive && setText(t))
       .catch((e) => alive && setErr(e instanceof Error ? e.message : String(e)))
@@ -112,7 +118,7 @@ export function ExplainDialog({
     return () => {
       alive = false;
     };
-  }, [command, output, exitCode]);
+  }, [command, output, exitCode, approved]);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -124,9 +130,22 @@ export function ExplainDialog({
           </button>
         </div>
         <div className="modal-body">
-          {busy ? <p className="rb-empty">Analyzing…</p> : null}
-          {err ? <p className="assist-err">{err}</p> : null}
-          {text ? <div className="assist-explain">{text}</div> : null}
+          {sensitive && !approved ? (
+            <div className="flex flex-col gap-3">
+              <p className="m-0 text-[12px] leading-relaxed text-amber-300/90">
+                This output may contain a token, password, or another secret. Husk has not sent it to the AI provider.
+              </p>
+              <div className="assist-actions">
+                <button type="button" onClick={() => setApproved(true)}>Analyze anyway</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {busy ? <p className="rb-empty">Analyzing…</p> : null}
+              {err ? <p className="assist-err">{err}</p> : null}
+              {text ? <div className="assist-explain">{text}</div> : null}
+            </>
+          )}
         </div>
       </div>
     </div>

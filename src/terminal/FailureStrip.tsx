@@ -8,6 +8,7 @@ import {
   clearFailure,
   expandFailure,
   useFailure,
+  type FailureRecord,
 } from "./failureStore";
 import {
   runInActiveTerminal,
@@ -22,12 +23,25 @@ function commandLabel(command: string): string {
   return compact.length > 42 ? `${compact.slice(0, 41)}…` : compact;
 }
 
+/** The small, focused error explainer needs only this failure's evidence. */
+export type FailureExplainRequest = Pick<
+  FailureRecord,
+  "command" | "output" | "exitCode" | "sensitive"
+>;
+
 /**
  * The Command Failure Assistant strip. Sits between a terminal pane and the
  * bottom status bar, belongs to exactly one pane, and appears only after a
  * completed command exited non-zero. Never a modal, never a notification.
  */
-export function FailureStrip({ leafId }: { leafId: number | null }) {
+export function FailureStrip({
+  leafId,
+  onExplain,
+}: {
+  leafId: number | null;
+  /** Opens the focused error explainer rather than a general-purpose chat. */
+  onExplain?: (request: FailureExplainRequest) => void;
+}) {
   const entry = useFailure(leafId);
   if (!entry || leafId == null) return null;
   const { record, collapsed } = entry;
@@ -47,13 +61,17 @@ export function FailureStrip({ leafId }: { leafId: number | null }) {
   };
 
   const explain = () => {
-    if (record.sensitive) {
-      toast({
-        title: "Output may contain secrets",
-        message: "Review the attached output in the composer before sending.",
-        variant: "info",
+    if (onExplain) {
+      onExplain({
+        command: record.command,
+        output: record.output,
+        exitCode: record.exitCode,
+        sensitive: record.sensitive,
       });
+      return;
     }
+    /* Compatibility fallback for a host that has not wired the focused
+       explainer yet. The normal Husk workspace always takes the path above. */
     attachAndOpen("Explain why this command failed and suggest the smallest fix.");
   };
 
@@ -117,16 +135,16 @@ export function FailureStrip({ leafId }: { leafId: number | null }) {
         type="button"
         onClick={explain}
         className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-primary/90 transition-colors hover:bg-muted/45 hover:text-primary"
-        title="Open the composer with this command and its output attached — nothing is sent until you press send"
+        title="Explain this failure here — it does not open a chat"
       >
         <HugeiconsIcon icon={SparklesIcon} size={10} strokeWidth={1.75} />
         Explain
       </button>
       <button
         type="button"
-        onClick={() => attachAndOpen()}
+        onClick={() => attachAndOpen("Help me fix this command failure. What went wrong, and what is the smallest safe next step?")}
         className="shrink-0 rounded-md px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground"
-        title="Open the composer with the failure attached; ask your own question"
+        title="Open the terminal composer with this failure attached and a ready-to-send recovery question"
       >
         Ask AI
       </button>

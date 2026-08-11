@@ -164,7 +164,7 @@ export function GeneralFile() {
       <CfgRow name="showHiddenFiles" comment="Include dot-prefixed files in the tree.">
         <CfgBool value={p.showHidden} onChange={(v) => setPrefs({ showHidden: v })} />
       </CfgRow>
-      <CfgRow name="restoreSession" comment="Remember tabs and working directories between launches.">
+      <CfgRow name="restoreSession" comment="Remember tabs, pane splits, and working directories between launches. Shells restart fresh.">
         <CfgBool value={p.sessionRestoreEnabled} onChange={(v) => setPrefs({ sessionRestoreEnabled: v })} />
       </CfgRow>
       <CfgBlank />

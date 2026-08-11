@@ -21,6 +21,14 @@ export type ChatConfig = {
   baseURL: string;
 };
 
+/** A compact, user-facing record of Husk executing a local or connected tool.
+ * It deliberately contains no tool input or result body: the chat should show
+ * what happened without accidentally exposing private context in its chrome. */
+export type ToolActivity = {
+  name: string;
+  state: "running" | "complete";
+};
+
 /**
  * Flatten a conversation into the single prompt the CLI accepts.
  *
@@ -72,7 +80,9 @@ function buildModel(cfg: ChatConfig) {
 
 /** Stream a chat completion, calling `onDelta` for each text chunk. When
  *  `tools` are supplied the model can call them across up to 8 steps.
- *  Optional `onStatus` receives tool-call/result status strings. */
+ *  Optional `onStatus` receives tool-call/result status strings. `onToolActivity`
+ *  records the same events in a structured form so a completed answer can show
+ *  its trace after the temporary status line disappears. */
 export async function streamChat(
   cfg: ChatConfig,
   system: string,
@@ -81,6 +91,7 @@ export async function streamChat(
   tools?: Record<string, Tool>,
   abortSignal?: AbortSignal,
   onStatus?: (status: string) => void,
+  onToolActivity?: (activity: ToolActivity) => void,
 ): Promise<void> {
   if (cfg.provider.kind === "cli") {
     /* Husk's own tools are not forwarded. Both CLIs run in restricted mode so
@@ -127,9 +138,11 @@ export async function streamChat(
         break;
       case "tool-call":
         onStatus?.(`🛠️ ${event.toolName}`);
+        onToolActivity?.({ name: event.toolName, state: "running" });
         break;
       case "tool-result":
         onStatus?.(`✅ ${event.toolName}`);
+        onToolActivity?.({ name: event.toolName, state: "complete" });
         break;
       case "error":
         // The AI SDK reports some failures as stream events instead of throws.

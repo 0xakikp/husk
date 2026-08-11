@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Cancel01Icon,
@@ -23,7 +23,15 @@ import { ModelSwitcher } from "../ai/ModelSwitcher";
 import { streamChat } from "../ai/client";
 import type { Tool } from "ai";
 import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
-import { readActiveTerminal, runInActiveTerminal, getRecentCommandRuns, getPendingRunAttachment, type CommandRun } from "../ai/terminalContext";
+import {
+  getActiveTerminalCwd,
+  isCommandRunning,
+  readActiveTerminal,
+  runInActiveTerminal,
+  getRecentCommandRuns,
+  getPendingRunAttachment,
+  type CommandRun,
+} from "../ai/terminalContext";
 import { PendingEditsReview } from "../ai/PendingEditsReview";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { getProjectMemory } from "../ai/projectMemory";
@@ -48,8 +56,13 @@ import { readFile, readFileBase64 } from "../fs";
 import { buildMcpTools } from "../mcp/tools";
 import { buildBuiltinTools, mergeTools } from "../ai/builtinTools";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { toast } from "../toast";
+import { getTerminalRunDecision } from "./commandRun";
+import { getWorkspaceRoot } from "../workspace/store";
+import { parseWorkspaceFileReference } from "../ai/fileReferences";
 import {
   AiMessage,
+  type AiReplyTrace,
   getSession,
   updateSession,
   subscribeSessions,
@@ -116,7 +129,9 @@ function parseCodeBlocks(text: string): CodeBlock[] {
   const regex = /```(\w*)\n?([\s\S]*?)```/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
-    blocks.push({ lang: match[1] || "sh", code: match[2].trim() });
+    /* An omitted fence language is code to copy and inspect, not an implicit
+       shell command. Direct Run is intentionally opt-in via sh/bash/zsh. */
+    blocks.push({ lang: (match[1] || "").toLowerCase(), code: match[2].trim() });
   }
   return blocks;
 }
@@ -137,7 +152,25 @@ function renderInline(text: string): ReactNode[] {
     if (tok.startsWith("**")) {
       nodes.push(<strong key={key++} className="wb-md-bold">{tok.slice(2, -2)}</strong>);
     } else if (tok.startsWith("`")) {
-      nodes.push(<code key={key++} className="wb-inline-code">{tok.slice(1, -1)}</code>);
+      const value = tok.slice(1, -1);
+      const ref = parseWorkspaceFileReference(value);
+      const root = getWorkspaceRoot()?.replace(/\/+$/, "");
+      if (ref && root) {
+        const path = `${root}/${ref.relativePath}`;
+        nodes.push(
+          <button
+            key={key++}
+            type="button"
+            className="wb-inline-code wb-file-ref"
+            title={`Open ${ref.relativePath}${ref.line ? ` at line ${ref.line}` : ""}`}
+            onClick={() => window.dispatchEvent(new CustomEvent("husk:open-ai-file", { detail: { path, line: ref.line } }))}
+          >
+            {value}
+          </button>,
+        );
+      } else {
+        nodes.push(<code key={key++} className="wb-inline-code">{value}</code>);
+      }
     } else {
       nodes.push(<em key={key++}>{tok.slice(1, -1)}</em>);
     }
@@ -178,6 +211,92 @@ function MarkdownText({ text }: { text: string }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/* Keep lengthy explanations readable without hiding the useful parts of a
+   response: code, diffs and file trees still render in full below. We only
+   fold prose at a paragraph boundary, which avoids cutting a Markdown list or
+   sentence in half. */
+function CollapsibleMarkdownText({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const lines = text.split("\n");
+  const shouldCollapse = text.length > 1_400 || lines.length > 14;
+
+  const collapsed = useMemo(() => {
+    if (!shouldCollapse) return text;
+    const candidate = lines.slice(0, 12).join("\n");
+    const paragraphBreak = candidate.lastIndexOf("\n\n");
+    return paragraphBreak > 80 ? candidate.slice(0, paragraphBreak) : candidate;
+  }, [lines, shouldCollapse, text]);
+
+  if (!shouldCollapse) return <MarkdownText text={text} />;
+
+  return (
+    <div className="msg-prose">
+      <MarkdownText text={expanded ? text : collapsed} />
+      <button
+        type="button"
+        className="msg-details-toggle"
+        onClick={() => setExpanded((value) => !value)}
+      >
+        {expanded ? "collapse answer" : "show full answer"}
+      </button>
+    </div>
+  );
+}
+
+function AiReplyTraceRow({ trace }: { trace: AiReplyTrace }) {
+  const [expanded, setExpanded] = useState(false);
+  const completedTools = trace.tools.filter((tool) => tool.state === "complete");
+  const toolSummary = trace.tools.length
+    ? `${completedTools.length === trace.tools.length ? "tools complete" : "tools running"} · ${trace.tools.length}`
+    : trace.mode === "subscription"
+      ? "read-only"
+      : "no tools used";
+  return (
+    <div className="ai-reply-trace">
+      <button
+        type="button"
+        className="ai-reply-trace-summary"
+        onClick={() => setExpanded((value) => !value)}
+        title="Show the model, attached context, and tools used for this answer"
+      >
+        <span className="ai-reply-trace-dot" aria-hidden="true">●</span>
+        <span>{trace.providerLabel}</span>
+        <span className="ai-reply-trace-sep">·</span>
+        <span className="truncate">{trace.modelLabel}</span>
+        <span className="ai-reply-trace-sep">·</span>
+        <span>{trace.mode === "subscription" ? "subscription" : "API"}</span>
+        <span className="ai-reply-trace-sep">·</span>
+        <span>{trace.context.length} context</span>
+        <span className="ai-reply-trace-sep">·</span>
+        <span>{toolSummary}</span>
+        <span className="ai-reply-trace-disclosure">{expanded ? "▴" : "▾"}</span>
+      </button>
+      {expanded && (
+        <div className="ai-reply-trace-details">
+          <div className="ai-reply-trace-detail-row">
+            <span>model</span>
+            <strong>{trace.providerLabel} · {trace.modelLabel}</strong>
+          </div>
+          <div className="ai-reply-trace-detail-row">
+            <span>access</span>
+            <strong>{trace.mode === "subscription" ? "subscription · read-only" : "API-backed · tools available"}</strong>
+          </div>
+          <div className="ai-reply-trace-detail-row">
+            <span>context</span>
+            <strong>{trace.context.length ? trace.context.map((item) => `${item.label} (${formatKb(item.bytes)})`).join(" · ") : "message only"}</strong>
+          </div>
+          {trace.tools.length > 0 && (
+            <div className="ai-reply-trace-detail-row">
+              <span>tools</span>
+              <strong>{trace.tools.map((tool) => `${tool.state === "complete" ? "✓" : "…"} ${tool.name}`).join(" · ")}</strong>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -248,11 +367,6 @@ function isDangerousCommand(cmd: string): boolean {
   return DANGEROUS_PATTERNS.some((p) => p.test(trimmed));
 }
 
-function extractCommandFromCode(code: string): string {
-  const lines = code.split("\n").filter(Boolean);
-  return lines[0] || code;
-}
-
 export function TerminalAiComposer({
   sessionId,
   onOpenInAiTab,
@@ -281,6 +395,7 @@ export function TerminalAiComposer({
   /* A specific command's output, chosen from history. Far more precise than the
      whole-scrollback chip, which mixes unrelated commands together. */
   const [attachedRuns, setAttachedRuns] = useState<CommandRun[]>([]);
+  const attachedRunsSessionRef = useRef(sessionId);
   const [runPickerOpen, setRunPickerOpen] = useState(false);
 
   const prefs = usePrefs();
@@ -334,6 +449,25 @@ export function TerminalAiComposer({
   const setInput = (value: string) => {
     updateSession(sessionId, (s) => ({ ...s, input: value }));
   };
+
+  /* A recovery prompt can be longer than a terminal command. Keep it readable
+     when it is prefilled from a failure strip, and grow naturally while the
+     user types. Once it reaches a sensible size, the field itself scrolls so
+     the composer never takes over the terminal. */
+  const resizeInput = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const maxHeight = variant === "full" ? 160 : 120;
+    textarea.style.height = "auto";
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [variant]);
+
+  useLayoutEffect(() => {
+    resizeInput();
+  }, [input, open, resizeInput]);
 
   const setMessages = (updater: (prev: AiMessage[]) => AiMessage[]) => {
     updateSession(sessionId, (s) => ({ ...s, messages: updater(s.messages) }));
@@ -449,7 +583,10 @@ export function TerminalAiComposer({
         id: `run:${run.at}`,
         kind: "command-run",
         icon: "▶",
-        label: `${label.length > 26 ? `${label.slice(0, 25)}…` : label} · ${formatKb(byteLength(run.output))}`,
+        /* A command's output is evidence, not a generic attachment. Keep its
+           origin and outcome visible in the chip so a user can spot it before
+           sending, without needing to open the inspector. */
+        label: `run · ${label.length > 22 ? `${label.slice(0, 21)}…` : label} · exit ${run.exitCode ?? "?"}`,
         source: run.command || "(command)",
         preview: `$ ${run.command}\n${run.output}`,
         removable: true,
@@ -629,6 +766,15 @@ export function TerminalAiComposer({
     }
   }, [sessionId]);
 
+  /* Command output belongs to the chat it was explicitly attached to. Without
+     this reset, switching conversations in the full AI view could carry a
+     failed command into an unrelated request. */
+  useEffect(() => {
+    if (attachedRunsSessionRef.current === sessionId) return;
+    attachedRunsSessionRef.current = sessionId;
+    setAttachedRuns([]);
+  }, [sessionId]);
+
   useEffect(() => {
     if (!registerToggle) return;
     return registerComposerToggle(() => setOpen((v) => !v));
@@ -734,7 +880,7 @@ export function TerminalAiComposer({
     if (provider.kind !== "cli" && (prefs.aiFileToolsEnabled || prefs.aiMcpToolsEnabled)) {
       try {
         const mcpTools = prefs.aiMcpToolsEnabled ? await buildMcpTools().catch(() => ({})) : {};
-        const builtinTools = prefs.aiFileToolsEnabled ? buildBuiltinTools() : {};
+        const builtinTools = prefs.aiFileToolsEnabled ? buildBuiltinTools(sessionId) : {};
         tools = mergeTools(builtinTools, mcpTools);
       } catch (e) {
         if (import.meta.env.DEV) {
@@ -765,11 +911,28 @@ export function TerminalAiComposer({
       }
     }
 
+    /* Stored with the reply rather than derived from the current settings: a
+       chat reopened next week should truthfully show the provider, context, and
+       tools that were available when that specific answer was generated. */
+    const replyTrace: AiReplyTrace = {
+      providerLabel: provider.label,
+      modelLabel: modelId,
+      mode: provider.kind === "cli" ? "subscription" : "api",
+      context: sendItems.map((item) => ({ label: item.label, bytes: item.bytes })),
+      tools: [],
+    };
+    setMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last?.role === "assistant") next[next.length - 1] = { ...last, trace: replyTrace };
+      return next;
+    });
+
     let system =
       agent.systemPrompt +
       "\n\n" +
       buildHuskAssistantContext({ agent, provider, model: modelId }) +
-      "\n\nIf you suggest a shell command, wrap it in a code block.";
+      "\n\nIf you suggest a command the user may run, put one short command in an explicitly labelled `sh` code block. Put scripts and source code in their real language fence; do not label them `sh`. When referring to a file in the open workspace, use a backticked relative path, optionally with `:line`, so the user can open it.";
 
     for (const item of sendItems) {
       system += itemToRequestBlock(item);
@@ -807,6 +970,19 @@ export function TerminalAiComposer({
         tools && Object.keys(tools).length > 0 ? tools : undefined,
         abortCtrlRef.current.signal,
         (statusText) => setStatus(statusText),
+        (activity) => {
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role !== "assistant" || !last.trace) return prev;
+            const tools = [...last.trace.tools];
+            const existing = tools.findIndex((tool) => tool.name === activity.name);
+            if (existing >= 0) tools[existing] = activity;
+            else tools.push(activity);
+            next[next.length - 1] = { ...last, trace: { ...last.trace, tools } };
+            return next;
+          });
+        },
       );
     } catch (e) {
       if (abortRef.current) return;
@@ -906,27 +1082,56 @@ export function TerminalAiComposer({
     setStatus(null);
   };
 
-  const runCommand = (cmd: string) => {
-    const first = extractCommandFromCode(cmd);
+  const sendCommandToTerminal = (command: string): boolean => {
+    const cmd = command.trim();
+    if (!cmd) return false;
+    if (isCommandRunning()) {
+      toast({
+        title: "Terminal is busy",
+        message: "Wait for the current command to finish, or copy this command to run it yourself.",
+        variant: "info",
+      });
+      return false;
+    }
+    if (!runInActiveTerminal(cmd)) {
+      toast({
+        title: "No active terminal",
+        message: "Open and focus a terminal before running a command from Husk.",
+        variant: "error",
+      });
+      return false;
+    }
+    const cwd = getActiveTerminalCwd();
+    toast({
+      title: "Command sent to terminal",
+      message: cwd ? `Running in ${cwd}` : "Running in the active terminal",
+      variant: "info",
+      duration: 2200,
+    });
+    return true;
+  };
+
+  const runCommand = (command: string) => {
+    const cmd = command.trim();
+    if (!cmd) return;
     /* Production gate: a command that mutates shared infrastructure, while a
        protected target is active, always stops for an explicit approval that
        names the target — even when the command itself looks "safe". */
     const protectedHits = protectedTargets();
-    if (protectedHits.length > 0 && isEnvDestructive(first)) {
-      setPendingRun({ command: first, productionTarget: protectedHits[0] });
+    if (protectedHits.length > 0 && isEnvDestructive(cmd)) {
+      setPendingRun({ command: cmd, productionTarget: protectedHits[0] });
       return;
     }
-    if (isDangerousCommand(first)) {
-      setPendingRun({ command: first, productionTarget: null });
-    } else {
-      runInActiveTerminal(first);
+    if (isDangerousCommand(cmd)) {
+      setPendingRun({ command: cmd, productionTarget: null });
+      return;
     }
+    sendCommandToTerminal(cmd);
   };
 
   const confirmRun = () => {
     if (pendingRun) {
-      runInActiveTerminal(pendingRun.command);
-      setPendingRun(null);
+      if (sendCommandToTerminal(pendingRun.command)) setPendingRun(null);
     }
   };
 
@@ -1050,6 +1255,11 @@ export function TerminalAiComposer({
 
   const ctxTotalBytes = totalBytes(contextItems);
   const ctxOverBudget = ctxTotalBytes > budgetBytes(budgetKb);
+  const capabilityLabel = provider.kind === "cli"
+    ? "subscription · read-only"
+    : prefs.aiFileToolsEnabled || prefs.aiMcpToolsEnabled
+      ? `API · ${[prefs.aiFileToolsEnabled && "files", prefs.aiMcpToolsEnabled && "tools"].filter(Boolean).join(" + ")}`
+      : "API · chat only";
 
   if (!open || !prefs.aiEnabled) return null;
 
@@ -1192,6 +1402,14 @@ export function TerminalAiComposer({
             <span className="composer-crumb-sep">/</span>
             {session.name.toLowerCase().replace(/\s+/g, "-")}
           </span>
+          <button
+            type="button"
+            className="composer-capability shrink-0"
+            onClick={() => setInspectorOpen(true)}
+            title={`${provider.label} · ${cfg.model || provider.defaultModel} · ${capabilityLabel}. Inspect exact context and tool access.`}
+          >
+            {capabilityLabel}
+          </button>
           {/* Show the open file only when it is actually attached as context —
               displaying it while excluded read as "this is being sent". */}
           {fileName && includeFile && currentFile && (
@@ -1275,6 +1493,7 @@ export function TerminalAiComposer({
               codeBlocks.length === 0 &&
               diffBlocks.length === 0 &&
               !tree &&
+              !msg.trace &&
               !msg.content.includes("\n") &&
               msg.content.trim().length <= 80;
             if (isCompact) {
@@ -1328,7 +1547,7 @@ export function TerminalAiComposer({
                   <span className="msg-meta">
                     {isUser
                       ? timeLabel
-                      : `${(cfg.model || provider.defaultModel).toLowerCase()}${timeLabel ? ` · ${timeLabel}` : ""}`}
+                      : `${(msg.trace?.modelLabel || cfg.model || provider.defaultModel).toLowerCase()}${timeLabel ? ` · ${timeLabel}` : ""}`}
                   </span>
                 </div>
                 <div className="msg-block-body">
@@ -1336,7 +1555,7 @@ export function TerminalAiComposer({
                     <div className="whitespace-pre-wrap">{msg.content}</div>
                   ) : (
                     <>
-                      {textParts && <MarkdownText text={textParts} />}
+                      {textParts && <CollapsibleMarkdownText text={textParts} />}
                       {msg.streaming && !textParts && codeBlocks.length === 0 && diffBlocks.length === 0 && !tree && <LoadingIndicator />}
                       {codeBlocks.length > 0 && (
                         <CodeBlockTabs
@@ -1355,6 +1574,7 @@ export function TerminalAiComposer({
                     </>
                   )}
                 </div>
+                {!isUser && msg.trace && <AiReplyTraceRow trace={msg.trace} />}
                 <div className="msg-block-foot">
                   <button type="button" onClick={() => copyMessage(msg.content, i)} className="msg-act">
                     {msgCopiedIdx === i ? "✓ copied" : "⧉ copy"}
@@ -1365,11 +1585,6 @@ export function TerminalAiComposer({
                     </button>
                   ) : (
                     <>
-                      {codeBlocks.length > 0 && (
-                        <button type="button" onClick={() => runCommand(codeBlocks[0].code)} className="msg-act msg-act-hot">
-                          ▸ run in terminal
-                        </button>
-                      )}
                       <button type="button" onClick={() => redoMessage(i)} className="msg-act">
                         ↻ redo
                       </button>
@@ -1579,12 +1794,19 @@ export function TerminalAiComposer({
             )}
           </div>
         )}
-        <PendingEditsReview />
+        <PendingEditsReview sessionId={sessionId} />
         <div className="wb-composer">
           {chipItems.length > 0 && (
             <div className="wb-composer-head">
               {chipItems.map((item) => (
-                <span key={item.id} className={cn("wb-chip", item.sensitive && "wb-chip-sensitive")}>
+                <span
+                  key={item.id}
+                  className={cn(
+                    "wb-chip",
+                    item.kind === "command-run" && "wb-chip-evidence",
+                    item.sensitive && "wb-chip-sensitive",
+                  )}
+                >
                   <span>{item.icon}</span>
                   {item.preview ? (
                     <button
@@ -1791,18 +2013,21 @@ function CodeBlockTabs({
   return (
     <div className="composer-code-block">
       <div className="composer-code-tabs">
-        {blocks.map((b, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => onChangeTab(i)}
-            className={cn("composer-code-tab", i === tabIndex && "composer-code-tab-active")}
-          >
-            {b.lang || "code"}
-          </button>
-        ))}
+        <div className="composer-code-tab-list">
+          {blocks.map((b, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onChangeTab(i)}
+              className={cn("composer-code-tab", i === tabIndex && "composer-code-tab-active")}
+            >
+              {b.lang || "code"}
+            </button>
+          ))}
+        </div>
+        <CodeActions block={active} idx={tabIndex} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} />
       </div>
-      <CodeBlockCard block={active} idx={tabIndex} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} hideHeader />
+      <CodeBlockPre block={active} />
     </div>
   );
 }
@@ -1813,45 +2038,71 @@ function CodeBlockCard({
   copiedIdx,
   onCopy,
   onRun,
-  hideHeader,
 }: {
   block: CodeBlock;
   idx: number;
   copiedIdx: number | null;
   onCopy: (code: string, idx: number) => void;
   onRun: (code: string) => void;
-  hideHeader?: boolean;
 }) {
   return (
     <div className="composer-code-block">
-      {!hideHeader && (
-        <div className="composer-code-header">
-          <span className="lang">{block.lang}</span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => onCopy(block.code, idx)}
-              className="composer-code-header-btn"
-              title="Copy"
-            >
-              <HugeiconsIcon icon={copiedIdx === idx ? TickDouble01Icon : Copy01Icon} size={10} strokeWidth={1.75} />
-              {copiedIdx === idx ? "Copied" : "Copy"}
-            </button>
-            <button
-              type="button"
-              onClick={() => onRun(block.code)}
-              className="composer-run-btn"
-            >
-              <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
-              Run
-            </button>
-          </div>
-        </div>
-      )}
-      <pre className="composer-code-pre">
-        <code>{block.code}</code>
-      </pre>
+      <div className="composer-code-header">
+        <span className="lang">{block.lang || "code"}</span>
+        <CodeActions block={block} idx={idx} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} />
+      </div>
+      <CodeBlockPre block={block} />
     </div>
+  );
+}
+
+function CodeActions({
+  block,
+  idx,
+  copiedIdx,
+  onCopy,
+  onRun,
+}: {
+  block: CodeBlock;
+  idx: number;
+  copiedIdx: number | null;
+  onCopy: (code: string, idx: number) => void;
+  onRun: (command: string) => void;
+}) {
+  const run = getTerminalRunDecision(block.lang, block.code);
+  return (
+    <div className="composer-code-actions">
+      <button
+        type="button"
+        onClick={() => onCopy(block.code, idx)}
+        className="composer-code-header-btn"
+        title="Copy"
+      >
+        <HugeiconsIcon icon={copiedIdx === idx ? TickDouble01Icon : Copy01Icon} size={10} strokeWidth={1.75} />
+        {copiedIdx === idx ? "Copied" : "Copy"}
+      </button>
+      {run.runnable ? (
+        <button
+          type="button"
+          onClick={() => onRun(run.command)}
+          className="composer-run-btn"
+          title="Run this one command in the active terminal"
+        >
+          <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
+          Run command
+        </button>
+      ) : (
+        <span className="composer-code-manual" title={run.reason}>review before running</span>
+      )}
+    </div>
+  );
+}
+
+function CodeBlockPre({ block }: { block: CodeBlock }) {
+  return (
+    <pre className="composer-code-pre">
+      <code>{block.code}</code>
+    </pre>
   );
 }
 

@@ -20,6 +20,7 @@ import {
   registerTerminalLogsOpener,
   type TerminalHandle,
 } from "./terminal/registry";
+import type { TerminalCheckpoint } from "./terminalPanes";
 import "@xterm/xterm/css/xterm.css";
 
 /** A single xterm.js terminal backed by a Rust PTY session.
@@ -29,21 +30,29 @@ export function TerminalView({
   leafId,
   active = true,
   initialCwd,
+  checkpoint,
+  restored = false,
   onSplit,
   onClose,
   canClose = false,
   onFocus,
   onOpenLogs,
+  onCwd,
+  onCommandComplete,
   onFocusDirection: _onFocusDirection,
 }: {
   leafId: number;
   active?: boolean;
   initialCwd?: string;
+  checkpoint?: TerminalCheckpoint;
+  restored?: boolean;
   onSplit?: (dir: "row" | "col") => void;
   onClose?: () => void;
   canClose?: boolean;
   onFocus?: () => void;
   onOpenLogs?: (leafId: number) => void;
+  onCwd?: (cwd: string) => void;
+  onCommandComplete?: (run: { command: string; cwd: string; exitCode: number | null; at: number }) => void;
   onFocusDirection?: (dir: "left" | "right" | "up" | "down") => void;
 }) {
   void _onFocusDirection; // used by parent key handler, not directly here
@@ -55,6 +64,7 @@ export function TerminalView({
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [restoreNoticeOpen, setRestoreNoticeOpen] = useState(restored);
   const hostRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLElement | null>(null);
   const mouseDownOnOverlayRef = useRef(false);
@@ -114,6 +124,8 @@ export function TerminalView({
       setSessionFocused(leafId, true);
       setSessionActive(leafId, true);
       setSessionCallbacks(leafId, {
+        onCwd,
+        onCommandComplete,
         onFocus: () => onFocus?.(),
         onData: () => {
           // Don't trigger autocomplete if the user is cycling shell history;
@@ -176,7 +188,7 @@ export function TerminalView({
       setSessionFocused(leafId, false);
       setSessionActive(leafId, false);
     }
-  }, [leafId, active, onFocus]);
+  }, [leafId, active, onFocus, onCwd, onCommandComplete]);
 
   // ── Autocomplete ──────────────────────────────────────────────────────────
   const {
@@ -427,6 +439,25 @@ export function TerminalView({
       onContextMenu={handleContextMenu}
     >
       <div ref={containerRef} className="terminal-host" />
+      {restoreNoticeOpen && (
+        <div className="terminal-restore-note" role="status">
+          <span className="terminal-restore-dot" aria-hidden="true">●</span>
+          <span>restored · fresh shell</span>
+          {checkpoint?.cwd && <code title={checkpoint.cwd}>{checkpoint.cwd}</code>}
+          {checkpoint?.command && (
+            <>
+              <span className="terminal-restore-sep">·</span>
+              <span className="terminal-restore-last" title={checkpoint.command}>last: {checkpoint.command}</span>
+              {checkpoint.exitCode != null && (
+                <span className={checkpoint.exitCode === 0 ? "terminal-restore-ok" : "terminal-restore-bad"}>
+                  exit {checkpoint.exitCode}
+                </span>
+              )}
+            </>
+          )}
+          <button type="button" onClick={() => setRestoreNoticeOpen(false)} aria-label="Dismiss restored session summary">×</button>
+        </div>
+      )}
       <AutocompleteBar
         visible={autoState.visible}
         suggestions={autoState.suggestions}

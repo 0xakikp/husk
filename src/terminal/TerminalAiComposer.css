@@ -196,6 +196,28 @@
   margin: 0 1px;
 }
 
+.composer-capability {
+  max-width: 152px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
+  padding: 2px 6px;
+  color: color-mix(in srgb, var(--muted-foreground) 86%, transparent);
+  font-family: var(--wb-mono);
+  font-size: 8.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+
+.composer-capability:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--primary);
+}
+
 .composer-avatar {
   display: flex;
   align-items: center;
@@ -269,7 +291,7 @@
 .composer-messages {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   overflow-y: auto;
   padding-right: 4px;
   flex: 1 1 0%;
@@ -281,7 +303,7 @@
 .composer-full .composer-messages {
   font-size: 13px;
   line-height: 1.6;
-  gap: 16px;
+  gap: 14px;
 }
 
 .composer-messages::-webkit-scrollbar {
@@ -308,14 +330,18 @@
   }
 }
 
-/* ── Message blocks (Warp style) ────────────────────────────────────────── */
+/* ── Message timeline ─────────────────────────────────────────────────────
+   Normal conversation should read like terminal history rather than a stack of
+   browser-chat cards. Code, diffs and proposed edits keep their own stronger
+   frames below; ordinary messages only need identity, a thin role rail, and
+   a compact action row. */
 
 .msg-block {
   flex-shrink: 0; /* critical: overflow:hidden zeroes the flex min-size, so without this the column flex container shrinks blocks and clips bodies */
-  border: 1px solid color-mix(in srgb, var(--border) 100%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--muted) 45%, transparent);
-  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
   animation: message-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -323,9 +349,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  background: color-mix(in srgb, var(--muted) 80%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  padding: 0 0 5px 13px;
+  background: transparent;
+  border-bottom: 0;
   font-family: var(--wb-mono);
 }
 
@@ -354,17 +380,17 @@
 }
 
 .msg-block-body {
-  padding: 11px 14px;
+  padding: 3px 0 4px 12px;
   font-size: 12px;
   line-height: 1.55;
   color: color-mix(in srgb, var(--foreground) 92%, transparent);
-  border-left: 3px solid transparent;
+  border-left: 2px solid transparent;
 }
 
 .composer-full .msg-block-body {
   font-size: 13px;
   line-height: 1.6;
-  padding: 12px 14px;
+  padding: 3px 0 5px 13px;
 }
 
 .msg-block-ai .msg-block-body {
@@ -376,46 +402,120 @@
 }
 
 .msg-block-user {
-  background: color-mix(in srgb, var(--muted) 28%, transparent);
+  background: transparent;
 }
 
 .msg-block-user .msg-block-head {
-  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  background: transparent;
 }
 
 .msg-block-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  background: color-mix(in srgb, var(--muted) 30%, transparent);
+  gap: 3px;
+  padding: 6px 0 0 13px;
+  border-top: 0;
+  background: transparent;
+}
+
+/* Every completed assistant answer carries a terse evidence row. It makes
+   context and tool use inspectable without competing with the answer itself. */
+.ai-reply-trace {
+  margin: 5px 0 0 13px;
+  max-width: calc(100% - 13px);
+  font-family: var(--wb-mono);
+}
+
+.ai-reply-trace-summary {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  color: color-mix(in srgb, var(--muted-foreground) 62%, transparent);
+  font: inherit;
+  font-size: 8.5px;
+  line-height: 1.3;
+  text-align: left;
+  transition: color .15s ease;
+}
+
+.ai-reply-trace-summary:hover { color: color-mix(in srgb, var(--foreground) 75%, transparent); }
+.ai-reply-trace-dot { color: var(--primary); font-size: 7px; }
+.ai-reply-trace-sep { color: color-mix(in srgb, var(--muted-foreground) 35%, transparent); }
+.ai-reply-trace-disclosure { margin-left: auto; padding: 0 3px; color: var(--primary); }
+
+.ai-reply-trace-details {
+  display: grid;
+  gap: 3px;
+  margin-top: 3px;
+  border-left: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  padding: 4px 0 4px 8px;
+  animation: composer-trace-in .15s ease-out;
+}
+
+.ai-reply-trace-detail-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 7px;
+  font-size: 8.5px;
+  line-height: 1.45;
+}
+
+.ai-reply-trace-detail-row > span { color: color-mix(in srgb, var(--muted-foreground) 60%, transparent); }
+.ai-reply-trace-detail-row > strong { min-width: 0; color: color-mix(in srgb, var(--foreground) 78%, transparent); font-weight: 500; overflow-wrap: anywhere; }
+
+@keyframes composer-trace-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .msg-act {
   font-family: var(--wb-mono);
   font-size: 9.5px;
-  color: color-mix(in srgb, var(--muted-foreground) 90%, transparent);
-  background: color-mix(in srgb, var(--muted) 60%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 82%, transparent);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 5px;
-  padding: 3px 9px;
+  padding: 3px 6px;
   transition: all 0.15s ease;
 }
 
 .msg-act:hover {
   color: var(--foreground);
-  background: color-mix(in srgb, var(--muted) 90%, transparent);
+  background: color-mix(in srgb, var(--muted) 65%, transparent);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
 }
 
 .msg-act-hot {
   color: var(--primary);
-  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 .msg-act-hot:hover {
   background: color-mix(in srgb, var(--primary) 20%, transparent);
+  color: var(--primary);
+}
+
+.msg-details-toggle {
+  margin-top: 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  padding: 3px 6px;
+  font-family: var(--wb-mono);
+  font-size: 9.5px;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.msg-details-toggle:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
   color: var(--primary);
 }
 
@@ -432,9 +532,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 10px;
+  padding: 3px 0 3px 10px;
   font-family: var(--wb-mono);
-  border-left-width: 3px;
+  border-left-width: 2px;
 }
 
 .msg-block-compact.msg-block-ai {
@@ -619,6 +719,18 @@
   padding: 0 4px;
 }
 
+.wb-file-ref {
+  cursor: pointer;
+  color: color-mix(in srgb, var(--primary) 92%, var(--foreground));
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+
+.wb-file-ref:hover {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+
 /* ── Thinking / streaming ───────────────────────────────────────────────── */
 
 .composer-thinking {
@@ -690,11 +802,24 @@
 
 .composer-code-tabs {
   display: flex;
+  align-items: center;
   gap: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+.composer-code-tab-list {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
   overflow-x: auto;
   scrollbar-width: none;
+}
+
+.composer-code-tab-list::-webkit-scrollbar {
+  display: none;
 }
 
 .composer-code-tabs::-webkit-scrollbar {
@@ -739,6 +864,27 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: color-mix(in srgb, var(--primary) 85%, transparent);
+}
+
+.composer-code-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-code-tabs > .composer-code-actions {
+  padding: 0 7px 0 4px;
+}
+
+.composer-code-manual {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--wb-mono);
+  font-size: 8.5px;
+  color: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
 }
 
 .composer-run-btn {
@@ -1035,6 +1181,14 @@
   padding: 3px 8px;
 }
 
+/* Terminal output carries more risk and context than a file chip. A restrained
+   evidence treatment makes it recognisable without turning the Composer into
+   another panel. */
+.wb-chip-evidence {
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, var(--background));
+}
+
 .wb-chip-x {
   display: inline-flex;
   align-items: center;
@@ -1098,6 +1252,7 @@
   flex: 1;
   min-width: 0;
   resize: none;
+  overflow-y: hidden;
   background: transparent;
   border: none;
   border-radius: 0 !important;
@@ -1107,7 +1262,9 @@
   font-family: var(--wb-mono);
   font-size: 12px;
   line-height: 1.5;
-  max-height: 120px;
+  /* Height is set from the content in TerminalAiComposer. Keeping this
+     unrestricted lets the docked/full limits be applied deliberately there. */
+  max-height: none;
   padding: 2px 0;
 }
 
@@ -1174,7 +1331,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 2px;
+  padding: 2px 2px 0;
   font-family: var(--wb-mono);
   font-size: 9px;
   color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
@@ -1183,7 +1340,7 @@
 .wb-status-left {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1256,14 +1413,14 @@
 
 :root[data-theme="light"] .msg-block,
 [data-theme="light"] .msg-block {
-  background: color-mix(in srgb, var(--muted) 55%, transparent);
-  border-color: color-mix(in srgb, var(--border) 100%, transparent);
+  background: transparent;
+  border-color: transparent;
 }
 
 :root[data-theme="light"] .msg-block-head,
 [data-theme="light"] .msg-block-head {
-  background: color-mix(in srgb, var(--muted) 85%, transparent);
-  border-bottom-color: var(--border);
+  background: transparent;
+  border-bottom-color: transparent;
 }
 
 :root[data-theme="light"] .msg-block-body,
@@ -1273,14 +1430,12 @@
 
 :root[data-theme="light"] .msg-block-foot,
 [data-theme="light"] .msg-block-foot {
-  background: color-mix(in srgb, var(--muted) 40%, transparent);
-  border-top-color: var(--border);
+  background: transparent;
+  border-top-color: transparent;
 }
 
 :root[data-theme="light"] .msg-act,
 [data-theme="light"] .msg-act {
-  background: color-mix(in srgb, var(--muted) 70%, transparent);
-  border-color: var(--border);
   color: var(--muted-foreground);
 }
 
@@ -1465,6 +1620,31 @@
   border-radius: 6px;
   background: var(--bg-input);
   overflow: hidden;
+}
+
+/* Proposed edits stay present without stealing composer space. The review
+   surface expands only when the user asks to inspect the diff. */
+.pe-dock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 6px;
+  min-height: 26px;
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-input));
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.pe-dock-marker {
+  color: var(--accent);
+  font-size: 8px;
+}
+
+.pe-dock-note {
+  color: var(--text-faint);
 }
 
 .pe-head,

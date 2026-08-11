@@ -87,9 +87,16 @@ function EditCard({ edit }: { edit: PendingEdit }) {
  * showed what was about to change — so edits were approved blind. That mattered
  * more once accepting actually started writing to disk.
  */
-export function PendingEditsReview() {
-  const [edits, setEdits] = useState<PendingEdit[]>(getPendingEdits);
-  useEffect(() => subscribePendingEdits(() => setEdits(getPendingEdits())), []);
+export function PendingEditsReview({ sessionId }: { sessionId?: string }) {
+  const getVisibleEdits = () => getPendingEdits().filter((edit) => {
+    /* New edits always belong to the composer that requested them. Keep the
+       tiny backwards-compatible fallback for an edit that was already waiting
+       when this version was installed. */
+    return !sessionId || edit.sessionId === sessionId || edit.sessionId === undefined;
+  });
+  const [edits, setEdits] = useState<PendingEdit[]>(getVisibleEdits);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => subscribePendingEdits(() => setEdits(getVisibleEdits())), [sessionId]);
   const [busyAll, setBusyAll] = useState(false);
 
   if (edits.length === 0) return null;
@@ -114,6 +121,30 @@ export function PendingEditsReview() {
     }
   };
 
+  const discardAll = () => {
+    edits.forEach((edit) => removePendingEdit(edit.id));
+    setExpanded(false);
+  };
+
+  if (!expanded) {
+    return (
+      <div className="pe-dock">
+        <span className="pe-dock-marker" aria-hidden="true">●</span>
+        <span>
+          {edits.length} proposed edit{edits.length > 1 ? "s" : ""}
+        </span>
+        <span className="pe-dock-note">review before applying</span>
+        <span className="pe-spacer" />
+        <button type="button" className="pe-btn pe-btn-apply" onClick={() => setExpanded(true)}>
+          review
+        </button>
+        <button type="button" className="pe-btn" onClick={discardAll}>
+          discard all
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="pe-wrap">
       <div className="pe-head">
@@ -121,13 +152,16 @@ export function PendingEditsReview() {
           {edits.length} proposed edit{edits.length > 1 ? "s" : ""} — review before applying
         </span>
         <span className="pe-spacer" />
+        <button type="button" className="pe-btn" onClick={() => setExpanded(false)} disabled={busyAll}>
+          collapse
+        </button>
         <button type="button" className="pe-btn pe-btn-apply" onClick={applyAll} disabled={busyAll}>
           {busyAll ? "applying…" : "apply all"}
         </button>
         <button
           type="button"
           className="pe-btn"
-          onClick={() => edits.forEach((e) => removePendingEdit(e.id))}
+          onClick={discardAll}
           disabled={busyAll}
         >
           discard all

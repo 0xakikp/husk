@@ -15,7 +15,17 @@ export function TerminalStack({
   viewActive: boolean;
   onOpenLogs: (leafId: number) => void;
 }) {
-  const { tabs, activeId, splitLeaf, closeLeaf, focusLeaf, focusLeafDirection, ratioLeaf } = term;
+  const {
+    tabs,
+    activeId,
+    splitLeaf,
+    closeLeaf,
+    focusLeaf,
+    focusLeafDirection,
+    ratioLeaf,
+    updateLeafCwd,
+    updateLeafCheckpoint,
+  } = term;
   return (
     <div className="terminal-stack">
       {tabs.map((t) => (
@@ -33,6 +43,8 @@ export function TerminalStack({
             onClose={(leafId) => closeLeaf(t.id, leafId)}
             onFocus={(leafId) => focusLeaf(t.id, leafId)}
             onOpenLogs={onOpenLogs}
+            onCwd={(leafId, cwd) => updateLeafCwd(t.id, leafId, cwd)}
+            onCommandComplete={(leafId, run) => updateLeafCheckpoint(t.id, leafId, run)}
             onFocusDirection={(dir) => focusLeafDirection(t.id, dir)}
             onRatio={(splitId, ratio) => ratioLeaf(t.id, splitId, ratio)}
           />

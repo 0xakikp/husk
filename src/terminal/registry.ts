@@ -27,6 +27,11 @@ import {
   setActiveTerminalPtyId,
 } from "../ai/terminalContext";
 import { recordFailure, clearFailure, collapseFailure } from "./failureStore";
+import { clearNextSteps, collapseNextSteps, recordNextSteps } from "./nextSteps";
+import { clearGitActivity, recordGitActivity } from "./gitActivityStore";
+import { extractLocalDevUrls, recordPorts } from "./portStore";
+import { recordSensitiveOutput } from "./sensitiveOutputStore";
+import { completeTask, startTask } from "./taskStore";
 import { recordTimelineEvent } from "../timeline/store";
 import { syncWorkspaceRootToCwd } from "../workspace/store";
 import {
@@ -66,6 +71,7 @@ export type TerminalHandle = {
 
 export type TerminalCallbacks = {
   onCwd?: (cwd: string) => void;
+  onCommandComplete?: (run: { command: string; cwd: string; exitCode: number | null; at: number }) => void;
   onExit?: (code: number | null) => void;
   onFocus?: () => void;
   onData?: () => void;
@@ -118,6 +124,12 @@ type Session = {
   isRemoteShell: boolean;
   /** Absolute buffer row where the running command's output began (OSC 133 C). */
   cmdStartRow: number | null;
+  /** Command lifecycle is retained per PTY so hidden terminal tabs can still
+   * report their own completion state without corrupting the active terminal. */
+  currentCommand: string;
+  commandStartedAt: number;
+  /** Small rolling output sample for live local-server detection. */
+  liveOutputTail: string;
 };
 
 const sessions = new Map<number, Session>();
@@ -268,6 +280,9 @@ export async function createSession(
     menuOpen: false,
     isRemoteShell: false,
     cmdStartRow: null,
+    currentCommand: "",
+    commandStartedAt: 0,
+    liveOutputTail: "",
   };
   sessions.set(leafId, session);
 
@@ -280,24 +295,26 @@ export async function createSession(
       /* Workspace root follows the terminal so timeline/explorer/root never
          drift — local shells only, a remote path is not a local folder. */
       if (session.active && !session.isRemoteShell) syncWorkspaceRootToCwd(cwd);
-      session.callbacks.onCwd?.(cwd);
+      /* The restored launch directory must also remain local. A remote shell
+         may emit OSC 7 with a valid-looking `/path`, but spawning the next
+         local PTY there would be incorrect. */
+      if (!session.isRemoteShell) session.callbacks.onCwd?.(cwd);
     }
     return true;
   });
 
   term.parser.registerOscHandler(133, (data) => {
-    if (data.startsWith("B")) {
+    if (data.startsWith("B") && session.active) {
       const buf = term.buffer.active;
       const pos = { row: buf.cursorY + buf.viewportY, col: buf.cursorX };
       setPromptPosition(pos);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.
-    if (!session.active) return true;
     if (data.startsWith("D")) {
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
       const exitCode = Number.isNaN(code) ? null : code;
-      setActiveTerminalExit(exitCode);
+      if (session.active) setActiveTerminalExit(exitCode);
       /* Harvest just this command's output, using the row marked at C. Bounded on
          both axes: a build can emit tens of thousands of rows, and this runs on
          every prompt. */
@@ -313,24 +330,61 @@ export async function createSession(
           chars += line.length + 1;
         }
         const output = lines.join("\n").replace(/\s+$/, "");
-        const command = getCurrentCommand();
-        recordCommandRun({
+        const command = session.currentCommand || (session.active ? getCurrentCommand() : "");
+        const completedRun = {
           command,
           output,
           exitCode,
           at: Date.now(),
+        };
+        /* The AI picker reflects the focused terminal, not output from a tab
+           that happens to finish in the background. The per-leaf strips below
+           still receive every completion. */
+        if (session.active) recordCommandRun(completedRun);
+        if (command.trim()) {
+          session.callbacks.onCommandComplete?.({
+            command,
+            cwd: session.cwd,
+            exitCode,
+            at: completedRun.at,
+          });
+        }
+        completeTask(session.leafId, {
+          command,
+          cwd: session.cwd,
+          exitCode,
+          at: completedRun.at,
         });
         /* Per-pane failure state for the Command Failure Assistant. Only a
            completed command with a real non-zero exit opens the strip — a
            successful next command (or a new command, below) retires it. */
         if (exitCode != null && exitCode !== 0) {
           recordFailure(session.leafId, { command, output, exitCode, cwd: session.cwd });
+          clearNextSteps(session.leafId);
         } else if (exitCode === 0) {
           clearFailure(session.leafId);
+          recordSensitiveOutput(session.leafId, { command, output, at: completedRun.at });
+          recordGitActivity(session.leafId, { command, cwd: session.cwd, exitCode, at: completedRun.at });
+          if (!session.isRemoteShell) {
+            recordPorts(session.leafId, {
+              command,
+              urls: extractLocalDevUrls(command, output),
+              at: completedRun.at,
+            });
+          }
+          recordNextSteps(session.leafId, {
+            command,
+            output,
+            exitCode,
+            cwd: session.cwd,
+            at: completedRun.at,
+          });
+        } else {
+          clearNextSteps(session.leafId);
         }
         /* Timeline: the command and its outcome — never its output. */
         if (command.trim()) {
-          const durationMs = Date.now() - getCommandStartTime();
+          const durationMs = Date.now() - (session.commandStartedAt || getCommandStartTime());
           recordTimelineEvent(
             exitCode != null && exitCode !== 0 ? "command_failed" : "command",
             exitCode != null && exitCode !== 0
@@ -345,7 +399,10 @@ export async function createSession(
         }
         session.cmdStartRow = null;
       }
-      clearCurrentCommand();
+      if (session.active) clearCurrentCommand();
+      session.currentCommand = "";
+      session.commandStartedAt = 0;
+      session.liveOutputTail = "";
       // Interactive SSH/Mosh sessions are local commands that start a remote
       // shell. When the session ends, the shell is local again.
       session.isRemoteShell = false;
@@ -353,15 +410,24 @@ export async function createSession(
     if (data.startsWith("C")) {
       const b = term.buffer.active;
       session.cmdStartRow = b.baseY + b.cursorY;
-      markCommandStart();
+      session.liveOutputTail = "";
+      if (!session.commandStartedAt) session.commandStartedAt = Date.now();
+      startTask(session.leafId, {
+        command: session.currentCommand || (session.active ? getCurrentCommand() : ""),
+        cwd: session.cwd,
+        at: session.commandStartedAt,
+      });
+      if (session.active) markCommandStart();
     }
     return true;
   });
 
   term.parser.registerOscHandler(778, (data) => {
-    if (!session.active || !data.startsWith("husk;cmd;")) return true;
+    if (!data.startsWith("husk;cmd;")) return true;
     const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";").trim();
-    setCurrentCommand(cmd);
+    session.currentCommand = cmd;
+    session.commandStartedAt = Date.now();
+    if (session.active) setCurrentCommand(cmd);
     // Treat an interactive ssh/mosh session as remote for the duration of the
     // command. The remote shell usually doesn't have Husk integration, so the
     // only reliable signal is the local command that started it.
@@ -477,6 +543,18 @@ export async function createSession(
         term.write(text);
         emitTerminalOutput(leafId, text);
 
+        /* Dev servers commonly keep the foreground command running forever,
+           so waiting for OSC 133 D would never surface their local URL. Keep a
+           small per-PTY sample and only recognise explicit local endpoints. */
+        if (!session.isRemoteShell) {
+          session.liveOutputTail = `${session.liveOutputTail}${text}`.slice(-8_192);
+          const command = session.currentCommand || (session.active ? getCurrentCommand() : "");
+          recordPorts(session.leafId, {
+            command,
+            urls: extractLocalDevUrls(command, session.liveOutputTail),
+          });
+        }
+
         // Scan for husk commands in the incoming text (not buffered)
         // This is best-effort: husk commands typically emit on their own line
         let match: RegExpMatchArray | null;
@@ -509,6 +587,8 @@ export async function createSession(
       /* Typing at the prompt again means the user has moved on — the failure
          strip collapses to its tiny indicator instead of holding a row. */
       collapseFailure(leafId);
+      collapseNextSteps(leafId);
+      clearGitActivity(leafId);
       if (session.active) {
         setTerminalTyping(true);
         window.clearTimeout(session.typingTimer);
