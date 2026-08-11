@@ -110,7 +110,7 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
   };
 
   return (
-    <div ref={rootRef} className="relative inline-flex min-w-0 items-center gap-1">
+    <div ref={rootRef} className="model-switcher relative inline-flex min-w-0 items-center gap-1">
       <button
         type="button"
         onClick={() => {
@@ -118,15 +118,18 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
           setLimitsOpen(false);
         }}
         title={`${provider.label} · ${cfg.model || provider.defaultModel} · ${busy ? "streaming" : "connected"} — change provider or model`}
-        className="inline-flex min-w-0 items-center gap-1 rounded px-1 -mx-1 transition-colors hover:text-foreground"
+        className="model-switcher-select inline-flex min-w-0 items-center gap-1 rounded px-1 -mx-1 transition-colors hover:text-foreground"
       >
         <span className={cn("wb-status-dot shrink-0", provider.kind === "cli" && "text-primary")}>●</span>
-        <span className="truncate">
+        <span className="model-switcher-full-label truncate">
           {provider.kind === "cli" ? cliLabel(provider).toLowerCase() : provider.label.toLowerCase()}
           {" · "}
           {(cfg.model || provider.defaultModel).toLowerCase()}
           {" · "}
           {busy ? "streaming" : "connected"}
+        </span>
+        <span className="model-switcher-compact-label" aria-hidden="true">
+          {provider.kind === "cli" ? cliLabel(provider).toLowerCase() : provider.label.toLowerCase()}
         </span>
       </button>
 
@@ -141,10 +144,11 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
             setOpen(false);
           }}
           aria-expanded={limitsOpen}
-          title="What is unavailable in subscription mode?"
-          className="rounded bg-amber-500/10 px-1 text-[9px] text-amber-500/90 transition-colors hover:bg-amber-500/20"
+        title="How your signed-in plan works in Husk"
+          className="model-switcher-plan-info rounded bg-amber-500/10 px-1 text-[9px] text-amber-500/90 transition-colors hover:bg-amber-500/20"
         >
-          read-only
+          <span className="model-switcher-plan-info-full">how it works</span>
+          <span className="model-switcher-plan-info-compact" aria-hidden="true">i</span>
         </button>
       )}
 
@@ -152,7 +156,7 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
         /* Upward: the footer sits at the bottom of the panel, so a downward menu
            would open off-screen. */
         <div
-          className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[240px] overflow-y-auto rounded-lg border border-border/60 bg-background/95 py-1 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="model-switcher-menu absolute bottom-full left-0 z-50 mb-1.5 min-w-[240px] overflow-y-auto rounded-lg border border-border/60 bg-background/95 py-1 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ maxHeight }}
         >
           {usable.length === 0 ? (
@@ -174,8 +178,8 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
                   </div>
                   {p.kind === "cli" && (
                     <p className="px-2.5 pb-1 text-[9.5px] leading-snug text-amber-500/80">
-                      Limited features — Husk cannot edit files or use your
-                      connected tools in this mode.
+                      Same Husk action policy — the signed-in CLI proposes,
+                      then Husk validates and runs enabled actions.
                     </p>
                   )}
                   {/* A provider with no registered models still needs to be
@@ -214,14 +218,14 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
       {limitsOpen && provider.kind === "cli" && (
         <div
           role="status"
-          className="absolute bottom-full left-0 z-50 mb-1.5 w-72 overflow-y-auto border border-border/60 bg-background/95 p-3 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="model-switcher-limits absolute bottom-full left-0 z-50 mb-1.5 w-72 overflow-y-auto border border-border/60 bg-background/95 p-3 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ maxHeight }}
         >
           <p className="m-0 text-[11px] font-semibold text-foreground">{CLI_SUBSCRIPTION_MODE.title}</p>
           <p className="mt-1 text-[10px] leading-snug text-muted-foreground">{CLI_SUBSCRIPTION_MODE.summary}</p>
-          <p className="mt-2 text-[10px] leading-snug text-muted-foreground"><span className="text-foreground">Works: </span>{CLI_SUBSCRIPTION_MODE.works}</p>
-          <p className="mt-1 text-[10px] leading-snug text-muted-foreground"><span className="text-foreground">Unavailable: </span>{CLI_SUBSCRIPTION_MODE.unavailable}</p>
-          <p className="mt-2 text-[10px] leading-snug text-amber-500/90">{CLI_SUBSCRIPTION_MODE.unlock}</p>
+          <p className="mt-2 text-[10px] leading-snug text-muted-foreground"><span className="text-foreground">You can: </span>{CLI_SUBSCRIPTION_MODE.works}</p>
+          <p className="mt-1 text-[10px] leading-snug text-muted-foreground"><span className="text-foreground">Kept safe: </span>{CLI_SUBSCRIPTION_MODE.safety}</p>
+          <p className="mt-2 text-[10px] leading-snug text-amber-500/90">{CLI_SUBSCRIPTION_MODE.apiNote}</p>
         </div>
       )}
     </div>

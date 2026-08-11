@@ -8,7 +8,6 @@ import { TerminalBottomBar } from "../terminal/TerminalBottomBar";
 import { FailureStrip } from "../terminal/FailureStrip";
 import type { FailureExplainRequest } from "../terminal/FailureStrip";
 import { NextStepStrip } from "../terminal/NextStepStrip";
-import { TaskStrip } from "../terminal/TaskStrip";
 import { PortDetectedStrip } from "../terminal/PortDetectedStrip";
 import { GitActivityStrip } from "../terminal/GitActivityStrip";
 import { SensitiveOutputStrip } from "../terminal/SensitiveOutputStrip";
@@ -262,7 +261,6 @@ export function WorkspacePanels({
           />
           <EnvironmentWarningStrip leafId={activeLeafId} />
           <SensitiveOutputStrip leafId={activeLeafId} />
-          <TaskStrip leafId={activeLeafId} onOpenLogs={openLogs} />
           <PortDetectedStrip leafId={activeLeafId} onOpenBrowser={onOpenBrowser} />
           <GitActivityStrip leafId={activeLeafId} onOpenSourceControl={onOpenSourceControl} />
           <NextStepStrip

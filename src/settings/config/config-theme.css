@@ -497,9 +497,9 @@
 .settings-subscription-dot { display: inline-flex; width: 15px; height: 15px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, #f59e0b 55%, transparent); border-radius: 50%; color: #fbbf24; font-size: 10px; font-weight: 700; line-height: 1; }
 .settings-subscription-heading strong { display: block; color: var(--foreground); font-size: 11px; font-weight: 600; }
 .settings-subscription-heading p, .settings-subscription-details p, .settings-subscription-unlock { margin: 3px 0 0; max-width: 640px; font-size: 10.5px; line-height: 1.45; }
-.settings-subscription-details { display: grid; gap: 2px; margin: 8px 0 0 23px; }
+.settings-subscription-details { margin: 8px 0 0 23px; }
 .settings-subscription-details p { margin: 0; }
-.settings-subscription-details span { display: inline-block; width: 72px; color: var(--foreground); font-weight: 500; }
+.settings-subscription-details strong { color: var(--foreground); font-weight: 600; }
 .settings-subscription-unlock { margin-left: 23px; color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground)); }
 .settings-subscription-unlock button { border: 0; border-bottom: 1px solid transparent; padding: 0; color: var(--primary); background: none; cursor: pointer; font: inherit; font-weight: 550; }
 .settings-subscription-unlock button:hover { border-color: var(--primary); }
@@ -681,7 +681,7 @@
 .about-primary-action:hover { filter: brightness(1.1); transform: translateY(-1px); }
 .about-text-action, .about-footer button { border: 0; border-bottom: 1px solid transparent; padding: 2px 0; color: var(--primary); background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; white-space: nowrap; }
 .about-text-action:hover, .about-footer button:hover { border-color: var(--primary); }
-.about-primary-action:focus-visible, .about-text-action:focus-visible, .about-footer button:focus-visible, .about-trust-disclosure summary:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
+.about-primary-action:focus-visible, .about-text-action:focus-visible, .about-footer button:focus-visible, .about-trust-disclosure summary:focus-visible, .about-guide-disclosure summary:focus-visible, .about-guide-link:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
 .about-profile-divider { height: 1px; margin: 0 25px; background: color-mix(in srgb, var(--border) 80%, transparent); }
 .about-profile-section { padding: 16px 25px 18px; }
 
@@ -715,6 +715,32 @@
 .about-status-dot { display: inline-block; width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--primary); box-shadow: 0 0 9px color-mix(in srgb, var(--primary) 68%, transparent); }
 .about-trust-row.is-attention .about-status-dot { background: #fbbf24; box-shadow: 0 0 9px rgba(251, 191, 36, .52); }
 .about-trust-row dd > em { display: block; margin-top: 4px; color: #fbbf24; font-size: 8.75px; font-style: normal; line-height: 1.35; }
+
+/* The guide is deliberately a single disclosure: About remains an orientation
+   surface, while the README stays the complete reference. */
+.about-guide-disclosure { padding: 0 25px; }
+.about-guide-disclosure summary { display: grid; min-height: 68px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; cursor: pointer; list-style: none; }
+.about-guide-disclosure summary::-webkit-details-marker { display: none; }
+.about-guide-disclosure summary::after { color: var(--primary); content: "open guide  ›"; font-size: 9.5px; white-space: nowrap; transition: color .14s ease, transform .16s ease; }
+.about-guide-disclosure summary:hover::after { transform: translateX(2px); }
+.about-guide-disclosure[open] summary::after { content: "close guide  ↑"; transform: none; }
+.about-guide-disclosure summary span { min-width: 0; }
+.about-guide-disclosure summary b, .about-guide-disclosure summary small { display: block; }
+.about-guide-disclosure summary b { color: var(--foreground); font-size: 11px; font-weight: 600; }
+.about-guide-disclosure summary small { max-width: 610px; margin-top: 4px; color: var(--muted-foreground); font-size: 9.5px; line-height: 1.4; }
+.about-guide-details { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); padding: 4px 0 15px; animation: settings-disclosure-reveal .18s ease-out; }
+.about-guide-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; padding: 0; counter-reset: guide-step; list-style: none; }
+.about-guide-list li { position: relative; min-width: 0; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); padding: 11px 15px 11px 30px; counter-increment: guide-step; }
+.about-guide-list li::before { position: absolute; top: 11px; left: 0; color: var(--primary); content: "0" counter(guide-step); font-size: 9px; font-weight: 600; letter-spacing: .04em; }
+.about-guide-list li:nth-child(-n + 2) { border-top: 0; }
+.about-guide-list li:nth-child(even) { border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent); padding-left: 45px; }
+.about-guide-list li:nth-child(even)::before { left: 15px; }
+.about-guide-list b, .about-guide-list span { display: block; }
+.about-guide-list b { color: var(--foreground); font-size: 10px; font-weight: 600; line-height: 1.4; }
+.about-guide-list span { margin-top: 4px; color: var(--muted-foreground); font-size: 9px; line-height: 1.48; }
+.about-guide-list kbd { color: var(--foreground); font: inherit; font-size: inherit; font-weight: 500; }
+.about-guide-link { margin: 12px 0 1px; border: 0; border-bottom: 1px solid transparent; padding: 2px 0; color: var(--primary); background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; white-space: nowrap; }
+.about-guide-link:hover { border-color: var(--primary); }
 
 .about-next-section > .about-kicker { margin-bottom: 14px; }
 .about-next-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -938,6 +964,12 @@
   .about-trust-disclosure { padding: 0 18px; }
   .about-trust-disclosure summary { grid-template-columns: 1fr; padding: 12px 0; gap: 8px; }
   .about-trust-row { grid-template-columns: 1fr; gap: 4px; }
+  .about-guide-disclosure { padding: 0 18px; }
+  .about-guide-disclosure summary { grid-template-columns: 1fr; padding: 12px 0; gap: 8px; }
+  .about-guide-list { grid-template-columns: 1fr; }
+  .about-guide-list li, .about-guide-list li:nth-child(even) { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-left: 0; padding-left: 30px; }
+  .about-guide-list li:first-child { border-top: 0; }
+  .about-guide-list li:nth-child(even)::before { left: 0; }
   .about-next-grid { grid-template-columns: 1fr; }
   .about-next-grid > div { padding: 9px 0; }
   .about-next-grid > div + div { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-left: 0; padding-left: 0; }

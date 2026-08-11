@@ -278,6 +278,28 @@ export type CommandRun = {
   at: number;
 };
 
+/** A command completion with its originating PTY and directory. Unlike the
+ * small active-terminal history, this is an event stream so Terminal Pilot can
+ * wait for the exact command it launched even if the user looks at another
+ * terminal while it runs. */
+export type ObservedCommandRun = CommandRun & {
+  terminalPtyId: number | null;
+  cwd: string;
+};
+
+const commandRunSubscribers = new Set<(run: ObservedCommandRun) => void>();
+
+export function publishTerminalCommandRun(run: ObservedCommandRun): void {
+  for (const subscriber of commandRunSubscribers) subscriber(run);
+}
+
+export function subscribeTerminalCommandRuns(
+  subscriber: (run: ObservedCommandRun) => void,
+): () => void {
+  commandRunSubscribers.add(subscriber);
+  return () => commandRunSubscribers.delete(subscriber);
+}
+
 /** Small ring: enough to pick from, bounded so long sessions cannot grow it. */
 const MAX_RUNS = 10;
 let recentRuns: CommandRun[] = [];

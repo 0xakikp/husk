@@ -69,16 +69,12 @@ export type ClaudeCliOptions = {
 /**
  * Tools the CLI must not use.
  *
- * Husk owns file edits: they go through the pending-edits diff so nothing is
- * written before you have seen it, which the manifest promises outright. The CLI
- * is an agent and would happily edit and run commands itself, silently bypassing
- * that review — so its write and execute tools are refused here and Husk's own
- * tools handle those jobs.
- *
- * Reading is left enabled: it cannot surprise anyone, and refusing it would make
- * the CLI useless for questions about the code in front of you.
+ * Husk owns every workspace action. The CLI is an agent and would happily read,
+ * edit, or run commands itself, silently bypassing the chat's selected-workspace
+ * boundary and review trace. Those capabilities are refused here; it can return
+ * a small Husk action proposal instead, which the renderer validates.
  */
-const DISALLOWED_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "KillBash"].join(",");
+const DISALLOWED_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "KillBash"].join(",");
 
 let counter = 0;
 

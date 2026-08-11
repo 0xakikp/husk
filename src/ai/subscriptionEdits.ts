@@ -1,8 +1,8 @@
 import { resolveWorkspacePath } from "./workspaceScope";
 
-/** A signed-in CLI cannot call Husk tools. When the user explicitly enables
- * reviewable edits, it can instead return this small, untrusted interchange
- * format. Husk validates it, queues it, and only writes after user approval. */
+/** Legacy signed-in CLI edit interchange. New provider-neutral requests use
+ * `husk-action`; this format remains for existing review and auto-apply
+ * sessions. Husk validates every proposal before it can write. */
 export type SubscriptionEditProposal =
   | { kind: "edit"; path: string; search: string; replace: string }
   | { kind: "create"; path: string; content: string };

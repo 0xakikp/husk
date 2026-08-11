@@ -100,7 +100,8 @@ export type Prefs = {
   /** Byte budget for attached context on a new AI request (8/16/32/64 KB).
       Treated as bytes, not tokens — models tokenize differently. */
   aiContextBudgetKb: number;
-  /** Tool access only applies to non-subscription model modes. */
+  /** Husk-owned actions are available to every provider; signed-in CLIs use
+      validated action proposals rather than receiving raw tool access. */
   aiFileToolsEnabled: boolean;
   aiMcpToolsEnabled: boolean;
 

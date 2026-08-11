@@ -22,11 +22,11 @@ export type Provider = {
     It describes Husk's integration boundary, not a limitation of Codex or
     Claude themselves. */
 export const CLI_SUBSCRIPTION_MODE = {
-  title: "Subscription mode — read-only",
-  summary: "Uses your signed-in plan without an API key. Husk keeps the CLI read-only and never gives it direct filesystem write access.",
-  works: "Chat, code questions, terminal help, command suggestions, and reviewable workspace edit proposals when a chat explicitly enables them. A session-only auto-apply option can handle small, eligible proposals with Undo.",
-  unavailable: "Direct file writes, connected MCP tools, and other Husk actions that need tool access.",
-  unlock: "To use full Husk, configure an API provider. You can keep this mode and switch any time.",
+  title: "Use your signed-in plan",
+  summary: "Husk uses the account you are already signed into. You do not need an API key or any extra billing setup.",
+  works: "Ask questions, get terminal help, inspect a chosen folder, prepare file changes for review, use Terminal Pilot, and use enabled integrations.",
+  safety: "Husk asks before changing an existing file or making an integration change that could affect a remote service. Your sign-in and keys stay private.",
+  apiNote: "You can keep using this plan. Add an API key only if you would rather use an API provider later.",
 } as const;
 
 /**

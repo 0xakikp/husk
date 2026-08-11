@@ -564,7 +564,7 @@ function McpHealthRow({ serverId, readOnly }: { serverId: string; readOnly?: boo
           comment={
             readOnly
               ? "Read-only mode: the server exposes these reads; create/merge/delete operations are disabled by the integration."
-              : "Tools the AI may call when this server is enabled and an API-key model is active."
+              : "Tools Husk can call after this server is enabled. Non-read-only requests are shown for approval before they run."
           }
         >
           <CfgBlock
@@ -587,8 +587,8 @@ function IntegrationAccessNotice() {
     <aside className="settings-integration-notice" role="note">
       <span className="settings-integration-notice-mark" aria-hidden="true">i</span>
       <p>
-        <strong>Connected tools require an API-key model.</strong>
-        Select one in AI &amp; Models to use GitHub or another MCP server. Claude Code and Codex &ldquo;my subscription&rdquo; modes can chat, but cannot call connected tools.
+        <strong>Husk owns connected-tool access.</strong>
+        Enable an integration here, then enable Connected MCP tools in Settings → Agents. API models call the Husk Action Broker directly; signed-in CLI models submit a validated proposal to the same broker. Read-only calls can run in place; other calls require approval.
       </p>
     </aside>
   );

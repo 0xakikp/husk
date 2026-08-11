@@ -65,9 +65,9 @@ export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
     "--json",
     "--color",
     "never",
-    // Codex can inspect the workspace, but it cannot write into it. Husk owns
-    // edits via its reviewed diff flow, so a subscription backend must never
-    // bypass that promise.
+    // Codex's sandbox is kept read-only. Its response may request a separate,
+    // validated Husk action but never receives Husk's write, terminal, or MCP
+    // capabilities.
     "--sandbox",
     "read-only",
     // A terminal can be opened outside a Git repo; that should not make this
@@ -83,9 +83,9 @@ export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
   if (opts.model && opts.model !== "codex") args.push("--model", opts.model);
   args.push(
     [
-      "You are the read-only Codex backend inside Husk.",
-      "Do not edit files, run commands that change the environment, or use external tools.",
-      "Answer the user directly and concisely. Husk handles approved edits itself.",
+      "You are the signed-in Codex planner inside Husk.",
+      "Do not edit files, run commands, or use external tools yourself.",
+      "When the system prompt permits it, return an exact husk-action proposal; Husk validates and executes it. Never claim an action completed until Husk returns its result.",
       "",
       opts.prompt,
     ].join("\n"),
@@ -119,8 +119,9 @@ export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
               opts.onDelta(line.item.text);
             } else if (line.type === "item.started" && line.item?.type === "command_execution") {
               // A compact status line is useful, but never expose a command as
-              // if Husk itself initiated it. Codex is read-only in this mode.
-              opts.onStatus?.("Codex is reading the workspace");
+              // if Husk itself initiated it. Codex remains sandboxed; its text
+              // response, not this event, is the only accepted action input.
+              opts.onStatus?.("Codex is planning");
             } else if (line.type === "turn.failed") {
               eventError = line.error?.message || "Codex could not complete this request.";
             } else if (line.type === "error") {

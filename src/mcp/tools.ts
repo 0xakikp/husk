@@ -1,6 +1,5 @@
 import { jsonSchema, tool, type Tool } from "ai";
 import {
-  callMcpTool,
   connectMcpServer,
   disconnectMcpServer,
   getAllMcpTools,
@@ -8,6 +7,7 @@ import {
 } from "./client";
 import { loadMcpServers, resolveMcpServerEnv } from "./store";
 import { reportMcpConnecting, reportMcpResult } from "./health";
+import { executeHuskAction, type HuskActionContext } from "../ai/actionBroker";
 
 let cachedDiscovered: McpDiscoveredTool[] = [];
 
@@ -15,7 +15,7 @@ let cachedDiscovered: McpDiscoveredTool[] = [];
  * Connect to all enabled MCP servers and build AI SDK tools from their tools.
  * Call before an AI run to get a fresh tool set.
  */
-export async function buildMcpTools(): Promise<Record<string, Tool>> {
+export async function buildMcpTools(actionContext: Pick<HuskActionContext, "sessionId"> = {}): Promise<Record<string, Tool>> {
   const enabled = loadMcpServers().filter((c) => c.enabled);
 
   // Drop servers that are no longer enabled.
@@ -50,37 +50,15 @@ export async function buildMcpTools(): Promise<Record<string, Tool>> {
       description: `[${t.serverName}] ${t.description ?? t.name}`,
       inputSchema: jsonSchema(t.inputSchema as unknown as Record<string, unknown>),
       execute: async (input) => {
-        try {
-          return mcpResultToString(
-            await callMcpTool(t.serverId, t.name, input as Record<string, unknown>),
-          );
-        } catch (e) {
-          return `MCP tool error: ${e instanceof Error ? e.message : String(e)}`;
-        }
+        const result = await executeHuskAction(
+          { kind: "mcp.call", serverId: t.serverId, toolName: t.name, input: input as Record<string, unknown> },
+          { ...actionContext, fileToolsEnabled: false, mcpToolsEnabled: true },
+        );
+        return result.result ?? result.summary;
       },
     });
   }
   return result;
-}
-
-function mcpResultToString(result: unknown): string {
-  if (result == null) return "";
-  if (typeof result === "string") return result;
-
-  const r = result as Record<string, unknown>;
-  if (Array.isArray(r.content)) {
-    const parts: string[] = [];
-    for (const item of r.content) {
-      const typed = item as Record<string, unknown>;
-      if (typed.type === "text" && typeof typed.text === "string") parts.push(typed.text);
-      else if (typed.type === "image" || typed.type === "audio") parts.push(`[${typed.type} data]`);
-      else if (typed.type === "resource") parts.push("[resource]");
-      else parts.push(JSON.stringify(typed));
-    }
-    return parts.join("\n");
-  }
-  if (r.isError) return `Error: ${JSON.stringify(r)}`;
-  return JSON.stringify(result, null, 2);
 }
 
 export function getMcpToolMeta(): Array<{

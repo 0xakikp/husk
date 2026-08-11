@@ -6,6 +6,7 @@ import { ConfigEditor } from "../config/controls";
 import { useNativeConfigStatus } from "../nativeConfig";
 
 const REPO_URL = "https://github.com/0xakikp/husk";
+const GUIDE_URL = "https://github.com/0xakikp/husk#readme";
 const FEEDBACK_URL = "https://github.com/0xakikp/husk/issues/new";
 const BUY_ME_A_COFFEE_URL = "https://buymeacoffee.com/akikp";
 
@@ -126,6 +127,42 @@ export function ManifestFile() {
                   <dd><code>~/.husk/agents/ · ~/.husk/notes/</code><small>Custom agents and Vault notes remain editable, local Markdown.</small></dd>
                 </div>
               </dl>
+            </div>
+          </details>
+
+          <div className="about-profile-divider" />
+
+          <details className="about-guide-disclosure">
+            <summary>
+              <span>
+                <b>Learn Husk</b>
+                <small>A practical guide to terminals, AI, workspace safety, and connected tools.</small>
+              </span>
+            </summary>
+            <div className="about-guide-details">
+              <ol className="about-guide-list">
+                <li>
+                  <b>Start with a workspace</b>
+                  <span>Open a folder, then work from its terminal. A chat opened from that terminal starts with the same folder; a general chat lets you choose one from its header.</span>
+                </li>
+                <li>
+                  <b>Use AI with a clear boundary</b>
+                  <span>API models and signed-in subscriptions use the same Husk workspace rules, review flow, and visible actions. The difference is only how the provider connects.</span>
+                </li>
+                <li>
+                  <b>Let Terminal Pilot investigate</b>
+                  <span>Give Pilot a diagnostic goal and it plans narrow commands. Husk runs each one visibly, waits for the result, and asks before anything that could change your system.</span>
+                </li>
+                <li>
+                  <b>Connect tools deliberately</b>
+                  <span>Add MCP servers in Integrations, use the built-in operational views, and keep non-read-only remote actions behind an approval step.</span>
+                </li>
+                <li>
+                  <b>Keep the controls close</b>
+                  <span>Open the command palette with <kbd>⌘/Ctrl K</kbd> for navigation, settings, workspace actions, and Beautiful Logs.</span>
+                </li>
+              </ol>
+              <button type="button" className="about-guide-link" onClick={() => void openUrl(GUIDE_URL)}>read the full guide on GitHub ↗</button>
             </div>
           </details>
 

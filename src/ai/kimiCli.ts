@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 /**
- * Kimi Code as a signed-in, read-only Husk backend.
+ * Kimi Code as a signed-in Husk planning backend.
  *
  * Kimi's non-interactive mode normally auto-approves its own tools. The Rust
  * bridge therefore supplies a one-run Kimi agent profile with `tools: []`.
@@ -54,10 +54,10 @@ export function runKimiCli(opts: KimiCliOptions): KimiCliRun {
   const args = [
     "--prompt",
     [
-      "You are the read-only Kimi backend inside Husk.",
+      "You are the signed-in Kimi planner inside Husk.",
       "No Kimi Code tools are available in this conversation.",
       "Do not claim to have edited files, run commands, or used external tools.",
-      "Answer the user directly and concisely. Husk handles approved actions itself.",
+      "When the system prompt permits it, return an exact husk-action proposal; Husk validates and executes it. Never claim completion before Husk returns a result.",
       "",
       opts.prompt,
     ].join("\n"),

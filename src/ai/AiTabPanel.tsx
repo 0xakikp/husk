@@ -81,7 +81,7 @@ export function AiTabPanel() {
   const [sidebarWidth, setSidebarWidth] = useState(sidebarWidthRef.current);
 
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       if (!sidebarDragRef.current || !sidebarRef.current) return;
       const left = sidebarRef.current.getBoundingClientRect().left;
       const next = Math.min(380, Math.max(160, Math.round(e.clientX - left)));
@@ -93,11 +93,13 @@ export function AiTabPanel() {
       sidebarDragRef.current = false;
       setPrefs({ aiSidebarWidth: sidebarWidthRef.current });
     };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
   }, []);
 
@@ -160,11 +162,21 @@ export function AiTabPanel() {
         : hasFailureEvidence
           ? { label: "failure context", className: "border-amber-400/25 text-amber-400/75" }
           : null;
+    /* The active row permanently reserves room for three actions. Derive the
+       session chrome from the measured sidebar width so a long status label
+       cannot survive into that reserved space while the user drags narrower. */
+    const compactSessionStatus = sidebarWidth < 360;
+    const showTerminalBadge = sidebarWidth >= 280;
+    const statusLabel = state
+      ? compactSessionStatus
+        ? state.label === "failure context" ? "!" : state.label.replace(/\s+context$/, "")
+        : state.label
+      : "";
     return (
       <div
         key={s.id}
         className={cn(
-          "group relative flex items-start gap-2 rounded-md border px-2 py-1 font-mono text-[11px] transition-all",
+          "ai-session-row group relative flex min-w-0 items-start gap-2 rounded-md border px-2 py-1 font-mono text-[11px] transition-all",
           isActive
             ? "border-primary/60 bg-primary/[0.07] text-foreground"
             : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -189,7 +201,7 @@ export function AiTabPanel() {
               onClick={() => setActiveSessionId(s.id)}
               className="flex flex-1 min-w-0 flex-col items-start text-left"
             >
-              <span className="flex w-full items-center gap-1.5">
+              <span className="ai-session-row-title flex min-w-0 w-full items-center gap-1.5">
                 <span
                   className={cn(
                     "shrink-0 text-[10px] transition-colors",
@@ -201,20 +213,20 @@ export function AiTabPanel() {
                   {isTerminal ? "▸" : "✦"}
                 </span>
                 <span className="truncate font-medium">{s.name}</span>
-                {isTerminal && (
-                  <span className="hidden shrink-0 rounded border border-emerald-400/20 px-1 py-px text-[7px] font-medium uppercase tracking-wide text-emerald-400/70 min-[220px]:inline">
+                {isTerminal && showTerminalBadge && (
+                  <span className="ai-session-terminal-badge shrink-0 rounded border border-emerald-400/20 px-1 py-px text-[7px] font-medium uppercase tracking-wide text-emerald-400/70">
                     terminal
                   </span>
                 )}
                 {state && (
                   <span
                     className={cn(
-                      "hidden shrink-0 rounded border px-1 py-px text-[7px] font-medium uppercase tracking-wide min-[260px]:inline",
+                      "ai-session-state-badge shrink-0 rounded border px-1 py-px text-[7px] font-medium uppercase tracking-wide",
                       state.className,
                     )}
                     title={state.label === "failure context" ? "This chat included failed terminal output as context" : state.label}
                   >
-                    {state.label}
+                    {statusLabel}
                   </span>
                 )}
               </span>
@@ -224,7 +236,7 @@ export function AiTabPanel() {
             </button>
 
             {/* actions — hidden until hover/selected */}
-            <div className={cn("flex items-center gap-0.5 shrink-0", !isActive && "opacity-0 group-hover:opacity-100 transition-opacity")}>
+            <div className={cn("ai-session-row-actions flex items-center gap-0.5 shrink-0", !isActive && "opacity-0 group-hover:opacity-100 transition-opacity")}>
               <button
                 type="button"
                 onClick={() => startRename(s.id, s.name)}
@@ -272,14 +284,15 @@ export function AiTabPanel() {
       {/* Session sidebar */}
       {!focusMode && <div
         ref={sidebarRef}
-        className="relative flex h-full shrink-0 flex-col border-r border-border/50 bg-background/95"
+        className="ai-session-sidebar relative flex h-full shrink-0 flex-col border-r border-border/50 bg-background/95"
         style={{ width: sidebarWidth }}
       >
         {/* drag-to-resize handle */}
         <div
-          className="absolute -right-[2px] top-0 bottom-0 z-10 w-[5px] cursor-ew-resize transition-colors hover:bg-primary/40"
-          onMouseDown={(e) => {
+          className="husk-resize-seam husk-resize-seam-vertical absolute -right-[6px] top-0 bottom-0 z-30 w-3 cursor-ew-resize touch-none"
+          onPointerDown={(e) => {
             e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
             sidebarDragRef.current = true;
           }}
           title="Drag to resize"
@@ -362,17 +375,6 @@ export function AiTabPanel() {
         </div>
       </div>}
 
-      {focusMode && (
-        <button
-          type="button"
-          onClick={() => setFocusMode(false)}
-          className="absolute left-0 top-1/2 z-20 -translate-y-1/2 rounded-r-md border border-l-0 border-border/60 bg-background/95 px-1.5 py-2 font-mono text-[9px] text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground"
-          title="Show chat list"
-        >
-          chats
-        </button>
-      )}
-
       {/* Chat area */}
       {/* This is a vertical flex boundary for the full composer. Without
           min-h-0, a long transcript can make the composer grow past this pane
@@ -385,6 +387,7 @@ export function AiTabPanel() {
             registerToggle={false}
             registerOpen={false}
             registerSend={false}
+            onShowSessionList={focusMode ? () => setFocusMode(false) : undefined}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">

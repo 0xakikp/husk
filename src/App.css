@@ -2207,6 +2207,82 @@ button {
   background: var(--accent);
 }
 
+/* ── Resizable pane affordances ────────────────────────────────────────── */
+/* A seam should be discoverable without becoming another visible divider.
+   The broad pointer target makes dragging comfortable; the short centre grip
+   is the shared visual cue used by the main sidebar, AI session list, and
+   lower inspector. */
+.husk-resize-seam {
+  isolation: isolate;
+  touch-action: none;
+  user-select: none;
+}
+
+/* Most seams are regular dividers and need a containing block for their grip.
+   The AI chat-list seam is deliberately absolute so its hit area straddles the
+   sidebar edge; do not override that placement with the shared base rule. */
+.husk-resize-seam:not(.absolute) {
+  position: relative;
+}
+
+.husk-resize-seam::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.husk-resize-seam::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 90%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--background) 45%, transparent);
+  pointer-events: none;
+  transition: width 0.15s ease, height 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.husk-resize-seam-vertical::before {
+  inset: 0 -5px;
+}
+
+.husk-resize-seam-vertical::after {
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 42px;
+  transform: translate(-50%, -50%);
+}
+
+.husk-resize-seam-horizontal::before {
+  inset: -5px 0;
+}
+
+.husk-resize-seam-horizontal::after {
+  top: 50%;
+  left: 50%;
+  width: 42px;
+  height: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.husk-resize-seam:hover::after,
+.husk-resize-seam:active::after {
+  background: color-mix(in srgb, var(--primary) 78%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.husk-resize-seam-vertical:hover::after,
+.husk-resize-seam-vertical:active::after {
+  height: 72px;
+}
+
+.husk-resize-seam-horizontal:hover::after,
+.husk-resize-seam-horizontal:active::after {
+  width: 72px;
+}
+
 .workspace-ai {
   display: flex;
   flex: 0 0 auto;

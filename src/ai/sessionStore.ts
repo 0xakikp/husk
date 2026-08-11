@@ -16,7 +16,7 @@ export type AiReplyTrace = {
   mode: "api" | "subscription";
   /** The workspace explicitly selected for this request, if any. */
   workspacePath?: string;
-  /** A signed-in CLI could return reviewed proposals for this request. */
+  /** The legacy signed-in CLI edit-proposal format was enabled for this request. */
   workspaceEditAccess?: boolean;
   /** This request could apply eligible proposals automatically in-memory only. */
   workspaceAutoApply?: boolean;
@@ -45,8 +45,8 @@ export type AiSession = {
    * historical messages to whichever folder happens to be open now.
    */
   workspacePath?: string;
-  /** Explicit, scope-specific consent for a signed-in CLI to return reviewed
-      edit proposals. It never grants that CLI direct filesystem write access. */
+  /** Explicit, scope-specific compatibility flag for the legacy signed-in CLI
+      edit-proposal format. It never grants direct filesystem write access. */
   workspaceEditAccess?: boolean;
   createdAt: number;
   updatedAt: number;

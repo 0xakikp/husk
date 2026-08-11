@@ -145,8 +145,8 @@ pub fn codex_cli_start(
 
 /// Spawn Gemini CLI with a per-run, deny-all admin policy. Passing this
 /// explicit policy is important: a signed-in CLI may have user-installed
-/// extensions or MCP servers, but a Husk subscription conversation must never
-/// inherit tool access that bypasses Husk's reviewed action flow.
+/// extensions or MCP servers, but a Husk planning conversation must never
+/// inherit tool access that bypasses the Husk Action Broker.
 #[tauri::command]
 pub fn gemini_cli_start(
     app: AppHandle,
@@ -201,18 +201,19 @@ const GEMINI_READ_ONLY_POLICY: &str = r#"# Rewritten by Husk before every Gemini
 toolName = "*"
 decision = "deny"
 priority = 999
-denyMessage = "Husk subscription mode is read-only. Suggest an action instead of running it."
+denyMessage = "Husk owns actions. Return a husk-action proposal instead of running a tool."
 "#;
 
 const KIMI_READ_ONLY_AGENT: &str = r#"---
-name: husk-read-only
-description: Read-only assistant for a Husk subscription conversation.
+name: husk-action-planner
+description: Tool-free planner for a Husk subscription conversation.
 tools: []
 subagents: []
 ---
-You are the read-only Kimi backend inside Husk. Answer questions and suggest
+You are the tool-free Kimi planner inside Husk. Answer questions and suggest
 safe next steps, but do not claim to edit files, run commands, or use external
-tools. Husk presents actions separately for the user to review.
+tools. When the prompt permits it, return a husk-action proposal; Husk validates
+and runs it under its own review policy.
 "#;
 
 /// Keep generated policy/profile files inside Husk application data, never in

@@ -337,11 +337,11 @@ export function AgentsFile() {
       <CfgBlank />
 
       <CfgSection name="toolAccess" />
-      <CfgComment>These controls apply to API-backed models. Subscription / CLI modes remain read-only.</CfgComment>
-      <CfgRow name="workspaceFileTools" comment="Allow the model to inspect workspace files and propose edits. Existing-file changes still go through review.">
+      <CfgComment>Husk owns these actions for every model. API models call the broker directly; signed-in CLIs submit validated proposals. The same workspace scope and review rules apply.</CfgComment>
+      <CfgRow name="workspaceFileTools" comment="Allow AI chats to inspect selected workspace files and propose edits. Existing-file changes still go through review.">
         <CfgBool value={p.aiFileToolsEnabled} onChange={(aiFileToolsEnabled) => setPrefs({ aiFileToolsEnabled })} />
       </CfgRow>
-      <CfgRow name="connectedMcpTools" comment="Allow configured MCP integrations, such as GitHub. Disabling this stops Husk from connecting them for AI chats.">
+      <CfgRow name="connectedMcpTools" comment="Allow configured MCP integrations, such as GitHub. Husk runs read-only calls directly; other integration actions always require approval.">
         <CfgBool value={p.aiMcpToolsEnabled} onChange={(aiMcpToolsEnabled) => setPrefs({ aiMcpToolsEnabled })} />
       </CfgRow>
       <CfgBlank />

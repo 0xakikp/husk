@@ -30,26 +30,27 @@ function maskKey(k: string): string {
 /** This appears at the decision point, rather than expecting a person to
     infer the trade-off from the provider's technical configuration below. */
 function SubscriptionModeNotice({ provider }: { provider: Provider }) {
+  const providerName = provider.label.replace(/\s*\(my subscription\)\s*$/i, "");
   return (
     <aside className="settings-subscription-notice" role="note">
       <div className="settings-subscription-heading">
         <span className="settings-subscription-dot" aria-hidden="true">!</span>
         <div>
-          <strong>{CLI_SUBSCRIPTION_MODE.title}</strong>
-          <p>{provider.label}{" — "}{CLI_SUBSCRIPTION_MODE.summary}</p>
+          <strong>Using your {providerName} subscription</strong>
+          <p>{CLI_SUBSCRIPTION_MODE.summary}</p>
         </div>
       </div>
       <div className="settings-subscription-details">
-        <p><span>Works</span>{CLI_SUBSCRIPTION_MODE.works}</p>
-        <p><span>Unavailable</span>{CLI_SUBSCRIPTION_MODE.unavailable}</p>
+        <p><strong>You can:</strong> {CLI_SUBSCRIPTION_MODE.works}</p>
+        <p><strong>Kept safe:</strong> {CLI_SUBSCRIPTION_MODE.safety}</p>
       </div>
       <p className="settings-subscription-unlock">
-        {CLI_SUBSCRIPTION_MODE.unlock}{" "}
+        {CLI_SUBSCRIPTION_MODE.apiNote}{" "}
         <button
           type="button"
           onClick={() => document.getElementById("api-provider-access")?.scrollIntoView({ behavior: "smooth", block: "start" })}
         >
-          [ set up API access ]
+          [ choose an API provider ]
         </button>
       </p>
     </aside>
@@ -158,7 +159,7 @@ function ProviderBlock({ provider }: { provider: Provider }) {
         <CfgBool value={isCli ? cliReady : provider.keyless || !!apiKey} onChange={() => {}} />
       </CfgRow>
       {isCli ? (
-        <CfgComment>Subscription mode is read-only. Its available and unavailable features are shown above when selected.</CfgComment>
+        <CfgComment>Signed-in CLI models propose actions; Husk validates and runs enabled workspace and integration actions under the same review rules as API models.</CfgComment>
       ) : null}
     </>
   );

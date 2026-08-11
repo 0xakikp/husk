@@ -220,7 +220,7 @@ export function SidebarHost({
         className={cn(
           /* The visible divider stays slim; the pseudo-element supplies a
              forgiving hit target so resizing does not require finding 1px. */
-          "relative flex shrink-0 cursor-col-resize items-center justify-center bg-border/60 before:absolute before:inset-y-0 before:-inset-x-[4px] before:content-[''] hover:bg-border",
+          "husk-resize-seam husk-resize-seam-vertical relative flex shrink-0 cursor-col-resize items-center justify-center bg-border/60 hover:bg-border",
           prefs.panelGaps > 0 ? "w-2" : "w-px",
         )}
         title="Drag to resize sidebar"

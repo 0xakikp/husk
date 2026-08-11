@@ -19,6 +19,7 @@ import {
   setCurrentCommand,
   clearCurrentCommand,
   recordCommandRun,
+  publishTerminalCommandRun,
   getCurrentCommand,
   getCommandStartTime,
   markCommandStart,
@@ -339,6 +340,14 @@ export async function createSession(
           exitCode,
           at: Date.now(),
         };
+        /* Pilot listens to this exact PTY completion rather than polling the
+           active terminal. It remains correct when the user changes focus
+           while an observed command is still running. */
+        publishTerminalCommandRun({
+          ...completedRun,
+          terminalPtyId: session.ptyId,
+          cwd: session.cwd,
+        });
         /* The AI picker reflects the focused terminal, not output from a tab
            that happens to finish in the background. The per-leaf strips below
            still receive every completion. */

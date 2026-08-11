@@ -9,7 +9,7 @@ export type ContextInspectorTools = {
   /** e.g. "gpt-5.2" — the model the request would go to. */
   modelLabel: string;
   providerLabel: string;
-  /** "cli" means a signed-in subscription mode with no Husk tool access. */
+  /** API and signed-in providers use the same Husk action policy. */
   providerKind: string;
   fileToolsEnabled: boolean;
   mcpToolsEnabled: boolean;
@@ -121,23 +121,20 @@ export function ContextInspector({
             <span className="ctx-inspector-tool-name">Model</span>
             <span className="ctx-inspector-tool-state">
               {tools.providerLabel} · {tools.modelLabel}
-              {tools.providerKind === "cli" ? " · subscription (no tools)" : " · API"}
+              {tools.providerKind === "cli" ? " · subscription · Husk actions" : " · API · Husk actions"}
             </span>
           </div>
           <div className="ctx-inspector-tool-row">
             <span className="ctx-inspector-tool-name">File tools</span>
             <span className="ctx-inspector-tool-state">
-              {tools.providerKind === "cli"
-                ? "unavailable in subscription mode"
-                : tools.fileToolsEnabled
-                  ? tools.workspacePath
-                    ? `enabled · ${tools.workspacePath}`
-                    : "select a workspace first"
-                  : "disabled"}
+              {tools.fileToolsEnabled
+                ? tools.workspacePath
+                  ? `enabled · ${tools.workspacePath}`
+                  : "select a workspace first"
+                : "disabled"}
             </span>
           </div>
-          {tools.providerKind !== "cli" &&
-            (enabledServers.length > 0 ? (
+          {enabledServers.length > 0 ? (
               enabledServers.map((s) => (
                 <div key={s.id} className="ctx-inspector-tool-row">
                   <span className="ctx-inspector-tool-name">{s.name}</span>
@@ -152,7 +149,7 @@ export function ContextInspector({
                 <span className="ctx-inspector-tool-name">MCP</span>
                 <span className="ctx-inspector-tool-state">no integrations configured</span>
               </div>
-            ))}
+            )}
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 /**
- * Gemini CLI as a signed-in, read-only Husk backend.
+ * Gemini CLI as a signed-in Husk planning backend.
  *
  * Gemini's headless mode emits JSONL. Rust adds a Husk-owned deny-all policy
  * to each launch, so the CLI cannot use its filesystem, shell, extension, or
@@ -48,10 +48,10 @@ export function runGeminiCli(opts: GeminiCliOptions): GeminiCliRun {
   const args = [
     "--prompt",
     [
-      "You are the read-only Gemini backend inside Husk.",
+      "You are the signed-in Gemini planner inside Husk.",
       "Husk has disabled all Gemini CLI tools for this conversation.",
       "Do not claim to have edited files, run commands, or used external tools.",
-      "Answer the user directly and concisely. Husk handles approved actions itself.",
+      "When the system prompt permits it, return an exact husk-action proposal; Husk validates and executes it. Never claim completion before Husk returns a result.",
       "",
       opts.prompt,
     ].join("\n"),

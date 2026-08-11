@@ -31,6 +31,7 @@ Most developer tools make you choose a primary surface: an editor with a hidden 
 - Run multiple terminal tabs, split a tab into panes, and restore sessions and working directories between launches.
 - Use shell integration to understand command boundaries, current working directory, exit status, and recent command output.
 - Search terminal history and terminal output, get command suggestions, and ask AI to explain a failure or propose a command.
+- Start **Terminal Pilot** from the docked composer with an API-backed model or signed-in CLI subscription: give it a diagnostic goal and it runs one narrow, observable command at a time in the terminal you selected, waits for the real result, and adapts the next step. Every command and output remain visible; anything outside the diagnostic allowlist, any protected environment, and any state-changing action stops for explicit approval. The model only plans—Husk owns and validates terminal execution.
 - Open **Beautiful Logs** from `⌘/Ctrl K`: formatted live terminal output appears in a lower inspector split, with filters for all, info, warnings, and errors. It is a focused view of the active terminal—not an endless, separate log archive.
 - Read the bottom bar at a glance: current command state, workspace folder, Git branch and status, CPU, memory, system load, battery, and clock.
 
@@ -52,16 +53,16 @@ Choose the access mode that fits your workflow:
 
 | Mode | Best for | What it can do in Husk |
 | --- | --- | --- |
-| **API-backed model** | Full workspace assistance | Chat, scoped file tools when enabled, and configured MCP integrations. |
-| **Signed-in CLI subscription** | Using an existing CLI plan | Chat, code questions, terminal help, and command suggestions without an API key. It cannot directly call Husk file tools or MCP integrations, but can return guarded workspace-edit proposals when you explicitly enable them. |
+| **API-backed model** | Native tool-call loops | Chat, scoped workspace actions, configured MCP integrations, and Terminal Pilot’s supervised diagnostic loop. API tool calls enter the Husk Action Broker. |
+| **Signed-in CLI subscription** | Using an existing CLI plan | Chat, code questions, terminal help, Terminal Pilot planning, and the same scoped workspace and integration actions without an API key. The CLI returns a validated action proposal; Husk runs it through the same broker. |
 
 Signed-in CLI modes are available for Claude Code, Codex, Gemini CLI, and Kimi Code. API-backed providers include OpenAI, Anthropic, Google, Groq, DeepSeek, OpenRouter, xAI, Mistral, Moonshot, and compatible local endpoints such as LM Studio or Ollama. The configured provider, model, and access mode are always visible in the AI interface.
 
-#### Workspace scope and safe subscription edits
+#### Workspace scope and reviewed actions
 
-Each AI chat can be given its own workspace folder from the composer header. This is a deliberate per-chat boundary: terminal-originated chats begin with that terminal’s current workspace, while a general chat stays unscoped until you choose a folder. API file tools and selected context stay inside that folder.
+Each AI chat can be given its own workspace folder from the composer header. This is a deliberate per-chat boundary: terminal-originated chats begin with that terminal’s current workspace, while a general chat stays unscoped until you choose a folder. Workspace actions and selected context stay inside that folder.
 
-For a signed-in CLI subscription, enabling **Reviewable workspace edits** lets the model return structured file-change proposals rather than writing directly. Husk validates the path again in the native layer, renders a compact diff, and lets you apply or discard every change. You can also enable **Auto-apply safe proposals** for the current chat session: Husk considers only small batches of source changes and keeps secrets, configuration, dependency locks, generated output, and protected folders in manual review. Applied subscription changes stay visible below the composer and can be undone while the file remains unchanged.
+The **Husk Action Broker** is the local permission boundary for every model. API models use native tool calls; signed-in CLIs return small action proposals. Both go through the same workspace validation, including the native symlink boundary. Reads and listings can complete in place; existing-file edits always render a diff for review. New files are created only inside the selected workspace. Generic MCP tools are treated as potentially mutating unless the integration is explicitly read-only, so non-read-only calls appear in an approval queue before Husk contacts the remote service. Applied subscription changes remain visible below the composer and can be undone while the file remains unchanged.
 
 #### AI that adapts to the person and project
 
@@ -93,8 +94,9 @@ Husk’s first-run defaults are deliberately opinionated: Iosevka typography, th
 2. Open `⌘/Ctrl K` and try **Open beautiful logs**, **Open settings**, or a workspace search.
 3. In **Settings → AI & Models**, select an API-backed provider or a signed-in CLI subscription mode.
 4. In **Settings → Agents**, choose an agent, set a response style, and decide what context a new AI chat should attach.
-5. In a Husk AI chat, choose a workspace folder from the header before attaching files or enabling reviewed subscription edits.
-6. If you use integrations, add them in **Settings → Integrations**. Husk explains there when the selected model mode cannot use connected tools.
+5. In a Husk AI chat, choose a workspace folder from the header before attaching workspace context or asking it to inspect or change files.
+6. For a multi-step diagnosis, enter the goal in the docked composer and select **Pilot**. It runs only observed diagnostics until it needs your approval or reaches a conclusion.
+7. If you use integrations, add them in **Settings → Integrations**. Read-only calls can run in place; other calls are shown for approval before they reach the service.
 
 ## Keyboard shortcuts
 
@@ -123,8 +125,8 @@ Husk makes the important boundaries explicit.
 - These user-home files are kept when Husk is normally removed and reinstalled. Deleting `~/.husk/` deliberately removes them.
 - Chat history, terminal session restoration, project memory, recents, and other transient workspace state remain local application data for now; they are not placed in the readable config or agent files.
 - Terminal output, file contents, attachments, project memory, personal memory, and display name can be sent to the selected AI provider when included in an AI request. Review context chips before sending sensitive output.
-- File and MCP tool access can be disabled in **Settings → Agents**. API file tools are restricted to the workspace selected by the current chat; the native layer checks the workspace boundary again, including symlink escapes.
-- Signed-in CLI subscriptions never receive direct Husk write or MCP access. Their optional reviewed proposals must use a selected workspace. Auto-apply is off by default, lives only for the current app session and workspace, and leaves protected paths in manual review. Undo refuses to overwrite a file that changed after Husk’s edit.
+- File and MCP action access can be disabled in **Settings → Agents**. Every provider sends Husk action requests through the same broker: APIs use native tool calls, while signed-in CLIs return validated proposals. Husk never forwards its filesystem-write, terminal-execution, keychain, or MCP credentials to a provider.
+- Workspace actions are restricted to the folder selected by the current chat; the native layer checks the boundary again, including symlink escapes. Existing-file changes are reviewable, non-read-only MCP calls require approval, and Undo refuses to overwrite a file that changed after Husk’s edit.
 
 ## Run from source
 

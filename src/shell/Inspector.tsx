@@ -102,11 +102,10 @@ export function Inspector({ children }: { children: ReactNode }) {
           positioned overlay, so it cannot sit on top of the header's buttons. */}
       <div
         onPointerDown={onPointerDown}
-        className="group flex h-1.5 shrink-0 cursor-ns-resize items-center justify-center"
+        className="husk-resize-seam husk-resize-seam-horizontal flex h-1.5 shrink-0 cursor-ns-resize items-center justify-center"
         style={{ touchAction: "none" }}
         title="Drag to resize"
       >
-        <span className="h-px w-8 rounded bg-border/60 transition-colors group-hover:bg-primary/60" />
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>

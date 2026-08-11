@@ -21,7 +21,7 @@ export type ChatConfig = {
   model: string;
   apiKey: string;
   baseURL: string;
-  /** The chat's selected local project. CLI backends start here, still read-only. */
+  /** The chat's selected local project. Husk actions remain brokered. */
   workspacePath?: string;
 };
 
@@ -82,9 +82,9 @@ function buildModel(cfg: ChatConfig) {
   }
 }
 
-/** Execute one signed-in CLI backend without exposing Husk actions to it.
- * Each implementation enforces the same read-only contract in the CLI layer,
- * while the Composer retains the user's transcript and approved action flow. */
+/** Execute one signed-in CLI backend without exposing raw local capabilities.
+ * A CLI can return a small, validated action proposal; the renderer routes it
+ * through Husk's action broker, exactly as API tool calls are routed. */
 function runSubscriptionCli(
   cfg: ChatConfig,
   prompt: string,
@@ -128,9 +128,9 @@ export async function streamChat(
   onToolActivity?: (activity: ToolActivity) => void,
 ): Promise<void> {
   if (cfg.provider.kind === "cli") {
-    /* Husk's own tools are not forwarded. Subscription CLIs run in restricted mode so
-       file edits keep going through Husk's diff review. Tool-driven features
-       are therefore weaker in this mode — the trade for needing no API key. */
+    /* Husk tools are never forwarded to a subscription CLI. It can only return
+       an explicit proposal, which the renderer validates and executes through
+       the local action broker. */
     const prompt = flattenForCli(system, messages);
     const run = runSubscriptionCli(cfg, prompt, onDelta, onStatus);
     const onAbort = () => run.stop();
