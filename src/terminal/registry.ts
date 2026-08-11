@@ -26,6 +26,7 @@ import {
   setPromptPosition,
   setFocusTerminalFn,
   setActiveTerminalPtyId,
+  setActiveTerminalDraftReader,
 } from "../ai/terminalContext";
 import { recordFailure, clearFailure, collapseFailure } from "./failureStore";
 import { clearNextSteps, collapseNextSteps, recordNextSteps } from "./nextSteps";
@@ -125,6 +126,8 @@ type Session = {
   historyOpen: boolean;
   menuOpen: boolean;
   isRemoteShell: boolean;
+  /** Start of the editable prompt for this PTY (not globally shared). */
+  promptPosition: { row: number; col: number } | null;
   /** Absolute buffer row where the running command's output began (OSC 133 C). */
   cmdStartRow: number | null;
   /** Command lifecycle is retained per PTY so hidden terminal tabs can still
@@ -142,6 +145,27 @@ let activeLeafId: number | null = null;
    subscribe to the same stream without affecting xterm's rendering or input. */
 const outputListeners = new Map<number, Set<TerminalOutputListener>>();
 const logsOpeners = new Map<number, TerminalLogsOpener>();
+
+/** Return only the editable shell input after the prompt. `Ctrl+L` can make a
+ * draft disappear visually while leaving it in readline, so the AI run path
+ * must inspect xterm's real prompt buffer before writing anything. */
+function readPromptDraft(session: Pick<Session, "term" | "promptPosition">): string {
+  const prompt = session.promptPosition;
+  const buffer = session.term.buffer.active;
+  if (!prompt || buffer.type !== "normal") return "";
+
+  const cursorRow = buffer.baseY + buffer.cursorY;
+  if (cursorRow < prompt.row) return "";
+
+  const parts: string[] = [];
+  for (let row = prompt.row; row <= cursorRow; row += 1) {
+    const line = buffer.getLine(row)?.translateToString(true) ?? "";
+    const start = row === prompt.row ? prompt.col : 0;
+    const end = row === cursorRow ? buffer.cursorX : line.length;
+    parts.push(line.slice(start, end));
+  }
+  return parts.join("").trim();
+}
 
 /** Let app-wide commands open the drawer belonging to the focused terminal. */
 export function registerTerminalLogsOpener(leafId: number, opener: TerminalLogsOpener): () => void {
@@ -282,6 +306,7 @@ export async function createSession(
     historyOpen: false,
     menuOpen: false,
     isRemoteShell: false,
+    promptPosition: null,
     cmdStartRow: null,
     currentCommand: "",
     commandStartedAt: 0,
@@ -307,10 +332,11 @@ export async function createSession(
   });
 
   term.parser.registerOscHandler(133, (data) => {
-    if (data.startsWith("B") && session.active) {
+    if (data.startsWith("B")) {
       const buf = term.buffer.active;
       const pos = { row: buf.cursorY + buf.viewportY, col: buf.cursorX };
-      setPromptPosition(pos);
+      session.promptPosition = pos;
+      if (session.active) setPromptPosition(pos);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.
@@ -816,6 +842,7 @@ export function setSessionActive(leafId: number, active: boolean): void {
   session.active = active;
 
   if (active) {
+    setPromptPosition(session.promptPosition);
     setActiveTerminalPtyId(session.ptyId);
     setActiveTerminalReader(() => {
       const buf = session.term.buffer.active;
@@ -831,9 +858,17 @@ export function setSessionActive(leafId: number, active: boolean): void {
       return lines.reverse().join("\n").replace(/\n+$/, "");
     });
 
+    setActiveTerminalDraftReader(() => readPromptDraft(session));
+
     setActiveTerminalRunner((cmd: string) => {
-      if (session.ptyId != null) void invoke("pty_write", { id: session.ptyId, data: `${cmd}\r` });
+      /* Never append a Run/Pilot command to a draft that exists at this prompt.
+         The caller keeps the command available to copy and the user keeps their
+         own in-progress input intact. */
+      if (readPromptDraft(session)) return false;
+      if (session.ptyId == null) return false;
+      void invoke("pty_write", { id: session.ptyId, data: `${cmd}\r` });
       session.term.focus();
+      return true;
     });
 
     setActiveTerminalTyper((text: string) => {

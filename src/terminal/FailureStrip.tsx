@@ -12,6 +12,7 @@ import {
 } from "./failureStore";
 import {
   runInActiveTerminal,
+  getActiveTerminalDraft,
   setPendingRunAttachment,
 } from "../ai/terminalContext";
 import { openComposer } from "../ai/bubbleStore";
@@ -85,8 +86,18 @@ export function FailureStrip({
   /* Retry is always an explicit click. Husk never retries on its own. */
   const retry = () => {
     if (!record.command.trim()) return;
+    if (getActiveTerminalDraft()) {
+      toast({
+        title: "Terminal input is waiting",
+        message: "Clear or submit the text at the prompt before retrying this command.",
+        variant: "warning",
+      });
+      return;
+    }
     clearFailure(leafId);
-    runInActiveTerminal(record.command);
+    if (!runInActiveTerminal(record.command)) {
+      toast({ title: "Could not retry command", message: "Open and focus a terminal, then try again.", variant: "error" });
+    }
   };
 
   if (collapsed) {

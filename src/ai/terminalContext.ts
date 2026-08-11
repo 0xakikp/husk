@@ -7,7 +7,7 @@ import { isWindowFocused } from "../windowFocus";
  * TerminalView registers a reader; the panel calls it when sending a message.
  */
 let reader: (() => string) | null = null;
-let runner: ((cmd: string) => void) | null = null;
+let runner: ((cmd: string) => boolean) | null = null;
 let activePtyId: number | null = null;
 
 export function setActiveTerminalPtyId(id: number | null): void {
@@ -32,15 +32,27 @@ export function readActiveTerminal(maxChars = 8192): string {
   return firstNewline >= 0 ? truncated.slice(firstNewline + 1) : truncated;
 }
 
-/** The active terminal registers a runner that types a command into its PTY. */
-export function setActiveTerminalRunner(fn: ((cmd: string) => void) | null): void {
+/** The active terminal registers a runner that types a command into its PTY.
+ * It can refuse when the prompt already contains unsubmitted input. */
+export function setActiveTerminalRunner(fn: ((cmd: string) => boolean) | null): void {
   runner = fn;
 }
 
 export function runInActiveTerminal(cmd: string): boolean {
   if (!runner) return false;
-  runner(cmd);
-  return true;
+  return runner(cmd);
+}
+
+/* A direct Run action must never silently join text already waiting at a shell
+   prompt. The active xterm session supplies the exact editable prompt text. */
+let draftReader: (() => string) | null = null;
+
+export function setActiveTerminalDraftReader(fn: (() => string) | null): void {
+  draftReader = fn;
+}
+
+export function getActiveTerminalDraft(): string {
+  return draftReader?.() ?? "";
 }
 
 // Like the runner, but drops text at the prompt WITHOUT executing it, so the

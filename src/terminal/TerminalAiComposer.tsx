@@ -27,6 +27,7 @@ import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
 import {
   getActiveTerminalCwd,
   getActiveTerminalPtyId,
+  getActiveTerminalDraft,
   isCommandRunning,
   readActiveTerminal,
   runInActiveTerminal,
@@ -128,6 +129,41 @@ declare global {
 interface CodeBlock {
   lang: string;
   code: string;
+}
+
+type ComposerAttachment = {
+  name: string;
+  content: string;
+  isImage?: boolean;
+};
+
+const MAX_DROPPED_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+function isImageAttachment(name: string, mimeType = ""): boolean {
+  return mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name);
+}
+
+function imageMimeType(name: string, fallback = "image/png"): string {
+  const extension = name.split(".").pop()?.toLowerCase();
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "svg") return "image/svg+xml";
+  if (extension && ["png", "webp", "gif", "bmp"].includes(extension)) return `image/${extension}`;
+  return fallback;
+}
+
+function readBrowserFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read image"));
+    reader.onload = () => typeof reader.result === "string"
+      ? resolve(reader.result)
+      : reject(new Error("Could not read image"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function hasFileDrag(dataTransfer: DataTransfer): boolean {
+  return Array.from(dataTransfer.types).includes("Files");
 }
 
 interface DiffBlockType {
@@ -421,7 +457,8 @@ export function TerminalAiComposer({
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string; isImage?: boolean }[]>([]);
+  const dragDepthRef = useRef(0);
+  const [attachedFiles, setAttachedFiles] = useState<ComposerAttachment[]>([]);
   const [previewChipId, setPreviewChipId] = useState<string | null>(null);
   /* A specific command's output, chosen from history. Far more precise than the
      whole-scrollback chip, which mixes unrelated commands together. */
@@ -576,30 +613,74 @@ export function TerminalAiComposer({
     setSensitivePrompt(null);
   }, [sessionId]);
 
+  const attachFiles = useCallback(async (paths: string[]) => {
+    const newFiles: ComposerAttachment[] = [];
+    for (const path of paths) {
+      const fileName = path.split("/").pop() || path;
+      const isImage = isImageAttachment(fileName);
+      try {
+        if (isImage) {
+          const b64 = await readFileBase64(path);
+          newFiles.push({
+            name: fileName,
+            content: `![${fileName}](data:${imageMimeType(fileName)};base64,${b64})`,
+            isImage: true,
+          });
+        } else {
+          newFiles.push({ name: fileName, content: await readFile(path) });
+        }
+      } catch {
+        newFiles.push({ name: fileName, content: `[Failed to read file: ${fileName}]` });
+      }
+    }
+    if (newFiles.length) setAttachedFiles((prev) => [...prev, ...newFiles]);
+  }, []);
+
+  const attachDroppedFiles = useCallback(async (files: File[]) => {
+    const newFiles: ComposerAttachment[] = [];
+    const skipped: string[] = [];
+    for (const file of files) {
+      if (file.size > MAX_DROPPED_ATTACHMENT_BYTES) {
+        skipped.push(file.name);
+        continue;
+      }
+      const isImage = isImageAttachment(file.name, file.type);
+      try {
+        const content = isImage
+          ? `![${file.name}](${await readBrowserFileAsDataUrl(file)})`
+          : await file.text();
+        newFiles.push({ name: file.name, content, isImage });
+      } catch {
+        newFiles.push({ name: file.name, content: `[Failed to read file: ${file.name}]` });
+      }
+    }
+    if (newFiles.length) {
+      setAttachedFiles((prev) => [...prev, ...newFiles]);
+      toast({
+        title: `${newFiles.length} file${newFiles.length === 1 ? "" : "s"} attached`,
+        message: "Review the attachment chips before sending.",
+        variant: "success",
+      });
+    }
+    if (skipped.length) {
+      toast({
+        title: "Some files were not attached",
+        message: `${skipped.join(", ")} exceed${skipped.length === 1 ? "s" : ""} the 5 MB attachment limit.`,
+        variant: "warning",
+      });
+    }
+  }, []);
+
   const handleFileUpload = useCallback(async () => {
     try {
       const path = await openDialog({ multiple: false, directory: false });
       if (!path || typeof path !== "string") return;
-      const fileName = path.split("/").pop() || path;
-      const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(fileName);
-      let content = "";
-      try {
-        if (isImage) {
-          const b64 = await readFileBase64(path);
-          content = `[Attached image: ${fileName}]\n\n![${fileName}](data:image/${fileName.split(".").pop()};base64,${b64})`;
-        } else {
-          const text = await readFile(path);
-          content = `[Attached file: ${fileName}]\n\`\`\`\n${text}\n\`\`\``;
-        }
-      } catch (e) {
-        content = `[Failed to read file: ${fileName}]`;
-      }
-      const current = getSession(sessionId).input;
-      setInput(current ? (current + "\n\n" + content).trim() : content);
-    } catch (e) {
-      console.error("File upload failed", e);
+      await attachFiles([path]);
+    } catch (error) {
+      console.error("File upload failed", error);
+      toast({ title: "Could not attach file", variant: "error" });
     }
-  }, [sessionId]);
+  }, [attachFiles]);
 
   // Context items — the single normalized list every surface reads from.
   // Chips, the Context Inspector and the request builder all derive from this,
@@ -1410,6 +1491,14 @@ export function TerminalAiComposer({
       });
       return false;
     }
+    if (getActiveTerminalDraft()) {
+      toast({
+        title: "Terminal input is waiting",
+        message: "Husk did not run this command because it could join text already at the prompt. Clear or submit that input, then try again.",
+        variant: "warning",
+      });
+      return false;
+    }
     if (!runInActiveTerminal(cmd)) {
       toast({
         title: "No active terminal",
@@ -1500,30 +1589,6 @@ export function TerminalAiComposer({
     };
     recognitionRef.current = recognition;
     recognition.start();
-  };
-
-  const attachFiles = async (paths: string[]) => {
-    const newFiles: { name: string; content: string; isImage?: boolean }[] = [];
-    for (const path of paths) {
-      const fileName = path.split("/").pop() || path;
-      const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(fileName);
-      try {
-        if (isImage) {
-          const b64 = await readFileBase64(path);
-          newFiles.push({
-            name: fileName,
-            content: `![${fileName}](data:image/${fileName.split(".").pop()};base64,${b64})`,
-            isImage: true,
-          });
-        } else {
-          const text = await readFile(path);
-          newFiles.push({ name: fileName, content: text });
-        }
-      } catch (e) {
-        newFiles.push({ name: fileName, content: `[Failed to read file: ${fileName}]` });
-      }
-    }
-    setAttachedFiles((prev) => [...prev, ...newFiles]);
   };
 
   const copyCode = async (code: string, idx: number) => {
@@ -1647,23 +1712,29 @@ export function TerminalAiComposer({
         '--composer-bg-blur': `${prefs.aiMiniBgBlur}px`,
         '--composer-bg-dim': prefs.aiMiniBgDim / 100,
       } as unknown as React.CSSProperties}
+      onDragEnter={(e) => {
+        if (!hasFileDrag(e.dataTransfer)) return;
+        e.preventDefault();
+        dragDepthRef.current += 1;
+        setDragOver(true);
+      }}
       onDragOver={(e) => {
+        if (!hasFileDrag(e.dataTransfer)) return;
         e.preventDefault();
         setDragOver(true);
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={(e) => {
+        if (!hasFileDrag(e.dataTransfer)) return;
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setDragOver(false);
+      }}
       onDrop={(e) => {
+        if (!hasFileDrag(e.dataTransfer)) return;
         e.preventDefault();
+        dragDepthRef.current = 0;
         setDragOver(false);
-        const paths: string[] = [];
-        if (e.dataTransfer.files) {
-          for (let i = 0; i < e.dataTransfer.files.length; i++) {
-            const file = e.dataTransfer.files.item(i);
-            const path = (file as unknown as { path?: string })?.path;
-            if (path) paths.push(path);
-          }
-        }
-        if (paths.length) void attachFiles(paths);
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length) void attachDroppedFiles(files);
       }}
     >
       {variant !== "full" && !dockSide && (
@@ -1680,6 +1751,7 @@ export function TerminalAiComposer({
           title="Drag to resize"
         />
       )}
+      {dragOver && <div className="composer-drag-hint" aria-hidden="true">drop files to attach</div>}
       <div className="composer-header">
         <div className="composer-header-main flex min-w-0 flex-1 items-center gap-2">
           <span className={cn("composer-avatar shrink-0", activeAgent?.color && `composer-avatar-accent-${activeAgent.color}`)}>
