@@ -17,6 +17,7 @@ export type EnvSignals = {
   kubeContext: string | null;
   awsProfile: string | null;
   dockerContext: string | null;
+  terraformWorkspace: string | null;
   checkedAt: number;
 };
 
@@ -26,6 +27,7 @@ let signals: EnvSignals = {
   kubeContext: null,
   awsProfile: null,
   dockerContext: null,
+  terraformWorkspace: null,
   checkedAt: 0,
 };
 
@@ -43,7 +45,7 @@ export function isProtectedTarget(value: string | null): boolean {
   return value != null && PROTECTED_RE.test(value);
 }
 
-export type ProtectedKind = "kubernetes" | "aws" | "docker" | "git";
+export type ProtectedKind = "kubernetes" | "aws" | "docker" | "terraform" | "git";
 
 /**
  * Why a target is protected, or null when it is safe. Driven by the generic
@@ -63,6 +65,8 @@ export function protectedTargets(): string[] {
   const hits: string[] = [];
   if (env.kubeContext && isProtectedTarget(env.kubeContext)) hits.push(`kubernetes/${env.kubeContext}`);
   if (env.awsProfile && isProtectedTarget(env.awsProfile)) hits.push(`aws/${env.awsProfile}`);
+  if (env.dockerContext && isProtectedTarget(env.dockerContext)) hits.push(`docker/${env.dockerContext}`);
+  if (env.terraformWorkspace && isProtectedTarget(env.terraformWorkspace)) hits.push(`terraform/${env.terraformWorkspace}`);
   return hits;
 }
 
@@ -70,18 +74,23 @@ export function protectedTargets(): string[] {
    by callers: a destructive command on a protected target needs an explicit
    confirmation, never a silent run. */
 const ENV_DESTRUCTIVE_RE =
-  /\b(?:kubectl\s+(?:delete|drain|cordon|scale|rollout\s+undo)|helm\s+(?:uninstall|delete|upgrade)|aws\s+\S+\s+(?:delete|terminate|stop|reboot|deregister)|docker\s+(?:rm|rmi|system\s+prune|volume\s+rm|container\s+rm)|terraform\s+(?:destroy|apply)|pnpm\s+(?:deploy)|.*\bdeploy\b.*\bprod)/i;
+  /\b(?:kubectl\s+(?:apply|replace|delete|drain|cordon|scale|patch|edit|set\s+(?:image|resources|env)|rollout\s+(?:undo|restart))|helm\s+(?:install|uninstall|delete|upgrade)|aws\s+\S+\s+(?:create|update|put|delete|terminate|stop|start|reboot|deregister|attach|detach|modify)|docker\s+(?:rm|rmi|system\s+prune|volume\s+rm|container\s+rm)|terraform\s+(?:destroy|apply|import)|pnpm\s+(?:deploy)|.*\bdeploy\b.*\bprod)/i;
 
 export function isEnvDestructive(command: string): boolean {
   return ENV_DESTRUCTIVE_RE.test(command.trim());
 }
 
-async function runProbe(program: string, args: string[], timeoutSecs = 3): Promise<string | null> {
+async function runProbe(
+  program: string,
+  args: string[],
+  timeoutSecs = 3,
+  cwd: string | null = null,
+): Promise<string | null> {
   try {
     const out = await invoke<ShellOutput>("shell_run_command", {
       program,
       args,
-      cwd: null,
+      cwd,
       timeout_secs: timeoutSecs,
     });
     if (out.exit_code !== 0) return null;
@@ -114,8 +123,16 @@ async function probeDocker(): Promise<string | null> {
   return ctx;
 }
 
+async function probeTerraform(cwd: string | null): Promise<string | null> {
+  if (!cwd) return null;
+  const workspace = await runProbe("terraform", ["workspace", "show"], 4, cwd);
+  if (!workspace || /not initialized|no configuration files|error:/i.test(workspace)) return null;
+  return workspace;
+}
+
 let refreshing: Promise<void> | null = null;
 let lastRefresh = 0;
+let lastWorkspaceCwd: string | null = null;
 const MIN_REFRESH_INTERVAL_MS = 20_000;
 
 /**
@@ -123,18 +140,21 @@ const MIN_REFRESH_INTERVAL_MS = 20_000;
  * user refresh); cwd changes and the interval tick go through it so a burst
  * of cd commands cannot spawn a burst of probes.
  */
-export function refreshEnvSignals(force = false): void {
+export function refreshEnvSignals(force = false, cwd?: string | null): void {
   const now = Date.now();
-  if (!force && now - lastRefresh < MIN_REFRESH_INTERVAL_MS) return;
+  const workspaceCwd = cwd ?? lastWorkspaceCwd;
+  if (!force && workspaceCwd === lastWorkspaceCwd && now - lastRefresh < MIN_REFRESH_INTERVAL_MS) return;
   if (refreshing) return;
   lastRefresh = now;
+  lastWorkspaceCwd = workspaceCwd;
   refreshing = (async () => {
-    const [kubeContext, awsProfile, dockerContext] = await Promise.all([
+    const [kubeContext, awsProfile, dockerContext, terraformWorkspace] = await Promise.all([
       probeKube(),
       probeAws(),
       probeDocker(),
+      probeTerraform(workspaceCwd),
     ]);
-    signals = { kubeContext, awsProfile, dockerContext, checkedAt: Date.now() };
+    signals = { kubeContext, awsProfile, dockerContext, terraformWorkspace, checkedAt: Date.now() };
     emit();
     refreshing = null;
   })();

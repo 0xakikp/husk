@@ -12,6 +12,7 @@ import { TaskStrip } from "../terminal/TaskStrip";
 import { PortDetectedStrip } from "../terminal/PortDetectedStrip";
 import { GitActivityStrip } from "../terminal/GitActivityStrip";
 import { SensitiveOutputStrip } from "../terminal/SensitiveOutputStrip";
+import { EnvironmentWarningStrip } from "../terminal/EnvironmentWarningStrip";
 import { TerminalAiComposer, tabSessionId } from "../terminal/TerminalAiComposer";
 import { focusActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { TerminalLogs } from "../terminal/TerminalLogs";
@@ -259,6 +260,7 @@ export function WorkspacePanels({
             leafId={activeLeafId}
             onExplain={onExplainFailure}
           />
+          <EnvironmentWarningStrip leafId={activeLeafId} />
           <SensitiveOutputStrip leafId={activeLeafId} />
           <TaskStrip leafId={activeLeafId} onOpenLogs={openLogs} />
           <PortDetectedStrip leafId={activeLeafId} onOpenBrowser={onOpenBrowser} />

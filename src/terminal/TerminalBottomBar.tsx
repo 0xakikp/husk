@@ -138,8 +138,8 @@ export function TerminalBottomBar({
      relaxed interval — each probe is a subprocess, so unlike the 5s git poll
      this one stays deliberately slow. The store additionally throttles. */
   useEffect(() => {
-    refreshEnvSignals();
-    const interval = window.setInterval(() => refreshEnvSignals(), 60_000);
+    refreshEnvSignals(false, cwd);
+    const interval = window.setInterval(() => refreshEnvSignals(false, cwd), 60_000);
     return () => window.clearInterval(interval);
   }, [cwd]);
 
@@ -400,6 +400,23 @@ export function TerminalBottomBar({
           {protectedReason("docker", env.dockerContext) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
           <span>🐳</span>
           <span className="max-w-[90px] truncate">{env.dockerContext}</span>
+        </button>
+      )}
+      {env.terraformWorkspace && (
+        <button
+          type="button"
+          onClick={() => refreshEnvSignals(true)}
+          title={`Terraform workspace: ${env.terraformWorkspace}${protectedReason("terraform", env.terraformWorkspace) ? " — protected target" : ""} · click to refresh`}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition-colors",
+            protectedReason("terraform", env.terraformWorkspace)
+              ? "border border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
+              : "text-violet-300/90 hover:bg-muted/45",
+          )}
+        >
+          {protectedReason("terraform", env.terraformWorkspace) && <span className="text-[9px] font-semibold">⚠ PROD</span>}
+          <span>◆</span>
+          <span className="max-w-[90px] truncate">{env.terraformWorkspace}</span>
         </button>
       )}
       {cwd === "/root" && (

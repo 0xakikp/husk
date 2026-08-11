@@ -32,6 +32,8 @@ import { clearGitActivity, recordGitActivity } from "./gitActivityStore";
 import { extractLocalDevUrls, recordPorts } from "./portStore";
 import { recordSensitiveOutput } from "./sensitiveOutputStore";
 import { completeTask, startTask } from "./taskStore";
+import { clearEnvironmentWarning, recordEnvironmentWarning } from "./environmentWarnings";
+import { getEnvSignals } from "./envSignals";
 import { recordTimelineEvent } from "../timeline/store";
 import { syncWorkspaceRootToCwd } from "../workspace/store";
 import {
@@ -427,6 +429,12 @@ export async function createSession(
     const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";").trim();
     session.currentCommand = cmd;
     session.commandStartedAt = Date.now();
+    recordEnvironmentWarning(session.leafId, {
+      command: cmd,
+      cwd: session.cwd,
+      env: getEnvSignals(),
+      at: session.commandStartedAt,
+    });
     if (session.active) setCurrentCommand(cmd);
     // Treat an interactive ssh/mosh session as remote for the duration of the
     // command. The remote shell usually doesn't have Husk integration, so the
@@ -589,6 +597,7 @@ export async function createSession(
       collapseFailure(leafId);
       collapseNextSteps(leafId);
       clearGitActivity(leafId);
+      clearEnvironmentWarning(leafId);
       if (session.active) {
         setTerminalTyping(true);
         window.clearTimeout(session.typingTimer);
