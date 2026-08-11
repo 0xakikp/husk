@@ -3,8 +3,15 @@ import { cn } from "@/lib/utils";
 import { CLI_SUBSCRIPTION_MODE, PROVIDERS, getProvider, type Provider } from "./providers";
 import { MODELS } from "./models";
 import { loadConfig, saveConfig, useConfig, getKey } from "./store";
-import { claudeCliAvailable } from "./claudeCli";
-import { codexCliAvailable, codexCliModels, type CodexCliModel } from "./codexCli";
+import { codexCliModels, type CodexCliModel } from "./codexCli";
+import {
+  CLI_PROVIDER_IDS,
+  EMPTY_CLI_AVAILABILITY,
+  cliAvailable,
+  cliDisplayName,
+  cliLoginHelp as cliLoginHelpText,
+  type CliAvailability,
+} from "./cliProvider";
 
 /**
  * Switch provider and model from the chat itself.
@@ -18,25 +25,23 @@ import { codexCliAvailable, codexCliModels, type CodexCliModel } from "./codexCl
  * (local endpoints, and installed subscription CLIs). Offering a
  * provider that cannot answer is the mistake the MCP marketplace made.
  */
-function cliReady(provider: Provider, availability: { claude: boolean; codex: boolean }): boolean {
-  return provider.cli === "codex" ? availability.codex : availability.claude;
+function cliReady(provider: Provider, availability: CliAvailability): boolean {
+  return provider.cli ? availability[provider.cli] : false;
 }
 
 function cliLabel(provider: Provider): string {
-  return provider.cli === "codex" ? "Codex" : "Claude Code";
+  return provider.cli ? cliDisplayName(provider.cli) : "CLI";
 }
 
 function cliLoginHelp(provider: Provider): string {
-  return provider.cli === "codex"
-    ? "Install the codex CLI and sign in with your ChatGPT account to use Codex without an API key."
-    : "Install the claude CLI and run claude login to use your Claude subscription without an API key.";
+  return provider.cli ? cliLoginHelpText(provider.cli) : "This CLI provider is unavailable.";
 }
 
 export function ModelSwitcher({ busy }: { busy?: boolean }) {
   const cfg = useConfig();
   const [open, setOpen] = useState(false);
   const [limitsOpen, setLimitsOpen] = useState(false);
-  const [cliAvailability, setCliAvailability] = useState({ claude: false, codex: false });
+  const [cliAvailability, setCliAvailability] = useState<CliAvailability>(EMPTY_CLI_AVAILABILITY);
   const [codexModels, setCodexModels] = useState<CodexCliModel[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
   /* Room above the button, so the menu cannot be taller than the panel.
@@ -47,8 +52,8 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
 
   useEffect(() => {
     const refreshCliAvailability = (refresh = false) => {
-      void Promise.all([claudeCliAvailable(refresh), codexCliAvailable(refresh)]).then(([claude, codex]) => {
-        setCliAvailability({ claude, codex });
+      void Promise.all(CLI_PROVIDER_IDS.map((cli) => cliAvailable(cli, refresh))).then((results) => {
+        setCliAvailability(Object.fromEntries(CLI_PROVIDER_IDS.map((cli, index) => [cli, results[index]])) as CliAvailability);
       });
     };
     refreshCliAvailability();

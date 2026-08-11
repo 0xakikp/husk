@@ -337,7 +337,7 @@ export function AgentsFile() {
       <CfgBlank />
 
       <CfgSection name="toolAccess" />
-      <CfgComment>These controls apply to API-backed models. Claude Code and Codex subscription modes remain read-only.</CfgComment>
+      <CfgComment>These controls apply to API-backed models. Subscription / CLI modes remain read-only.</CfgComment>
       <CfgRow name="workspaceFileTools" comment="Allow the model to inspect workspace files and propose edits. Existing-file changes still go through review.">
         <CfgBool value={p.aiFileToolsEnabled} onChange={(aiFileToolsEnabled) => setPrefs({ aiFileToolsEnabled })} />
       </CfgRow>

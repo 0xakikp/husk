@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { MODELS } from "../../ai/models";
 import { CLI_SUBSCRIPTION_MODE, PROVIDERS, type Provider } from "../../ai/providers";
 import { loadConfig, saveConfig, useKey, setKey } from "../../ai/store";
-import { claudeCliAvailable } from "../../ai/claudeCli";
-import { codexCliAvailable, codexCliModels, type CodexCliModel } from "../../ai/codexCli";
+import { codexCliModels, type CodexCliModel } from "../../ai/codexCli";
+import { cliAvailable, cliCommand, cliDisplayName, cliLoginHelp } from "../../ai/cliProvider";
 import {
   ConfigEditor,
   CfgArt,
@@ -67,20 +67,20 @@ function ProviderBlock({ provider }: { provider: Provider }) {
      provider that cannot answer, which is what made the MCP marketplace worth
      deleting. */
   const isCli = provider.kind === "cli";
-  const isCodexCli = provider.cli === "codex";
-  const cliName = isCodexCli ? "Codex" : "Claude Code";
-  const cliCommand = isCodexCli ? "codex" : "claude";
+  const cli = provider.cli;
+  const cliName = cli ? cliDisplayName(cli) : "CLI";
+  const command = cli ? cliCommand(cli) : "cli";
   const [cliReady, setCliReady] = useState(false);
   const [checkingCli, setCheckingCli] = useState(false);
   useEffect(() => {
-    if (!isCli) return;
-    void (isCodexCli ? codexCliAvailable() : claudeCliAvailable()).then(setCliReady);
-  }, [isCli, isCodexCli]);
+    if (!isCli || !cli) return;
+    void cliAvailable(cli).then(setCliReady);
+  }, [isCli, cli]);
 
   const refreshCli = () => {
-    if (!isCli) return;
+    if (!isCli || !cli) return;
     setCheckingCli(true);
-    void (isCodexCli ? codexCliAvailable(true) : claudeCliAvailable(true))
+    void cliAvailable(cli, true)
       .then((ready) => {
         setCliReady(ready);
         window.dispatchEvent(new Event("husk-cli-availability-changed"));
@@ -120,12 +120,10 @@ function ProviderBlock({ provider }: { provider: Provider }) {
           comment={
             cliReady
               ? `Uses the ${cliName} CLI you are already signed into. No API key; usage draws on that account instead of per-token billing.`
-              : isCodexCli
-                ? "Not found. Install the codex CLI and sign in with your ChatGPT account, then reopen settings."
-                : "Not detected from your login shell. Confirm `claude` works in a new terminal, then press refresh."
+              : cli ? `Not found. ${cliLoginHelp(cli)} Then press refresh.` : "This CLI provider is not configured correctly."
           }
         >
-          <CfgStr>{cliReady ? `${cliCommand} CLI detected` : `${cliCommand} CLI not on PATH`}</CfgStr>
+          <CfgStr>{cliReady ? `${command} CLI detected` : `${command} CLI not on PATH`}</CfgStr>
           <CfgAct onClick={refreshCli}>{checkingCli ? "checking…" : "refresh"}</CfgAct>
         </CfgRow>
       ) : provider.keyless ? (
@@ -153,7 +151,7 @@ function ProviderBlock({ provider }: { provider: Provider }) {
         name="configured"
         comment={
           isCli
-            ? `Whether the ${cliCommand} CLI was found on PATH.`
+            ? `Whether the ${command} CLI was found on PATH.`
             : "Whether a key is stored for this provider in your OS keychain."
         }
       >
@@ -169,19 +167,19 @@ function ProviderBlock({ provider }: { provider: Provider }) {
 function useProviderAvailability(provider: Provider) {
   const apiKey = useKey(provider.id);
   const isCli = provider.kind === "cli";
-  const isCodexCli = provider.cli === "codex";
-  const cliCommand = isCodexCli ? "codex" : "claude";
+  const cli = provider.cli;
+  const command = cli ? cliCommand(cli) : "cli";
   const [cliReady, setCliReady] = useState(false);
 
   useEffect(() => {
-    if (!isCli) return;
-    void (isCodexCli ? codexCliAvailable() : claudeCliAvailable()).then(setCliReady);
-  }, [isCli, isCodexCli]);
+    if (!isCli || !cli) return;
+    void cliAvailable(cli).then(setCliReady);
+  }, [isCli, cli]);
 
   if (isCli) {
     return {
       ready: cliReady,
-      state: cliReady ? `${cliCommand} CLI detected` : `${cliCommand} CLI not found`,
+      state: cliReady ? `${command} CLI detected` : `${command} CLI not found`,
     };
   }
   if (provider.id === "local") return { ready: true, state: "local endpoint" };

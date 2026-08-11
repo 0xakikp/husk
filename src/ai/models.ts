@@ -19,6 +19,19 @@ export const MODELS: ModelInfo[] = [
   { id: "opus", label: "Opus (via CLI)", provider: getProvider("claude-code"), description: "Highest reasoning quality", contextWindow: "plan limits" },
   { id: "haiku", label: "Haiku (via CLI)", provider: getProvider("claude-code"), description: "Fastest, lightest on usage", contextWindow: "plan limits" },
 
+  // Gemini CLI. These are documented aliases rather than pinned releases, so
+  // the signed-in CLI can keep its model routing current without Husk needing
+  // a release each time Google changes the underlying model revision.
+  { id: "auto", label: "Gemini Auto (via CLI)", provider: getProvider("gemini-cli"), description: "Lets Gemini CLI choose the current default", contextWindow: "plan limits" },
+  { id: "pro", label: "Gemini Pro (via CLI)", provider: getProvider("gemini-cli"), description: "Complex reasoning", contextWindow: "plan limits" },
+  { id: "flash", label: "Gemini Flash (via CLI)", provider: getProvider("gemini-cli"), description: "Fast, balanced help", contextWindow: "plan limits" },
+  { id: "flash-lite", label: "Gemini Flash-Lite (via CLI)", provider: getProvider("gemini-cli"), description: "Fastest option for simple tasks", contextWindow: "plan limits" },
+
+  // Kimi Code. `kimi` is the CLI-selected default; the explicit coding alias
+  // is available for people whose Kimi Code plan exposes it.
+  { id: "kimi", label: "Kimi Code default (via CLI)", provider: getProvider("kimi-code"), description: "Uses your Kimi Code default model", contextWindow: "plan limits" },
+  { id: "kimi-code/kimi-for-coding", label: "Kimi for Coding (via CLI)", provider: getProvider("kimi-code"), description: "Kimi Code's documented coding model alias", contextWindow: "plan limits" },
+
   // Anthropic
   { id: "claude-opus-5", label: "Claude Opus 5", provider: getProvider("anthropic"), description: "Highest reasoning quality", contextWindow: "200K" },
   { id: "claude-sonnet-5", label: "Claude Sonnet 5", provider: getProvider("anthropic"), description: "Balanced speed & reasoning", contextWindow: "200K" },

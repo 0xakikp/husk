@@ -7,6 +7,8 @@ import { streamText, stepCountIs, type ModelMessage, type Tool } from "ai";
 import type { Provider } from "./providers";
 import { runClaudeCli } from "./claudeCli";
 import { runCodexCli } from "./codexCli";
+import { runGeminiCli } from "./geminiCli";
+import { runKimiCli } from "./kimiCli";
 
 // Route model HTTP through Tauri (Rust) so provider APIs aren't blocked by the
 // webview's CORS policy.
@@ -78,6 +80,35 @@ function buildModel(cfg: ChatConfig) {
   }
 }
 
+/** Execute one signed-in CLI backend without exposing Husk actions to it.
+ * Each implementation enforces the same read-only contract in the CLI layer,
+ * while the Composer retains the user's transcript and approved action flow. */
+function runSubscriptionCli(
+  cfg: ChatConfig,
+  prompt: string,
+  onDelta: (text: string) => void,
+  onStatus?: (status: string) => void,
+) {
+  switch (cfg.provider.cli) {
+    case "codex":
+      return runCodexCli({ prompt, model: cfg.model, onDelta, onStatus });
+    case "gemini":
+      return runGeminiCli({ prompt, model: cfg.model, onDelta, onStatus });
+    case "kimi":
+      return runKimiCli({ prompt, model: cfg.model, onDelta });
+    case "claude":
+      return runClaudeCli({
+        prompt,
+        model: cfg.model,
+        onDelta,
+        onStatus: (name) => onStatus?.(`🛠️ ${name}`),
+        onNotice: (text) => onStatus?.(`⚠️ ${text}`),
+      });
+    default:
+      throw new Error("This CLI provider is not configured correctly.");
+  }
+}
+
 /** Stream a chat completion, calling `onDelta` for each text chunk. When
  *  `tools` are supplied the model can call them across up to 8 steps.
  *  Optional `onStatus` receives tool-call/result status strings. `onToolActivity`
@@ -94,24 +125,11 @@ export async function streamChat(
   onToolActivity?: (activity: ToolActivity) => void,
 ): Promise<void> {
   if (cfg.provider.kind === "cli") {
-    /* Husk's own tools are not forwarded. Both CLIs run in restricted mode so
+    /* Husk's own tools are not forwarded. Subscription CLIs run in restricted mode so
        file edits keep going through Husk's diff review. Tool-driven features
        are therefore weaker in this mode — the trade for needing no API key. */
     const prompt = flattenForCli(system, messages);
-    const run = cfg.provider.cli === "codex"
-      ? runCodexCli({
-          prompt,
-          model: cfg.model,
-          onDelta,
-          onStatus,
-        })
-      : runClaudeCli({
-          prompt,
-          model: cfg.model,
-          onDelta,
-          onStatus: (name) => onStatus?.(`🛠️ ${name}`),
-          onNotice: (text) => onStatus?.(`⚠️ ${text}`),
-        });
+    const run = runSubscriptionCli(cfg, prompt, onDelta, onStatus);
     const onAbort = () => run.stop();
     abortSignal?.addEventListener("abort", onAbort, { once: true });
     try {
@@ -169,17 +187,7 @@ export async function generateOnce(
   if (cfg.provider.kind === "cli") {
     let out = "";
     const cliPrompt = flattenForCli(system, [{ role: "user", content: prompt }]);
-    const run = cfg.provider.cli === "codex"
-      ? runCodexCli({
-          prompt: cliPrompt,
-          model: cfg.model,
-          onDelta: (text) => { out += text; },
-        })
-      : runClaudeCli({
-          prompt: cliPrompt,
-          model: cfg.model,
-          onDelta: (text) => { out += text; },
-        });
+    const run = runSubscriptionCli(cfg, cliPrompt, (text) => { out += text; });
     await run.done;
     return out.trim();
   }

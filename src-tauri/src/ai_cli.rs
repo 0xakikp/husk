@@ -1,8 +1,9 @@
 //! Driving signed-in coding CLIs as AI providers.
 //!
-//! Lets someone with Claude Code or Codex use Husk's AI without pasting an API
-//! key: instead of Husk calling a provider API, it runs the CLI already logged
-//! into and reads what it prints. Husk never sees or stores a credential.
+//! Lets someone with a supported signed-in coding CLI use Husk's AI without
+//! pasting an API key: instead of Husk calling a provider API, it runs the CLI
+//! already logged into and reads what it prints. Husk never sees or stores a
+//! credential.
 //!
 //! Deliberately **not** reading either CLI's auth storage to use a token
 //! directly. That storage belongs to the app that wrote it and can change at
@@ -43,6 +44,20 @@ pub fn ai_cli_available() -> bool {
 #[tauri::command]
 pub fn codex_cli_available() -> bool {
     cli_available("codex")
+}
+
+/// Whether Gemini CLI is installed. Sign-in remains owned by Gemini CLI; Husk
+/// only detects the executable before offering this subscription backend.
+#[tauri::command]
+pub fn gemini_cli_available() -> bool {
+    cli_available("gemini")
+}
+
+/// Whether Kimi Code is installed. Its membership/OAuth login remains private
+/// to the Kimi CLI and is never imported into Husk.
+#[tauri::command]
+pub fn kimi_cli_available() -> bool {
+    cli_available("kimi")
 }
 
 #[derive(Deserialize)]
@@ -113,7 +128,7 @@ pub fn ai_cli_start(
     args: Vec<String>,
     cwd: Option<String>,
 ) -> Result<(), String> {
-    cli_start(app, state, id, args, cwd, "claude", "ai-cli")
+    cli_start(app, state, id, args, cwd, "claude", "ai-cli", &[])
 }
 
 /// Spawn `codex exec --json` and stream its JSONL output to the front end.
@@ -125,7 +140,94 @@ pub fn codex_cli_start(
     args: Vec<String>,
     cwd: Option<String>,
 ) -> Result<(), String> {
-    cli_start(app, state, id, args, cwd, "codex", "codex-cli")
+    cli_start(app, state, id, args, cwd, "codex", "codex-cli", &[])
+}
+
+/// Spawn Gemini CLI with a per-run, deny-all admin policy. Passing this
+/// explicit policy is important: a signed-in CLI may have user-installed
+/// extensions or MCP servers, but a Husk subscription conversation must never
+/// inherit tool access that bypasses Husk's reviewed action flow.
+#[tauri::command]
+pub fn gemini_cli_start(
+    app: AppHandle,
+    state: State<AiCliState>,
+    id: String,
+    mut args: Vec<String>,
+    cwd: Option<String>,
+) -> Result<(), String> {
+    let policy = write_husk_cli_profile(&app, "gemini-read-only.toml", GEMINI_READ_ONLY_POLICY)?;
+    args.push("--admin-policy".to_owned());
+    args.push(policy);
+    cli_start(app, state, id, args, cwd, "gemini", "gemini-cli", &[])
+}
+
+/// Spawn Kimi Code with a one-run agent whose empty tool allowlist is enforced
+/// by Kimi. Kimi's `-p` mode otherwise uses automatic permission handling, so
+/// a system-prompt request alone would not be a trustworthy safety boundary.
+#[tauri::command]
+pub fn kimi_cli_start(
+    app: AppHandle,
+    state: State<AiCliState>,
+    id: String,
+    mut args: Vec<String>,
+    cwd: Option<String>,
+) -> Result<(), String> {
+    let agent = write_husk_cli_profile(&app, "kimi-read-only.md", KIMI_READ_ONLY_AGENT)?;
+    args.push("--agent-file".to_owned());
+    args.push(agent);
+    cli_start(
+        app,
+        state,
+        id,
+        args,
+        cwd,
+        "kimi",
+        "kimi-cli",
+        &[
+            // Kimi currently gates explicit per-run main agents behind this
+            // flag. The profile below has `tools: []`, so enabling it does not
+            // grant any tools to the Husk conversation.
+            ("KIMI_CODE_EXPERIMENTAL_FLAG", "1"),
+            // A backend request must never make a package-update decision for
+            // the user in the middle of a Husk conversation.
+            ("KIMI_CODE_NO_AUTO_UPDATE", "1"),
+        ],
+    )
+}
+
+const GEMINI_READ_ONLY_POLICY: &str = r#"# Rewritten by Husk before every Gemini subscription request.
+# A global deny removes every built-in, extension, and MCP tool from the model.
+[[rule]]
+toolName = "*"
+decision = "deny"
+priority = 999
+denyMessage = "Husk subscription mode is read-only. Suggest an action instead of running it."
+"#;
+
+const KIMI_READ_ONLY_AGENT: &str = r#"---
+name: husk-read-only
+description: Read-only assistant for a Husk subscription conversation.
+tools: []
+subagents: []
+---
+You are the read-only Kimi backend inside Husk. Answer questions and suggest
+safe next steps, but do not claim to edit files, run commands, or use external
+tools. Husk presents actions separately for the user to review.
+"#;
+
+/// Keep generated policy/profile files inside Husk application data, never in
+/// a repository or in a user's CLI configuration. Rewriting before each run
+/// prevents stale or manually changed content from weakening the boundary.
+fn write_husk_cli_profile(app: &AppHandle, name: &str, contents: &str) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("could not locate Husk application data: {e}"))?
+        .join("cli-profiles");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create CLI profile directory: {e}"))?;
+    let path = dir.join(name);
+    std::fs::write(&path, contents).map_err(|e| format!("could not prepare CLI profile: {e}"))?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 /// Shared process bridge for fixed, trusted CLIs. `program` and
@@ -138,12 +240,16 @@ fn cli_start(
     cwd: Option<String>,
     program_name: &'static str,
     event_prefix: &'static str,
+    environment: &[(&str, &str)],
 ) -> Result<(), String> {
     let program = validate_program(program_name)
         .map_err(|_| format!("the `{program_name}` CLI is not on PATH"))?;
 
     let mut cmd = Command::new(program);
     cmd.args(&args);
+    for &(key, value) in environment {
+        cmd.env(key, value);
+    }
     if let Some(dir) = cwd.filter(|d| std::path::Path::new(d).is_dir()) {
         cmd.current_dir(dir);
     }
@@ -225,6 +331,18 @@ pub fn ai_cli_stop(state: State<AiCliState>, id: String) -> Result<(), String> {
 /// Stop a Codex subscription run.
 #[tauri::command]
 pub fn codex_cli_stop(state: State<AiCliState>, id: String) -> Result<(), String> {
+    cli_stop(state, id)
+}
+
+/// Stop a Gemini subscription run.
+#[tauri::command]
+pub fn gemini_cli_stop(state: State<AiCliState>, id: String) -> Result<(), String> {
+    cli_stop(state, id)
+}
+
+/// Stop a Kimi subscription run.
+#[tauri::command]
+pub fn kimi_cli_stop(state: State<AiCliState>, id: String) -> Result<(), String> {
     cli_stop(state, id)
 }
 

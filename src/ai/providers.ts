@@ -1,6 +1,6 @@
 /** `cli` drives a signed-in local coding CLI instead of an HTTP API — no key. */
 export type ProviderKind = "anthropic" | "openai" | "google" | "openai-compatible" | "cli";
-export type CliProviderId = "claude" | "codex";
+export type CliProviderId = "claude" | "codex" | "gemini" | "kimi";
 
 export type Provider = {
   id: string;
@@ -58,6 +58,31 @@ export const PROVIDERS: Provider[] = [
     // "codex" is Husk's alias for "let the signed-in CLI choose its default".
     // It is deliberately not passed as --model, because plan defaults evolve.
     defaultModel: "codex",
+    keyless: true,
+  },
+  {
+    /* Gemini CLI uses the Google account already authenticated in the local
+       CLI. Husk asks that CLI to answer rather than importing its credentials
+       or treating its included plan allowance as an API key. */
+    id: "gemini-cli",
+    label: "Gemini CLI (my subscription)",
+    kind: "cli",
+    cli: "gemini",
+    // Gemini's `auto` alias lets the signed-in CLI route to its current
+    // default, which can change as the CLI evolves.
+    defaultModel: "auto",
+    keyless: true,
+  },
+  {
+    /* Kimi Code keeps its OAuth login inside its own CLI. Its headless mode is
+       launched with a Husk-owned no-tools agent profile, so membership access
+       cannot bypass Husk's reviewed action flow. */
+    id: "kimi-code",
+    label: "Kimi Code (my subscription)",
+    kind: "cli",
+    cli: "kimi",
+    // `kimi` is Husk's alias for the default model selected in Kimi Code.
+    defaultModel: "kimi",
     keyless: true,
   },
   { id: "anthropic", label: "Anthropic (Claude)", kind: "anthropic", defaultModel: "claude-sonnet-5" },
