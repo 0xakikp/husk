@@ -1027,7 +1027,15 @@ function App() {
                apart like the sidebar does rather than sitting flush. Set on the
                column rather than as a margin on either child, so the two cannot
                double up. */
-            style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
+            style={{
+              gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined,
+              /* `main` supplies the separation when the sidebar is mounted. If
+                 Cmd+B removes that sibling there is no flex gap to render, so
+                 preserve the same outer gutter on the workspace itself. */
+              marginLeft: !explorerOpen && prefs.panelGaps > 0
+                ? `var(--panel-gaps)`
+                : undefined,
+            }}
           >
             {activeKind !== "settings" && activeKind !== "ai" && (
               <div

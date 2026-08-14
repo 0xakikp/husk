@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 
@@ -258,6 +258,16 @@ export function TerminalHistoryPanel({
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /* autoFocus is not reliable against xterm's hidden textarea: Ctrl+R starts
+     inside a native xterm key handler, which can retain focus until the next
+     frame. Claim it synchronously and once more after that handler finishes. */
+  useLayoutEffect(() => {
+    const focusInput = () => inputRef.current?.focus({ preventScroll: true });
+    focusInput();
+    const frame = window.requestAnimationFrame(focusInput);
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   // Use the user's chosen terminal font so the panel feels native; sizing
   // follows the spotlight palette (13px rows / 15px input), not the terminal.

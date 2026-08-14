@@ -61,6 +61,11 @@ export function TerminalView({
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+  /* xterm's native key handler is registered once per terminal session. Keep
+     these values in refs so it immediately sees an overlay opened by that
+     same native key event, rather than a stale render's state value. */
+  const searchOpenRef = useRef(false);
+  const historyOpenRef = useRef(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -140,10 +145,23 @@ export function TerminalView({
         onHistoryOpen: () => openHistory(),
         onKey: (e) => {
           if (e.type !== "keydown") return undefined;
-          // Don't intercept when history panel or search is open
-          if (historyOpen || searchOpen) return undefined;
+          // An HTML overlay owns input while it is open. Returning false here
+          // prevents xterm from receiving keystrokes during the small window
+          // before React has committed the state update and moved DOM focus.
+          if (historyOpenRef.current || searchOpenRef.current) return false;
 
           const isHistoryArrow = e.key === "ArrowUp" || e.key === "ArrowDown";
+          if (autoStateRef.current.visible && isHistoryArrow) {
+            // The visible menu explicitly advertises arrow navigation. Keep the
+            // event out of the shell so it cannot recall a history entry while
+            // the user is choosing a completion. Esc dismisses the menu and
+            // restores the shell's usual ↑/↓ history behaviour.
+            e.preventDefault();
+            e.stopPropagation();
+            navigateAutoRef.current(e.key === "ArrowUp" ? -1 : 1);
+            return false;
+          }
+
           if (isHistoryArrow) {
             // Mark that the user is navigating shell history. Suppress
             // autocomplete for a short window so the dropdown doesn't open
@@ -213,6 +231,7 @@ export function TerminalView({
 
   // ── Search ────────────────────────────────────────────────────────────────
   const closeSearch = () => {
+    searchOpenRef.current = false;
     setSearchOpen(false);
     setQuery("");
     handleRef.current?.clearSearch();
@@ -234,6 +253,7 @@ export function TerminalView({
       // Fallback: write with newline stripped (won't auto-execute)
       handleRef.current?.write(command.replace(/\n$/, ""));
     }
+    historyOpenRef.current = false;
     setHistoryOpen(false);
     handleRef.current?.focus();
   };
@@ -241,6 +261,9 @@ export function TerminalView({
   const openHistory = () => {
     // Clear terminal screen to wipe any fzf/shell UI before showing our panel
     handleRef.current?.clear();
+    // Set the ref before React renders the picker. Otherwise a fast next
+    // keystroke can still reach xterm and appear behind the history popup.
+    historyOpenRef.current = true;
     setHistoryOpen(true);
     setHistoryLoading(true);
     void getShellHistory()
@@ -501,6 +524,7 @@ export function TerminalView({
           loading={historyLoading}
           onSelect={selectHistory}
           onClose={() => {
+            historyOpenRef.current = false;
             setHistoryOpen(false);
             handleRef.current?.focus();
           }}
@@ -529,7 +553,7 @@ export function TerminalView({
             <button type="button" className="ectx-item" onClick={() => { setMenu(null); handleRef.current?.clear(); handleRef.current?.focus(); }}>
               Clear
             </button>
-            <button type="button" className="ectx-item" onClick={() => { setMenu(null); setSearchOpen(true); }}>
+            <button type="button" className="ectx-item" onClick={() => { setMenu(null); searchOpenRef.current = true; setSearchOpen(true); }}>
               Find…
             </button>
             <button type="button" className="ectx-item" onClick={() => { setMenu(null); openHistory(); }}>

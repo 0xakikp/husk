@@ -476,6 +476,9 @@ export function TerminalAiComposer({
   const messageAccentClass = getMessageAccentClass(activeAgent?.color);
   const [open, setOpen] = useState(variant === "full");
   const [busy, setBusy] = useState(false);
+  /* Session updates also arrive for draft keystrokes. This revision refreshes
+     external context chips, but must not drive transcript scrolling (that made
+     a long full-window chat visibly jump on each key). */
   const [tick, setTick] = useState(0);
   const [height, setHeight] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -486,6 +489,7 @@ export function TerminalAiComposer({
   const abortCtrlRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const followTranscriptRef = useRef(true);
   const handleSendRef = useRef<(textOverride?: string, opts?: { allowOverBudget?: boolean; allowSensitive?: boolean; fitToBudget?: boolean }) => Promise<void>>(async () => {});
   const agentDropdownRef = useRef<HTMLDivElement>(null);
   const workspaceScopeRef = useRef<HTMLDivElement>(null);
@@ -1026,11 +1030,15 @@ export function TerminalAiComposer({
     return subscribeSessions(() => setTick((v) => v + 1));
   }, []);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-    }
-  }, [messages, tick, busy, status]);
+  useLayoutEffect(() => {
+    const transcript = scrollRef.current;
+    if (!transcript || !followTranscriptRef.current) return;
+
+    /* Streaming changes the final message many times per second. A new smooth
+       scroll for each update makes the whole full-window chat appear to shake.
+       Keep the reader anchored without an animation instead. */
+    transcript.scrollTop = transcript.scrollHeight;
+  }, [messages, busy, status]);
 
   const handleSend = useCallback(async (
     textOverride?: string,
@@ -1059,6 +1067,9 @@ export function TerminalAiComposer({
     setBudgetPrompt(null);
     setSensitivePrompt(null);
 
+    // A message the user just sends should always resume following the reply,
+    // even if they were reading older transcript content beforehand.
+    followTranscriptRef.current = true;
     setInput("");
     setSlashOpen(false);
     setBusy(true);
@@ -1999,7 +2010,18 @@ export function TerminalAiComposer({
         </div>
       )}
 
-      <div ref={scrollRef} className="composer-messages">
+      <div
+        ref={scrollRef}
+        className="composer-messages"
+        onScroll={(event) => {
+          const transcript = event.currentTarget;
+          // Do not yank someone back to the newest response while they are
+          // inspecting older output. Near the bottom means they opted in to
+          // live follow again.
+          followTranscriptRef.current =
+            transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 40;
+        }}
+      >
         {messages.length === 0 ? (
           <div className="composer-empty">
             <div className="wb-empty-glyph">❯</div>
