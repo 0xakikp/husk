@@ -322,6 +322,33 @@ export function TerminalHistoryPanel({
     el?.scrollIntoView({ block: "nearest" });
   }, [index]);
 
+  /* xterm can retain its hidden textarea as the event target for the first
+     keystroke after Ctrl+R, even though this input has already requested focus.
+     Capture that event at window level before xterm sees it, then apply the
+     edit here. This makes fast typing deterministic instead of depending on a
+     browser focus race. Once the input is the target, its normal key handler
+     below owns everything. */
+  useLayoutEffect(() => {
+    const captureEarlyHistoryInput = (event: KeyboardEvent) => {
+      const input = inputRef.current;
+      if (!input || event.target === input) return;
+
+      const isPlainCharacter =
+        event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
+      const isBackspace = event.key === "Backspace" && !event.metaKey && !event.ctrlKey && !event.altKey;
+      if (!isPlainCharacter && !isBackspace) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      input.focus({ preventScroll: true });
+      setQuery((current) => isBackspace ? current.slice(0, -1) : `${current}${event.key}`);
+    };
+
+    window.addEventListener("keydown", captureEarlyHistoryInput, true);
+    return () => window.removeEventListener("keydown", captureEarlyHistoryInput, true);
+  }, []);
+
   // Close on click outside or Escape
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
