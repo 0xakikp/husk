@@ -49,6 +49,8 @@ Husk AI is available as a docked terminal composer and as a dedicated full-scree
 
 **Project Lens** gives a selected workspace a reliable first introduction. Husk prepares a bounded local snapshot from the root structure, known manifests, package commands, a short README excerpt, and Git state; it never crawls the repository or opens credential files. The snapshot is visible as removable context before it reaches a model. Use **Understand project** in an empty workspace chat or `/project` in an existing conversation to ask either an API-backed or signed-in subscription model for a grounded orientation.
 
+**Task Mode** turns a clear request into a persistent, supervised piece of work. Enter an objective in a workspace-scoped composer and choose **Task**. Husk pins the task to that folder, keeps a compact progress card above the conversation, and advances its Context, Work, Changes, and Checks stages only from evidence it actually observed. Tool calls, proposed and applied edits, terminal commands, and real exit codes are recorded; Husk does not invent completion percentages or claim that an unseen check passed. Tasks can be paused, resumed, finished, or stopped, and unfinished work returns paused after an app restart. Terminal Pilot follows the same pause boundary, while file changes and risky commands retain their existing review gates.
+
 Every normal Husk AI conversation receives the same product-aware context. This means the selected agent can explain Husk features, point to the right settings area, describe the current model mode accurately, and answer “who are you?” as a Husk AI persona rather than as an anonymous generic chatbot.
 
 Choose the access mode that fits your workflow:
@@ -97,8 +99,9 @@ Husk’s first-run defaults are deliberately opinionated: Iosevka typography, th
 3. In **Settings → AI & Models**, select an API-backed provider or a signed-in CLI subscription mode.
 4. In **Settings → Agents**, choose an agent, set a response style, and decide what context a new AI chat should attach.
 5. In a Husk AI chat, choose a workspace folder from the header, then use **Understand project** or `/project` for a grounded Project Lens overview before asking it to inspect or change files.
-6. For a multi-step diagnosis, enter the goal in the docked composer and select **Pilot**. It runs only observed diagnostics until it needs your approval or reaches a conclusion.
-7. If you use integrations, add them in **Settings → Integrations**. Read-only calls can run in place; other calls are shown for approval before they reach the service.
+6. For longer work, describe the outcome and select **Task**. The task stays pinned to that workspace and shows evidence-backed progress until you finish or stop it.
+7. For a multi-step diagnosis, enter the goal in the docked composer and select **Pilot**. It runs only observed diagnostics until it needs your approval or reaches a conclusion.
+8. If you use integrations, add them in **Settings → Integrations**. Read-only calls can run in place; other calls are shown for approval before they reach the service.
 
 ## Keyboard shortcuts
 

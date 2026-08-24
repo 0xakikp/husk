@@ -34,13 +34,21 @@ import {
   runInActiveTerminal,
   getRecentCommandRuns,
   getPendingRunAttachment,
+  subscribeTerminalCommandRuns,
   useActiveTerminalCwd,
   type CommandRun,
 } from "../ai/terminalContext";
 import { TerminalPilot, terminalPilotAvailability } from "./TerminalPilot";
 import { AppliedEditsActivity, PendingEditsReview } from "../ai/PendingEditsReview";
 import { PendingMcpActionsReview } from "../ai/PendingMcpActionsReview";
-import { addPendingEdit, applyPendingEdit, removePendingEdit } from "../ai/pendingEdits";
+import {
+  addPendingEdit,
+  applyPendingEdit,
+  getAppliedEdits,
+  getPendingEdits,
+  removePendingEdit,
+  subscribePendingEdits,
+} from "../ai/pendingEdits";
 import { parseSubscriptionEditProposals } from "../ai/subscriptionEdits";
 import { executeHuskAction } from "../ai/actionBroker";
 import { parseSubscriptionActionProposals, stripSubscriptionActionProposals } from "../ai/subscriptionActions";
@@ -54,6 +62,7 @@ import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { getProjectMemory } from "../ai/projectMemory";
 import { isEnvDestructive, protectedTargets } from "./envSignals";
 import { recordTimelineEvent } from "../timeline/store";
+import { safeTimelineCommand } from "../timeline/commandMetadata";
 import { buildHuskAssistantContext } from "../ai/huskContext";
 import { ContextInspector } from "../ai/ContextInspector";
 import {
@@ -94,6 +103,18 @@ import {
   isTabSessionId,
 } from "../ai/sessionStore";
 import { loadProjectLensSnapshot, type ProjectLensSnapshot } from "../ai/projectLens";
+import {
+  appendAiTaskEvent,
+  createAiTask,
+  deriveAiTaskStages,
+  isVerificationCommand,
+  setAiTaskStatus,
+  taskCommandFingerprint,
+  taskModeSystemContext,
+  taskProgress,
+  type AiTaskEvent,
+  type AiTaskState,
+} from "../ai/taskMode";
 import "./TerminalAiComposer.css";
 
 interface SpeechRecognitionEventLike {
@@ -141,6 +162,10 @@ type ComposerAttachment = {
 };
 
 const PROJECT_LENS_ORIENTATION_PROMPT = "Using the attached Project Lens snapshot, orient me to this project. Explain what it is, its main architecture, how to run, test, and build it, and the relevant current Git state. Cite relative source files for grounded claims, and clearly say what would still need deeper inspection.";
+
+function taskEventId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
 
 const MAX_DROPPED_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
@@ -517,6 +542,92 @@ function ProjectLensCard({
   );
 }
 
+function TaskModeCard({
+  task,
+  busy,
+  onPause,
+  onResume,
+  onFinish,
+  onStop,
+  onDismiss,
+  onReview,
+}: {
+  task: AiTaskState;
+  busy: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  onFinish: () => void;
+  onStop: () => void;
+  onDismiss: () => void;
+  onReview: () => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const stages = deriveAiTaskStages(task);
+  const progress = taskProgress(task);
+  const needsReview = stages.some((stage) => stage.state === "review");
+  const statusLabel = task.status === "running" && busy ? "AI WORKING" : task.status.toUpperCase();
+
+  return (
+    <section className={cn("task-mode-card", `is-${task.status}`)} aria-label="Task Mode">
+      <div className="task-mode-head">
+        <span className="task-mode-marker" aria-hidden="true">◆</span>
+        <strong>TASK MODE</strong>
+        <span className="task-mode-status">{statusLabel}</span>
+        <span className="task-mode-spacer" />
+        <button type="button" className="task-mode-icon-btn" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? "hide" : `${progress}%`}
+        </button>
+      </div>
+      <div className="task-mode-summary">
+        <div className="task-mode-objective" title={task.objective}>{task.objective}</div>
+        <div
+          className="task-mode-progress"
+          role="progressbar"
+          aria-label="Task evidence progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+        >
+          <span style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+      {expanded && (
+        <>
+          <div className="task-mode-meta">
+            <span>WORKSPACE</span>
+            <strong title={task.workspacePath}>{workspaceDisplayName(task.workspacePath)}</strong>
+          </div>
+          <div className="task-mode-stages">
+            {stages.map((stage) => (
+              <div key={stage.id} className={cn("task-mode-stage", `is-${stage.state}`)}>
+                <span className="task-mode-stage-mark" aria-hidden="true">
+                  {stage.state === "complete" ? "✓" : stage.state === "failed" ? "×" : stage.state === "review" ? "!" : stage.state === "active" ? "●" : "○"}
+                </span>
+                <strong>{stage.label}</strong>
+                <span title={stage.detail}>{stage.detail}</span>
+              </div>
+            ))}
+          </div>
+          <div className="task-mode-actions">
+            {needsReview && <button type="button" className="is-primary" onClick={onReview}>Review changes</button>}
+            {task.status === "running" && <button type="button" onClick={onPause}>Pause</button>}
+            {task.status === "paused" && <button type="button" className="is-primary" onClick={onResume}>Resume</button>}
+            {(task.status === "running" || task.status === "paused") && (
+              <>
+                <button type="button" onClick={onFinish}>Finish</button>
+                <button type="button" className="is-danger" onClick={onStop}>Stop task</button>
+              </>
+            )}
+            {(task.status === "completed" || task.status === "stopped") && (
+              <button type="button" onClick={onDismiss}>Dismiss</button>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function TerminalAiComposer({
   sessionId,
   onOpenInAiTab,
@@ -558,6 +669,11 @@ export function TerminalAiComposer({
   const [projectLensError, setProjectLensError] = useState<string | null>(null);
   const [projectLensAttached, setProjectLensAttached] = useState(false);
   const [pendingProjectLensPrompt, setPendingProjectLensPrompt] = useState<string | null>(null);
+  const [pendingTaskStart, setPendingTaskStart] = useState<{
+    taskId: string;
+    prompt: string;
+    requiresProjectLens: boolean;
+  } | null>(null);
 
   const prefs = usePrefs();
   const agents = useAgents();
@@ -620,6 +736,7 @@ export function TerminalAiComposer({
   const messages = session.messages;
   const input = session.input;
   const workspacePath = normalizeWorkspacePath(session.workspacePath);
+  const activeTask = session.task;
   const subscriptionAutoApply = useSubscriptionAutoApply(sessionId, workspacePath);
   const currentWorkspacePath = normalizeWorkspacePath(activeWorkspaceRoot);
   const workspaceChangeKey = workspacePath && currentWorkspacePath
@@ -634,12 +751,41 @@ export function TerminalAiComposer({
     !isPathInWorkspace(activeTerminalCwd, workspacePath) &&
     dismissedWorkspaceChange !== workspaceChangeKey;
 
+  const updateTask = useCallback((updater: (task: AiTaskState) => AiTaskState) => {
+    updateSession(sessionId, (current) => current.task
+      ? { ...current, task: updater(current.task) }
+      : current);
+  }, [sessionId]);
+
+  const recordTaskEventFor = useCallback((taskId: string, event: AiTaskEvent) => {
+    updateSession(sessionId, (current) => current.task?.id === taskId
+      ? { ...current, task: appendAiTaskEvent(current.task, event) }
+      : current);
+  }, [sessionId]);
+
   const setChatWorkspace = useCallback((path: string | null) => {
     const nextPath = normalizeWorkspacePath(path);
-    const currentPath = normalizeWorkspacePath(getSession(sessionId).workspacePath);
+    const existing = getSession(sessionId);
+    const currentPath = normalizeWorkspacePath(existing.workspacePath);
+    if (
+      existing.task
+      && (existing.task.status === "running" || existing.task.status === "paused")
+      && nextPath !== existing.task.workspacePath
+    ) {
+      toast({
+        title: "This task is pinned to its workspace",
+        message: "Finish or stop the task before changing this chat to another folder.",
+        variant: "warning",
+      });
+      setWorkspaceScopeOpen(false);
+      return;
+    }
     updateSession(sessionId, (current) => ({
       ...current,
       workspacePath: nextPath || undefined,
+      task: current.task && (current.task.status === "completed" || current.task.status === "stopped") && nextPath !== current.task.workspacePath
+        ? undefined
+        : current.task,
       /* Approval belongs to both this conversation and this exact folder. A
          different folder always requires fresh consent. */
       workspaceEditAccess:
@@ -703,7 +849,7 @@ export function TerminalAiComposer({
   };
 
   const newSession = useCallback(() => {
-    updateSession(sessionId, () => ({ ...getSession(sessionId), messages: [], input: "" }));
+    updateSession(sessionId, () => ({ ...getSession(sessionId), messages: [], input: "", task: undefined }));
     const defaults = getPrefs();
     setIncludeFile(defaults.aiDefaultIncludeFile);
     setIncludeSelection(defaults.aiDefaultIncludeSelection);
@@ -713,6 +859,7 @@ export function TerminalAiComposer({
     setSensitivePrompt(null);
     setProjectLensAttached(false);
     setPendingProjectLensPrompt(null);
+    setPendingTaskStart(null);
   }, [sessionId]);
 
   const attachFiles = useCallback(async (paths: string[]) => {
@@ -887,6 +1034,56 @@ export function TerminalAiComposer({
     if (send) setPendingProjectLensPrompt(prompt);
     else setTimeout(() => textareaRef.current?.focus(), 40);
   }, [projectLens, refreshProjectLens, workspacePath]);
+
+  const startTaskMode = useCallback(async () => {
+    const objective = input.trim();
+    if (!objective) {
+      toast({
+        title: "Describe the task first",
+        message: "For example: fix the failing login test and verify the result.",
+        variant: "info",
+      });
+      textareaRef.current?.focus();
+      return;
+    }
+    if (busy) return;
+    if (!workspacePath) {
+      setWorkspaceScopeOpen(true);
+      toast({
+        title: "Choose a workspace for this task",
+        message: "Task Mode pins every read, change, and command to one folder.",
+        variant: "info",
+      });
+      return;
+    }
+    if (activeTask && (activeTask.status === "running" || activeTask.status === "paused")) {
+      toast({
+        title: "A task is already active",
+        message: "Finish or stop it before starting another task in this chat.",
+        variant: "warning",
+      });
+      return;
+    }
+
+    let snapshot = projectLens?.root === workspacePath ? projectLens : null;
+    if (!snapshot && prefs.aiFileToolsEnabled) snapshot = await refreshProjectLens();
+    if (normalizeWorkspacePath(getSession(sessionId).workspacePath) !== workspacePath) {
+      toast({ title: "Workspace changed", message: "Review the task again before starting it.", variant: "info" });
+      return;
+    }
+
+    const task = createAiTask(objective, workspacePath, { projectReady: Boolean(snapshot) });
+    updateSession(sessionId, (current) => ({ ...current, task, input: objective }));
+    if (variant === "docked" && !dockSide) {
+      setExpanded(true);
+      setHeight(null);
+    }
+    if (snapshot) {
+      setProjectLens(snapshot);
+      setProjectLensAttached(true);
+    }
+    setPendingTaskStart({ taskId: task.id, prompt: objective, requiresProjectLens: Boolean(snapshot) });
+  }, [activeTask, busy, dockSide, input, prefs.aiFileToolsEnabled, projectLens, refreshProjectLens, sessionId, variant, workspacePath]);
 
   const contextItems = useMemo<AiContextItem[]>(() => {
     const items: AiContextItem[] = [];
@@ -1289,6 +1486,22 @@ export function TerminalAiComposer({
       return;
     }
 
+    const taskAtRequest = getSession(sessionId).task;
+    const taskRequestEventId = taskAtRequest?.status === "running"
+      ? taskEventId("request")
+      : null;
+    let taskToolSequence = 0;
+    let taskResponseFailed = false;
+    if (taskAtRequest && taskRequestEventId) {
+      recordTaskEventFor(taskAtRequest.id, {
+        id: taskRequestEventId,
+        type: "request",
+        label: "AI request",
+        state: "running",
+        at: Date.now(),
+      });
+    }
+
     let tools: Record<string, Tool> = {};
     let mcpActionCatalog = "";
     /* Connecting is a Husk concern, not a provider concern. Signed-in CLIs do
@@ -1373,6 +1586,10 @@ export function TerminalAiComposer({
       "\n\nIf you suggest a command the user may run, put one short command in an explicitly labelled `sh` code block. Put scripts and source code in their real language fence; do not label them `sh`. When referring to a file in the selected workspace, use a backticked relative path, optionally with `:line`, so the user can open it." +
       mcpActionCatalog;
 
+    if (taskAtRequest?.status === "running") {
+      system += `\n\n${taskModeSystemContext(taskAtRequest)}`;
+    }
+
     for (const item of sendItems) {
       system += itemToRequestBlock(item);
     }
@@ -1425,6 +1642,16 @@ export function TerminalAiComposer({
             next[next.length - 1] = { ...last, trace: { ...last.trace, tools } };
             return next;
           });
+          if (taskAtRequest && taskRequestEventId && activity.state === "complete") {
+            taskToolSequence += 1;
+            recordTaskEventFor(taskAtRequest.id, {
+              id: `${taskRequestEventId}-tool-${taskToolSequence}`,
+              type: "tool",
+              label: activity.name,
+              state: "complete",
+              at: Date.now(),
+            });
+          }
         },
       );
       const conversation: AiMessage[] = [...messages, { role: "user", content: text }];
@@ -1509,6 +1736,16 @@ export function TerminalAiComposer({
               mcpToolsEnabled: prefs.aiMcpToolsEnabled,
             });
             actionResults.push({ activity: result.activity, state: result.state, result: (result.result ?? result.summary).slice(0, 16_000) });
+            if (taskAtRequest && taskRequestEventId) {
+              taskToolSequence += 1;
+              recordTaskEventFor(taskAtRequest.id, {
+                id: `${taskRequestEventId}-action-${rounds}-${taskToolSequence}`,
+                type: "tool",
+                label: result.activity,
+                state: result.state === "complete" ? "complete" : result.state === "error" || result.state === "refused" ? "failed" : "review",
+                at: Date.now(),
+              });
+            }
             setMessages((prev) => {
               const next = [...prev];
               const last = next[next.length - 1];
@@ -1574,6 +1811,18 @@ export function TerminalAiComposer({
                 },
           )
         );
+        if (taskAtRequest && taskRequestEventId) {
+          for (const edit of queued) {
+            recordTaskEventFor(taskAtRequest.id, {
+              id: `task-edit-proposed-${edit.id}`,
+              type: "edit-proposed",
+              label: edit.path.split("/").pop() || edit.path,
+              state: "review",
+              at: edit.timestamp,
+              detail: edit.path,
+            });
+          }
+        }
         const autoSafety = subscriptionAutoApplyActive && parsed.rejected === 0
           ? canAutoApplySubscriptionEdits(parsed.proposals)
           : {
@@ -1635,6 +1884,7 @@ export function TerminalAiComposer({
       }
     } catch (e) {
       if (abortRef.current) return;
+      taskResponseFailed = true;
       const msg = e instanceof Error ? e.message : String(e);
       setMessages((prev) => {
         const next = [...prev];
@@ -1645,6 +1895,16 @@ export function TerminalAiComposer({
         return next;
       });
     } finally {
+      if (taskAtRequest && taskRequestEventId) {
+        const responseFailed = abortRef.current || taskResponseFailed;
+        recordTaskEventFor(taskAtRequest.id, {
+          id: `${taskRequestEventId}-response`,
+          type: "response",
+          label: abortRef.current ? "AI response stopped" : taskResponseFailed ? "AI response failed" : "AI response received",
+          state: responseFailed ? "failed" : "complete",
+          at: Date.now(),
+        });
+      }
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -1657,13 +1917,67 @@ export function TerminalAiComposer({
       setStatus(null);
       setAttachedFiles([]);
     }
-  }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled, workspacePath, session.workspaceEditAccess, subscriptionAutoApply]);
+  }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled, workspacePath, session.workspaceEditAccess, subscriptionAutoApply, recordTaskEventFor]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
     abortCtrlRef.current?.abort();
     setBusy(false);
     setStatus(null);
+  }, []);
+
+  const pauseTask = useCallback(() => {
+    if (!activeTask || activeTask.status !== "running") return;
+    if (busy) stop();
+    updateTask((task) => setAiTaskStatus(task, "paused"));
+  }, [activeTask, busy, stop, updateTask]);
+
+  const resumeTask = useCallback(() => {
+    if (!activeTask || activeTask.status !== "paused") return;
+    if (normalizeWorkspacePath(getSession(sessionId).workspacePath) !== activeTask.workspacePath) {
+      toast({ title: "Task workspace is unavailable", message: "Choose the task's original folder before resuming.", variant: "warning" });
+      return;
+    }
+    updateTask((task) => setAiTaskStatus(task, "running"));
+    setTimeout(() => textareaRef.current?.focus(), 40);
+  }, [activeTask, sessionId, updateTask]);
+
+  const finishTask = useCallback(() => {
+    if (!activeTask || (activeTask.status !== "running" && activeTask.status !== "paused")) return;
+    if (busy) {
+      toast({ title: "AI is still responding", message: "Stop or wait for this response before finishing the task.", variant: "info" });
+      return;
+    }
+    const stages = deriveAiTaskStages(activeTask);
+    if (stages.some((stage) => stage.state === "review")) {
+      toast({ title: "Changes still need review", message: "Apply or discard the proposed changes before finishing the task.", variant: "warning" });
+      document.querySelector(".pe-dock, .pe-wrap")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (stages.some((stage) => stage.state === "failed")) {
+      toast({ title: "A verification check failed", message: "Run a passing check, or stop the task if you do not want to continue.", variant: "warning" });
+      return;
+    }
+    updateTask((task) => setAiTaskStatus(task, "completed"));
+  }, [activeTask, busy, updateTask]);
+
+  const stopTask = useCallback(() => {
+    if (!activeTask) return;
+    if (busy) stop();
+    updateTask((task) => setAiTaskStatus(task, "stopped"));
+  }, [activeTask, busy, stop, updateTask]);
+
+  const dismissTask = useCallback(() => {
+    updateSession(sessionId, (current) => current.task
+      && (current.task.status === "completed" || current.task.status === "stopped")
+      ? { ...current, task: undefined }
+      : current);
+  }, [sessionId]);
+
+  const reviewTaskChanges = useCallback(() => {
+    const target = document.querySelector(".pe-dock, .pe-wrap");
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    else toast({ title: "No proposed changes are waiting", variant: "info" });
   }, []);
 
   useEffect(() => {
@@ -1683,6 +1997,101 @@ export function TerminalAiComposer({
     setPendingProjectLensPrompt(null);
     void handleSendRef.current(prompt);
   }, [busy, contextItems, pendingProjectLensPrompt]);
+
+  useEffect(() => {
+    if (!pendingTaskStart || busy) return;
+    const task = getSession(sessionId).task;
+    if (!task || task.id !== pendingTaskStart.taskId || task.status !== "running") {
+      setPendingTaskStart(null);
+      return;
+    }
+    if (pendingTaskStart.requiresProjectLens && !contextItems.some((item) => item.id === "project-lens")) return;
+    const prompt = pendingTaskStart.prompt;
+    setPendingTaskStart(null);
+    void handleSendRef.current(prompt);
+  }, [busy, contextItems, pendingTaskStart, sessionId]);
+
+  /* Pending edits are an in-memory review queue, while Task Mode survives an
+     app restart. Mirror only the evidence (path + state), never edit content,
+     into the persisted task record. */
+  useEffect(() => {
+    const syncTaskEdits = () => {
+      updateSession(sessionId, (current) => {
+        if (!current.task) return current;
+        let task = current.task;
+        const pending = getPendingEdits().filter((edit) =>
+          edit.sessionId === sessionId && edit.timestamp >= task.createdAt,
+        );
+        const applied = getAppliedEdits(sessionId).filter((edit) => edit.timestamp >= task.createdAt);
+        for (const edit of pending) {
+          task = appendAiTaskEvent(task, {
+            id: `task-edit-proposed-${edit.id}`,
+            type: "edit-proposed",
+            label: edit.path.split("/").pop() || edit.path,
+            state: "review",
+            at: edit.timestamp,
+            detail: edit.path,
+          });
+        }
+        for (const edit of applied) {
+          task = appendAiTaskEvent(task, {
+            id: `task-edit-applied-${edit.id}`,
+            type: "edit-applied",
+            label: edit.path.split("/").pop() || edit.path,
+            state: "complete",
+            at: edit.timestamp,
+            detail: edit.path,
+          });
+        }
+        const pendingIds = new Set(pending.map((edit) => edit.id));
+        const appliedBySource = new Map(applied.flatMap((edit) => edit.sourceEditId ? [[edit.sourceEditId, edit] as const] : []));
+        for (const event of task.events) {
+          if (event.type !== "edit-proposed" || event.state !== "review") continue;
+          const sourceId = event.id.startsWith("task-edit-proposed-")
+            ? event.id.slice("task-edit-proposed-".length)
+            : "";
+          if (!sourceId || pendingIds.has(sourceId)) continue;
+          const appliedEdit = appliedBySource.get(sourceId);
+          task = appendAiTaskEvent(task, {
+            ...event,
+            state: appliedEdit ? "complete" : "info",
+            at: appliedEdit?.timestamp ?? Date.now(),
+            detail: appliedEdit ? appliedEdit.path : `${event.detail ?? event.label} · discarded`,
+          });
+        }
+        return task === current.task ? current : { ...current, task };
+      });
+    };
+    syncTaskEdits();
+    return subscribePendingEdits(syncTaskEdits);
+  }, [sessionId]);
+
+  /* A command is first recorded as running when Husk sends it to the visible
+     PTY. Only the matching PTY completion event can turn it into passed or
+     failed evidence. */
+  useEffect(() => subscribeTerminalCommandRuns((run) => {
+    const fingerprint = taskCommandFingerprint(run.command);
+    updateSession(sessionId, (current) => {
+      if (!current.task) return current;
+      const event = [...current.task.events].reverse().find((item) =>
+        (item.type === "command" || item.type === "check")
+        && item.state === "running"
+        && item.commandFingerprint === fingerprint
+        && item.terminalPtyId === run.terminalPtyId,
+      );
+      if (!event) return current;
+      return {
+        ...current,
+        task: appendAiTaskEvent(current.task, {
+          ...event,
+          state: run.exitCode === 0 ? "complete" : "failed",
+          at: Date.now(),
+          exitCode: run.exitCode,
+          detail: run.cwd || event.detail,
+        }),
+      };
+    });
+  }), [sessionId]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1745,7 +2154,11 @@ export function TerminalAiComposer({
     setStatus(null);
   };
 
-  const writeCommandToActiveTerminal = (command: string, destinationCwd?: string): boolean => {
+  const writeCommandToActiveTerminal = (
+    command: string,
+    destinationCwd?: string,
+    evidenceCommand = command,
+  ): boolean => {
     const cmd = command.trim();
     if (!cmd) return false;
     if (isCommandRunning()) {
@@ -1764,6 +2177,7 @@ export function TerminalAiComposer({
       });
       return false;
     }
+    const targetPtyId = getActiveTerminalPtyId();
     if (!runInActiveTerminal(cmd)) {
       toast({
         title: "No active terminal",
@@ -1773,6 +2187,22 @@ export function TerminalAiComposer({
       return false;
     }
     const cwd = destinationCwd || getActiveTerminalCwd();
+    const task = getSession(sessionId).task;
+    if (task?.status === "running") {
+      const safe = safeTimelineCommand(evidenceCommand);
+      const isCheck = isVerificationCommand(evidenceCommand);
+      recordTaskEventFor(task.id, {
+        id: taskEventId(isCheck ? "check" : "command"),
+        type: isCheck ? "check" : "command",
+        label: safe.display,
+        state: "running",
+        at: Date.now(),
+        detail: cwd || undefined,
+        ...(safe.command ? { command: safe.command } : {}),
+        commandFingerprint: taskCommandFingerprint(cmd),
+        terminalPtyId: targetPtyId,
+      });
+    }
     toast({
       title: "Command sent to terminal",
       message: cwd ? `Running in ${cwd}` : "Running in the active terminal",
@@ -1854,7 +2284,7 @@ export function TerminalAiComposer({
     const command = currentTarget.ready
       ? pendingWorkspaceRun.command
       : `cd -- ${shq(pendingWorkspaceRun.workspacePath)} && ${pendingWorkspaceRun.command}`;
-    if (writeCommandToActiveTerminal(command, pendingWorkspaceRun.workspacePath)) {
+    if (writeCommandToActiveTerminal(command, pendingWorkspaceRun.workspacePath, pendingWorkspaceRun.command)) {
       setPendingWorkspaceRun(null);
     }
   };
@@ -1875,7 +2305,7 @@ export function TerminalAiComposer({
       });
       return;
     }
-    if (writeCommandToActiveTerminal(pendingWorkspaceRun.command, currentCwd)) {
+    if (writeCommandToActiveTerminal(pendingWorkspaceRun.command, currentCwd, pendingWorkspaceRun.command)) {
       setPendingWorkspaceRun(null);
     }
   };
@@ -1982,9 +2412,13 @@ export function TerminalAiComposer({
       : `${providerAccessLabel} · chat only`;
 
   const startTerminalPilot = () => {
-    const task = input.trim();
-    if (!task) {
+    const objective = input.trim();
+    if (!objective) {
       toast({ title: "Describe the diagnostic task first", message: "For example: find why this pod is failing.", variant: "info" });
+      return;
+    }
+    if (activeTask && activeTask.status !== "running") {
+      toast({ title: "Task Mode is paused", message: "Resume the task before starting Terminal Pilot.", variant: "info" });
       return;
     }
     if (isCommandRunning()) {
@@ -1993,11 +2427,11 @@ export function TerminalAiComposer({
     }
     setMessages((current) => [...current, {
       role: "user",
-      content: `[Terminal Pilot] ${task}`,
+      content: `[Terminal Pilot] ${objective}`,
       timestamp: Date.now(),
     }]);
     setInput("");
-    setPilotRequest({ id: Date.now(), task });
+    setPilotRequest({ id: Date.now(), task: objective });
   };
 
   if (!open || !prefs.aiEnabled) return null;
@@ -2269,16 +2703,6 @@ export function TerminalAiComposer({
               <span>Chats</span>
             </button>
           )}
-          {busy && (
-            <button
-              type="button"
-              onClick={stop}
-              className="composer-icon-btn text-destructive"
-              title="Stop generating"
-            >
-              <HugeiconsIcon icon={StopIcon} size={12} strokeWidth={1.75} />
-            </button>
-          )}
           {variant === "docked" && onOpenInAiTab && (
             <button
               type="button"
@@ -2334,6 +2758,19 @@ export function TerminalAiComposer({
             </button>
           </div>
         </div>
+      )}
+
+      {activeTask && (
+        <TaskModeCard
+          task={activeTask}
+          busy={busy}
+          onPause={pauseTask}
+          onResume={resumeTask}
+          onFinish={finishTask}
+          onStop={stopTask}
+          onDismiss={dismissTask}
+          onReview={reviewTaskChanges}
+        />
       )}
 
       <div
@@ -2704,6 +3141,7 @@ export function TerminalAiComposer({
             getTargetPtyId={getActiveTerminalPtyId}
             isTerminalRunning={isCommandRunning}
             runInTargetTerminal={(command) => sendCommandToTerminal(command) === "sent"}
+            supervisionPaused={Boolean(activeTask && activeTask.status !== "running")}
           />
         )}
         <div className="wb-composer">
@@ -2848,11 +3286,21 @@ export function TerminalAiComposer({
             >
               <HugeiconsIcon icon={AttachmentSquareIcon} size={12} strokeWidth={1.75} />
             </button>
+            <button
+              type="button"
+              onClick={startTaskMode}
+              disabled={busy || !input.trim() || Boolean(activeTask)}
+              className={cn("wb-icon-btn wb-task-btn", activeTask && "is-active")}
+              title={activeTask ? `Task Mode is ${activeTask.status}` : "Start a supervised task in this workspace"}
+            >
+              <span aria-hidden="true">◆</span>
+              <span>task</span>
+            </button>
             {variant === "docked" && (
               <button
                 type="button"
                 onClick={startTerminalPilot}
-                disabled={busy || !input.trim()}
+                disabled={busy || !input.trim() || Boolean(activeTask && activeTask.status !== "running")}
                 className="wb-icon-btn wb-pilot-btn"
                 title={terminalPilotAvailability(provider)}
               >
@@ -2862,12 +3310,12 @@ export function TerminalAiComposer({
             )}
             <button
               type="button"
-              onClick={() => handleSend()}
-              disabled={busy || !input.trim()}
-              className="composer-send-btn"
-              title="Send"
+              onClick={busy ? stop : () => handleSend()}
+              disabled={!busy && !input.trim()}
+              className={cn("composer-send-btn", busy && "is-stop")}
+              title={busy ? "Stop generating" : "Send"}
             >
-              {busy ? "…" : "⏎"}
+              {busy ? <><HugeiconsIcon icon={StopIcon} size={10} strokeWidth={2} /><span>stop</span></> : "⏎"}
             </button>
           </div>
         </div>

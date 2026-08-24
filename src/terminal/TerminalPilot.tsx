@@ -39,6 +39,7 @@ type TerminalPilotProps = {
   getTargetPtyId: () => number | null;
   isTerminalRunning: () => boolean;
   runInTargetTerminal: (command: string) => boolean;
+  supervisionPaused?: boolean;
 };
 
 const MAX_STEPS = 8;
@@ -65,6 +66,7 @@ export function TerminalPilot({
   getTargetPtyId,
   isTerminalRunning,
   runInTargetTerminal,
+  supervisionPaused = false,
 }: TerminalPilotProps) {
   const [status, setStatus] = useState<PilotStatus>("idle");
   const [task, setTask] = useState("");
@@ -99,6 +101,14 @@ export function TerminalPilot({
     if (waitTimerRef.current != null) window.clearTimeout(waitTimerRef.current);
     waitTimerRef.current = null;
   }, []);
+
+  useEffect(() => {
+    if (!supervisionPaused || !["planning", "waiting", "approval"].includes(status)) return;
+    stoppedRef.current = true;
+    waitingCommandRef.current = null;
+    clearWaitTimer();
+    setPilotState("paused", "Task Mode paused Terminal Pilot. A command already running in the terminal remains visible and under your control.");
+  }, [clearWaitTimer, setPilotState, status, supervisionPaused]);
 
   const execute = useCallback((step: PilotStep) => {
     if (stoppedRef.current) return;

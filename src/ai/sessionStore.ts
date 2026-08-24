@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { restoreAiTask, type AiTaskState } from "./taskMode";
 
 type Role = "user" | "assistant";
 
@@ -48,6 +49,9 @@ export type AiSession = {
   /** Explicit, scope-specific compatibility flag for the legacy signed-in CLI
       edit-proposal format. It never grants direct filesystem write access. */
   workspaceEditAccess?: boolean;
+  /** Persistent supervised work state. Running tasks restore paused so Husk
+      never resumes actions silently after an application restart. */
+  task?: AiTaskState;
   createdAt: number;
   updatedAt: number;
   archived?: boolean;
@@ -69,7 +73,7 @@ function loadSessions() {
     if (Array.isArray(parsed.sessions)) {
       sessions.clear();
       for (const s of parsed.sessions) {
-        if (s.id) sessions.set(s.id, s);
+        if (s.id) sessions.set(s.id, { ...s, task: restoreAiTask(s.task) });
       }
       if (activeSessionId === null && parsed.activeSessionId && sessions.has(parsed.activeSessionId)) {
         activeSessionId = parsed.activeSessionId;

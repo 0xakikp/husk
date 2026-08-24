@@ -18,6 +18,7 @@ export interface PendingEdit {
  * lets Undo refuse safely if a file changed again after Husk applied it. */
 export interface AppliedEdit {
   id: string;
+  sourceEditId?: string;
   path: string;
   operation: "create" | "edit";
   workspaceRoot: string;
@@ -70,6 +71,7 @@ function recordAppliedEdit(edit: PendingEdit, before: string | null, after: stri
     ...appliedEdits,
     {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      sourceEditId: edit.id,
       path: edit.path,
       operation: edit.operation === "create" ? "create" as const : "edit" as const,
       workspaceRoot: edit.workspaceRoot,
