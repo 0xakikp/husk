@@ -6,7 +6,13 @@ import { recordTimelineEvent } from "../timeline/store";
 import { sshReadFile, sshWriteFile } from "../remote/remoteFs";
 import { usePrefs, getPrefs, type Prefs } from "../settings/preferences";
 import { fontStack } from "../styles/fonts";
-import { registerEditorApplyEdit, registerEditorGetSelection, registerEditorFile, registerEditorCloseFind } from "@/ai/editorStore";
+import {
+  registerEditorApplyEdit,
+  registerEditorGetSelection,
+  registerEditorFile,
+  registerEditorCloseFind,
+  registerEditorDocument,
+} from "@/ai/editorStore";
 import { markSaved, markModified, markNew, clearState } from "./dirtyStore";
 import { EditorContextMenu } from "./EditorContextMenu";
 
@@ -249,6 +255,48 @@ export function EditorArea({
       return editor.getModel()?.uri.path ?? null;
     });
 
+    const unsubDocument = registerEditorDocument(
+      (requestedPath) => {
+        const model = requestedPath
+          ? monaco.editor.getModel(monaco.Uri.file(requestedPath))
+          : editor.getModel();
+        return model ? { path: model.uri.fsPath, text: model.getValue() } : null;
+      },
+      async (path, expected, replacement) => {
+        const model = monaco.editor.getModel(monaco.Uri.file(path));
+        if (!model || model.uri.fsPath !== path || model.getValue() !== expected) return false;
+        const file = filesRef.current.find((candidate) => candidate.path === path);
+        model.pushEditOperations(
+          [],
+          [{ range: model.getFullModelRange(), text: replacement }],
+          () => null,
+        );
+        const appliedVersion = model.getAlternativeVersionId();
+        const save = file?.remoteHost
+          ? sshWriteFile(file.remoteHost, path, replacement)
+          : writeFile(path, replacement);
+        try {
+          await save;
+        } catch (error) {
+          /* If persistence fails and the user has not typed meanwhile, return
+             the model to the exact text they reviewed rather than leaving a
+             proposal that the UI reported as unapplied. */
+          if (model.getValue() === replacement) {
+            model.pushEditOperations(
+              [],
+              [{ range: model.getFullModelRange(), text: expected }],
+              () => null,
+            );
+          }
+          throw error;
+        }
+        if (model.getAlternativeVersionId() === appliedVersion) markSaved(path, appliedVersion);
+        else markModified(path, model.getAlternativeVersionId());
+        recordTimelineEvent("file", `Organized ${path.split("/").pop() || path}`, { path });
+        return true;
+      },
+    );
+
     const unsubCloseFind = registerEditorCloseFind(() => {
       const findController = editor.getContribution("editor.contrib.findController") as
         | { closeFindWidget(): void }
@@ -282,6 +330,7 @@ export function EditorArea({
       unsub();
       unsubSel();
       unsubFile();
+      unsubDocument();
       unsubCloseFind();
       dirtyDisposables.forEach((d) => d.dispose());
       vimRef.current?.dispose();

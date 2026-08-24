@@ -22,6 +22,7 @@ import {
   Cancel01Icon,
   InformationCircleIcon,
   NotebookIcon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { PanelHeader } from "../shell/PanelHeader";
 import { folderIconUrl } from "../explorer/iconResolver";
@@ -60,6 +61,11 @@ import {
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import { sheetHost } from "../components/sheetHost";
+import { getEditorDocument, replaceEditorDocument } from "../ai/editorStore";
+import { readFile } from "../fs";
+import { buildVaultIndex, rankVaultSections, type VaultLensResult } from "./vaultLens";
+import { expandVaultLensQuery, organizeNoteWithAi } from "./notesAi";
+import { NoteOrganizeReview } from "./NoteOrganizeReview";
 
 function noteTitle(name: string): string {
   return name.replace(/\.(md|mdx|txt)$/i, "");
@@ -104,6 +110,18 @@ export function NotesView({
   const [searchActive, setSearchActive] = useState(false);
   const [searchResults, setSearchResults] = useState<NoteSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [lensMode, setLensMode] = useState(false);
+  const [lensResults, setLensResults] = useState<VaultLensResult[]>([]);
+  const [lensNotice, setLensNotice] = useState("");
+  const lensRequestRef = useRef(0);
+  const [organizing, setOrganizing] = useState(false);
+  const [applyingOrganization, setApplyingOrganization] = useState(false);
+  const [organizeReview, setOrganizeReview] = useState<{
+    path: string;
+    name: string;
+    original: string;
+    organized: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -180,8 +198,14 @@ export function NotesView({
     loadTree();
   }, [loadTree]);
 
-  // Full-text search effect
+  // Fast literal search stays live while typing. Vault Lens is explicitly run
+  // with Enter so a natural-language query never triggers a provider request
+  // for every keystroke.
   useEffect(() => {
+    if (lensMode) {
+      setSearching(false);
+      return;
+    }
     if (!search.trim()) {
       setSearchResults([]);
       setSearching(false);
@@ -198,7 +222,7 @@ export function NotesView({
     };
     void run();
     return () => { cancelled = true; };
-  }, [search]);
+  }, [search, lensMode]);
 
   const toggleExpanded = (path: string) => {
     setExpanded((prev) => {
@@ -212,7 +236,7 @@ export function NotesView({
     });
   };
 
-  const handleOpenNote = async (path: string) => {
+  const handleOpenNote = async (path: string, line?: number) => {
     setLastViewedNote(path);
     setActiveNotePath(path);
     touchRecentNote(path);
@@ -220,6 +244,9 @@ export function NotesView({
     if (onOpenFile) {
       const name = path.split("/").pop() || path;
       onOpenFile(path, name);
+      if (line && line > 0) {
+        window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path, line } }));
+      }
     } else {
       // Fallback: read and show in a simple modal if no editor available
       const content = await readNote(path);
@@ -227,6 +254,93 @@ export function NotesView({
       setEditContent(content);
     }
   };
+
+  const runVaultLens = useCallback(async () => {
+    const query = search.trim();
+    if (!query || !notesDirRef.current) return;
+    const requestId = ++lensRequestRef.current;
+    setSearching(true);
+    setLensNotice("");
+    try {
+      const sections = await buildVaultIndex(notesDirRef.current);
+      let expansion: string[] = [];
+      try {
+        expansion = await expandVaultLensQuery(query);
+      } catch {
+        /* Lens remains useful offline or before an AI provider is configured:
+           direct section ranking is the privacy-preserving fallback. */
+        if (requestId === lensRequestRef.current) {
+          setLensNotice("AI expansion unavailable · showing private local matches");
+        }
+      }
+      if (requestId !== lensRequestRef.current) return;
+      setLensResults(rankVaultSections(sections, query, expansion));
+    } catch (error) {
+      if (requestId !== lensRequestRef.current) return;
+      setLensResults([]);
+      setLensNotice(error instanceof Error ? error.message : "Vault Lens could not search these notes.");
+    } finally {
+      if (requestId === lensRequestRef.current) setSearching(false);
+    }
+  }, [search]);
+
+  const handleOrganizeNote = useCallback(async () => {
+    const path = activeNotePath;
+    if (!path || organizing) return;
+    setOrganizing(true);
+    try {
+      const openDocument = getEditorDocument(path);
+      const original = openDocument?.text ?? await readFile(path);
+      if (!original.trim()) {
+        toast({ title: "This note is empty", message: "Add some text before organizing it.", variant: "info" });
+        return;
+      }
+      const name = path.split("/").pop() || path;
+      const organized = await organizeNoteWithAi(name, original);
+      if (organized.trim() === original.trim()) {
+        toast({ title: "This note is already organized", variant: "success" });
+        return;
+      }
+      setOrganizeReview({ path, name, original, organized });
+    } catch (error) {
+      toast({
+        title: "Could not organize note",
+        message: error instanceof Error ? error.message : String(error),
+        variant: "error",
+      });
+    } finally {
+      setOrganizing(false);
+    }
+  }, [activeNotePath, organizing]);
+
+  const applyOrganizedNote = useCallback(async () => {
+    const review = organizeReview;
+    if (!review || applyingOrganization) return;
+    setApplyingOrganization(true);
+    try {
+      const openDocument = getEditorDocument(review.path);
+      if (openDocument) {
+        const applied = await replaceEditorDocument(review.path, review.original, review.organized);
+        if (!applied) throw new Error("The note changed after this review was created. Organize it again to avoid overwriting newer edits.");
+      } else {
+        const current = await readFile(review.path);
+        if (current !== review.original) {
+          throw new Error("The note changed after this review was created. Organize it again to avoid overwriting newer edits.");
+        }
+        await writeNote(review.path, review.organized);
+      }
+      setOrganizeReview(null);
+      toast({ title: "Organized note applied", message: "The reviewed Markdown is now saved.", variant: "success" });
+    } catch (error) {
+      toast({
+        title: "Could not apply organized note",
+        message: error instanceof Error ? error.message : String(error),
+        variant: "error",
+      });
+    } finally {
+      setApplyingOrganization(false);
+    }
+  }, [applyingOrganization, organizeReview]);
 
   const handleSaveNote = async () => {
     if (!editingFile) return;
@@ -585,6 +699,24 @@ export function NotesView({
               >
                 <HugeiconsIcon icon={File02Icon} size={14} />
               </button>
+              {activeNotePath && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => void handleOrganizeNote()}
+                      disabled={organizing}
+                      className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-45"
+                      aria-label="Organize current note with AI"
+                    >
+                      <HugeiconsIcon icon={SparklesIcon} size={14} className={organizing ? "animate-pulse" : undefined} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={6} className="border border-border/60 bg-zinc-950 text-[10px] text-zinc-100">
+                    Organize note · review the Markdown diff before applying
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {tree.length > 0 && (
                 <button
                   type="button"
@@ -616,30 +748,77 @@ export function NotesView({
 
       {/* Search */}
       {searchActive && (
-        <div className="relative mb-2">
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={9}
-            className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onBlur={() => {
-              if (!search) setSearchActive(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setSearch("");
-                setSearchActive(false);
-              }
-            }}
-            placeholder="Search names & content…"
-            className="w-full h-6 rounded-md border border-border/40 bg-muted/30 pl-5 pr-1.5 text-[10px] text-foreground outline-none focus:border-border/70"
-            autoFocus
-          />
+        <div className="mb-2">
+          <div className="flex h-7 items-center rounded-md border border-border/45 bg-muted/25 p-0.5 focus-within:border-primary/45">
+            <HugeiconsIcon icon={Search01Icon} size={10} className="ml-1.5 shrink-0 text-muted-foreground" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                if (lensMode) {
+                  lensRequestRef.current += 1;
+                  setLensResults([]);
+                  setLensNotice("");
+                  setSearching(false);
+                }
+              }}
+              onBlur={() => {
+                if (!search) setSearchActive(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  lensRequestRef.current += 1;
+                  setSearch("");
+                  setLensResults([]);
+                  setSearchActive(false);
+                } else if (e.key === "Enter" && lensMode) {
+                  e.preventDefault();
+                  void runVaultLens();
+                }
+              }}
+              placeholder={lensMode ? "Ask Vault Lens…" : "Search names & content…"}
+              className="h-full min-w-0 flex-1 bg-transparent px-1.5 text-[10px] text-foreground outline-none"
+              autoFocus
+            />
+            <button
+              type="button"
+              className={cn(
+                "flex h-5 shrink-0 items-center gap-1 rounded px-1.5 font-mono text-[8px] uppercase tracking-wide text-muted-foreground transition-all hover:bg-muted hover:text-foreground",
+                lensMode && "border border-primary/35 bg-primary/10 text-primary",
+              )}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                lensRequestRef.current += 1;
+                setLensMode((current) => !current);
+                setLensResults([]);
+                setLensNotice("");
+                setSearching(false);
+              }}
+              title={lensMode ? "Use instant text search" : "Search notes by meaning"}
+            >
+              <HugeiconsIcon icon={SparklesIcon} size={9} />
+              Lens
+            </button>
+          </div>
+          {lensMode && (
+            <div className="mt-1 flex items-center px-1 font-mono text-[8px] text-muted-foreground/70">
+              <span className="truncate">Search by meaning · Enter to run</span>
+              {search.trim() && (
+                <button
+                  type="button"
+                  className="ml-auto shrink-0 text-primary hover:underline disabled:opacity-40"
+                  disabled={searching}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => void runVaultLens()}
+                >
+                  {searching ? "thinking…" : "search ↵"}
+                </button>
+              )}
+            </div>
+          )}
+          {lensNotice && <p className="mt-1 px-1 font-mono text-[8px] leading-3 text-amber-400/75">{lensNotice}</p>}
         </div>
       )}
 
@@ -672,10 +851,37 @@ export function NotesView({
       {/* Tree / Search results */}
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {loading || searching ? (
-          <div className="py-4 text-center text-[11px] text-muted-foreground">{searching ? "Searching…" : "Loading…"}</div>
+          <div className="py-4 text-center text-[11px] text-muted-foreground">{searching ? (lensMode ? "Searching by meaning…" : "Searching…") : "Loading…"}</div>
         ) : searchIsActive ? (
-          searchResults.length === 0 ? (
-            <div className="py-4 text-center text-[11px] text-muted-foreground">No matches.</div>
+          (lensMode ? lensResults : searchResults).length === 0 ? (
+            <div className="px-3 py-4 text-center text-[10px] leading-4 text-muted-foreground">
+              {lensMode ? "Press Enter to search, or try a more specific question." : "No matches."}
+            </div>
+          ) : lensMode ? (
+            <div className="flex flex-col gap-0.5">
+              {lensResults.map((result) => (
+                <button
+                  type="button"
+                  key={result.id}
+                  className={cn(
+                    "group flex w-full flex-col gap-1 rounded-md border border-transparent px-2 py-2 text-left transition-colors hover:border-primary/25 hover:bg-primary/[0.06]",
+                    activeNotePath === result.path && "border-primary/30 bg-primary/[0.07]",
+                  )}
+                  onClick={() => void handleOpenNote(result.path, result.startLine)}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <HugeiconsIcon icon={File02Icon} size={12} className="shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-medium text-foreground">{noteTitle(result.name)}</span>
+                    <span className="shrink-0 font-mono text-[8px] text-muted-foreground/60">L{result.startLine}</span>
+                  </span>
+                  <span className="truncate pl-[18px] font-mono text-[9px] text-primary/80">§ {result.heading}</span>
+                  <span className="line-clamp-3 pl-[18px] text-[9px] leading-3.5 text-muted-foreground">{result.preview}</span>
+                  {result.matchedTerms.length > 0 && (
+                    <span className="truncate pl-[18px] font-mono text-[8px] text-muted-foreground/50">matched · {result.matchedTerms.join(" · ")}</span>
+                  )}
+                </button>
+              ))}
+            </div>
           ) : (
             <div className="flex flex-col">
               {searchResults.map((r) => (
@@ -1012,6 +1218,18 @@ export function NotesView({
           </div>,
           document.body
         )}
+      {organizeReview && (
+        <NoteOrganizeReview
+          name={organizeReview.name}
+          original={organizeReview.original}
+          organized={organizeReview.organized}
+          applying={applyingOrganization}
+          onApply={() => void applyOrganizedNote()}
+          onClose={() => {
+            if (!applyingOrganization) setOrganizeReview(null);
+          }}
+        />
+      )}
     </div>
   </TooltipProvider>
   );
