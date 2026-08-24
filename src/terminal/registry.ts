@@ -49,6 +49,7 @@ import { parseBridgeOsc, dispatchBridge } from "../bridge";
 import type { Terminal as XTermType } from "@xterm/xterm";
 import type { SearchAddon as SearchAddonType } from "@xterm/addon-search";
 import type { FitAddon as FitAddonType } from "@xterm/addon-fit";
+import { absolutePromptPosition, readEditablePrompt } from "./promptDraft";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -155,21 +156,7 @@ const logsOpeners = new Map<number, TerminalLogsOpener>();
  * draft disappear visually while leaving it in readline, so the AI run path
  * must inspect xterm's real prompt buffer before writing anything. */
 function readPromptDraft(session: Pick<Session, "term" | "promptPosition">): string {
-  const prompt = session.promptPosition;
-  const buffer = session.term.buffer.active;
-  if (!prompt || buffer.type !== "normal") return "";
-
-  const cursorRow = buffer.baseY + buffer.cursorY;
-  if (cursorRow < prompt.row) return "";
-
-  const parts: string[] = [];
-  for (let row = prompt.row; row <= cursorRow; row += 1) {
-    const line = buffer.getLine(row)?.translateToString(true) ?? "";
-    const start = row === prompt.row ? prompt.col : 0;
-    const end = row === cursorRow ? buffer.cursorX : line.length;
-    parts.push(line.slice(start, end));
-  }
-  return parts.join("").trim();
+  return readEditablePrompt(session.term.buffer.active, session.promptPosition);
 }
 
 /** Let app-wide commands open the drawer belonging to the focused terminal. */
@@ -340,7 +327,7 @@ export async function createSession(
   term.parser.registerOscHandler(133, (data) => {
     if (data.startsWith("B")) {
       const buf = term.buffer.active;
-      const pos = { row: buf.cursorY + buf.viewportY, col: buf.cursorX };
+      const pos = absolutePromptPosition(buf);
       session.promptPosition = pos;
       if (session.active) setPromptPosition(pos);
     }

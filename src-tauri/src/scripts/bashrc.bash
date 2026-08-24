@@ -98,7 +98,10 @@ if [ -z "$__HUSK_HOOKS_LOADED" ]; then
     printf '\e]133;D;%s\e\\' "$_husk_ret"
     printf '\e]7;file://%s%s\e\\' "${HOSTNAME:-$(uname -n 2>/dev/null)}" "$(_husk_urlencode "$PWD")"
     if [ -z "$__HUSK_PS1_INJECTED" ]; then
-      PS1='\[\e]133;B\e\\\]'"$PS1"
+      # B marks the END of the rendered prompt: everything after it is editable
+      # input. Prepending this marker made the visible PS1 itself look like a
+      # pending draft, so AI Run actions were incorrectly blocked on Bash.
+      PS1="$PS1"'\[\e]133;B\e\\\]'
       __HUSK_PS1_INJECTED=1
     fi
     printf '\e]133;A\e\\'
