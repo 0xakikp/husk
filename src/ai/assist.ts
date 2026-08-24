@@ -1,6 +1,7 @@
 import { getProvider } from "./providers";
 import { loadConfig, getKey } from "./store";
 import { generateOnce, type ChatConfig } from "./client";
+import { scanForSecrets } from "./contextItems";
 
 function currentConfig(): ChatConfig {
   const c = loadConfig();
@@ -74,6 +75,57 @@ export async function suggestNextCommand(
     .map((line) => line.trim())
     .find(Boolean) ?? "";
   return /^(?:none|no\s+(?:safe\s+)?next\s+command)\.?$/i.test(commandLine) ? "" : commandLine;
+}
+
+export type WorkflowRefinement = {
+  name: string;
+  description: string;
+  steps: string[];
+};
+
+function firstProgram(command: string): string {
+  return command.trim().split(/\s+/)[0]?.replace(/["']/g, "") ?? "";
+}
+
+/** Optional, user-triggered polish for a locally detected workflow. Detection
+ * never needs a model; this call receives only the already-redacted commands
+ * visible in the review form and cannot save or execute its response. */
+export async function refineWorkflowDraft(
+  name: string,
+  description: string,
+  steps: string[],
+): Promise<WorkflowRefinement> {
+  const text = await generateOnce(
+    currentConfig(),
+    "You refine a terminal workflow that the user is already reviewing. Reply with ONLY valid JSON using this exact shape: " +
+      '{"name":"...","description":"...","steps":["..."]}. Keep exactly the same number and order of steps. ' +
+      "Never add a command, flag, pipe, redirect, network destination, or executable. You may improve the short name and description, " +
+      "and replace an obvious reusable value with a {{parameter}} placeholder. Do not include secrets or markdown.",
+    JSON.stringify({ name, description, steps }),
+  );
+  const objectText = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  const parsed = JSON.parse(objectText) as Partial<WorkflowRefinement>;
+  if (
+    typeof parsed.name !== "string"
+    || typeof parsed.description !== "string"
+    || !Array.isArray(parsed.steps)
+    || parsed.steps.length !== steps.length
+    || parsed.steps.some((step) => typeof step !== "string" || !step.trim())
+  ) {
+    throw new Error("The model returned an invalid workflow shape.");
+  }
+  const refined = parsed.steps.map((step) => step.trim());
+  if (refined.some((step, index) => firstProgram(step) !== firstProgram(steps[index]))) {
+    throw new Error("The model changed a workflow executable, so Husk rejected the refinement.");
+  }
+  if (refined.some((step) => /\n|\r|\0/.test(step) || scanForSecrets("workflow step", step).length > 0)) {
+    throw new Error("The model returned an unsafe or sensitive workflow step.");
+  }
+  return {
+    name: parsed.name.trim().slice(0, 160) || name,
+    description: parsed.description.trim().slice(0, 2_000),
+    steps: refined,
+  };
 }
 
 /**

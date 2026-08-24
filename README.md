@@ -76,7 +76,7 @@ The **Husk Action Broker** is the local permission boundary for every model. API
 
 - Add custom MCP servers in **Settings → Integrations** without leaving the settings workspace.
 - Connect GitHub MCP with a personal access token stored in the OS keychain; start read-only and enable broader access only when you intend to.
-- Use Docker, Kubernetes, Terraform, CI/CD, Tailscale, workflows, jobs, bookmarks, and an authenticator from dedicated workspace views where those tools are configured.
+- Use Docker, Kubernetes, Terraform, CI/CD, Tailscale, workflows, jobs, bookmarks, and an authenticator from dedicated workspace views where those tools are configured. Workflows can also begin as reviewable suggestions when Husk notices the same safe command routine repeatedly in a local workspace Timeline; terminal output, file contents, and separate environment state are not analysed, and credential-bearing commands are redacted.
 - Install and manage command-line helpers through the setup assistant instead of hunting for install commands yourself.
 
 ### Make the workspace feel like yours

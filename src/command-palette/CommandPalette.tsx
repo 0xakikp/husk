@@ -51,6 +51,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { recordCommandUse, getFrecencyScore, getCommandHistory } from "./history";
 import { cn } from "@/lib/utils";
+import { parseQuery } from "./query";
+
+export { matchScopeTokens, parseQuery } from "./query";
 
 export type LauncherKind =
   | "command"
@@ -257,83 +260,6 @@ function getGroup(id: string, label: string): string {
   if (lower.includes("explorer") || lower.includes("sidebar") || lower.includes("folder") || lower.includes("file") || lower.includes("zoom")) return "View";
   if (lower.includes("settings") || lower.includes("workflows") || lower.includes("authenticator") || lower.includes("plugins") || lower.includes("install") || lower.includes("jobs") || lower.includes("totp") || lower.includes("clipboard") || lower.includes("terminal") || lower.includes("tab")) return "General";
   return "Other";
-}
-
-/* Scope tokens are colon-terminated: "n: foo", "clip: foo". A colon never starts
-   natural text, so an ordinary query can never be hijacked — the previous
-   "<letter><space>" form silently swallowed anything beginning with a single
-   letter from the set, so "c program files" became a clipboard search for
-   "program files" and clipboard entries like "-n 5" were unsearchable.
-   Long aliases exist so you don't have to recall the letter. */
-const SCOPE_TOKENS: Record<string, LauncherKind> = {
-  cmd: "command", command: "command", commands: "command",
-  n: "note", note: "note", notes: "note",
-  f: "file", file: "file", files: "file",
-  g: "grep", grep: "grep", content: "grep", contents: "grep",
-  code: "code", cs: "code", sym: "code", symbol: "code",
-  c: "clipboard", clip: "clipboard", clipboard: "clipboard",
-  b: "bookmark", bm: "bookmark", bookmark: "bookmark", bookmarks: "bookmark",
-  w: "workflow", wf: "workflow", workflow: "workflow", workflows: "workflow",
-  d: "container", docker: "container", container: "container", containers: "container",
-  k: "k8s", k8s: "k8s", kube: "k8s", kubernetes: "k8s",
-  r: "remote", remote: "remote", remotes: "remote", ssh: "remote",
-  j: "job", job: "job", jobs: "job",
-  otp: "totp", totp: "totp", "2fa": "totp", auth: "totp", mfa: "totp",
-  chat: "session", chats: "session", session: "session", sessions: "session",
-  wall: "wallpaper", wallpaper: "wallpaper", wallpapers: "wallpaper", bg: "wallpaper",
-};
-
-/** The token shown when suggesting a scope, per kind. */
-const SCOPE_CANONICAL: Partial<Record<LauncherKind, string>> = {
-  command: "cmd",
-  note: "notes",
-  file: "files",
-  grep: "grep",
-  code: "code",
-  clipboard: "clip",
-  bookmark: "bookmarks",
-  workflow: "workflows",
-  container: "docker",
-  k8s: "k8s",
-  remote: "remotes",
-  job: "jobs",
-  totp: "otp",
-  session: "chats",
-  wallpaper: "wall",
-};
-
-/**
- * Scopes are only advertised in the footer, and that legend hides as soon as you
- * type — so typing a source name offers the scope as a row instead. Requires two
- * characters so it does not fire on every keystroke.
- */
-export function matchScopeTokens(raw: string): { token: string; kind: LauncherKind }[] {
-  const q = raw.trim().toLowerCase();
-  if (q.length < 2) return [];
-  const seen = new Set<LauncherKind>();
-  const out: { token: string; kind: LauncherKind }[] = [];
-  for (const [alias, kind] of Object.entries(SCOPE_TOKENS)) {
-    if (seen.has(kind)) continue;
-    const label = SCOPE_LABELS[kind]?.label.toLowerCase() ?? "";
-    if (alias.startsWith(q) || label.startsWith(q)) {
-      seen.add(kind);
-      out.push({ token: SCOPE_CANONICAL[kind] ?? alias, kind });
-    }
-  }
-  return out;
-}
-
-export function parseQuery(raw: string): { kind: LauncherKind | null; query: string } {
-  if (raw.startsWith(">")) return { kind: "command", query: raw.slice(1).trimStart() };
-  // The (?![/\\]) guard keeps URLs and Windows-ish paths out: "https://x" and
-  // "c:\Users" are queries, not scopes. An unrecognised token also falls through
-  // with the query intact rather than being eaten.
-  const m = raw.match(/^([A-Za-z0-9]{1,10}):(?![/\\])\s*([\s\S]*)$/);
-  if (m) {
-    const kind = SCOPE_TOKENS[m[1].toLowerCase()];
-    if (kind) return { kind, query: m[2] };
-  }
-  return { kind: null, query: raw };
 }
 
 /** Match scoring for the cmdk filter. Higher = better; 0 hides the item. */

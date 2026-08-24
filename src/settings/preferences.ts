@@ -108,6 +108,13 @@ export type Prefs = {
   // Session
   sessionRestoreEnabled: boolean;
 
+  // Workflows
+  /** Notice repeated successful command sequences locally and offer a
+      reviewable workflow. No terminal output or file contents are analysed. */
+  workflowSuggestionsEnabled: boolean;
+  /** Stable hashes only — never the commands themselves. */
+  workflowSuggestionDismissals: string[];
+
   // Background
   background: BackgroundSettings;
 
@@ -258,6 +265,9 @@ const DEFAULT: Prefs = {
 
   sessionRestoreEnabled: true,
 
+  workflowSuggestionsEnabled: true,
+  workflowSuggestionDismissals: [],
+
   background: {
     dir: "",
     enabled: false,
@@ -302,6 +312,9 @@ function mergePrefs(saved: Partial<Prefs> & { aiTtsVoice?: unknown }): Prefs {
   /* Shallow merge alone would let a stored nested object (e.g. background)
      permanently hide keys added to the defaults later — deep-merge those. */
   merged.background = { ...DEFAULT.background, ...(current.background ?? {}) };
+  merged.workflowSuggestionDismissals = Array.isArray(current.workflowSuggestionDismissals)
+    ? current.workflowSuggestionDismissals.filter((value): value is string => typeof value === "string").slice(-100)
+    : [];
 
   /* `dim` was a second black overlay above the wallpaper, while `opacity`
      faded the wallpaper toward the same black underneath it — so the two

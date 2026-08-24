@@ -8,6 +8,8 @@ import { openComposer } from "../ai/bubbleStore";
 import { setPendingRunAttachment, typeInActiveTerminal } from "../ai/terminalContext";
 import { toast } from "../toast";
 import { dismissNextSteps, useNextSteps } from "./nextSteps";
+import { useWorkflowSuggestion } from "../workflows/suggestions";
+import { useWorkspaceRoot } from "../workspace/store";
 
 function commandLabel(command: string): string {
   const compact = command.trim().replace(/\s+/g, " ");
@@ -27,11 +29,18 @@ export function NextStepStrip({
   aiEnabled: boolean;
 }) {
   const entry = useNextSteps(leafId);
+  const workflowSuggestion = useWorkflowSuggestion(leafId);
+  const workspaceRoot = useWorkspaceRoot();
   const [busy, setBusy] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [noSuggestion, setNoSuggestion] = useState(false);
 
-  if (!entry || leafId == null || entry.collapsed) return null;
+  if (
+    !entry
+    || leafId == null
+    || entry.collapsed
+    || workflowSuggestion?.workspaceRoot === workspaceRoot
+  ) return null;
   const { record } = entry;
   /* Local guidance stays useful with AI disabled, but do not render a blank
      strip after a generic command when neither kind of action is available. */

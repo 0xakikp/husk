@@ -58,38 +58,60 @@ export type CodexCliOptions = {
 
 let counter = 0;
 
-export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
-  const id = `husk-codex-${Date.now().toString(36)}-${(counter += 1)}`;
+/** Build the fixed, response-only Codex invocation. Rust adds a final
+ * Husk-owned deny-all PreToolUse hook before launch; these switches remove the
+ * known tool families at their source, while the hook is defence in depth. */
+export function buildCodexCliArgs(prompt: string, model?: string): string[] {
   const args = [
     "exec",
     "--json",
     "--color",
     "never",
-    // Codex's sandbox is kept read-only. Its response may request a separate,
-    // validated Husk action but never receives Husk's write, terminal, or MCP
-    // capabilities.
     "--sandbox",
     "read-only",
-    // A terminal can be opened outside a Git repo; that should not make this
-    // provider disappear when Claude Code works there.
     "--skip-git-repo-check",
-    // Husk keeps its own conversation transcript. Do not leave a second set of
-    // Codex session files behind just to answer from the settings-selected mode.
     "--ephemeral",
-    // Avoid loading user-configured agent tools (including MCP servers) into a
-    // Husk conversation. Auth is still read by the CLI, as documented by Codex.
+    // Never inherit local tools, MCP servers, apps, rules, or agents from the
+    // user's normal Codex setup into a Husk subscription conversation.
     "--ignore-user-config",
+    "--ignore-rules",
+    "--strict-config",
+    "--disable",
+    "shell_tool",
+    "--disable",
+    "unified_exec",
+    "--disable",
+    "apps",
+    "--disable",
+    "remote_plugin",
+    "--disable",
+    "multi_agent",
+    "--disable",
+    "goals",
+    "--config",
+    "agents.enabled=false",
+    "--config",
+    "apps._default.enabled=false",
+    "--config",
+    'web_search="disabled"',
   ];
-  if (opts.model && opts.model !== "codex") args.push("--model", opts.model);
+  if (model && model !== "codex") args.push("--model", model);
   args.push(
     [
       "You are the signed-in Codex planner inside Husk.",
-      "Do not edit files, run commands, or use external tools yourself.",
+      "No Codex tools are available in this conversation.",
+      "Do not edit files, run commands, browse, or call connected services yourself.",
       "When the system prompt permits it, return an exact husk-action proposal; Husk validates and executes it. Never claim an action completed until Husk returns its result.",
       "",
-      opts.prompt,
+      prompt,
     ].join("\n"),
   );
+  return args;
+}
+
+export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
+  const id = `husk-codex-${Date.now().toString(36)}-${(counter += 1)}`;
+  const args = buildCodexCliArgs(opts.prompt, opts.model);
 
   const unlisten: UnlistenFn[] = [];
   let stderr = "";
@@ -117,11 +139,15 @@ export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
             if (line.type === "item.completed" && line.item?.type === "agent_message" && line.item.text) {
               sawText = true;
               opts.onDelta(line.item.text);
-            } else if (line.type === "item.started" && line.item?.type === "command_execution") {
-              // A compact status line is useful, but never expose a command as
-              // if Husk itself initiated it. Codex remains sandboxed; its text
-              // response, not this event, is the only accepted action input.
-              opts.onStatus?.("Codex is planning");
+            } else if (
+              line.type === "item.started" &&
+              ["command_execution", "file_change", "mcp_tool_call", "web_search"].includes(line.item?.type ?? "")
+            ) {
+              /* This should be unreachable because launch disables tool
+                 families and Rust installs a deny-all hook. Fail closed if a
+                 future CLI introduces a path that slips through both. */
+              eventError = `Codex attempted a blocked ${line.item?.type?.replace(/_/g, " ") ?? "tool"} action.`;
+              void invoke("codex_cli_stop", { id }).catch(() => {});
             } else if (line.type === "turn.failed") {
               eventError = line.error?.message || "Codex could not complete this request.";
             } else if (line.type === "error") {

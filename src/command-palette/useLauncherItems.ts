@@ -33,7 +33,7 @@ import { loadAccounts as loadTotpAccounts } from "../totp/store";
 import { generateCode as generateTotpCode } from "../totp/totp";
 import { useClipHistory, deleteClip } from "../clipboard/store";
 import { useBookmarks, addBookmark, removeBookmark, toggleBookmarkPin, type Bookmark } from "../bookmarks/store";
-import { parseQuery, matchScopeTokens } from "./CommandPalette";
+import { parseQuery, matchScopeTokens } from "./query";
 import {
   searchCodebase,
   buildCodebaseIndex,

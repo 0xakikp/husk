@@ -137,9 +137,20 @@ pub fn codex_cli_start(
     app: AppHandle,
     state: State<AiCliState>,
     id: String,
-    args: Vec<String>,
+    mut args: Vec<String>,
     cwd: Option<String>,
 ) -> Result<(), String> {
+    /* Feature flags remove Codex's known tool families. A Husk-owned deny-all
+       PreToolUse hook is injected last as defence in depth for apply_patch and
+       any future local function tool. The frontend never supplies this path. */
+    let hook = write_codex_deny_hook(&app)?;
+    let hook_command = shell_command_for_path(&hook);
+    let hook_config = codex_hook_config(hook_command);
+    let prompt = args.pop().ok_or("codex prompt is missing")?;
+    args.push("--dangerously-bypass-hook-trust".to_owned());
+    args.push("--config".to_owned());
+    args.push(hook_config);
+    args.push(prompt);
     cli_start(app, state, id, args, cwd, "codex", "codex-cli", &[])
 }
 
@@ -229,6 +240,43 @@ fn write_husk_cli_profile(app: &AppHandle, name: &str, contents: &str) -> Result
     let path = dir.join(name);
     std::fs::write(&path, contents).map_err(|e| format!("could not prepare CLI profile: {e}"))?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+fn write_codex_deny_hook(app: &AppHandle) -> Result<String, String> {
+    #[cfg(windows)]
+    const NAME: &str = "deny-codex-tool.cmd";
+    #[cfg(windows)]
+    const CONTENTS: &str = "@echo off\r\necho {\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Husk owns actions; return a husk-action proposal.\"}}\r\n";
+    #[cfg(not(windows))]
+    const NAME: &str = "deny-codex-tool.sh";
+    #[cfg(not(windows))]
+    const CONTENTS: &str = "#!/bin/sh\nprintf '%s\\n' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Husk owns actions; return a husk-action proposal.\"}}'\n";
+
+    let path = write_husk_cli_profile(app, NAME, CONTENTS)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("could not secure Codex tool hook: {e}"))?;
+    }
+    Ok(path)
+}
+
+fn codex_hook_config(command: String) -> String {
+    format!(
+        "hooks.PreToolUse=[{{ matcher = \".*\", hooks = [{{ type = \"command\", command = {}, timeout = 5 }}] }}]",
+        toml::Value::String(command)
+    )
+}
+
+#[cfg(windows)]
+fn shell_command_for_path(path: &str) -> String {
+    format!("cmd /C \\\"{}\\\"", path.replace('"', "\\\""))
+}
+
+#[cfg(not(windows))]
+fn shell_command_for_path(path: &str) -> String {
+    format!("'{}'", path.replace('\'', "'\\''"))
 }
 
 /// Shared process bridge for fixed, trusted CLIs. `program` and
@@ -352,4 +400,21 @@ fn cli_stop(state: State<AiCliState>, id: String) -> Result<(), String> {
         let _ = child.kill();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::codex_hook_config;
+
+    #[test]
+    fn codex_deny_hook_is_valid_inline_toml() {
+        let config = codex_hook_config("'/tmp/Husk profiles/deny-tool.sh'".to_owned());
+        let parsed: toml::Value = toml::from_str(&config).expect("hook config should parse");
+        let hooks = parsed
+            .get("hooks")
+            .and_then(|value| value.get("PreToolUse"))
+            .and_then(toml::Value::as_array)
+            .expect("PreToolUse array");
+        assert_eq!(hooks.len(), 1);
+    }
 }

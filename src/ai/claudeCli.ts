@@ -54,48 +54,54 @@ export type ClaudeCliOptions = {
   prompt: string;
   /** opus | sonnet | haiku. Anything else is left to the CLI's default. */
   model?: string;
-  /** Continue a previous exchange, so follow-up questions keep context. */
+  /** @deprecated Husk resends its transcript and does not resume CLI state. */
   sessionId?: string;
   cwd?: string | null;
   onDelta: (text: string) => void;
   /** Tool activity, for the composer's status line. */
   onStatus?: (text: string) => void;
-  /** The CLI's session id, so the next turn can resume it. */
+  /** @deprecated Kept for source compatibility; CLI sessions are disposable. */
   onSession?: (id: string) => void;
   /** Plan/quota notices worth showing the user, not tool chatter. */
   onNotice?: (text: string) => void;
 };
 
-/**
- * Tools the CLI must not use.
- *
- * Husk owns every workspace action. The CLI is an agent and would happily read,
- * edit, or run commands itself, silently bypassing the chat's selected-workspace
- * boundary and review trace. Those capabilities are refused here; it can return
- * a small Husk action proposal instead, which the renderer validates.
- */
-const DISALLOWED_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "KillBash"].join(",");
-
 let counter = 0;
 
-export function runClaudeCli(opts: ClaudeCliOptions): ClaudeCliRun {
-  const id = `husk-${Date.now().toString(36)}-${(counter += 1)}`;
-
+/** Build a Claude invocation with no built-in, plugin, or MCP tools. */
+export function buildClaudeCliArgs(prompt: string, model?: string): string[] {
   const args = [
     "-p",
-    opts.prompt,
+    prompt,
     "--output-format",
     "stream-json",
     // stream-json requires verbose; without it the CLI refuses to start, and the
     // error arrives on stderr where it is easy to miss.
     "--verbose",
-    "--disallowed-tools",
-    DISALLOWED_TOOLS,
+    // Empty allowlists are future-proof: a newly added Claude tool remains off.
+    "--tools",
+    "",
+    // Do not inherit project/user settings, plugins, slash commands, browser
+    // automation, or MCP servers into Husk's response-only backend.
+    "--setting-sources",
+    "",
+    "--strict-mcp-config",
+    "--mcp-config",
+    '{"mcpServers":{}}',
+    "--disable-slash-commands",
+    "--no-chrome",
+    // Husk owns the only transcript. Avoid a second hidden session store.
+    "--no-session-persistence",
   ];
-  if (opts.model && ["opus", "sonnet", "haiku"].includes(opts.model)) {
-    args.push("--model", opts.model);
+  if (model && ["opus", "sonnet", "haiku"].includes(model)) {
+    args.push("--model", model);
   }
-  if (opts.sessionId) args.push("--resume", opts.sessionId);
+  return args;
+}
+
+export function runClaudeCli(opts: ClaudeCliOptions): ClaudeCliRun {
+  const id = `husk-${Date.now().toString(36)}-${(counter += 1)}`;
+  const args = buildClaudeCliArgs(opts.prompt, opts.model);
 
   const unlisten: UnlistenFn[] = [];
   let stderr = "";

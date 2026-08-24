@@ -14,6 +14,8 @@ describe("AI workspace scopes", () => {
   });
 
   it("resolves only paths inside the selected workspace", () => {
+    expect(resolveWorkspacePath(".", "/work/husk")).toBe("/work/husk");
+    expect(resolveWorkspacePath("./", "/work/husk")).toBe("/work/husk");
     expect(resolveWorkspacePath("src/App.tsx", "/work/husk")).toBe("/work/husk/src/App.tsx");
     expect(resolveWorkspacePath("./README.md", "/work/husk")).toBe("/work/husk/README.md");
     expect(resolveWorkspacePath("/work/husk/src/App.tsx", "/work/husk")).toBe("/work/husk/src/App.tsx");

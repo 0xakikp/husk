@@ -39,7 +39,7 @@ type FileDef = {
 };
 
 const FILES: FileDef[] = [
-  { id: "config", label: "Workspace", description: "Editor, terminal, and startup", path: "workspace", component: GeneralFile, group: "Workspace", mark: "⌘", keywords: ["general", "editor", "terminal", "font", "cursor", "vim", "startup"] },
+  { id: "config", label: "Workspace", description: "Editor, terminal, and startup", path: "workspace", component: GeneralFile, group: "Workspace", mark: "⌘", keywords: ["general", "editor", "terminal", "font", "cursor", "vim", "startup", "workflow", "routine", "suggestions", "automation"] },
   { id: "appearance", label: "Appearance", description: "Theme, wallpaper, and effects", path: "appearance", component: AppearanceFile, group: "Workspace", mark: "◐", keywords: ["appearance", "theme", "wallpaper", "color", "opacity", "blur", "glow", "effects"] },
   { id: "models", label: "AI & Models", description: "Default model and provider access", path: "ai-models", component: ModelsFile, group: "AI", mark: "✦", keywords: ["models", "provider", "api", "key", "anthropic", "openai", "claude", "deepseek", "local"] },
   { id: "agents", label: "Agents", description: "Personas and assistant behavior", path: "agents", component: AgentsFile, group: "AI", mark: "◎", keywords: ["agents", "persona", "system", "prompt", "composer"] },

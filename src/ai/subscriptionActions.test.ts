@@ -15,6 +15,23 @@ describe("subscription action proposals", () => {
     expect(result.rejected).toBe(2);
   });
 
+  it("accepts the exact workspace-root listing shape", () => {
+    const result = parseSubscriptionActionProposals(
+      "```husk-action\n{\"kind\":\"workspace.list\",\"path\":\".\"}\n```",
+      root,
+    );
+    expect(result.actions).toEqual([{ kind: "workspace.list", path: "." }]);
+    expect(result.rejected).toBe(0);
+  });
+
+  it("rejects and strips a duplicated kind field instead of exposing protocol text", () => {
+    const response = "```HUSK-ACTION\n{\"kind\":\"workspace.list\",\"path\":\".\",\"kind\":\"directory\"}\n```";
+    const result = parseSubscriptionActionProposals(response, root);
+    expect(result.actions).toHaveLength(0);
+    expect(result.rejected).toBe(1);
+    expect(stripSubscriptionActionProposals(response)).toBe("");
+  });
+
   it("does not treat normal prose as an action", () => {
     expect(parseSubscriptionActionProposals('{"kind":"workspace.read","path":"src/main.ts"}', root).actions).toHaveLength(0);
   });

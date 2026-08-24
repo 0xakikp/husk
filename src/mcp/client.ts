@@ -15,7 +15,15 @@ export async function connectMcpServer(
 ): Promise<McpDiscoveredTool[]> {
   await disconnectMcpServer(serverId);
 
-  const transport = new TauriMcpTransport(options);
+  const requestedExitHandler = options.onExit;
+  const transport = new TauriMcpTransport({
+    ...options,
+    onExit: (error) => {
+      clients.delete(serverId);
+      discoveredTools.delete(serverId);
+      requestedExitHandler?.(error);
+    },
+  });
   const client = new Client({ name: "huskv2", version: "1.0.0" });
   await client.connect(transport);
   clients.set(serverId, client);

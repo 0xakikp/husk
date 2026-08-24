@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Folder01Icon, InformationCircleIcon, TimelineListIcon } from "@hugeicons/core-free-icons";
+import { Folder01Icon, InformationCircleIcon, TimelineListIcon, WorkflowCircle01Icon } from "@hugeicons/core-free-icons";
 
 import { cn } from "../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -19,6 +19,12 @@ import {
   type TimelineWorkspace,
 } from "./store";
 import { toast } from "../toast";
+import { stageWorkflowDraft } from "../workflows/draftStore";
+import {
+  clearWorkflowSuggestionsForWorkspace,
+  isSafeWorkflowSuggestionCommand,
+  timelineCommand,
+} from "../workflows/suggestions";
 
 /**
  * Workspace Timeline — what happened in this project, newest first, grouped
@@ -190,6 +196,8 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [recording, setRecording] = useState(() => isTimelineRecordingEnabled());
+  const [selectingCommands, setSelectingCommands] = useState(false);
+  const [selectedCommandIds, setSelectedCommandIds] = useState<Set<number>>(() => new Set());
   /* Folder switcher: peek at another bucket without cd-ing there. null means
      "follow the current workspace root". */
   const [viewRoot, setViewRoot] = useState<string | null>(null);
@@ -219,10 +227,16 @@ export function TimelineView({ inline }: { inline?: boolean }) {
     setRecording(isTimelineRecordingEnabled());
   }, [root]);
 
+  useEffect(() => {
+    setSelectingCommands(false);
+    setSelectedCommandIds(new Set());
+  }, [effectiveRoot]);
+
   const toggleRecording = () => {
     const next = !recording;
     setTimelineRecordingEnabled(next);
     setRecording(next);
+    if (!next && effectiveRoot) clearWorkflowSuggestionsForWorkspace(effectiveRoot);
     toast({
       title: next ? "Timeline recording on" : "Timeline recording off for this workspace",
       message: next ? "Commands, saves, AI and git events are summarized locally." : "Nothing new will be recorded here. Existing entries stay until cleared.",
@@ -233,10 +247,32 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   const clearAll = () => {
     void clearWorkspaceTimeline(effectiveRoot)
       .then(() => {
+        if (effectiveRoot) clearWorkflowSuggestionsForWorkspace(effectiveRoot);
         if (viewRoot && viewRoot !== root) setViewRoot(null);
         toast({ title: "Timeline cleared", message: "Only this workspace was affected.", variant: "success" });
       })
       .catch((e) => toast({ title: "Could not clear timeline", message: String(e), variant: "error" }));
+  };
+
+  const createWorkflowFromSelection = () => {
+    const chosen = events
+      .filter((event) => selectedCommandIds.has(event.id))
+      .map(timelineCommand)
+      .filter((row): row is NonNullable<ReturnType<typeof timelineCommand>> => row !== null)
+      .filter((row) => !row.failed && isSafeWorkflowSuggestionCommand(row.command))
+      .sort((a, b) => a.ts - b.ts || a.id - b.id);
+    if (chosen.length < 2) {
+      toast({ title: "Select at least two safe commands", message: "Failed, sensitive, and destructive commands cannot be converted automatically.", variant: "warning" });
+      return;
+    }
+    const first = chosen[0].command.split(/\s+/).slice(0, 2).join(" ");
+    stageWorkflowDraft({
+      name: `${first || "Recent"} workflow`,
+      description: `Created from ${chosen.length} commands selected in the local workspace Timeline.`,
+      steps: chosen.map((row) => row.command),
+      stopOnError: true,
+      source: "timeline",
+    });
   };
 
   /* Group newest-first events under day headings. */
@@ -284,6 +320,23 @@ export function TimelineView({ inline }: { inline?: boolean }) {
         actions={
           <>
             <FolderSwitch root={root} viewRoot={viewRoot} onSelect={setViewRoot} />
+            <button
+              type="button"
+              onClick={() => {
+                setSelectingCommands((value) => !value);
+                setSelectedCommandIds(new Set());
+              }}
+              title="Select successful commands and turn them into a reviewed workflow"
+              className={cn(
+                "inline-flex size-6 shrink-0 items-center justify-center rounded-md border transition-colors",
+                selectingCommands
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground",
+              )}
+              aria-label="Create workflow from Timeline commands"
+            >
+              <HugeiconsIcon icon={WorkflowCircle01Icon} size={13} strokeWidth={1.7} />
+            </button>
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -343,6 +396,15 @@ export function TimelineView({ inline }: { inline?: boolean }) {
             </button>
           ))}
         </div>
+        {selectingCommands ? (
+          <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/[0.05] px-2 py-1 text-[9.5px]">
+            <span className="min-w-0 flex-1 text-muted-foreground">
+              Select successful commands; Timeline order is preserved · {selectedCommandIds.size} selected
+            </span>
+            <button type="button" className="shrink-0 rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted/40 hover:text-foreground" onClick={() => setSelectedCommandIds(new Set())}>clear</button>
+            <button type="button" className="shrink-0 rounded bg-primary/12 px-1.5 py-0.5 text-primary hover:bg-primary/20 disabled:opacity-40" disabled={selectedCommandIds.size < 2} onClick={createWorkflowFromSelection}>review workflow</button>
+          </div>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -366,18 +428,38 @@ export function TimelineView({ inline }: { inline?: boolean }) {
               </div>
               {group.events.map((event) => {
                 const { glyph, className } = eventGlyph(event.event_type);
+                const command = timelineCommand(event);
+                const selectable = Boolean(command && !command.failed && isSafeWorkflowSuggestionCommand(command.command));
+                const selected = selectedCommandIds.has(event.id);
                 return (
-                  <div
+                  <button
                     key={event.id}
-                    className="flex items-baseline gap-2 rounded-md px-1.5 py-1 hover:bg-muted/30"
+                    type="button"
+                    disabled={!selectingCommands || !selectable}
+                    onClick={() => {
+                      if (!selectingCommands || !selectable) return;
+                      setSelectedCommandIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(event.id)) next.delete(event.id);
+                        else next.add(event.id);
+                        return next;
+                      });
+                    }}
+                    className={cn(
+                      "flex w-full items-baseline gap-2 rounded-md px-1.5 py-1 text-left hover:bg-muted/30",
+                      selectingCommands && selectable && "cursor-pointer border border-transparent hover:border-primary/20",
+                      selected && "border-primary/35 bg-primary/10",
+                      selectingCommands && !selectable && "opacity-45",
+                    )}
                     title={event.summary}
                   >
+                    {selectingCommands ? <span className={cn("w-2.5 shrink-0 text-[9px]", selected ? "text-primary" : "text-muted-foreground/50")}>{selected ? "✓" : "○"}</span> : null}
                     <span className="shrink-0 text-[9.5px] tabular-nums text-muted-foreground/60">
                       {timeLabel(event.ts)}
                     </span>
                     <span className={cn("shrink-0 text-[10px]", className)}>{glyph}</span>
                     <span className="min-w-0 truncate text-[10.5px] text-foreground/90">{event.summary}</span>
-                  </div>
+                  </button>
                 );
               })}
             </div>

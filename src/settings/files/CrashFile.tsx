@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getSentryEnabled, setSentryEnabled } from "../CrashReportingSection";
+import { getSentryEnabled, setSentryEnabled } from "../crashReporting";
 import {
   ConfigEditor,
   CfgArt,

@@ -1246,10 +1246,60 @@ export function TerminalAiComposer({
            read-only results are returned for a bounded follow-up so the model
            can reason from actual workspace data rather than guessing. */
         let rounds = 0;
+        let correctedMalformedAction = false;
         let plannedHistory = conversation;
         while (rounds < 3) {
           const parsedActions = parseSubscriptionActionProposals(assistantResponse, workspacePath || undefined);
-          if (!parsedActions.actions.length) break;
+          if (!parsedActions.actions.length) {
+            if (!parsedActions.rejected) break;
+
+            /* Protocol text is implementation detail, not an answer. Remove a
+               malformed proposal from the transcript and give the CLI one
+               bounded chance to correct it. This prevents raw HUSK-ACTION JSON
+               from becoming a confusing code card while avoiding an unbounded
+               retry loop or silently guessing what the model intended. */
+            const visibleReply = stripSubscriptionActionProposals(assistantResponse);
+            assistantResponse = visibleReply;
+            setMessages((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last?.role === "assistant") next[next.length - 1] = { ...last, content: visibleReply };
+              return next;
+            });
+
+            if (correctedMalformedAction) {
+              const fallback = visibleReply
+                ? `${visibleReply}\n\n_I couldn't run the workspace request because its action format was invalid._`
+                : "I couldn't run the workspace request because its action format was invalid. Please try again.";
+              assistantResponse = fallback;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === "assistant") next[next.length - 1] = { ...last, content: fallback };
+                return next;
+              });
+              toast({
+                title: "Husk rejected an invalid action request",
+                message: "Nothing was run or changed.",
+                variant: "error",
+                duration: 4500,
+              });
+              break;
+            }
+
+            plannedHistory = [
+              ...plannedHistory,
+              { role: "assistant", content: visibleReply || "I need to inspect the selected workspace." },
+              {
+                role: "user",
+                content: "Husk rejected the action because its JSON shape was invalid. Return only one corrected fenced `husk-action` object. To list the workspace root, use exactly: {\"kind\":\"workspace.list\",\"path\":\".\"}. The `kind` field must appear exactly once.",
+              },
+            ];
+            correctedMalformedAction = true;
+            setStatus("correcting workspace action…");
+            await streamReply(plannedHistory);
+            continue;
+          }
           const visibleReply = stripSubscriptionActionProposals(assistantResponse);
           assistantResponse = visibleReply;
           setMessages((prev) => {

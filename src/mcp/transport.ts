@@ -7,6 +7,15 @@ export type TauriMcpTransportOptions = {
   args?: string[];
   env?: Record<string, string>;
   cwd?: string;
+  /** Called only when the child or protocol ends unexpectedly, not on close(). */
+  onExit?: (error?: Error) => void;
+};
+
+type McpReceive = {
+  lines: string[];
+  running: boolean;
+  exit_code: number | null;
+  error: string | null;
 };
 
 /**
@@ -20,7 +29,7 @@ export class TauriMcpTransport implements Transport {
 
   private options: TauriMcpTransportOptions;
   private _sessionId: number | null = null;
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
 
   constructor(options: TauriMcpTransportOptions) {
@@ -29,13 +38,14 @@ export class TauriMcpTransport implements Transport {
 
   async start(): Promise<void> {
     if (this.closed) throw new Error("Transport is closed");
+    if (this._sessionId != null) throw new Error("Transport already started");
     this._sessionId = await invoke<number>("mcp_spawn", {
       command: this.options.command,
       args: this.options.args ?? [],
       env: this.options.env ?? null,
       cwd: this.options.cwd ?? null,
     });
-    this.pollTimer = setInterval(() => void this.poll(), 250);
+    this.schedulePoll();
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
@@ -44,39 +54,61 @@ export class TauriMcpTransport implements Transport {
   }
 
   async close(): Promise<void> {
+    await this.finish();
+  }
+
+  private schedulePoll(): void {
+    if (this.closed || this._sessionId == null) return;
+    /* A timeout scheduled only after the previous receive completes prevents
+       slow native calls from accumulating overlapping polls. */
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = null;
+      void this.poll();
+    }, 250);
+  }
+
+  private async finish(error?: Error, unexpected = false): Promise<void> {
+    if (this.closed) return;
     this.closed = true;
     if (this.pollTimer) {
-      clearInterval(this.pollTimer);
+      clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
-    if (this._sessionId != null) {
+    const id = this._sessionId;
+    this._sessionId = null;
+    if (id != null) {
       try {
-        await invoke("mcp_kill", { id: this._sessionId });
+        await invoke("mcp_kill", { id });
       } catch {
-        // ignore
+        // The child may already have exited. The session still closes locally.
       }
-      this._sessionId = null;
     }
+    if (unexpected) this.options.onExit?.(error);
+    if (error) this.onerror?.(error);
     this.onclose?.();
   }
 
   private async poll(): Promise<void> {
     if (this._sessionId == null || this.closed) return;
     try {
-      const lines = await invoke<string[]>("mcp_recv", { id: this._sessionId, limit: 50 });
-      for (const line of lines) {
+      const result = await invoke<McpReceive>("mcp_recv", { id: this._sessionId, limit: 50 });
+      for (const line of result.lines) {
         try {
           this.onmessage?.(JSON.parse(line) as JSONRPCMessage);
-        } catch (e) {
-          if (import.meta.env.DEV) {
-            console.warn("[mcp] invalid JSON-RPC message:", line, e);
-          }
+        } catch {
+          await this.finish(new Error("MCP server sent an invalid JSON-RPC message"), true);
+          return;
         }
       }
-    } catch (e) {
-      if (import.meta.env.DEV) {
-        console.warn("[mcp] recv error:", e);
+      if (!result.running) {
+        const detail = result.error || `MCP server exited with ${result.exit_code ?? "no status"}`;
+        await this.finish(result.error || result.exit_code !== 0 ? new Error(detail) : undefined, true);
+        return;
       }
+      this.schedulePoll();
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error(String(cause));
+      await this.finish(error, true);
     }
   }
 }

@@ -37,6 +37,12 @@ export function resolveWorkspacePath(path: string, workspaceRoot: string | null 
     return isPathInWorkspace(input, root) ? normalizeWorkspacePath(input) : null;
   }
 
+  /* `.` is the conventional and documented reference to the selected
+     workspace root. Treat it as the root itself before segment validation;
+     otherwise the generic rejection of dot segments makes workspace.list
+     impossible at the exact path Husk teaches models to use. */
+  if (input === "." || input === "./") return root;
+
   const relative = input.replace(/^\.\//, "");
   const segments = relative.split("/");
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) return null;

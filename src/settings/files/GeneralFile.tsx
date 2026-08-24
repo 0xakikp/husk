@@ -16,6 +16,7 @@ import {
   CfgComment,
   CfgEnum,
   CfgBool,
+  CfgAct,
   CfgRow,
   CfgSection,
   CfgText,
@@ -167,6 +168,31 @@ export function GeneralFile() {
       <CfgRow name="restoreSession" comment="Remember tabs, pane splits, and working directories between launches. Shells restart fresh.">
         <CfgBool value={p.sessionRestoreEnabled} onChange={(v) => setPrefs({ sessionRestoreEnabled: v })} />
       </CfgRow>
+      <CfgBlank />
+
+      <CfgSection name="workflows" />
+      <CfgRow
+        name="suggestRepeatedRoutines"
+        comment="Notice repeated successful command sequences in the local Timeline and offer a workflow for review. If Timeline recording is off for a workspace, Husk does not learn routines there. Terminal output, files, and separate environment state are not analysed; credential-bearing commands are redacted."
+      >
+        <CfgBool
+          value={p.workflowSuggestionsEnabled}
+          onChange={(workflowSuggestionsEnabled) => {
+            setPrefs({ workflowSuggestionsEnabled });
+            if (!workflowSuggestionsEnabled) {
+              void import("../../workflows/suggestions").then(({ clearWorkflowSuggestions }) => clearWorkflowSuggestions());
+            }
+          }}
+        />
+      </CfgRow>
+      {p.workflowSuggestionDismissals.length > 0 ? (
+        <CfgRow
+          name="ignoredRoutines"
+          comment={`${p.workflowSuggestionDismissals.length} routine${p.workflowSuggestionDismissals.length === 1 ? "" : "s"} will not be suggested again.`}
+        >
+          <CfgAct onClick={() => setPrefs({ workflowSuggestionDismissals: [] })}>clear ignored</CfgAct>
+        </CfgRow>
+      ) : null}
       <CfgBlank />
 
       <CfgSection name="terminal" />

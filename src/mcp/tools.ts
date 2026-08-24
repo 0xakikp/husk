@@ -34,6 +34,12 @@ export async function buildMcpTools(actionContext: Pick<HuskActionContext, "sess
         args: config.args,
         env,
         cwd: config.cwd,
+        onExit: (error) => reportMcpResult(
+          config.id,
+          false,
+          undefined,
+          error?.message ?? "MCP server stopped",
+        ),
       });
       reportMcpResult(config.id, true, tools.map((t) => t.name));
     } catch (e) {

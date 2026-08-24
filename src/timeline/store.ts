@@ -61,19 +61,25 @@ export function recordTimelineEvent(
   eventType: TimelineEventType,
   summary: string,
   metadata?: Record<string, unknown>,
-): void {
-  const root = getWorkspaceRoot();
-  if (!root || !isTimelineRecordingEnabled(root)) return;
-  if (!summary.trim()) return;
-  void invoke("timeline_record", {
+  options: { workspaceRoot?: string; sensitivity?: number } = {},
+): Promise<boolean> {
+  const root = options.workspaceRoot ?? getWorkspaceRoot();
+  if (!root || !isTimelineRecordingEnabled(root) || !summary.trim()) return Promise.resolve(false);
+  return invoke("timeline_record", {
     workspaceId: root,
     eventType,
     summary: summary.trim(),
     metadataJson: metadata ? JSON.stringify(metadata) : null,
-    sensitivity: 0,
+    sensitivity: options.sensitivity ?? 0,
   })
-    .then(() => emit())
-    .catch((e) => console.warn("[timeline] record failed:", e));
+    .then(() => {
+      emit();
+      return true;
+    })
+    .catch((e) => {
+      console.warn("[timeline] record failed:", e);
+      return false;
+    });
 }
 
 /* ── Querying ────────────────────────────────────────────────────────────── */

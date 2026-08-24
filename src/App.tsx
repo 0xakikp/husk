@@ -153,6 +153,15 @@ function App() {
     [explorerOpen, sidebarView, persistSidebarView],
   );
 
+  /* Workflow suggestions and Timeline selections use one app-level route so
+     they can open the existing sidebar editor without coupling those features
+     to App's sidebar state. */
+  useEffect(() => {
+    const openWorkflowDraft = () => showSidebarView("workflows");
+    window.addEventListener("husk:open-workflow-draft", openWorkflowDraft);
+    return () => window.removeEventListener("husk:open-workflow-draft", openWorkflowDraft);
+  }, [showSidebarView]);
+
   const persistSidebarWidth = useCallback((next: number) => {
     if (sidebarWidthWriteTimerRef.current) window.clearTimeout(sidebarWidthWriteTimerRef.current);
     sidebarWidthWriteTimerRef.current = window.setTimeout(() => {
@@ -546,6 +555,32 @@ function App() {
       { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
       { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
       { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
+      {
+        id: "workflow-from-recent",
+        label: "Create workflow from recent commands",
+        hint: "review first",
+        keywords: "routine automation runbook terminal history",
+        run: () => {
+          void Promise.all([
+            import("./workflows/suggestions"),
+            import("./workflows/draftStore"),
+          ]).then(async ([{ recentWorkflowSteps }, { stageWorkflowDraft }]) => {
+            const steps = await recentWorkflowSteps();
+            if (steps.length < 2) {
+              toast({ title: "Not enough recent commands", message: "Run at least two safe commands in a workspace, then try again.", variant: "info" });
+              return;
+            }
+            const first = steps[0].split(/\s+/).slice(0, 2).join(" ");
+            stageWorkflowDraft({
+              name: `${first || "Recent"} workflow`,
+              description: `Created from ${steps.length} recent successful commands.`,
+              steps,
+              stopOnError: true,
+              source: "recent",
+            });
+          }).catch((error) => toast({ title: "Could not prepare workflow", message: String(error), variant: "error" }));
+        },
+      },
       {
         id: totpAccountCount ? "totp" : "setup-totp",
         /* Keywords because nobody types "authenticator". The palette ranks over

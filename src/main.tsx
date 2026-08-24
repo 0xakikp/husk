@@ -1,7 +1,5 @@
 import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import * as Sentry from "@sentry/react";
-import App from "./App";
 import {
   getPrefs,
   hydratePrefsFromNative,
@@ -9,12 +7,13 @@ import {
 } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { getSentryEnabled } from "./settings/CrashReportingSection";
+import { getSentryEnabled } from "./settings/crashReporting";
 import { loadConfig, hydrateAiConfigFromNative } from "./ai/store";
 import { loadMcpServers, hydrateMcpServersFromNative, saveMcpServers } from "./mcp/store";
 import { getCustomPresets, hydrateAppearancePresetsFromNative } from "./settings/appearancePresets";
 import { initialiseNativeConfig, readNativeConfig } from "./settings/nativeConfig";
 import { loadAiAgentsFromFiles, migrateLegacyAiAgents } from "./ai/agentFiles";
+import { initialiseWorkflowStore } from "./workflows/store";
 /* No ?v=N cache-busting queries on these imports: the query becomes part of
    the module id, so when Tailwind finishes its cold-start candidate scan and
    invalidates the stylesheet by its plain id, the update misses this module —
@@ -24,24 +23,27 @@ import "./styles/fonts.css";
 import "./styles/code-highlight.css";
 import "./App.css";
 
-// Initialize Sentry crash reporting only if user hasn't opted out
+// Crash reporting is optional and comparatively heavy. Load it only after the
+// saved consent bit says yes; opted-out launches never download or parse it.
 if (getSentryEnabled()) {
-  Sentry.init({
-    dsn: "https://0db29941cc9d5b5e72f11f40773f76e9@o4511596996067328.ingest.de.sentry.io/4511597291765840",
-    environment: import.meta.env.MODE,
-    release: "husk@" + __APP_VERSION__,
-    sampleRate: 1.0,
-    beforeSend(event) {
-      // Strip PII: no user data, no file paths, no commands
-      if (event.exception) {
-        // Keep the error type and message, but scrub everything else
-        return event;
-      }
-      return event;
-    },
-  });
+  const startCrashReporting = () => {
+    void import("@sentry/react").then((Sentry) => {
+      Sentry.init({
+        dsn: "https://0db29941cc9d5b5e72f11f40773f76e9@o4511596996067328.ingest.de.sentry.io/4511597291765840",
+        environment: import.meta.env.MODE,
+        release: "husk@" + __APP_VERSION__,
+        sampleRate: 1.0,
+      });
+    }).catch((error) => console.error("Crash reporting could not start", error));
+  };
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(startCrashReporting, { timeout: 3000 });
+  } else {
+    globalThis.setTimeout(startCrashReporting, 1500);
+  }
 }
 
+const App = React.lazy(() => import("./App"));
 const SettingsPage = React.lazy(() =>
   import("./settings/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
@@ -110,7 +112,10 @@ const isSettings = new URLSearchParams(location.search).get("view") === "setting
 
 async function startApplication() {
   const legacyPrefs = getPrefs();
-  const loaded = await readNativeConfig();
+  const [loaded] = await Promise.all([
+    readNativeConfig(),
+    initialiseWorkflowStore(),
+  ]);
   let configLoad = loaded;
 
   /* Existing installs used localStorage. Before first TOML write, move custom
@@ -158,7 +163,13 @@ async function startApplication() {
 
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
-      {isSettings ? <SettingsWindowWrapper /> : <App />}
+      {isSettings ? (
+        <SettingsWindowWrapper />
+      ) : (
+        <React.Suspense fallback={<div className="h-full bg-background" />}>
+          <App />
+        </React.Suspense>
+      )}
     </React.StrictMode>,
   );
 }

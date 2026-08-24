@@ -209,6 +209,8 @@ pub fn run() {
             timeline::timeline_query,
             timeline::timeline_clear,
             timeline::timeline_workspaces,
+            timeline::workflow_state_load,
+            timeline::workflow_state_save,
             vitals::system_vitals,
             port_forward::port_forward_start,
             port_forward::port_forward_stop,

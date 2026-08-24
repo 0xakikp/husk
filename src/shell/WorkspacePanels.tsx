@@ -1,4 +1,4 @@
-import { lazy, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import type * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
@@ -12,7 +12,8 @@ import { PortDetectedStrip } from "../terminal/PortDetectedStrip";
 import { GitActivityStrip } from "../terminal/GitActivityStrip";
 import { SensitiveOutputStrip } from "../terminal/SensitiveOutputStrip";
 import { EnvironmentWarningStrip } from "../terminal/EnvironmentWarningStrip";
-import { TerminalAiComposer, tabSessionId } from "../terminal/TerminalAiComposer";
+import { WorkflowSuggestionStrip } from "../workflows/WorkflowSuggestionStrip";
+import { tabSessionId } from "../ai/sessionStore";
 import { focusActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { TerminalLogs } from "../terminal/TerminalLogs";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -44,6 +45,7 @@ const IssuesPanel = lazy(() => import("../git/IssuesPanel").then((m) => ({ defau
 const SftpView = lazy(() => import("../remotes/SftpView").then((m) => ({ default: m.SftpView })));
 const AiTabPanel = lazy(() => import("../ai/AiTabPanel").then((m) => ({ default: m.AiTabPanel })));
 const BrowserPanel = lazy(() => import("../browser/BrowserPanel").then((m) => ({ default: m.BrowserPanel })));
+const TerminalAiComposer = lazy(() => import("../terminal/TerminalAiComposer").then((m) => ({ default: m.TerminalAiComposer })));
 
 function K8sResourceDetailPanel({
   selection,
@@ -222,12 +224,14 @@ export function WorkspacePanels({
             {/* Order follows the setting: a left dock has to come first in the
                 row, not just carry dock="left". */}
             {aiLeft && (
-              <TerminalAiComposer
-                sessionId={tabSessionId(term.activeId)}
-                onOpenInAiTab={() => setActiveKind("ai")}
-                registerSend={true}
-                dock="left"
-              />
+              <Suspense fallback={null}>
+                <TerminalAiComposer
+                  sessionId={tabSessionId(term.activeId)}
+                  onOpenInAiTab={() => setActiveKind("ai")}
+                  registerSend={true}
+                  dock="left"
+                />
+              </Suspense>
             )}
             <div className={cn(
               "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)]",
@@ -247,12 +251,14 @@ export function WorkspacePanels({
               </ErrorBoundary>
             </div>
             {!aiLeft && (
-              <TerminalAiComposer
-                sessionId={tabSessionId(term.activeId)}
-                onOpenInAiTab={() => setActiveKind("ai")}
-                registerSend={true}
-                dock="right"
-              />
+              <Suspense fallback={null}>
+                <TerminalAiComposer
+                  sessionId={tabSessionId(term.activeId)}
+                  onOpenInAiTab={() => setActiveKind("ai")}
+                  registerSend={true}
+                  dock="right"
+                />
+              </Suspense>
             )}
           </div>
           <FailureStrip
@@ -263,6 +269,7 @@ export function WorkspacePanels({
           <SensitiveOutputStrip leafId={activeLeafId} />
           <PortDetectedStrip leafId={activeLeafId} onOpenBrowser={onOpenBrowser} />
           <GitActivityStrip leafId={activeLeafId} onOpenSourceControl={onOpenSourceControl} />
+          {prefs.workflowSuggestionsEnabled ? <WorkflowSuggestionStrip leafId={activeLeafId} /> : null}
           <NextStepStrip
             leafId={activeLeafId}
             aiEnabled={prefs.aiEnabled}
@@ -295,11 +302,13 @@ export function WorkspacePanels({
               style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : undefined }}
             >
               {aiLeft && (
-                <TerminalAiComposer
-                  sessionId={tabSessionId(term.activeId)}
-                  onOpenInAiTab={() => setActiveKind("ai")}
-                  dock="left"
-                />
+                <Suspense fallback={null}>
+                  <TerminalAiComposer
+                    sessionId={tabSessionId(term.activeId)}
+                    onOpenInAiTab={() => setActiveKind("ai")}
+                    dock="left"
+                  />
+                </Suspense>
               )}
               <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
                 <div className="flex-1 overflow-hidden">
@@ -307,11 +316,13 @@ export function WorkspacePanels({
                 </div>
               </div>
               {!aiLeft && (
-                <TerminalAiComposer
-                  sessionId={tabSessionId(term.activeId)}
-                  onOpenInAiTab={() => setActiveKind("ai")}
-                  dock="right"
-                />
+                <Suspense fallback={null}>
+                  <TerminalAiComposer
+                    sessionId={tabSessionId(term.activeId)}
+                    onOpenInAiTab={() => setActiveKind("ai")}
+                    dock="right"
+                  />
+                </Suspense>
               )}
             </div>
           ) : (

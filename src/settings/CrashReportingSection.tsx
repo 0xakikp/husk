@@ -1,24 +1,9 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
+import { getSentryEnabled, setSentryEnabled } from "./crashReporting";
 
-const STORAGE_KEY = "husk:sentry-enabled";
-
-export function getSentryEnabled(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) !== "false";
-  } catch {
-    return true;
-  }
-}
-
-export function setSentryEnabled(enabled: boolean) {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(enabled));
-  } catch {
-    // ignore
-  }
-}
+export { getSentryEnabled, setSentryEnabled } from "./crashReporting";
 
 export function CrashReportingSection() {
   const [enabled, setEnabled] = useState(getSentryEnabled());

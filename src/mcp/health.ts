@@ -83,6 +83,13 @@ export async function testMcpConnection(server: McpServerConfig): Promise<void> 
       args: server.args,
       env,
       cwd: server.cwd,
+      onExit: (error) => setHealth(server.id, {
+        state: "error",
+        checkedAt: Date.now(),
+        toolCount: undefined,
+        toolNames: undefined,
+        message: error?.message ?? "MCP server stopped",
+      }),
     });
     setHealth(server.id, {
       state: "connected",

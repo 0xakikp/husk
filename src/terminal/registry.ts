@@ -37,7 +37,9 @@ import { completeTask, startTask } from "./taskStore";
 import { clearEnvironmentWarning, recordEnvironmentWarning } from "./environmentWarnings";
 import { getEnvSignals } from "./envSignals";
 import { recordTimelineEvent } from "../timeline/store";
-import { syncWorkspaceRootToCwd } from "../workspace/store";
+import { safeTimelineCommand } from "../timeline/commandMetadata";
+import { refreshWorkflowSuggestion } from "../workflows/suggestions";
+import { getWorkspaceRoot, syncWorkspaceRootToCwd } from "../workspace/store";
 import {
   setAiPtyWriter as setAiPtyWriterInput,
   setTerminalLineReader as setTerminalLineReaderInput,
@@ -94,6 +96,9 @@ type TerminalLogsOpener = () => void;
 
 type Session = {
   leafId: number;
+  /** Distinguishes repeated routines across fresh PTYs without persisting any
+   * terminal process identifiers. */
+  workflowSessionId: string;
   term: XTermType;
   fitAddon: FitAddonType;
   searchAddon: SearchAddonType;
@@ -274,6 +279,7 @@ export async function createSession(
 
   const session: Session = {
     leafId,
+    workflowSessionId: `term_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`,
     term,
     fitAddon,
     searchAddon,
@@ -421,18 +427,28 @@ export async function createSession(
         }
         /* Timeline: the command and its outcome — never its output. */
         if (command.trim()) {
+          const safeCommand = safeTimelineCommand(command);
           const durationMs = Date.now() - (session.commandStartedAt || getCommandStartTime());
-          recordTimelineEvent(
+          const workspaceRoot = getWorkspaceRoot();
+          const recorded = recordTimelineEvent(
             exitCode != null && exitCode !== 0 ? "command_failed" : "command",
             exitCode != null && exitCode !== 0
-              ? `${command.trim()} failed (exit ${exitCode})`
-              : `Ran ${command.trim()}`,
+              ? `${safeCommand.display} failed (exit ${exitCode})`
+              : `Ran ${safeCommand.display}`,
             {
               exitCode,
               cwd: session.cwd,
+              terminalSessionId: session.workflowSessionId,
+              ...(safeCommand.command ? { command: safeCommand.command } : { redacted: true, sensitive: true }),
               ...(durationMs > 0 && durationMs < 86_400_000 ? { durationMs } : {}),
             },
+            { workspaceRoot, sensitivity: safeCommand.sensitive ? 1 : 0 },
           );
+          if (exitCode === 0 && safeCommand.command && workspaceRoot) {
+            void recorded.then((saved) => {
+              if (saved) void refreshWorkflowSuggestion(session.leafId, workspaceRoot);
+            });
+          }
         }
         session.cmdStartRow = null;
       }

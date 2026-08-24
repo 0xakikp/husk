@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { loadWorkflows, saveWorkflows, newWorkflowId, type Workflow } from "./store";
 import { composeCommand, extractParams } from "./params";
+import {
+  clearWorkflowDraft,
+  stageWorkflowDraft,
+  useWorkflowDraft,
+  workflowDraftFromSuggestion,
+  type WorkflowDraft,
+} from "./draftStore";
+import {
+  dismissWorkflowSuggestionFingerprint,
+  useWorkflowSuggestions,
+  type WorkflowSuggestion,
+} from "./suggestions";
+import { refineWorkflowDraft } from "../ai/assist";
+import { scanForSecrets } from "../ai/contextItems";
 import { runInActiveTerminal } from "../ai/terminalContext";
 import { Modal } from "../components/Modal";
+import { usePrefs } from "../settings/preferences";
+import { toast } from "../toast";
+import { useWorkspaceRoot } from "../workspace/store";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   PlayIcon,
@@ -11,6 +28,7 @@ import {
   Add01Icon,
   InformationCircleIcon,
   WorkflowCircle01Icon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import {
   Tooltip,
@@ -27,7 +45,14 @@ type Mode =
 export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inline?: boolean }) {
   const [workflows, setWorkflows] = useState<Workflow[]>(() => loadWorkflows());
   const [mode, setMode] = useState<Mode>({ kind: "list" });
+  const draft = useWorkflowDraft();
+  const workspaceRoot = useWorkspaceRoot();
+  const suggestions = useWorkflowSuggestions().filter((suggestion) => suggestion.workspaceRoot === workspaceRoot);
   const editing = mode.kind === "edit" && !!inline;
+
+  useEffect(() => {
+    if (draft) setMode({ kind: "edit", wf: null });
+  }, [draft]);
 
   const saveWorkflow = (wf: Workflow) => {
     setWorkflows((prev) => {
@@ -37,6 +62,13 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
       next[i] = wf;
       return next;
     });
+    if (draft?.fingerprint) dismissWorkflowSuggestionFingerprint(draft.fingerprint);
+    clearWorkflowDraft();
+    setMode({ kind: "list" });
+  };
+
+  const cancelEdit = () => {
+    clearWorkflowDraft();
     setMode({ kind: "list" });
   };
 
@@ -72,7 +104,7 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
           context={editing ? undefined : `${workflows.length} saved`}
           title={
             editing ? (
-              mode.wf ? "Edit Workflow" : "New Workflow"
+              mode.wf ? "Edit Workflow" : draft ? "Review Workflow" : "New Workflow"
             ) : (
             <div className="flex items-center gap-1.5">
               <span>Workflows</span>
@@ -94,7 +126,7 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
                 >
                   <div className="flex flex-col gap-1.5">
                     <p className="font-medium text-foreground">Workflows</p>
-                    <p>Save multi-step shell commands and run them instantly from any terminal.</p>
+                    <p>Save multi-step shell commands and run them instantly from any terminal. Husk can also notice repeated safe command routines in the local Timeline and offer a reviewable draft.</p>
                     <div className="rounded bg-muted/40 px-1.5 py-1 font-mono text-[10px]">
                       {"cd ~/{{service}} && git pull && make deploy"}
                     </div>
@@ -113,6 +145,9 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
           {mode.kind === "list" ? (
             <RunbookList
               workflows={workflows}
+              suggestions={suggestions}
+              onReviewSuggestion={(suggestion) => stageWorkflowDraft(workflowDraftFromSuggestion(suggestion))}
+              onIgnoreSuggestion={(suggestion) => dismissWorkflowSuggestionFingerprint(suggestion.fingerprint, true)}
               onNew={() => setMode({ kind: "edit", wf: null })}
               onEdit={(wf) => setMode({ kind: "edit", wf })}
               onDelete={(id) => setWorkflows((prev) => prev.filter((w) => w.id !== id))}
@@ -128,7 +163,8 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
                the popup below still handles it. */
             <RunbookEditor
               initial={mode.wf}
-              onCancel={() => setMode({ kind: "list" })}
+              draft={mode.wf ? null : draft}
+              onCancel={cancelEdit}
               onSave={saveWorkflow}
             />
           ) : (
@@ -142,13 +178,14 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
       {/* Non-inline only: in the sidebar this renders in the panel above. */}
       {mode.kind === "edit" && !inline && (
         <Modal
-          title={mode.wf ? "Edit Workflow" : "New Workflow"}
-          onClose={() => setMode({ kind: "list" })}
+          title={mode.wf ? "Edit Workflow" : draft ? "Review Workflow" : "New Workflow"}
+          onClose={cancelEdit}
           inline={false}
         >
           <RunbookEditor
             initial={mode.wf}
-            onCancel={() => setMode({ kind: "list" })}
+            draft={mode.wf ? null : draft}
+            onCancel={cancelEdit}
             onSave={(wf) => {
               setWorkflows((prev) => {
                 const i = prev.findIndex((w) => w.id === wf.id);
@@ -158,6 +195,8 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
                 return next;
               });
               setMode({ kind: "list" });
+              if (draft?.fingerprint) dismissWorkflowSuggestionFingerprint(draft.fingerprint);
+              clearWorkflowDraft();
             }}
           />
         </Modal>
@@ -168,19 +207,53 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
 
 function RunbookList({
   workflows,
+  suggestions,
   onNew,
+  onReviewSuggestion,
+  onIgnoreSuggestion,
   onEdit,
   onDelete,
   onRun,
 }: {
   workflows: Workflow[];
+  suggestions: WorkflowSuggestion[];
   onNew: () => void;
+  onReviewSuggestion: (suggestion: WorkflowSuggestion) => void;
+  onIgnoreSuggestion: (suggestion: WorkflowSuggestion) => void;
   onEdit: (wf: Workflow) => void;
   onDelete: (id: string) => void;
   onRun: (wf: Workflow) => void;
 }) {
   return (
     <div className="modal-body">
+      {suggestions.length > 0 ? (
+        <div className="mb-3 flex flex-col gap-1.5">
+          <div className="flex items-center justify-between px-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-primary/80">
+            <span>Suggested</span>
+            <span className="tabular-nums text-muted-foreground/60">local</span>
+          </div>
+          {suggestions.slice(0, 3).map((suggestion) => (
+            <div key={suggestion.id} className="rounded-md border border-primary/25 bg-primary/[0.06] p-2">
+              <div className="flex items-start gap-2">
+                <HugeiconsIcon icon={WorkflowCircle01Icon} size={14} strokeWidth={1.7} className="mt-0.5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[10.5px] text-foreground">Repeated command routine</p>
+                  <p className="mt-0.5 truncate text-[9.5px] text-muted-foreground" title={suggestion.steps.join(" → ")}>
+                    {suggestion.steps.join(" → ")}
+                  </p>
+                  <p className="mt-1 text-[9px] text-muted-foreground/65">
+                    seen {suggestion.occurrences} times across {suggestion.sessionCount} terminals
+                  </p>
+                </div>
+              </div>
+              <div className="mt-1.5 flex justify-end gap-1">
+                <button type="button" className="rounded px-1.5 py-0.5 text-[9.5px] text-muted-foreground hover:bg-muted/40 hover:text-foreground" onClick={() => onIgnoreSuggestion(suggestion)}>ignore</button>
+                <button type="button" className="rounded bg-primary/12 px-1.5 py-0.5 text-[9.5px] text-primary hover:bg-primary/20" onClick={() => onReviewSuggestion(suggestion)}>review</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {workflows.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
@@ -238,22 +311,35 @@ const makeRow = (value = ""): Row => ({
 
 function RunbookEditor({
   initial,
+  draft,
   onSave,
   onCancel,
 }: {
   initial: Workflow | null;
+  draft?: WorkflowDraft | null;
   onSave: (wf: Workflow) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(initial?.name ?? "");
+  const prefs = usePrefs();
+  const [name, setName] = useState(initial?.name ?? draft?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? draft?.description ?? "");
   const [rows, setRows] = useState<Row[]>(
-    initial && initial.steps.length ? initial.steps.map((s) => makeRow(s)) : [makeRow()],
+    initial?.steps.length
+      ? initial.steps.map((s) => makeRow(s))
+      : draft?.steps.length
+        ? draft.steps.map((s) => makeRow(s))
+        : [makeRow()],
   );
-  const [stopOnError, setStopOnError] = useState(initial?.stopOnError !== false);
+  const [stopOnError, setStopOnError] = useState(initial?.stopOnError ?? draft?.stopOnError ?? true);
+  const [refining, setRefining] = useState(false);
 
   const cleaned = rows.map((r) => r.value.trim()).filter((s) => s.length > 0);
   const params = useMemo(() => extractParams(rows.map((r) => r.value)), [rows]);
-  const valid = name.trim().length > 0 && cleaned.length > 0;
+  const sensitiveReasons = useMemo(
+    () => scanForSecrets("workflow steps", rows.map((row) => row.value).join("\n")),
+    [rows],
+  );
+  const valid = name.trim().length > 0 && cleaned.length > 0 && sensitiveReasons.length === 0;
 
   return (
     <div className="modal-body">
@@ -261,6 +347,43 @@ function RunbookEditor({
         <span>Name</span>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Deploy API" />
       </label>
+
+      <label className="rb-field">
+        <span>Description <small className="text-muted-foreground/60">optional</small></span>
+        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this workflow does" />
+      </label>
+
+      {draft ? (
+        <div className="rounded-md border border-primary/20 bg-primary/[0.05] px-2 py-1.5 text-[9.5px] leading-relaxed text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1">Husk prepared this from local command history. Review every step; nothing runs when you save it.</span>
+            {prefs.aiEnabled ? (
+              <button
+                type="button"
+                disabled={refining}
+                className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                title="Send only these visible, redacted steps to the selected model for a clearer name and optional parameters"
+                onClick={() => {
+                  if (refining || cleaned.length < 1) return;
+                  setRefining(true);
+                  void refineWorkflowDraft(name, description, cleaned)
+                    .then((refined) => {
+                      setName(refined.name);
+                      setDescription(refined.description);
+                      setRows(refined.steps.map((step) => makeRow(step)));
+                      toast({ title: "Workflow refined", message: "Review the updated name, parameters, and every command before saving.", variant: "success" });
+                    })
+                    .catch((error) => toast({ title: "Could not refine workflow", message: error instanceof Error ? error.message : String(error), variant: "error" }))
+                    .finally(() => setRefining(false));
+                }}
+              >
+                <HugeiconsIcon icon={SparklesIcon} size={10} strokeWidth={1.75} />
+                {refining ? "refining…" : "refine with AI"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="rb-field">
         <div className="rb-steps-head">
@@ -297,7 +420,9 @@ function RunbookEditor({
           </div>
         ))}
         <p className="rb-hint">
-          {params.length > 0
+          {sensitiveReasons.length > 0
+            ? `Possible ${sensitiveReasons.join(", ")} detected. Replace credentials with a runtime parameter before saving.`
+            : params.length > 0
             ? `Parameters: ${params.map((p) => p.name).join(", ")}`
             : "Use {{name}} or {{name=default}} to prompt at run time."}
         </p>
@@ -324,6 +449,7 @@ function RunbookEditor({
             onSave({
               id: initial?.id ?? newWorkflowId(),
               name: name.trim(),
+              description: description.trim() || undefined,
               steps: cleaned,
               stopOnError,
             })
