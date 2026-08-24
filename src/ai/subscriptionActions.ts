@@ -30,6 +30,9 @@ export function parseSubscriptionActionProposals(text: string, workspaceRoot?: s
       if (kind === "workspace.read" || kind === "workspace.list") {
         if (!path) { rejected += 1; continue; }
         actions.push({ kind, path: value.path as string });
+      } else if (kind === "workspace.inspect") {
+        if (!workspaceRoot) { rejected += 1; continue; }
+        actions.push({ kind });
       } else if (kind === "workspace.search") {
         if (typeof value.query !== "string" || !value.query.trim() || value.query.length > 400) { rejected += 1; continue; }
         actions.push({ kind, query: value.query, ...(typeof value.limit === "number" && value.limit > 0 && value.limit <= 30 ? { limit: value.limit } : {}) });

@@ -4,7 +4,7 @@ import { scanForSecrets } from "../ai/contextItems";
 import { getPrefs } from "../settings/preferences";
 import { queryTimeline, type TimelineEvent } from "../timeline/store";
 import { getWorkspaceRoot } from "../workspace/store";
-import { loadWorkflows } from "./store";
+import { loadWorkflows, type Workflow } from "./store";
 
 const MIN_SEQUENCE_LENGTH = 2;
 const MAX_SEQUENCE_LENGTH = 6;
@@ -21,7 +21,7 @@ export type RecordedWorkflowCommand = {
   failed: boolean;
 };
 
-export type WorkflowSuggestion = {
+type WorkflowSuggestionBase = {
   id: string;
   fingerprint: string;
   workspaceRoot: string;
@@ -31,6 +31,21 @@ export type WorkflowSuggestion = {
   sessionCount: number;
   lastSeen: number;
 };
+
+export type NewWorkflowSuggestion = WorkflowSuggestionBase & {
+  kind: "new";
+};
+
+export type WorkflowEvolutionSuggestion = WorkflowSuggestionBase & {
+  kind: "evolution";
+  targetWorkflowId: string;
+  targetWorkflowName: string;
+  targetWorkflowDescription?: string;
+  targetStopOnError: boolean;
+  originalSteps: string[];
+};
+
+export type WorkflowSuggestion = NewWorkflowSuggestion | WorkflowEvolutionSuggestion;
 
 /** Navigation, inspection, and shell housekeeping do not describe a routine. */
 export function isMeaningfulWorkflowCommand(command: string): boolean {
@@ -101,7 +116,7 @@ function validWindow(rows: RecordedWorkflowCommand[], start: number, length: num
 export function detectWorkflowSuggestion(
   eventsNewestFirst: TimelineEvent[],
   workspaceRoot: string,
-): WorkflowSuggestion | null {
+): NewWorkflowSuggestion | null {
   const rows = eventsNewestFirst
     .map(timelineCommand)
     .filter((row): row is RecordedWorkflowCommand => row !== null)
@@ -139,6 +154,7 @@ export function detectWorkflowSuggestion(
          the commands alone, while suggestion identity includes its workspace. */
       const fingerprint = hash(`${workspaceRoot}\u001e${workflowFingerprint(steps)}`);
       return {
+        kind: "new",
         id: `suggestion:${fingerprint}`,
         fingerprint,
         workspaceRoot,
@@ -151,6 +167,96 @@ export function detectWorkflowSuggestion(
     }
   }
   return null;
+}
+
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/\s+/g, " ");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Match a saved workflow step against its observed form without throwing
+ * away a user's reusable {{parameter}} placeholders. Values may be one shell
+ * word or one quoted string; the matcher never executes either side. */
+function workflowStepMatches(savedStep: string, observedStep: string): boolean {
+  const template = normalizeCommand(savedStep);
+  const observed = normalizeCommand(observedStep);
+  const placeholder = /\{\{\s*[A-Za-z0-9_]+\s*(?:=\s*[^}]*?)?\s*\}\}/g;
+  let cursor = 0;
+  let pattern = "";
+  for (const match of template.matchAll(placeholder)) {
+    const index = match.index ?? 0;
+    pattern += escapeRegExp(template.slice(cursor, index));
+    pattern += '(?:"[^"\\r\\n]*"|\'[^\'\\r\\n]*\'|[^\\s;&|]+)';
+    cursor = index + match[0].length;
+  }
+  pattern += escapeRegExp(template.slice(cursor));
+  return new RegExp(`^${pattern}$`).test(observed);
+}
+
+function directEvolutionSteps(observed: string[], workflow: Workflow): string[] | null {
+  if (observed.length <= workflow.steps.length) return null;
+  const matched = new Map<number, string>();
+  let savedIndex = 0;
+  for (let observedIndex = 0; observedIndex < observed.length && savedIndex < workflow.steps.length; observedIndex += 1) {
+    if (workflowStepMatches(workflow.steps[savedIndex], observed[observedIndex])) {
+      matched.set(observedIndex, workflow.steps[savedIndex]);
+      savedIndex += 1;
+    }
+  }
+  if (savedIndex !== workflow.steps.length) return null;
+  return observed.map((step, index) => matched.get(index) ?? step);
+}
+
+function compositeEvolutionSteps(observed: string[], workflow: Workflow): string[] | null {
+  if (workflow.steps.length < 2) return null;
+  for (const separator of [" && ", "; "]) {
+    const composite = workflow.steps.join(separator);
+    const index = observed.findIndex((step) => workflowStepMatches(composite, step));
+    if (index >= 0) {
+      return [...observed.slice(0, index), ...workflow.steps, ...observed.slice(index + 1)];
+    }
+  }
+  return null;
+}
+
+/** Turn a repeated routine into either a new workflow suggestion, an update to
+ * the best matching saved workflow, or no suggestion when the saved workflow
+ * already represents it. Evolution is deliberately additive: all original
+ * steps must still appear in order (or as the exact chained run command). */
+export function classifyWorkflowSuggestion(
+  candidate: NewWorkflowSuggestion,
+  workflows: Workflow[],
+): WorkflowSuggestion | null {
+  if (workflows.some((workflow) => (
+    workflow.steps.length === candidate.steps.length
+    && workflow.steps.every((step, index) => workflowStepMatches(step, candidate.steps[index]))
+  ))) return null;
+
+  const matches = workflows.flatMap((workflow) => {
+    const steps = directEvolutionSteps(candidate.steps, workflow)
+      ?? compositeEvolutionSteps(candidate.steps, workflow);
+    if (!steps || steps.length <= workflow.steps.length) return [];
+    return [{ workflow, steps }];
+  }).sort((a, b) => b.workflow.steps.length - a.workflow.steps.length);
+
+  const best = matches[0];
+  if (!best) return candidate;
+  const fingerprint = hash(`${candidate.fingerprint}\u001eupdate:${best.workflow.id}`);
+  return {
+    ...candidate,
+    kind: "evolution",
+    id: `evolution:${best.workflow.id}:${fingerprint}`,
+    fingerprint,
+    steps: best.steps,
+    targetWorkflowId: best.workflow.id,
+    targetWorkflowName: best.workflow.name,
+    targetWorkflowDescription: best.workflow.description,
+    targetStopOnError: best.workflow.stopOnError !== false,
+    originalSteps: best.workflow.steps,
+  };
 }
 
 const suggestions = new Map<number, WorkflowSuggestion>();
@@ -234,11 +340,11 @@ export async function refreshWorkflowSuggestion(leafId: number, workspaceRoot = 
   const prefs = getPrefs();
   if (!workspaceRoot || !prefs.workflowSuggestionsEnabled) return;
   const events = await queryTimeline(["command", "command_failed"], 30, 240, workspaceRoot);
-  const suggestion = detectWorkflowSuggestion(events, workspaceRoot);
+  const candidate = detectWorkflowSuggestion(events, workspaceRoot);
+  const suggestion = candidate ? classifyWorkflowSuggestion(candidate, loadWorkflows()) : null;
   if (
     !suggestion
     || prefs.workflowSuggestionDismissals.includes(suggestion.fingerprint)
-    || loadWorkflows().some((workflow) => workflowFingerprint(workflow.steps) === workflowFingerprint(suggestion.steps))
   ) {
     if (suggestions.delete(leafId)) emit();
     return;

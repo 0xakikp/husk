@@ -47,6 +47,8 @@ Most developer tools make you choose a primary surface: an editor with a hidden 
 
 Husk AI is available as a docked terminal composer and as a dedicated full-screen AI workspace with named sessions. It can include the active terminal, the current file, a selection, attachments, or a particular command result—only when those context chips are enabled.
 
+**Project Lens** gives a selected workspace a reliable first introduction. Husk prepares a bounded local snapshot from the root structure, known manifests, package commands, a short README excerpt, and Git state; it never crawls the repository or opens credential files. The snapshot is visible as removable context before it reaches a model. Use **Understand project** in an empty workspace chat or `/project` in an existing conversation to ask either an API-backed or signed-in subscription model for a grounded orientation.
+
 Every normal Husk AI conversation receives the same product-aware context. This means the selected agent can explain Husk features, point to the right settings area, describe the current model mode accurately, and answer “who are you?” as a Husk AI persona rather than as an anonymous generic chatbot.
 
 Choose the access mode that fits your workflow:
@@ -62,7 +64,7 @@ Signed-in CLI modes are available for Claude Code, Codex, Gemini CLI, and Kimi C
 
 Each AI chat can be given its own workspace folder from the composer header. This is a deliberate per-chat boundary: terminal-originated chats begin with that terminal’s current workspace, while a general chat stays unscoped until you choose a folder. Workspace actions and selected context stay inside that folder.
 
-The **Husk Action Broker** is the local permission boundary for every model. API models use native tool calls; signed-in CLIs return small action proposals. Both go through the same workspace validation, including the native symlink boundary. Reads and listings can complete in place; existing-file edits always render a diff for review. New files are created only inside the selected workspace. Generic MCP tools are treated as potentially mutating unless the integration is explicitly read-only, so non-read-only calls appear in an approval queue before Husk contacts the remote service. Applied subscription changes remain visible below the composer and can be undone while the file remains unchanged.
+The **Husk Action Broker** is the local permission boundary for every model. API models use native tool calls; signed-in CLIs return small action proposals. Both go through the same workspace validation, including the native symlink boundary. Reads, listings, searches, and bounded Project Lens inspections can complete in place; existing-file edits always render a diff for review. New files are created only inside the selected workspace. Generic MCP tools are treated as potentially mutating unless the integration is explicitly read-only, so non-read-only calls appear in an approval queue before Husk contacts the remote service. Applied subscription changes remain visible below the composer and can be undone while the file remains unchanged.
 
 #### AI that adapts to the person and project
 
@@ -76,7 +78,7 @@ The **Husk Action Broker** is the local permission boundary for every model. API
 
 - Add custom MCP servers in **Settings → Integrations** without leaving the settings workspace.
 - Connect GitHub MCP with a personal access token stored in the OS keychain; start read-only and enable broader access only when you intend to.
-- Use Docker, Kubernetes, Terraform, CI/CD, Tailscale, workflows, jobs, bookmarks, and an authenticator from dedicated workspace views where those tools are configured. Workflows can also begin as reviewable suggestions when Husk notices the same safe command routine repeatedly in a local workspace Timeline; terminal output, file contents, and separate environment state are not analysed, and credential-bearing commands are redacted.
+- Use Docker, Kubernetes, Terraform, CI/CD, Tailscale, workflows, jobs, bookmarks, and an authenticator from dedicated workspace views where those tools are configured. Workflows can begin as reviewable suggestions when Husk notices the same safe command routine repeatedly, then evolve through reviewed updates when that routine consistently gains steps. Detection stays in the local workspace Timeline: terminal output, file contents, and separate environment state are not analysed, and credential-bearing commands are redacted.
 - Install and manage command-line helpers through the setup assistant instead of hunting for install commands yourself.
 
 ### Make the workspace feel like yours
@@ -94,7 +96,7 @@ Husk’s first-run defaults are deliberately opinionated: Iosevka typography, th
 2. Open `⌘/Ctrl K` and try **Open beautiful logs**, **Open settings**, or a workspace search.
 3. In **Settings → AI & Models**, select an API-backed provider or a signed-in CLI subscription mode.
 4. In **Settings → Agents**, choose an agent, set a response style, and decide what context a new AI chat should attach.
-5. In a Husk AI chat, choose a workspace folder from the header before attaching workspace context or asking it to inspect or change files.
+5. In a Husk AI chat, choose a workspace folder from the header, then use **Understand project** or `/project` for a grounded Project Lens overview before asking it to inspect or change files.
 6. For a multi-step diagnosis, enter the goal in the docked composer and select **Pilot**. It runs only observed diagnostics until it needs your approval or reaches a conclusion.
 7. If you use integrations, add them in **Settings → Integrations**. Read-only calls can run in place; other calls are shown for approval before they reach the service.
 

@@ -9,12 +9,46 @@
  * earns the direct action.
  */
 
+import { isPathInWorkspace, normalizeWorkspacePath } from "../ai/workspaceScope";
+
 export type TerminalRunDecision =
   | { runnable: true; command: string }
   | { runnable: false; reason: string };
 
 const SHELL_LANGUAGES = new Set(["sh", "bash", "zsh", "shell"]);
 const MAX_DIRECT_COMMAND_CHARS = 480;
+
+export type WorkspaceRunDecision =
+  | { ready: true; workspacePath: string; terminalCwd: string }
+  | { ready: false; reason: "no-terminal"; workspacePath: string; terminalCwd: "" }
+  | { ready: false; reason: "workspace-mismatch"; workspacePath: string; terminalCwd: string };
+
+/**
+ * Keep a chat's file scope and its terminal execution target aligned.
+ * Subdirectories are valid: a chat scoped to `/repo` can safely run while the
+ * shell is in `/repo/packages/app`. A sibling folder or parent is not valid,
+ * even when its name shares the same text prefix.
+ */
+export function getWorkspaceRunDecision(
+  workspacePath: string | null | undefined,
+  terminalCwd: string | null | undefined,
+): WorkspaceRunDecision {
+  const workspace = normalizeWorkspacePath(workspacePath);
+  const cwd = normalizeWorkspacePath(terminalCwd);
+
+  if (!cwd) {
+    return { ready: false, reason: "no-terminal", workspacePath: workspace, terminalCwd: "" };
+  }
+  if (!workspace || isPathInWorkspace(cwd, workspace)) {
+    return { ready: true, workspacePath: workspace, terminalCwd: cwd };
+  }
+  return {
+    ready: false,
+    reason: "workspace-mismatch",
+    workspacePath: workspace,
+    terminalCwd: cwd,
+  };
+}
 
 export function getTerminalRunDecision(language: string, code: string): TerminalRunDecision {
   const lang = language.trim().toLowerCase();

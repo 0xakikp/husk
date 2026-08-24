@@ -15,6 +15,7 @@ import {
   TickDouble01Icon,
   ArrowDown01Icon,
   Folder01Icon,
+  Refresh01Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { getPrefs, usePrefs, setPrefs } from "../settings/preferences";
@@ -73,7 +74,8 @@ import { buildMcpTools, getMcpToolMeta } from "../mcp/tools";
 import { buildBuiltinTools, mergeTools } from "../ai/builtinTools";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "../toast";
-import { getTerminalRunDecision } from "./commandRun";
+import { getTerminalRunDecision, getWorkspaceRunDecision } from "./commandRun";
+import { shq } from "../lib/shellQuote";
 import { useWorkspaceRoot } from "../workspace/store";
 import {
   isPathInWorkspace,
@@ -91,6 +93,7 @@ import {
   ensureSession,
   isTabSessionId,
 } from "../ai/sessionStore";
+import { loadProjectLensSnapshot, type ProjectLensSnapshot } from "../ai/projectLens";
 import "./TerminalAiComposer.css";
 
 interface SpeechRecognitionEventLike {
@@ -136,6 +139,8 @@ type ComposerAttachment = {
   content: string;
   isImage?: boolean;
 };
+
+const PROJECT_LENS_ORIENTATION_PROMPT = "Using the attached Project Lens snapshot, orient me to this project. Explain what it is, its main architecture, how to run, test, and build it, and the relevant current Git state. Cite relative source files for grounded claims, and clearly say what would still need deeper inspection.";
 
 const MAX_DROPPED_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
@@ -431,6 +436,87 @@ function isDangerousCommand(cmd: string): boolean {
   return DANGEROUS_PATTERNS.some((p) => p.test(trimmed));
 }
 
+function ProjectLensCard({
+  snapshot,
+  loading,
+  error,
+  onUnderstand,
+  onAsk,
+  onRefresh,
+}: {
+  snapshot: ProjectLensSnapshot | null;
+  loading: boolean;
+  error: string | null;
+  onUnderstand: () => void;
+  onAsk: () => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="project-lens-card" aria-label="Project Lens">
+      <div className="project-lens-head">
+        <span className="project-lens-icon" aria-hidden="true">
+          <HugeiconsIcon icon={Folder01Icon} size={14} strokeWidth={1.75} />
+        </span>
+        <div className="project-lens-title-wrap">
+          <span className="project-lens-eyebrow">PROJECT LENS</span>
+          <strong>{snapshot?.name ?? (loading ? "Reading this workspace…" : "Workspace overview")}</strong>
+        </div>
+        <button
+          type="button"
+          className={cn("project-lens-refresh", loading && "is-loading")}
+          onClick={onRefresh}
+          disabled={loading}
+          title="Refresh safe project metadata"
+          aria-label="Refresh Project Lens"
+        >
+          <HugeiconsIcon icon={Refresh01Icon} size={11} strokeWidth={1.75} />
+        </button>
+      </div>
+
+      {error ? (
+        <p className="project-lens-error">Project Lens could not read this workspace: {error}</p>
+      ) : snapshot ? (
+        <>
+          <div className="project-lens-facts">
+            <div>
+              <span>STACK</span>
+              <strong title={snapshot.stack.join(", ")}>{snapshot.stack.join(" · ") || "Needs inspection"}</strong>
+            </div>
+            <div>
+              <span>GIT</span>
+              <strong>
+                {snapshot.git.isRepository
+                  ? `${snapshot.git.branch || "detached"} · ${snapshot.git.changedFiles} changed`
+                  : "Not a repository"}
+              </strong>
+            </div>
+            <div>
+              <span>COMMANDS</span>
+              <strong title={snapshot.scripts.map((script) => script.name).join(", ")}>
+                {snapshot.scripts.length ? snapshot.scripts.slice(0, 4).map((script) => script.name).join(" · ") : "None detected"}
+              </strong>
+            </div>
+          </div>
+          <p className="project-lens-source">
+            Local snapshot · {snapshot.topLevel.length} root items · {snapshot.sources.length} source{snapshot.sources.length === 1 ? "" : "s"}
+          </p>
+        </>
+      ) : (
+        <p className="project-lens-loading">Reading root structure, known manifests, package commands, and Git state locally.</p>
+      )}
+
+      <div className="project-lens-actions">
+        <button type="button" className="is-primary" disabled={!snapshot || loading} onClick={onUnderstand}>
+          Understand project
+        </button>
+        <button type="button" disabled={!snapshot || loading} onClick={onAsk}>
+          Ask about it
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function TerminalAiComposer({
   sessionId,
   onOpenInAiTab,
@@ -467,6 +553,11 @@ export function TerminalAiComposer({
   const [runPickerOpen, setRunPickerOpen] = useState(false);
   const [workspaceScopeOpen, setWorkspaceScopeOpen] = useState(false);
   const [dismissedWorkspaceChange, setDismissedWorkspaceChange] = useState<string | null>(null);
+  const [projectLens, setProjectLens] = useState<ProjectLensSnapshot | null>(null);
+  const [projectLensLoading, setProjectLensLoading] = useState(false);
+  const [projectLensError, setProjectLensError] = useState<string | null>(null);
+  const [projectLensAttached, setProjectLensAttached] = useState(false);
+  const [pendingProjectLensPrompt, setPendingProjectLensPrompt] = useState<string | null>(null);
 
   const prefs = usePrefs();
   const agents = useAgents();
@@ -483,6 +574,11 @@ export function TerminalAiComposer({
   const [height, setHeight] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [pendingRun, setPendingRun] = useState<{ command: string; productionTarget: string | null } | null>(null);
+  const [pendingWorkspaceRun, setPendingWorkspaceRun] = useState<{
+    command: string;
+    workspacePath: string;
+    terminalCwd: string;
+  } | null>(null);
   const [pilotRequest, setPilotRequest] = useState<{ id: number; task: string } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const abortRef = useRef(false);
@@ -615,6 +711,8 @@ export function TerminalAiComposer({
     setExcludeProjectMemory(false);
     setBudgetPrompt(null);
     setSensitivePrompt(null);
+    setProjectLensAttached(false);
+    setPendingProjectLensPrompt(null);
   }, [sessionId]);
 
   const attachFiles = useCallback(async (paths: string[]) => {
@@ -718,6 +816,78 @@ export function TerminalAiComposer({
     return () => { cancelled = true; };
   }, [currentFile, includeFile, workspacePath]);
 
+  /* Project Lens reads a deliberately small local surface and is shared by
+     both composer layouts. It is not attached to a model request until the
+     user chooses one of the visible Project Lens actions. */
+  useEffect(() => {
+    let cancelled = false;
+    setProjectLens(null);
+    setProjectLensAttached(false);
+    setPendingProjectLensPrompt(null);
+    setProjectLensError(null);
+    if (!workspacePath) {
+      setProjectLensLoading(false);
+      return;
+    }
+    if (!prefs.aiFileToolsEnabled) {
+      setProjectLensLoading(false);
+      setProjectLensError("Workspace inspection is turned off in Settings → Agents.");
+      return;
+    }
+    setProjectLensLoading(true);
+    void loadProjectLensSnapshot(workspacePath)
+      .then((snapshot) => {
+        if (!cancelled) setProjectLens(snapshot);
+      })
+      .catch((error) => {
+        if (!cancelled) setProjectLensError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!cancelled) setProjectLensLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [prefs.aiFileToolsEnabled, workspacePath]);
+
+  const refreshProjectLens = useCallback(async (): Promise<ProjectLensSnapshot | null> => {
+    if (!workspacePath) return null;
+    if (!prefs.aiFileToolsEnabled) {
+      const message = "Turn on workspace inspection in Settings → Agents to use Project Lens.";
+      setProjectLensError(message);
+      toast({ title: "Project Lens is turned off", message, variant: "info" });
+      return null;
+    }
+    setProjectLensLoading(true);
+    setProjectLensError(null);
+    try {
+      const snapshot = await loadProjectLensSnapshot(workspacePath, true);
+      if (normalizeWorkspacePath(getSession(sessionId).workspacePath) === workspacePath) {
+        setProjectLens(snapshot);
+      }
+      return snapshot;
+    } catch (error) {
+      setProjectLensError(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      setProjectLensLoading(false);
+    }
+  }, [prefs.aiFileToolsEnabled, sessionId, workspacePath]);
+
+  const prepareProjectLens = useCallback(async (prompt: string, send: boolean) => {
+    if (!workspacePath) {
+      setWorkspaceScopeOpen(true);
+      return;
+    }
+    const snapshot = projectLens?.root === workspacePath
+      ? projectLens
+      : await refreshProjectLens();
+    if (!snapshot) return;
+    setProjectLens(snapshot);
+    setProjectLensAttached(true);
+    setInput(prompt);
+    if (send) setPendingProjectLensPrompt(prompt);
+    else setTimeout(() => textareaRef.current?.focus(), 40);
+  }, [projectLens, refreshProjectLens, workspacePath]);
+
   const contextItems = useMemo<AiContextItem[]>(() => {
     const items: AiContextItem[] = [];
     const mk = (
@@ -746,6 +916,19 @@ export function TerminalAiComposer({
         source: workspacePath,
         preview: workspacePath,
         removable: false,
+      }));
+    }
+    if (projectLensAttached && projectLens?.root === workspacePath) {
+      items.push(mk({
+        id: "project-lens",
+        kind: "project-lens",
+        icon: "⌗",
+        label: `Project Lens · ${projectLens.name}`,
+        source: projectLens.sources.length
+          ? projectLens.sources.join(", ")
+          : "workspace root metadata",
+        preview: projectLens.context,
+        removable: true,
       }));
     }
     /* The selected workspace is a boundary, not just a hint. An editor file
@@ -855,12 +1038,13 @@ export function TerminalAiComposer({
       }));
     }
     return items;
-  }, [currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick, workspacePath, activeTerminalCwd]);
+  }, [currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, projectLens, projectLensAttached, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick, workspacePath, activeTerminalCwd]);
 
   const removeContextItem = useCallback((id: string) => {
     if (id === "file") setIncludeFile(false);
     else if (id === "selection") setIncludeSelection(false);
     else if (id === "terminal") setIncludeTerminal(false);
+    else if (id === "project-lens") setProjectLensAttached(false);
     else if (id === "project-memory") setExcludeProjectMemory(true);
     else if (id.startsWith("run:")) {
       const at = Number(id.slice(4));
@@ -878,6 +1062,7 @@ export function TerminalAiComposer({
     setAttachedRuns([]);
     setAttachedFiles([]);
     setExcludeProjectMemory(true);
+    setProjectLensAttached(false);
   }, []);
 
   /* Chips cover the per-request attachments; instructions/memory stay visible
@@ -894,6 +1079,7 @@ export function TerminalAiComposer({
       { id: "/agent", label: "/agent", desc: "Switch AI agent", icon: "🤖", run: () => setAgentDropdownOpen(true) },
       { id: "/attach", label: "/attach", desc: "Attach a file", icon: "📎", run: () => handleFileUpload() },
       { id: "/output", label: "/output", desc: "Attach one command's output", icon: "▶", run: () => setRunPickerOpen(true) },
+      { id: "/project", label: "/project", desc: "Understand the selected workspace with Project Lens", icon: "⌗", run: () => void prepareProjectLens(PROJECT_LENS_ORIENTATION_PROMPT, true) },
     ];
     templates.forEach((t) => {
       base.push({
@@ -914,7 +1100,7 @@ export function TerminalAiComposer({
       });
     });
     return base;
-  }, [prefs.aiPromptTemplates, agents, newSession, handleFileUpload]);
+  }, [prefs.aiPromptTemplates, agents, newSession, handleFileUpload, prepareProjectLens]);
 
   const slashQuery = input.startsWith("/") ? input.slice(1).toLowerCase() : "";
   const filteredSlash = useMemo(() => {
@@ -978,6 +1164,10 @@ export function TerminalAiComposer({
   useEffect(() => {
     setDismissedWorkspaceChange(null);
   }, [workspaceChangeKey]);
+
+  useEffect(() => {
+    setPendingWorkspaceRun(null);
+  }, [sessionId, workspacePath]);
 
   /* Command output belongs to the chat it was explicitly attached to. Without
      this reset, switching conversations in the full AI view could carry a
@@ -1480,6 +1670,20 @@ export function TerminalAiComposer({
     handleSendRef.current = handleSend;
   }, [handleSend]);
 
+  /* Wait until the visible Project Lens item has entered the normalized
+     context list, then send. This guarantees the automatic orientation request
+     cannot race React state and reach the model without its reviewed source. */
+  useEffect(() => {
+    if (
+      !pendingProjectLensPrompt
+      || busy
+      || !contextItems.some((item) => item.id === "project-lens")
+    ) return;
+    const prompt = pendingProjectLensPrompt;
+    setPendingProjectLensPrompt(null);
+    void handleSendRef.current(prompt);
+  }, [busy, contextItems, pendingProjectLensPrompt]);
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!draggingRef.current || !panelRef.current || variant === "full") return;
@@ -1541,7 +1745,7 @@ export function TerminalAiComposer({
     setStatus(null);
   };
 
-  const sendCommandToTerminal = (command: string): boolean => {
+  const writeCommandToActiveTerminal = (command: string, destinationCwd?: string): boolean => {
     const cmd = command.trim();
     if (!cmd) return false;
     if (isCommandRunning()) {
@@ -1568,7 +1772,7 @@ export function TerminalAiComposer({
       });
       return false;
     }
-    const cwd = getActiveTerminalCwd();
+    const cwd = destinationCwd || getActiveTerminalCwd();
     toast({
       title: "Command sent to terminal",
       message: cwd ? `Running in ${cwd}` : "Running in the active terminal",
@@ -1578,9 +1782,37 @@ export function TerminalAiComposer({
     return true;
   };
 
+  type SendCommandResult = "sent" | "blocked" | "workspace-mismatch";
+
+  const sendCommandToTerminal = (command: string): SendCommandResult => {
+    const cmd = command.trim();
+    if (!cmd) return "blocked";
+
+    const target = getWorkspaceRunDecision(workspacePath, getActiveTerminalCwd());
+    if (!target.ready) {
+      if (target.reason === "no-terminal") {
+        toast({
+          title: "No active terminal",
+          message: "Open and focus a terminal before running a command from Husk.",
+          variant: "error",
+        });
+        return "blocked";
+      }
+      setPendingWorkspaceRun({
+        command: cmd,
+        workspacePath: target.workspacePath,
+        terminalCwd: target.terminalCwd,
+      });
+      return "workspace-mismatch";
+    }
+
+    return writeCommandToActiveTerminal(cmd) ? "sent" : "blocked";
+  };
+
   const runCommand = (command: string) => {
     const cmd = command.trim();
     if (!cmd) return;
+    setPendingWorkspaceRun(null);
     /* Production gate: a command that mutates shared infrastructure, while a
        protected target is active, always stops for an explicit approval that
        names the target — even when the command itself looks "safe". */
@@ -1598,11 +1830,55 @@ export function TerminalAiComposer({
 
   const confirmRun = () => {
     if (pendingRun) {
-      if (sendCommandToTerminal(pendingRun.command)) setPendingRun(null);
+      const result = sendCommandToTerminal(pendingRun.command);
+      if (result === "sent" || result === "workspace-mismatch") setPendingRun(null);
     }
   };
 
   const cancelRun = () => setPendingRun(null);
+
+  const confirmWorkspaceRun = () => {
+    if (!pendingWorkspaceRun) return;
+    const currentWorkspace = normalizeWorkspacePath(getSession(sessionId).workspacePath);
+    if (currentWorkspace !== pendingWorkspaceRun.workspacePath) {
+      setPendingWorkspaceRun(null);
+      toast({
+        title: "Workspace changed",
+        message: "Review the command again before running it in the newly selected workspace.",
+        variant: "info",
+      });
+      return;
+    }
+
+    const currentTarget = getWorkspaceRunDecision(currentWorkspace, getActiveTerminalCwd());
+    const command = currentTarget.ready
+      ? pendingWorkspaceRun.command
+      : `cd -- ${shq(pendingWorkspaceRun.workspacePath)} && ${pendingWorkspaceRun.command}`;
+    if (writeCommandToActiveTerminal(command, pendingWorkspaceRun.workspacePath)) {
+      setPendingWorkspaceRun(null);
+    }
+  };
+
+  const runInTerminalFolderOnce = () => {
+    if (!pendingWorkspaceRun) return;
+    const currentCwd = normalizeWorkspacePath(getActiveTerminalCwd());
+    if (!currentCwd) {
+      toast({ title: "No active terminal", variant: "error" });
+      return;
+    }
+    if (currentCwd !== pendingWorkspaceRun.terminalCwd) {
+      setPendingWorkspaceRun((current) => current ? { ...current, terminalCwd: currentCwd } : null);
+      toast({
+        title: "Terminal folder changed",
+        message: "Husk still did not run the command. Check the updated location and choose again.",
+        variant: "info",
+      });
+      return;
+    }
+    if (writeCommandToActiveTerminal(pendingWorkspaceRun.command, currentCwd)) {
+      setPendingWorkspaceRun(null);
+    }
+  };
 
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -2073,11 +2349,22 @@ export function TerminalAiComposer({
         }}
       >
         {messages.length === 0 ? (
-          <div className="composer-empty">
-            <div className="wb-empty-glyph">❯</div>
-            <p className="wb-empty-title">what should i do?</p>
-            <p className="wb-empty-sub">ask about the open file, terminal output, or generate commands</p>
-          </div>
+          workspacePath ? (
+            <ProjectLensCard
+              snapshot={projectLens}
+              loading={projectLensLoading}
+              error={projectLensError}
+              onUnderstand={() => void prepareProjectLens(PROJECT_LENS_ORIENTATION_PROMPT, true)}
+              onAsk={() => void prepareProjectLens("Using the attached Project Lens snapshot, ", false)}
+              onRefresh={() => void refreshProjectLens()}
+            />
+          ) : (
+            <div className="composer-empty">
+              <div className="wb-empty-glyph">❯</div>
+              <p className="wb-empty-title">what should i do?</p>
+              <p className="wb-empty-sub">ask anything, or choose a workspace above to use Project Lens</p>
+            </div>
+          )
         ) : (
           messages.map((msg, i) => {
             const isUser = msg.role === "user";
@@ -2222,6 +2509,34 @@ export function TerminalAiComposer({
           </div>
         )}
       </div>
+
+      {pendingWorkspaceRun && (
+        <div className="composer-pending-run is-workspace-mismatch" role="alert">
+          <div className="composer-pending-run-copy flex flex-col gap-1">
+            <span className="text-[10px] font-medium text-amber-400">
+              This chat and terminal are in different folders
+            </span>
+            <div className="composer-workspace-run-paths">
+              <span><strong>Chat</strong><code title={pendingWorkspaceRun.workspacePath}>{pendingWorkspaceRun.workspacePath}</code></span>
+              <span><strong>Terminal</strong><code title={pendingWorkspaceRun.terminalCwd}>{pendingWorkspaceRun.terminalCwd}</code></span>
+            </div>
+            <span className="text-[9.5px] text-muted-foreground">
+              Husk stopped before running anything. Global command? Run it here once without changing the chat workspace.
+            </span>
+          </div>
+          <div className="composer-pending-run-actions flex items-center gap-1">
+            <button type="button" onClick={confirmWorkspaceRun} className="composer-approve-btn">
+              Go to chat folder &amp; run
+            </button>
+            <button type="button" onClick={runInTerminalFolderOnce} className="composer-cancel-btn">
+              Run here once
+            </button>
+            <button type="button" onClick={() => setPendingWorkspaceRun(null)} className="composer-cancel-btn">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {pendingRun && (
         <div className="composer-pending-run">
@@ -2388,7 +2703,7 @@ export function TerminalAiComposer({
             cwd={activeTerminalCwd}
             getTargetPtyId={getActiveTerminalPtyId}
             isTerminalRunning={isCommandRunning}
-            runInTargetTerminal={sendCommandToTerminal}
+            runInTargetTerminal={(command) => sendCommandToTerminal(command) === "sent"}
           />
         )}
         <div className="wb-composer">

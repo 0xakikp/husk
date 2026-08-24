@@ -35,6 +35,11 @@ export function buildBuiltinTools(
       inputSchema: jsonSchema({ type: "object", properties: { path: { type: "string" } }, required: ["path"] }),
       execute: ({ path }) => run({ kind: "workspace.list", path }),
     }),
+    inspectProject: tool({
+      description: "Create a bounded Project Lens snapshot of the selected workspace: root structure, known manifests, package commands, detected stack, and Git state. Prefer this when the user asks what a project is or how it is organised.",
+      inputSchema: jsonSchema({ type: "object", properties: {}, additionalProperties: false }),
+      execute: () => run({ kind: "workspace.inspect" }),
+    }),
     applyEdit: tool({
       description: "Propose a surgical edit to a file inside the selected workspace. The user reviews a diff before applying.",
       inputSchema: jsonSchema({ type: "object", properties: { path: { type: "string" }, search: { type: "string" }, replace: { type: "string" } }, required: ["path", "search", "replace"] }),

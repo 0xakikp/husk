@@ -18,23 +18,29 @@ export function WorkflowSuggestionStrip({ leafId }: { leafId: number | null }) {
   const suggestion = useWorkflowSuggestion(leafId);
   const workspaceRoot = useWorkspaceRoot();
   if (!suggestion || leafId == null || suggestion.workspaceRoot !== workspaceRoot) return null;
+  const evolving = suggestion.kind === "evolution";
+  const addedCount = evolving ? suggestion.steps.length - suggestion.originalSteps.length : 0;
 
   return (
     <div className="flex min-h-7 shrink-0 items-center gap-1.5 overflow-hidden rounded-lg border border-primary/25 bg-background/55 px-2.5 font-mono text-[10.5px]">
       <HugeiconsIcon icon={SparklesIcon} size={11} strokeWidth={1.75} className="shrink-0 text-primary" />
-      <span className="shrink-0 font-semibold uppercase tracking-[0.12em] text-primary/90">routine</span>
+      <span className="shrink-0 font-semibold uppercase tracking-[0.12em] text-primary/90">
+        {evolving ? "workflow update" : "routine"}
+      </span>
       <span className="min-w-0 truncate text-muted-foreground" title={suggestion.steps.join("\n")}>
-        seen {suggestion.occurrences}× · {routineLabel(suggestion.steps)}
+        {evolving
+          ? `${suggestion.targetWorkflowName} · +${addedCount} step${addedCount === 1 ? "" : "s"} · seen ${suggestion.occurrences}×`
+          : `seen ${suggestion.occurrences}× · ${routineLabel(suggestion.steps)}`}
       </span>
       <div className="min-w-2 flex-1" />
       <button
         type="button"
         onClick={() => stageWorkflowDraft(workflowDraftFromSuggestion(suggestion))}
         className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-primary transition-colors hover:bg-primary/10"
-        title="Review every step before saving this workflow"
+        title={evolving ? "Compare the saved workflow with the proposed update" : "Review every step before saving this workflow"}
       >
         <HugeiconsIcon icon={WorkflowCircle01Icon} size={10} strokeWidth={1.75} />
-        Review workflow
+        {evolving ? "Review update" : "Review workflow"}
       </button>
       <button
         type="button"

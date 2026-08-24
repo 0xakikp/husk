@@ -24,6 +24,15 @@ describe("subscription action proposals", () => {
     expect(result.rejected).toBe(0);
   });
 
+  it("accepts a provider-neutral Project Lens inspection", () => {
+    const result = parseSubscriptionActionProposals(
+      "```husk-action\n{\"kind\":\"workspace.inspect\"}\n```",
+      root,
+    );
+    expect(result.actions).toEqual([{ kind: "workspace.inspect" }]);
+    expect(result.rejected).toBe(0);
+  });
+
   it("rejects and strips a duplicated kind field instead of exposing protocol text", () => {
     const response = "```HUSK-ACTION\n{\"kind\":\"workspace.list\",\"path\":\".\",\"kind\":\"directory\"}\n```";
     const result = parseSubscriptionActionProposals(response, root);

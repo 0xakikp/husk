@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { TimelineEvent } from "../timeline/store";
 import {
+  classifyWorkflowSuggestion,
   detectWorkflowSuggestion,
   isSafeWorkflowSuggestionCommand,
   timelineCommand,
@@ -70,5 +71,61 @@ describe("workflow suggestion detection", () => {
     const second = detectWorkflowSuggestion([...chronological].reverse(), "/repo-b");
     expect(first?.steps).toEqual(second?.steps);
     expect(first?.fingerprint).not.toBe(second?.fingerprint);
+  });
+
+  it("turns a repeated extension into an update of the matching workflow", () => {
+    const commands = ["pnpm lint", "pnpm test", "pnpm build"];
+    const chronological = ["one", "two", "three"].flatMap((session, run) => (
+      commands.map((command, step) => event(run * 10 + step, run * 100 + step, command, session))
+    ));
+    const candidate = detectWorkflowSuggestion([...chronological].reverse(), "/repo");
+    expect(candidate).not.toBeNull();
+    const suggestion = classifyWorkflowSuggestion(candidate!, [{
+      id: "checks",
+      name: "Project checks",
+      description: "Verify the project",
+      steps: ["pnpm test", "pnpm build"],
+      stopOnError: true,
+    }]);
+    expect(suggestion).toMatchObject({
+      kind: "evolution",
+      targetWorkflowId: "checks",
+      targetWorkflowName: "Project checks",
+      originalSteps: ["pnpm test", "pnpm build"],
+      steps: ["pnpm lint", "pnpm test", "pnpm build"],
+    });
+  });
+
+  it("preserves parameters and expands a repeated chained workflow run", () => {
+    const commands = ["deploy staging && check staging", "notify release-ready"];
+    const chronological = ["one", "two", "three"].flatMap((session, run) => (
+      commands.map((command, step) => event(run * 10 + step, run * 100 + step, command, session))
+    ));
+    const candidate = detectWorkflowSuggestion([...chronological].reverse(), "/repo");
+    expect(candidate).not.toBeNull();
+    const suggestion = classifyWorkflowSuggestion(candidate!, [{
+      id: "deploy",
+      name: "Deploy",
+      steps: ["deploy {{env}}", "check {{env}}"],
+      stopOnError: true,
+    }]);
+    expect(suggestion).toMatchObject({
+      kind: "evolution",
+      steps: ["deploy {{env}}", "check {{env}}", "notify release-ready"],
+    });
+  });
+
+  it("does not offer an update when a workflow already represents the routine", () => {
+    const chronological = ["one", "two", "three"].flatMap((session, run) => [
+      event(run * 10, run * 100, "pnpm test", session),
+      event(run * 10 + 1, run * 100 + 1, "pnpm build", session),
+    ]);
+    const candidate = detectWorkflowSuggestion([...chronological].reverse(), "/repo");
+    expect(classifyWorkflowSuggestion(candidate!, [{
+      id: "checks",
+      name: "Checks",
+      steps: ["pnpm test", "pnpm build"],
+      stopOnError: true,
+    }])).toBeNull();
   });
 });

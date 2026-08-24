@@ -16,6 +16,7 @@ import {
 } from "./codebaseSearch";
 import { normalizeWorkspacePath, resolveWorkspacePath } from "./workspaceScope";
 import { addPendingMcpAction } from "./pendingActions";
+import { loadProjectLensSnapshot } from "./projectLens";
 
 /**
  * The one local boundary for model-requested work. Providers can differ in how
@@ -25,6 +26,7 @@ import { addPendingMcpAction } from "./pendingActions";
 export type HuskActionRequest =
   | { kind: "workspace.read"; path: string }
   | { kind: "workspace.list"; path: string }
+  | { kind: "workspace.inspect" }
   | { kind: "workspace.search"; query: string; limit?: number }
   | { kind: "workspace.write"; path: string; content: string }
   | { kind: "workspace.edit"; path: string; search: string; replace: string }
@@ -125,6 +127,17 @@ export async function executeHuskAction(
           ? entries.map((entry: { is_dir: boolean; name: string }) => `- ${entry.is_dir ? "[dir]" : "[file]"} ${entry.name}${entry.is_dir ? "/" : ""}`).join("\n")
           : "Directory is empty.";
         return { state: "complete", summary: `Listed ${request.path}`, result, activity: "list files" };
+      }
+      case "workspace.inspect": {
+        const scope = workspaceScope(context);
+        if (isScopeResult(scope)) return scope;
+        const snapshot = await loadProjectLensSnapshot(scope.root, true);
+        return {
+          state: "complete",
+          summary: `Inspected ${snapshot.name}`,
+          result: snapshot.context,
+          activity: "Project Lens",
+        };
       }
       case "workspace.search": {
         const scope = workspaceScope(context);

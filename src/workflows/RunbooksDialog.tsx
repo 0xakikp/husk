@@ -51,8 +51,21 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
   const editing = mode.kind === "edit" && !!inline;
 
   useEffect(() => {
-    if (draft) setMode({ kind: "edit", wf: null });
-  }, [draft]);
+    if (draft) {
+      const target = draft.targetWorkflowId
+        ? workflows.find((workflow) => workflow.id === draft.targetWorkflowId) ?? null
+        : null;
+      setMode({ kind: "edit", wf: target });
+    }
+  }, [draft, workflows]);
+
+  const editorTitle = draft?.source === "evolution"
+    ? "Review Workflow Update"
+    : mode.kind === "edit" && mode.wf
+      ? "Edit Workflow"
+      : draft
+        ? "Review Workflow"
+        : "New Workflow";
 
   const saveWorkflow = (wf: Workflow) => {
     setWorkflows((prev) => {
@@ -104,7 +117,7 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
           context={editing ? undefined : `${workflows.length} saved`}
           title={
             editing ? (
-              mode.wf ? "Edit Workflow" : draft ? "Review Workflow" : "New Workflow"
+              editorTitle
             ) : (
             <div className="flex items-center gap-1.5">
               <span>Workflows</span>
@@ -126,7 +139,7 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
                 >
                   <div className="flex flex-col gap-1.5">
                     <p className="font-medium text-foreground">Workflows</p>
-                    <p>Save multi-step shell commands and run them instantly from any terminal. Husk can also notice repeated safe command routines in the local Timeline and offer a reviewable draft.</p>
+                    <p>Save multi-step shell commands and run them instantly from any terminal. Husk can notice repeated safe routines, offer a reviewable draft, and suggest updating a workflow when you consistently add steps.</p>
                     <div className="rounded bg-muted/40 px-1.5 py-1 font-mono text-[10px]">
                       {"cd ~/{{service}} && git pull && make deploy"}
                     </div>
@@ -162,8 +175,9 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
                for one action. Outside the sidebar there is no panel to fill, so
                the popup below still handles it. */
             <RunbookEditor
+              key={draft?.fingerprint ?? mode.wf?.id ?? "new-workflow"}
               initial={mode.wf}
-              draft={mode.wf ? null : draft}
+              draft={draft}
               onCancel={cancelEdit}
               onSave={saveWorkflow}
             />
@@ -178,13 +192,14 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
       {/* Non-inline only: in the sidebar this renders in the panel above. */}
       {mode.kind === "edit" && !inline && (
         <Modal
-          title={mode.wf ? "Edit Workflow" : draft ? "Review Workflow" : "New Workflow"}
+          title={editorTitle}
           onClose={cancelEdit}
           inline={false}
         >
           <RunbookEditor
+            key={draft?.fingerprint ?? mode.wf?.id ?? "new-workflow"}
             initial={mode.wf}
-            draft={mode.wf ? null : draft}
+            draft={draft}
             onCancel={cancelEdit}
             onSave={(wf) => {
               setWorkflows((prev) => {
@@ -237,18 +252,24 @@ function RunbookList({
               <div className="flex items-start gap-2">
                 <HugeiconsIcon icon={WorkflowCircle01Icon} size={14} strokeWidth={1.7} className="mt-0.5 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[10.5px] text-foreground">Repeated command routine</p>
+                  <p className="truncate text-[10.5px] text-foreground">
+                    {suggestion.kind === "evolution" ? `Update ${suggestion.targetWorkflowName}` : "Repeated command routine"}
+                  </p>
                   <p className="mt-0.5 truncate text-[9.5px] text-muted-foreground" title={suggestion.steps.join(" → ")}>
                     {suggestion.steps.join(" → ")}
                   </p>
                   <p className="mt-1 text-[9px] text-muted-foreground/65">
-                    seen {suggestion.occurrences} times across {suggestion.sessionCount} terminals
+                    {suggestion.kind === "evolution"
+                      ? `${suggestion.steps.length - suggestion.originalSteps.length} added step${suggestion.steps.length - suggestion.originalSteps.length === 1 ? "" : "s"} · seen ${suggestion.occurrences} times`
+                      : `seen ${suggestion.occurrences} times across ${suggestion.sessionCount} terminals`}
                   </p>
                 </div>
               </div>
               <div className="mt-1.5 flex justify-end gap-1">
                 <button type="button" className="rounded px-1.5 py-0.5 text-[9.5px] text-muted-foreground hover:bg-muted/40 hover:text-foreground" onClick={() => onIgnoreSuggestion(suggestion)}>ignore</button>
-                <button type="button" className="rounded bg-primary/12 px-1.5 py-0.5 text-[9.5px] text-primary hover:bg-primary/20" onClick={() => onReviewSuggestion(suggestion)}>review</button>
+                <button type="button" className="rounded bg-primary/12 px-1.5 py-0.5 text-[9.5px] text-primary hover:bg-primary/20" onClick={() => onReviewSuggestion(suggestion)}>
+                  {suggestion.kind === "evolution" ? "review update" : "review"}
+                </button>
               </div>
             </div>
           ))}
@@ -309,6 +330,16 @@ const makeRow = (value = ""): Row => ({
   value,
 });
 
+function addedWorkflowSteps(original: string[], proposed: string[]): string[] {
+  const remaining = [...original];
+  return proposed.filter((step) => {
+    const index = remaining.indexOf(step);
+    if (index < 0) return true;
+    remaining.splice(index, 1);
+    return false;
+  });
+}
+
 function RunbookEditor({
   initial,
   draft,
@@ -321,16 +352,16 @@ function RunbookEditor({
   onCancel: () => void;
 }) {
   const prefs = usePrefs();
-  const [name, setName] = useState(initial?.name ?? draft?.name ?? "");
-  const [description, setDescription] = useState(initial?.description ?? draft?.description ?? "");
+  const [name, setName] = useState(draft?.name ?? initial?.name ?? "");
+  const [description, setDescription] = useState(draft?.description ?? initial?.description ?? "");
   const [rows, setRows] = useState<Row[]>(
-    initial?.steps.length
-      ? initial.steps.map((s) => makeRow(s))
-      : draft?.steps.length
-        ? draft.steps.map((s) => makeRow(s))
+    draft?.steps.length
+      ? draft.steps.map((s) => makeRow(s))
+      : initial?.steps.length
+        ? initial.steps.map((s) => makeRow(s))
         : [makeRow()],
   );
-  const [stopOnError, setStopOnError] = useState(initial?.stopOnError ?? draft?.stopOnError ?? true);
+  const [stopOnError, setStopOnError] = useState(draft?.stopOnError ?? initial?.stopOnError ?? true);
   const [refining, setRefining] = useState(false);
 
   const cleaned = rows.map((r) => r.value.trim()).filter((s) => s.length > 0);
@@ -338,6 +369,12 @@ function RunbookEditor({
   const sensitiveReasons = useMemo(
     () => scanForSecrets("workflow steps", rows.map((row) => row.value).join("\n")),
     [rows],
+  );
+  const addedSteps = useMemo(
+    () => draft?.source === "evolution"
+      ? addedWorkflowSteps(draft.originalSteps ?? [], cleaned)
+      : [],
+    [cleaned, draft],
   );
   const valid = name.trim().length > 0 && cleaned.length > 0 && sensitiveReasons.length === 0;
 
@@ -356,7 +393,11 @@ function RunbookEditor({
       {draft ? (
         <div className="rounded-md border border-primary/20 bg-primary/[0.05] px-2 py-1.5 text-[9.5px] leading-relaxed text-muted-foreground">
           <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1">Husk prepared this from local command history. Review every step; nothing runs when you save it.</span>
+            <span className="min-w-0 flex-1">
+              {draft.source === "evolution"
+                ? `Husk noticed that you repeatedly extended this workflow. Saving replaces its ${draft.originalSteps?.length ?? 0} steps with the reviewed ${cleaned.length}-step version; nothing runs now.`
+                : "Husk prepared this from local command history. Review every step; nothing runs when you save it."}
+            </span>
             {prefs.aiEnabled ? (
               <button
                 type="button"
@@ -382,6 +423,25 @@ function RunbookEditor({
               </button>
             ) : null}
           </div>
+          {draft.source === "evolution" ? (
+            <div className="mt-1.5 border-t border-primary/15 pt-1.5">
+              <div className="mb-1 flex items-center gap-1.5 uppercase tracking-[0.12em] text-muted-foreground/65">
+                <span>{draft.originalSteps?.length ?? 0} saved</span>
+                <span className="text-primary">→</span>
+                <span>{cleaned.length} proposed</span>
+              </div>
+              {addedSteps.length > 0 ? (
+                <div className="flex flex-col gap-0.5">
+                  {addedSteps.map((step, index) => (
+                    <div key={`${step}:${index}`} className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="shrink-0 font-semibold text-primary">+</span>
+                      <code className="min-w-0 truncate text-foreground/80" title={step}>{step}</code>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -447,7 +507,7 @@ function RunbookEditor({
           disabled={!valid}
           onClick={() =>
             onSave({
-              id: initial?.id ?? newWorkflowId(),
+              id: draft?.targetWorkflowId ?? initial?.id ?? newWorkflowId(),
               name: name.trim(),
               description: description.trim() || undefined,
               steps: cleaned,
@@ -455,7 +515,7 @@ function RunbookEditor({
             })
           }
         >
-          Save
+          {draft?.source === "evolution" ? "Save update" : "Save"}
         </button>
       </div>
     </div>

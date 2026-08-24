@@ -7,9 +7,11 @@ export type WorkflowDraft = {
   description: string;
   steps: string[];
   stopOnError: boolean;
-  source: "suggestion" | "timeline" | "recent";
+  source: "suggestion" | "evolution" | "timeline" | "recent";
   fingerprint?: string;
   occurrences?: number;
+  targetWorkflowId?: string;
+  originalSteps?: string[];
 };
 
 let draft: WorkflowDraft | null = null;
@@ -20,6 +22,19 @@ function emit() {
 }
 
 export function workflowDraftFromSuggestion(suggestion: WorkflowSuggestion): WorkflowDraft {
+  if (suggestion.kind === "evolution") {
+    return {
+      name: suggestion.targetWorkflowName,
+      description: suggestion.targetWorkflowDescription ?? "",
+      steps: suggestion.steps,
+      stopOnError: suggestion.targetStopOnError,
+      source: "evolution",
+      fingerprint: suggestion.fingerprint,
+      occurrences: suggestion.occurrences,
+      targetWorkflowId: suggestion.targetWorkflowId,
+      originalSteps: suggestion.originalSteps,
+    };
+  }
   const first = suggestion.steps[0]?.split(/\s+/).slice(0, 2).join(" ") || "routine";
   return {
     name: `${first} workflow`,

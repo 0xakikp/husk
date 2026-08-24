@@ -173,7 +173,7 @@ export function GeneralFile() {
       <CfgSection name="workflows" />
       <CfgRow
         name="suggestRepeatedRoutines"
-        comment="Notice repeated successful command sequences in the local Timeline and offer a workflow for review. If Timeline recording is off for a workspace, Husk does not learn routines there. Terminal output, files, and separate environment state are not analysed; credential-bearing commands are redacted."
+        comment="Notice repeated successful command sequences in the local Timeline and offer a new workflow—or a reviewed update when an existing workflow keeps gaining steps. If Timeline recording is off for a workspace, Husk does not learn routines there. Terminal output, files, and separate environment state are not analysed; credential-bearing commands are redacted."
       >
         <CfgBool
           value={p.workflowSuggestionsEnabled}
