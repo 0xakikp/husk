@@ -26,10 +26,13 @@ describe("subscription CLI isolation", () => {
       "goals",
     ]));
     expect(config).toEqual(expect.arrayContaining([
-      "agents.enabled=false",
       "apps._default.enabled=false",
       'web_search="disabled"',
     ]));
+    /* `agents` is a map of named AgentRoleToml entries in current Codex.
+       Writing agents.enabled=false creates an invalid boolean role. The
+       feature flag above is the supported isolation boundary. */
+    expect(config).not.toContain("agents.enabled=false");
     expect(args[args.length - 1]).toContain("No Codex tools are available");
   });
 

@@ -89,8 +89,6 @@ export function buildCodexCliArgs(prompt: string, model?: string): string[] {
     "--disable",
     "goals",
     "--config",
-    "agents.enabled=false",
-    "--config",
     "apps._default.enabled=false",
     "--config",
     'web_search="disabled"',
