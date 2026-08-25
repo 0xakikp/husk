@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AiChipIcon } from "@hugeicons/core-free-icons";
 import { CLI_SUBSCRIPTION_MODE, PROVIDERS, getProvider, type Provider } from "./providers";
 import { MODELS } from "./models";
 import { loadConfig, saveConfig, useConfig, getKey } from "./store";
@@ -110,7 +112,7 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
   };
 
   return (
-    <div ref={rootRef} className="model-switcher relative inline-flex min-w-0 items-center gap-1">
+    <div ref={rootRef} className="model-switcher relative inline-flex min-w-0 items-center gap-0.5">
       <button
         type="button"
         onClick={() => {
@@ -144,11 +146,11 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
             setOpen(false);
           }}
           aria-expanded={limitsOpen}
-        title="How your signed-in plan works in Husk"
-          className="model-switcher-plan-info rounded bg-amber-500/10 px-1 text-[9px] text-amber-500/90 transition-colors hover:bg-amber-500/20"
+          aria-label={`How your signed-in ${cliLabel(provider)} plan works in Husk`}
+          title={`See how your signed-in ${cliLabel(provider)} plan works in Husk`}
+          className="model-switcher-plan-info"
         >
-          <span className="model-switcher-plan-info-full">how it works</span>
-          <span className="model-switcher-plan-info-compact" aria-hidden="true">i</span>
+          <HugeiconsIcon icon={AiChipIcon} size={16} strokeWidth={1.7} aria-hidden="true" />
         </button>
       )}
 
@@ -192,9 +194,10 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
                         type="button"
                         onClick={() => pick(p.id, m.id)}
                         className={cn(
-                          "flex w-full items-center gap-2 px-2.5 py-1 text-left text-[11.5px] transition-colors",
-                          active ? "text-primary" : "text-foreground hover:bg-white/[0.05]",
+                          "model-switcher-option",
+                          active && "is-active",
                         )}
+                        aria-current={active ? "true" : undefined}
                       >
                         <span className="min-w-0 flex-1 truncate">{m.label}</span>
                         {active ? <span className="shrink-0 text-[10px]">✓</span> : null}
@@ -218,7 +221,7 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
       {limitsOpen && provider.kind === "cli" && (
         <div
           role="status"
-          className="model-switcher-limits absolute bottom-full left-0 z-50 mb-1.5 w-72 overflow-y-auto border border-border/60 bg-background/95 p-3 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="model-switcher-limits absolute bottom-full left-0 z-50 mb-1.5 w-72 overflow-y-auto rounded-lg border border-border/60 bg-background/95 p-3 shadow-lg backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ maxHeight }}
         >
           <p className="m-0 text-[11px] font-semibold text-foreground">{CLI_SUBSCRIPTION_MODE.title}</p>

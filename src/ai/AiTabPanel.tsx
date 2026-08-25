@@ -61,7 +61,13 @@ function sessionPreview(messages: { role: string; content: string }[]): string {
   return text.length < last.content.trim().length ? text + "…" : text;
 }
 
-export function AiTabPanel() {
+export function AiTabPanel({
+  onReturnToTerminal,
+  onClose,
+}: {
+  onReturnToTerminal: () => void;
+  onClose: () => void;
+}) {
   const sessions = useSessions();
   const activeId = useActiveSessionId();
   const prefs = usePrefs();
@@ -388,6 +394,8 @@ export function AiTabPanel() {
             registerOpen={false}
             registerSend={false}
             onShowSessionList={focusMode ? () => setFocusMode(false) : undefined}
+            onReturnToTerminal={onReturnToTerminal}
+            onCloseFull={onClose}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">

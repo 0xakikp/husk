@@ -14,6 +14,27 @@
   unset _husk_user_zdotdir
 }
 
+# Zsh has a long-standing resize bug when a multi-line prompt paints a right
+# prompt on a row above the active input. Reflow happens before ZLE processes
+# SIGWINCH, so every resize can leave one or two stale prompt rows behind.
+# Powerlevel10k represents that unsafe layout with `newline` in its right-side
+# elements and documents removing it as the portable mitigation. Detect only
+# that layout: one-line right prompts and every non-p10k theme remain intact.
+# Husk already shows time and runtime status in its footer. This setting is
+# session-local, does not edit .p10k.zsh, and can be explicitly opted out of.
+#
+# Generated p10k configs clear externally supplied POWERLEVEL9K_* values while
+# loading, so this must run after the user's config. Set both the public option
+# (used by a deferred first configuration) and p10k's normalized runtime flag
+# (used when configuration already happened).
+if [[ "${HUSK_ALLOW_RESIZE_UNSAFE_RPROMPT:-0}" != 1 ]] \
+    && (( $+functions[_p9k_set_prompt] )) \
+    && (( ${POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS[(I)newline]:-0} \
+       || ${_POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS[(I)newline]:-0} )); then
+  typeset -g POWERLEVEL9K_DISABLE_RPROMPT=true
+  typeset -gi _POWERLEVEL9K_DISABLE_RPROMPT=1
+fi
+
 # ---------------------------------------------------------------------------
 # Smart history, completions & bookmarks (before plugins so they can override)
 # ---------------------------------------------------------------------------

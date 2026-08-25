@@ -520,6 +520,23 @@ function App() {
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const term = useTerminalTabs();
   const [activeKind, setActiveKind] = useState<ActiveKind>("term");
+  const [aiOpen, setAiOpen] = useState(true);
+
+  const openAi = useCallback(() => {
+    setAiOpen(true);
+    setActiveKind("ai");
+  }, []);
+
+  const returnFromAi = useCallback(() => {
+    setActiveKind("term");
+    requestAnimationFrame(() => focusActiveTerminal());
+  }, []);
+
+  const closeAi = useCallback(() => {
+    setAiOpen(false);
+    setActiveKind("term");
+    requestAnimationFrame(() => focusActiveTerminal());
+  }, []);
 
   // Close Monaco find widget when leaving the file editor tab
   useEffect(() => {
@@ -893,13 +910,13 @@ function App() {
       openBookmarks: () => showSidebarView("bookmarks"),
       selectAiSession: (id) => {
         setActiveSessionId(id);
-        setActiveKind("ai");
+        openAi();
       },
       askAi: (q) => openBubble(q),
       setQuery: (v) => setPaletteInput(v),
       openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
     }),
-    [showSidebarView, openFile, openFiles],
+    [showSidebarView, openFile, openFiles, openAi],
   );
 
   const launcherItems = useLauncherItems(paletteOpen, paletteInput, commands, launcherCtx);
@@ -1008,7 +1025,8 @@ function App() {
             settingsOpen,
             onSelectSettings: () => setActiveKind("settings"),
             onCloseSettings: closeSettings,
-            onSelectAi: () => setActiveKind("ai"),
+            onSelectAi: openAi,
+            aiOpen,
             onPinAi: () => setPrefs({ aiTabPinned: true }),
             onUnpinAi: () => setPrefs({ aiTabPinned: false }),
             onSetAiTabColor: (color) => setPrefs({ aiTabColor: color }),
@@ -1093,7 +1111,6 @@ function App() {
           <WorkspacePanels
             term={term}
             activeKind={activeKind}
-            setActiveKind={setActiveKind}
             selectedK8sResource={selectedK8sResource}
             setSelectedK8sResource={setSelectedK8sResource}
             selectedDockerResource={selectedDockerResource}
@@ -1112,6 +1129,9 @@ function App() {
             onOpenBrowser={openBrowser}
             onOpenSourceControl={() => showSidebarView("source-control")}
             onExplainFailure={prefs.aiEnabled ? setExplainCtx : undefined}
+            onOpenAi={openAi}
+            onReturnFromAi={returnFromAi}
+            onCloseAi={closeAi}
             chromeOccluded={paletteOpen || switcherOpen}
           />
           </div>

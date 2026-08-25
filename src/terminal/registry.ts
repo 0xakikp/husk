@@ -115,7 +115,6 @@ type Session = {
   callbacks: TerminalCallbacks;
   unlisteners: UnlistenFn[];
   resizeTimer: number;
-  maxWaitTimer: number;
   typingTimer: number;
   lastCols: number;
   lastRows: number;
@@ -123,7 +122,7 @@ type Session = {
   lastHeight: number;
   pendingPtyCols: number;
   pendingPtyRows: number;
-  ptyResizeTimer: number;
+  ptyResizeInFlight: boolean;
   resizeObserver: ResizeObserver | null;
   prefsUnsub: (() => void) | null;
   screenEl: HTMLElement | null;
@@ -143,6 +142,68 @@ type Session = {
   /** Small rolling output sample for live local-server detection. */
   liveOutputTail: string;
 };
+
+/** Keep the native PTY at the same grid size as xterm.
+ *
+ * xterm reflows its buffer synchronously, while a Tauri command crosses an
+ * asynchronous boundary. Serialising those commands prevents an older resize
+ * response from landing after a newer one. If the grid changes while one
+ * request is in flight, only the latest dimensions are sent next. */
+function flushPtyResize(session: Session): void {
+  if (
+    session.disposed ||
+    session.ptyResizeInFlight ||
+    session.ptyId == null ||
+    session.pendingPtyCols < 1 ||
+    session.pendingPtyRows < 1
+  ) {
+    return;
+  }
+
+  const cols = session.pendingPtyCols;
+  const rows = session.pendingPtyRows;
+  session.pendingPtyCols = -1;
+  session.pendingPtyRows = -1;
+  session.ptyResizeInFlight = true;
+
+  void invoke("pty_resize", { id: session.ptyId, cols, rows })
+    .catch((error) => console.warn("[husk] PTY resize failed:", error))
+    .finally(() => {
+      session.ptyResizeInFlight = false;
+      flushPtyResize(session);
+    });
+}
+
+function queuePtyResize(session: Session, cols: number, rows: number): void {
+  session.pendingPtyCols = cols;
+  session.pendingPtyRows = rows;
+  flushPtyResize(session);
+}
+
+/** Fit one attached xterm and preserve whether the user was following the
+ * bottom. All fit entry points go through here so the visual grid and PTY do
+ * not spend hundreds of milliseconds at different sizes. */
+function fitAttachedSession(session: Session): void {
+  const container = session.container;
+  if (!container || !container.clientWidth || !container.clientHeight) return;
+
+  try {
+    const dimensions = session.fitAddon.proposeDimensions();
+    if (!dimensions) return;
+
+    session.lastWidth = container.clientWidth;
+    session.lastHeight = container.clientHeight;
+
+    if (dimensions.cols === session.term.cols && dimensions.rows === session.term.rows) {
+      return;
+    }
+
+    const buffer = session.term.buffer.active;
+    const wasFollowingBottom = buffer.viewportY >= buffer.baseY;
+    session.fitAddon.fit();
+    if (wasFollowingBottom) session.term.scrollToBottom();
+  } catch {}
+}
 
 const sessions = new Map<number, Session>();
 let activeLeafId: number | null = null;
@@ -282,7 +343,6 @@ export async function createSession(
     callbacks: {},
     unlisteners: [],
     resizeTimer: 0,
-    maxWaitTimer: 0,
     typingTimer: 0,
     lastCols: -1,
     lastRows: -1,
@@ -290,7 +350,7 @@ export async function createSession(
     lastHeight: -1,
     pendingPtyCols: -1,
     pendingPtyRows: -1,
-    ptyResizeTimer: 0,
+    ptyResizeInFlight: false,
     resizeObserver: null,
     prefsUnsub: null,
     screenEl: null,
@@ -645,23 +705,13 @@ export async function createSession(
       session.callbacks.onData?.();
     });
 
-    // Resize handler — throttle PTY resizes so window moves don't spam SIGWINCH
-    // and redraw the shell prompt repeatedly.
+    // ResizeObserver settles the visual fit first. Mirror that exact grid to
+    // the PTY immediately so shell prompts never redraw against stale columns.
     term.onResize(({ cols, rows }) => {
       if (cols === session.lastCols && rows === session.lastRows) return;
       session.lastCols = cols;
       session.lastRows = rows;
-      session.pendingPtyCols = cols;
-      session.pendingPtyRows = rows;
-      window.clearTimeout(session.ptyResizeTimer);
-      session.ptyResizeTimer = window.setTimeout(() => {
-        if (session.pendingPtyCols < 0 || session.pendingPtyRows < 0) return;
-        if (session.ptyId != null) {
-          void invoke("pty_resize", { id: session.ptyId, cols: session.pendingPtyCols, rows: session.pendingPtyRows });
-        }
-        session.pendingPtyCols = -1;
-        session.pendingPtyRows = -1;
-      }, 400);
+      queuePtyResize(session, cols, rows);
     });
 
     session.ptyOpening = false;
@@ -687,7 +737,7 @@ export async function createSession(
       p.accentColor,
     );
     window.setTimeout(() => {
-      try { fitAddon.fit(); } catch {}
+      fitAttachedSession(session);
     }, 90);
   });
 
@@ -715,7 +765,7 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
     // First-time open
     session.term.open(container);
   }
-  session.fitAddon.fit();
+  fitAttachedSession(session);
   session.screenEl = container.querySelector(".xterm-screen") as HTMLElement | null;
 
   const doFit = () => {
@@ -728,45 +778,20 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
       if (width === session.lastWidth && height === session.lastHeight) {
         return;
       }
-      session.lastWidth = width;
-      session.lastHeight = height;
-
-      const dims = (session.term as unknown as { _core?: { _renderService?: { dimensions: { css: { cell: { width: number; height: number } } } } } })._core?._renderService?.dimensions;
-      if (dims) {
-        const nextCols = Math.floor(width / dims.css.cell.width);
-        const nextRows = Math.floor(height / dims.css.cell.height);
-        if (nextCols === session.lastCols && nextRows === session.lastRows) {
-          return;
-        }
-      }
-
-      const prevCols = session.term.cols;
-      session.fitAddon.fit();
-      const newCols = session.term.cols;
-      // lastCols/lastRows are updated by the term.onResize handler above.
-      // Only scroll to bottom when the column count changes (real reflow).
-      // Height-only resizes should not redraw the prompt and create blank lines.
-      if (newCols !== prevCols) {
-        session.term.scrollToBottom();
-      }
+      fitAttachedSession(session);
     } catch {}
   };
 
   session.resizeObserver = new ResizeObserver(() => {
     window.clearTimeout(session.resizeTimer);
-    session.resizeTimer = window.setTimeout(() => doFit(), 150);
-  });
-  session.resizeObserver.observe(container);
-
-  // Safety valve: flush pending fits/PTY resizes if the observer debounce
-  // somehow gets stuck. Long interval so normal window moves don't trigger it.
-  session.maxWaitTimer = window.setInterval(() => {
-    if (session.resizeTimer) {
-      window.clearTimeout(session.resizeTimer);
+    // One trailing fit keeps the xterm grid and native PTY synchronized without
+    // sending SIGWINCH for every pixel while a divider is being dragged.
+    session.resizeTimer = window.setTimeout(() => {
       session.resizeTimer = 0;
       doFit();
-    }
-  }, 2000);
+    }, 180);
+  });
+  session.resizeObserver.observe(container);
 
   session.lastCols = session.term.cols;
   session.lastRows = session.term.rows;
@@ -802,9 +827,7 @@ export function detachSession(leafId: number): void {
     session.resizeObserver = null;
   }
   window.clearTimeout(session.resizeTimer);
-  window.clearInterval(session.maxWaitTimer);
   session.resizeTimer = 0;
-  session.maxWaitTimer = 0;
 
   // Park the xterm element instead of removing it
   const element = session.term.element;
@@ -825,7 +848,7 @@ export function setSessionVisible(leafId: number, visible: boolean): void {
   if (!session) return;
   session.visible = visible;
   if (visible && session.container) {
-    session.fitAddon.fit();
+    fitAttachedSession(session);
   }
 }
 
@@ -961,9 +984,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
     },
     clearSearch: () => session.searchAddon.clearDecorations(),
     openSearch: () => { session.searchOpen = true; },
-    resize: () => {
-      try { session.fitAddon.fit(); } catch {}
-    },
+    resize: () => fitAttachedSession(session),
     getTerm: () => session.term,
     getPtyId: () => session.ptyId,
     getScreenElement: () => session.screenEl,
@@ -985,8 +1006,8 @@ export function disposeSession(leafId: number): void {
     session.resizeObserver = null;
   }
   window.clearTimeout(session.resizeTimer);
+  session.resizeTimer = 0;
   window.clearTimeout(session.typingTimer);
-  window.clearInterval(session.maxWaitTimer);
 
   for (const un of session.unlisteners) un();
   session.unlisteners = [];

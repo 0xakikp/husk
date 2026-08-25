@@ -165,6 +165,7 @@ export function TabBar({
   onSelectSettings,
   onCloseSettings,
   onSelectAi,
+  aiOpen,
   onPinAi,
   onUnpinAi,
   onSetAiTabColor,
@@ -192,6 +193,7 @@ export function TabBar({
   onSelectSettings: () => void;
   onCloseSettings: () => void;
   onSelectAi: () => void;
+  aiOpen: boolean;
   onPinAi: () => void;
   onUnpinAi: () => void;
   onSetAiTabColor?: (color: string | undefined) => void;
@@ -280,7 +282,7 @@ export function TabBar({
     >
       <div className="flex w-max min-w-full items-center gap-0.5" ref={tabBarRef} onDragOver={handleDragOver}>
         {/* Pinned Husk tab — rendered first when pinned */}
-        {aiPinned && (
+        {aiOpen && aiPinned && (
           <TabChip
             active={active.kind === "ai"}
             onClick={onSelectAi}
@@ -512,7 +514,7 @@ export function TabBar({
             <span className="truncate">Settings</span>
           </TabChip>
         ) : null}
-        {!aiPinned && (
+        {aiOpen && !aiPinned && (
           <TabChip
             active={active.kind === "ai"}
             onClick={onSelectAi}

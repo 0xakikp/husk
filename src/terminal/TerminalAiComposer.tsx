@@ -8,7 +8,6 @@ import {
   FullScreenIcon,
   ArrowDownIcon,
   MessageMultiple02Icon,
-  VoiceIcon,
   AttachmentSquareIcon,
   StopIcon,
   Copy01Icon,
@@ -95,6 +94,9 @@ import { parseWorkspaceFileReference } from "../ai/fileReferences";
 import {
   AiMessage,
   type AiReplyTrace,
+  type AiSession,
+  createSession,
+  getAllSessions,
   getSession,
   updateSession,
   subscribeSessions,
@@ -117,39 +119,6 @@ import {
 } from "../ai/taskMode";
 import "./TerminalAiComposer.css";
 
-interface SpeechRecognitionEventLike {
-  results: SpeechRecognitionResultListLike;
-}
-
-interface SpeechRecognitionResultListLike {
-  length: number;
-  [i: number]: SpeechRecognitionResultLike;
-}
-
-interface SpeechRecognitionResultLike {
-  isFinal: boolean;
-  0: { transcript: string };
-}
-
-type SpeechRecognitionLike = EventTarget & {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-};
-
-declare global {
-  interface Window {
-    SpeechRecognition?: new () => SpeechRecognitionLike;
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-  }
-}
-
 interface CodeBlock {
   lang: string;
   code: string;
@@ -165,6 +134,21 @@ const PROJECT_LENS_ORIENTATION_PROMPT = "Using the attached Project Lens snapsho
 
 function taskEventId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function compactSessionAge(timestamp: number): string {
+  const elapsed = Math.max(0, Date.now() - timestamp);
+  if (elapsed < 60_000) return "now";
+  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}m`;
+  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}h`;
+  if (elapsed < 604_800_000) return `${Math.floor(elapsed / 86_400_000)}d`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function latestSessionPreview(session: AiSession): string {
+  const message = [...session.messages].reverse().find((item) => item.content.trim());
+  if (!message) return "No messages yet";
+  return message.content.replace(/\s+/g, " ").trim();
 }
 
 const MAX_DROPPED_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -629,9 +613,11 @@ function TaskModeCard({
 }
 
 export function TerminalAiComposer({
-  sessionId,
+  sessionId: routedSessionId,
   onOpenInAiTab,
   onShowSessionList,
+  onReturnToTerminal,
+  onCloseFull,
   variant = "docked",
   dock = "bottom",
   registerToggle = true,
@@ -643,6 +629,10 @@ export function TerminalAiComposer({
   onOpenInAiTab?: () => void;
   /** Present only for the full AI tab while its session list is focused away. */
   onShowSessionList?: () => void;
+  /** Leaves the full AI surface open in the tab strip and returns to the terminal. */
+  onReturnToTerminal?: () => void;
+  /** Dismisses only the full AI surface. Chat sessions remain persisted. */
+  onCloseFull?: () => void;
   variant?: "docked" | "full";
   dock?: "bottom" | "right" | "left";
   registerToggle?: boolean;
@@ -650,8 +640,11 @@ export function TerminalAiComposer({
   registerSend?: boolean;
   className?: string;
 }) {
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  /* A dock normally follows its terminal's `tab-N` chat. Selecting history is
+     only a view-level override: it never renames, copies, or rebinds the saved
+     conversation. Switching terminal tabs returns to that tab's own chat. */
+  const [dockedSessionId, setDockedSessionId] = useState(routedSessionId);
+  const sessionId = variant === "docked" ? dockedSessionId : routedSessionId;
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
@@ -705,8 +698,10 @@ export function TerminalAiComposer({
   const handleSendRef = useRef<(textOverride?: string, opts?: { allowOverBudget?: boolean; allowSensitive?: boolean; fitToBudget?: boolean }) => Promise<void>>(async () => {});
   const agentDropdownRef = useRef<HTMLDivElement>(null);
   const workspaceScopeRef = useRef<HTMLDivElement>(null);
+  const sessionPickerRef = useRef<HTMLDivElement>(null);
   const slashPaletteRef = useRef<HTMLDivElement>(null);
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
+  const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const draggingRef = useRef(false);
@@ -945,6 +940,23 @@ export function TerminalAiComposer({
   const [budgetPrompt, setBudgetPrompt] = useState<{ total: number } | null>(null);
   const [sensitivePrompt, setSensitivePrompt] = useState<AiContextItem[] | null>(null);
   const [fileCache, setFileCache] = useState<{ path: string; content: string } | null>(null);
+
+  /* A terminal-tab change is navigation, not a request to drag the previously
+     viewed chat into another shell. Restore the new tab's own session and its
+     normal context defaults, while dropping ephemeral attachments. */
+  useEffect(() => {
+    if (variant !== "docked") return;
+    setDockedSessionId(routedSessionId);
+    setSessionPickerOpen(false);
+    setIncludeFile(prefs.aiDefaultIncludeFile);
+    setIncludeSelection(prefs.aiDefaultIncludeSelection);
+    setIncludeTerminal(prefs.aiDefaultIncludeTerminal);
+    setAttachedRuns([]);
+    setAttachedFiles([]);
+    setPreviewChipId(null);
+    setProjectLensAttached(false);
+    setRunPickerOpen(false);
+  }, [routedSessionId, variant]);
 
   const budgetKb = prefs.aiContextBudgetKb || 32;
 
@@ -1262,9 +1274,95 @@ export function TerminalAiComposer({
     setProjectLensAttached(false);
   }, []);
 
+  const activateDockedSession = useCallback((nextSessionId: string, attachTerminal: boolean, announceResume = true) => {
+    if (variant !== "docked") return;
+    if (busy) {
+      toast({
+        title: "Wait for this reply to finish",
+        message: "Stop the current response before changing conversations.",
+        variant: "info",
+      });
+      return;
+    }
+    if (nextSessionId === sessionId) {
+      setSessionPickerOpen(false);
+      return;
+    }
+
+    setDockedSessionId(nextSessionId);
+    setActiveSessionId(nextSessionId);
+    setSessionPickerOpen(false);
+    /* Files, selections, command runs, and terminal scrollback describe the
+       current surface—not the historical chat. Never carry them across. */
+    setIncludeFile(false);
+    setIncludeSelection(false);
+    setIncludeTerminal(attachTerminal);
+    setAttachedRuns([]);
+    setAttachedFiles([]);
+    setPreviewChipId(null);
+    setProjectLensAttached(false);
+    setRunPickerOpen(false);
+    setBudgetPrompt(null);
+    setSensitivePrompt(null);
+
+    if (!attachTerminal && announceResume && nextSessionId !== routedSessionId) {
+      toast({
+        title: `Resumed ${getSession(nextSessionId).name}`,
+        message: "This terminal was not attached. Add it from the context row when you need its output.",
+        variant: "info",
+      });
+    }
+  }, [busy, routedSessionId, sessionId, variant]);
+
+  const createDockedChat = useCallback(() => {
+    const created = createSession({
+      name: "New AI Chat",
+      source: "terminal",
+      workspacePath: currentWorkspacePath || undefined,
+    });
+    activateDockedSession(created.id, prefs.aiDefaultIncludeTerminal, false);
+  }, [activateDockedSession, currentWorkspacePath, prefs.aiDefaultIncludeTerminal]);
+
+  const attachCurrentTerminal = useCallback(() => {
+    const root = normalizeWorkspacePath(getSession(sessionId).workspacePath);
+    const cwd = normalizeWorkspacePath(activeTerminalCwd);
+    if (root && (!cwd || !isPathInWorkspace(cwd, root))) {
+      toast({
+        title: "This terminal is outside the chat workspace",
+        message: `Move the terminal into ${workspaceDisplayName(root)}, or change the chat workspace first.`,
+        variant: "warning",
+      });
+      return;
+    }
+    setIncludeTerminal(true);
+    toast({ title: "Current terminal attached", variant: "success", duration: 1800 });
+  }, [activeTerminalCwd, sessionId]);
+
+  const sessionGroups = useMemo(() => {
+    const selected = getSession(sessionId);
+    const selectedRoot = normalizeWorkspacePath(selected.workspacePath);
+    const visible = getAllSessions().filter((item) => !item.archived && item.id !== sessionId);
+    const sameWorkspace = selectedRoot
+      ? visible.filter((item) => normalizeWorkspacePath(item.workspacePath) === selectedRoot)
+      : [];
+    const sameIds = new Set(sameWorkspace.map((item) => item.id));
+    const other = visible.filter((item) => !sameIds.has(item.id));
+    return [
+      { label: sessionId === routedSessionId ? "CURRENT TERMINAL" : "CURRENT CHAT", sessions: [selected] },
+      ...(sameWorkspace.length ? [{ label: "THIS WORKSPACE", sessions: sameWorkspace.slice(0, 6) }] : []),
+      ...(other.length ? [{ label: "OTHER CHATS", sessions: other.slice(0, 8) }] : []),
+    ];
+    /* Session writes drive `tick`; it keeps names, ordering, and previews live
+       without introducing a second store subscription into this composer. */
+  }, [routedSessionId, sessionId, tick]);
+
   /* Chips cover the per-request attachments; instructions/memory stay visible
      through the footer count and the Inspector instead of crowding the row. */
   const chipItems = contextItems.filter((i) => i.removable);
+  const resumedChatNeedsTerminalChoice =
+    variant === "docked" && sessionId !== routedSessionId && !includeTerminal;
+  const resumedChatTerminalMatches =
+    !workspacePath || (!!activeTerminalCwd && isPathInWorkspace(activeTerminalCwd, workspacePath));
 
   const previewChip = contextItems.find((c) => c.id === previewChipId && c.preview);
 
@@ -1324,7 +1422,7 @@ export function TerminalAiComposer({
 
   // Close header and slash dropdowns when clicking outside.
   useEffect(() => {
-    if (!agentDropdownOpen && !workspaceScopeOpen && !slashOpen) return;
+    if (!agentDropdownOpen && !workspaceScopeOpen && !sessionPickerOpen && !slashOpen) return;
     const onDocClick = (e: MouseEvent) => {
       if (!agentDropdownRef.current?.contains(e.target as Node)) {
         setAgentDropdownOpen(false);
@@ -1332,13 +1430,27 @@ export function TerminalAiComposer({
       if (!workspaceScopeRef.current?.contains(e.target as Node)) {
         setWorkspaceScopeOpen(false);
       }
+      if (!sessionPickerRef.current?.contains(e.target as Node)) {
+        setSessionPickerOpen(false);
+      }
       if (!slashPaletteRef.current?.contains(e.target as Node)) {
         setSlashOpen(false);
       }
     };
+    const onDocKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setAgentDropdownOpen(false);
+      setWorkspaceScopeOpen(false);
+      setSessionPickerOpen(false);
+      setSlashOpen(false);
+    };
     document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [agentDropdownOpen, workspaceScopeOpen, slashOpen]);
+    document.addEventListener("keydown", onDocKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onDocKeyDown);
+    };
+  }, [agentDropdownOpen, workspaceScopeOpen, sessionPickerOpen, slashOpen]);
 
   // Ensure the session exists. A new terminal chat captures the resolved
   // project root once; historical conversations intentionally stay unscoped
@@ -2327,37 +2439,6 @@ export function TerminalAiComposer({
     onOpenInAiTab?.();
   };
 
-  const toggleVoice = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      const current = getSession(sessionId).input;
-      setInput(current + "\n[Voice input is not supported in this environment]");
-      return;
-    }
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-    const recognition = new SR();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((r) => r[0].transcript)
-        .join("");
-      if (event.results[event.results.length - 1]?.isFinal) {
-        const current = getSession(sessionId).input;
-        setInput(current ? (current + " " + transcript).trim() : transcript);
-      }
-    };
-    recognitionRef.current = recognition;
-    recognition.start();
-  };
-
   const copyCode = async (code: string, idx: number) => {
     try {
       await writeText(code);
@@ -2531,7 +2612,11 @@ export function TerminalAiComposer({
           <div ref={agentDropdownRef} className="relative shrink-0">
             <button
               type="button"
-              onClick={() => setAgentDropdownOpen((v) => !v)}
+              onClick={() => {
+                setAgentDropdownOpen((v) => !v);
+                setSessionPickerOpen(false);
+                setWorkspaceScopeOpen(false);
+              }}
               className="composer-agent-picker flex h-6 min-w-0 items-center gap-1 rounded border border-border/40 bg-background pl-2 pr-1 text-[11px] font-semibold text-foreground transition-colors hover:border-primary/50"
             >
               <span className="composer-agent-picker-label truncate">{activeAgentName}</span>
@@ -2580,6 +2665,7 @@ export function TerminalAiComposer({
               onClick={() => {
                 setWorkspaceScopeOpen((value) => !value);
                 setAgentDropdownOpen(false);
+                setSessionPickerOpen(false);
                 setSlashOpen(false);
               }}
               className={cn("composer-workspace-scope", workspacePath && "is-scoped")}
@@ -2660,17 +2746,93 @@ export function TerminalAiComposer({
               </div>
             )}
           </div>
-          <span className="composer-crumb min-w-0 truncate" title={`${activeAgentName} · ${session.name}`}>
-            husk://
-            <span className={cn("composer-crumb-accent", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
-              {activeAgentName.toLowerCase().replace(/\s+/g, "-")}
-            </span>
-            <span className="composer-crumb-sep">/</span>
-            {session.name.toLowerCase().replace(/\s+/g, "-")}
-          </span>
+          <div ref={sessionPickerRef} className="composer-session-picker-wrap">
+            <button
+              type="button"
+              className={cn("composer-crumb composer-session-picker-trigger", variant === "docked" && "is-clickable")}
+              title={variant === "docked" ? `${activeAgentName} · ${session.name} — switch conversation` : `${activeAgentName} · ${session.name}`}
+              aria-expanded={variant === "docked" ? sessionPickerOpen : undefined}
+              disabled={variant !== "docked"}
+              onClick={() => {
+                if (variant !== "docked") return;
+                setSessionPickerOpen((value) => !value);
+                setAgentDropdownOpen(false);
+                setWorkspaceScopeOpen(false);
+                setSlashOpen(false);
+              }}
+            >
+              <span className="composer-crumb-route">
+                <span className="composer-crumb-prefix">husk://</span>
+                <span className={cn("composer-crumb-accent", activeAgent?.color && `composer-label-accent-${activeAgent.color}`)}>
+                  {activeAgentName.toLowerCase().replace(/\s+/g, "-")}
+                </span>
+                <span className="composer-crumb-sep">/</span>
+                <span className="composer-crumb-session">{session.name.toLowerCase().replace(/\s+/g, "-")}</span>
+              </span>
+              {variant === "docked" && (
+                <HugeiconsIcon
+                  icon={ArrowDown01Icon}
+                  size={9}
+                  strokeWidth={1.75}
+                  className={cn("composer-session-picker-chevron", sessionPickerOpen && "rotate-180")}
+                />
+              )}
+            </button>
+            {variant === "docked" && sessionPickerOpen && (
+              <div className="composer-session-menu" role="dialog" aria-label="Choose an AI conversation">
+                <div className="composer-session-menu-head">
+                  <span>CONVERSATIONS</span>
+                  <small>Saved locally</small>
+                </div>
+                <div className="composer-session-menu-list">
+                  {sessionGroups.map((group) => (
+                    <section key={group.label} className="composer-session-group">
+                      <p>{group.label}</p>
+                      {group.sessions.map((item) => {
+                        const isSelected = item.id === sessionId;
+                        const itemRoot = normalizeWorkspacePath(item.workspacePath);
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            disabled={busy}
+                            className={cn("composer-session-option", isSelected && "is-active")}
+                            onClick={() => activateDockedSession(item.id, item.id === routedSessionId && prefs.aiDefaultIncludeTerminal)}
+                            title={`${item.name}${itemRoot ? ` · ${itemRoot}` : " · no workspace"}`}
+                          >
+                            <span className="composer-session-option-mark" aria-hidden="true">
+                              {isTabSessionId(item.id) ? "▸" : "✦"}
+                            </span>
+                            <span className="composer-session-option-copy">
+                              <strong>{item.name}</strong>
+                              <small>
+                                {itemRoot ? workspaceDisplayName(itemRoot) : "No workspace"}
+                                {item.id === routedSessionId ? " · this terminal" : ""}
+                                {item.task && (item.task.status === "running" || item.task.status === "paused") ? ` · task ${item.task.status}` : ""}
+                                {` · ${latestSessionPreview(item)}`}
+                              </small>
+                            </span>
+                            <time>{compactSessionAge(item.updatedAt)}</time>
+                          </button>
+                        );
+                      })}
+                    </section>
+                  ))}
+                </div>
+                <div className="composer-session-menu-actions">
+                  <button type="button" disabled={busy} onClick={createDockedChat}>
+                    <HugeiconsIcon icon={PlusSignIcon} size={10} strokeWidth={1.8} /> New chat
+                  </button>
+                  <button type="button" onClick={handleOpenInAiTab}>
+                    <HugeiconsIcon icon={MessageMultiple02Icon} size={10} strokeWidth={1.8} /> Open all chats
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <button
             type="button"
-            className="composer-capability shrink-0"
+            className="composer-capability"
             onClick={() => setInspectorOpen(true)}
             title={`${provider.label} · ${cfg.model || provider.defaultModel} · ${capabilityLabel}. Inspect exact context and tool access.`}
           >
@@ -2703,6 +2865,17 @@ export function TerminalAiComposer({
               <span>Chats</span>
             </button>
           )}
+          {variant === "full" && onReturnToTerminal && (
+            <button
+              type="button"
+              onClick={onReturnToTerminal}
+              className="composer-session-list-btn composer-return-terminal-btn"
+              title="Return to the active terminal"
+            >
+              <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} strokeWidth={1.75} />
+              <span className="composer-return-terminal-label">Return to terminal</span>
+            </button>
+          )}
           {variant === "docked" && onOpenInAiTab && (
             <button
               type="button"
@@ -2733,6 +2906,17 @@ export function TerminalAiComposer({
           </button>
           {variant === "docked" && (
             <button type="button" onClick={handleClose} className="composer-icon-btn" title="Close">
+              <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
+            </button>
+          )}
+          {variant === "full" && onCloseFull && (
+            <button
+              type="button"
+              onClick={onCloseFull}
+              className="composer-icon-btn"
+              title="Close Husk view"
+              aria-label="Close Husk view"
+            >
               <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.75} />
             </button>
           )}
@@ -3145,7 +3329,7 @@ export function TerminalAiComposer({
           />
         )}
         <div className="wb-composer">
-          {chipItems.length > 0 && (
+          {(chipItems.length > 0 || resumedChatNeedsTerminalChoice) && (
             <div className="wb-composer-head">
               {chipItems.map((item) => (
                 <span
@@ -3182,6 +3366,19 @@ export function TerminalAiComposer({
                   </button>
                 </span>
               ))}
+              {resumedChatNeedsTerminalChoice && (
+                <button
+                  type="button"
+                  className={cn("wb-chip wb-chip-action", !resumedChatTerminalMatches && "is-blocked")}
+                  onClick={attachCurrentTerminal}
+                  title={resumedChatTerminalMatches
+                    ? "Explicitly attach output from the current terminal to this resumed chat"
+                    : "The current terminal is outside this chat's workspace"}
+                >
+                  <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
+                  <span>{resumedChatTerminalMatches ? "attach this terminal" : "terminal outside workspace"}</span>
+                </button>
+              )}
             </div>
           )}
           {runPickerOpen && (
@@ -3270,14 +3467,6 @@ export function TerminalAiComposer({
               rows={1}
               className="composer-textarea"
             />
-            <button
-              type="button"
-              onClick={toggleVoice}
-              className={cn("wb-icon-btn", listening && "recording")}
-              title={listening ? "Stop listening" : "Voice input"}
-            >
-              <HugeiconsIcon icon={VoiceIcon} size={12} strokeWidth={1.75} />
-            </button>
             <button
               type="button"
               onClick={handleFileUpload}

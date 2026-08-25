@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import type * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
@@ -81,7 +80,6 @@ function K8sResourceDetailPanel({
 export function WorkspacePanels({
   term,
   activeKind,
-  setActiveKind,
   selectedK8sResource,
   setSelectedK8sResource,
   selectedDockerResource,
@@ -100,11 +98,13 @@ export function WorkspacePanels({
   onOpenBrowser,
   onOpenSourceControl,
   onExplainFailure,
+  onOpenAi,
+  onReturnFromAi,
+  onCloseAi,
   chromeOccluded,
 }: {
   term: TerminalTabsApi;
   activeKind: ActiveKind;
-  setActiveKind: React.Dispatch<React.SetStateAction<ActiveKind>>;
   selectedK8sResource: K8sResourceSelection | null;
   setSelectedK8sResource: (sel: K8sResourceSelection | null) => void;
   selectedDockerResource: DockerResourceSelection | null;
@@ -123,6 +123,9 @@ export function WorkspacePanels({
   onOpenBrowser: (url: string) => void;
   onOpenSourceControl: () => void;
   onExplainFailure?: (request: FailureExplainRequest) => void;
+  onOpenAi: () => void;
+  onReturnFromAi: () => void;
+  onCloseAi: () => void;
   /** True when a React surface (palette, switcher, settings, detail panels)
       can cover the browser — the native webview must be parked. */
   chromeOccluded: boolean;
@@ -227,7 +230,7 @@ export function WorkspacePanels({
               <Suspense fallback={null}>
                 <TerminalAiComposer
                   sessionId={tabSessionId(term.activeId)}
-                  onOpenInAiTab={() => setActiveKind("ai")}
+                  onOpenInAiTab={onOpenAi}
                   registerSend={true}
                   dock="left"
                 />
@@ -254,7 +257,7 @@ export function WorkspacePanels({
               <Suspense fallback={null}>
                 <TerminalAiComposer
                   sessionId={tabSessionId(term.activeId)}
-                  onOpenInAiTab={() => setActiveKind("ai")}
+                  onOpenInAiTab={onOpenAi}
                   registerSend={true}
                   dock="right"
                 />
@@ -305,7 +308,7 @@ export function WorkspacePanels({
                 <Suspense fallback={null}>
                   <TerminalAiComposer
                     sessionId={tabSessionId(term.activeId)}
-                    onOpenInAiTab={() => setActiveKind("ai")}
+                    onOpenInAiTab={onOpenAi}
                     dock="left"
                   />
                 </Suspense>
@@ -319,7 +322,7 @@ export function WorkspacePanels({
                 <Suspense fallback={null}>
                   <TerminalAiComposer
                     sessionId={tabSessionId(term.activeId)}
-                    onOpenInAiTab={() => setActiveKind("ai")}
+                    onOpenInAiTab={onOpenAi}
                     dock="right"
                   />
                 </Suspense>
@@ -344,7 +347,10 @@ export function WorkspacePanels({
             aria-hidden={activeKind !== "ai"}
           >
             <ErrorBoundary>
-              {lazyPanel(<AiTabPanel />, "Husk")}
+              {lazyPanel(
+                <AiTabPanel onReturnToTerminal={onReturnFromAi} onClose={onCloseAi} />,
+                "Husk",
+              )}
             </ErrorBoundary>
           </div>
         )}
