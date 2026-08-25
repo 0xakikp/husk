@@ -1026,6 +1026,7 @@ function App() {
             onSelectSettings: () => setActiveKind("settings"),
             onCloseSettings: closeSettings,
             onSelectAi: openAi,
+            onCloseAi: closeAi,
             aiOpen,
             onPinAi: () => setPrefs({ aiTabPinned: true }),
             onUnpinAi: () => setPrefs({ aiTabPinned: false }),

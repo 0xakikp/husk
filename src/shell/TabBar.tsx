@@ -165,6 +165,7 @@ export function TabBar({
   onSelectSettings,
   onCloseSettings,
   onSelectAi,
+  onCloseAi,
   aiOpen,
   onPinAi,
   onUnpinAi,
@@ -193,6 +194,7 @@ export function TabBar({
   onSelectSettings: () => void;
   onCloseSettings: () => void;
   onSelectAi: () => void;
+  onCloseAi: () => void;
   aiOpen: boolean;
   onPinAi: () => void;
   onUnpinAi: () => void;
@@ -518,6 +520,7 @@ export function TabBar({
           <TabChip
             active={active.kind === "ai"}
             onClick={onSelectAi}
+            onClose={onCloseAi}
             animate={animationsEnabled}
             pinned={false}
             color={aiColor}
