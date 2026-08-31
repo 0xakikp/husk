@@ -35,7 +35,9 @@ impl McpQueue {
         if bytes > MAX_LINE_BYTES {
             return Err("MCP server sent a message larger than 1 MB");
         }
-        if self.lines.len() >= MAX_QUEUED_LINES || self.bytes.saturating_add(bytes) > MAX_QUEUED_BYTES {
+        if self.lines.len() >= MAX_QUEUED_LINES
+            || self.bytes.saturating_add(bytes) > MAX_QUEUED_BYTES
+        {
             return Err("MCP server produced more output than Husk could safely buffer");
         }
         self.bytes += bytes;
@@ -122,7 +124,11 @@ fn resolve_command(command: &str) -> Result<String, String> {
     Ok(resolved)
 }
 
-fn stop_with_error(runtime: &Arc<Mutex<McpRuntime>>, child: &Arc<SharedChild>, message: impl Into<String>) {
+fn stop_with_error(
+    runtime: &Arc<Mutex<McpRuntime>>,
+    child: &Arc<SharedChild>,
+    message: impl Into<String>,
+) {
     if let Ok(mut state) = runtime.lock() {
         if state.error.is_none() {
             state.error = Some(message.into());
@@ -147,7 +153,10 @@ fn enqueue_line(
     if line.trim().is_empty() {
         return true;
     }
-    let result = queue.lock().map_err(|_| "MCP output queue is unavailable").and_then(|mut q| q.push(line));
+    let result = queue
+        .lock()
+        .map_err(|_| "MCP output queue is unavailable")
+        .and_then(|mut q| q.push(line));
     if let Err(message) = result {
         stop_with_error(runtime, child, message);
         return false;
@@ -179,7 +188,11 @@ fn pump_stdout(
             Ok(0) => break,
             Ok(read) => read,
             Err(error) => {
-                stop_with_error(&runtime, &child, format!("Could not read MCP output: {error}"));
+                stop_with_error(
+                    &runtime,
+                    &child,
+                    format!("Could not read MCP output: {error}"),
+                );
                 return;
             }
         };
@@ -192,7 +205,11 @@ fn pump_stdout(
             } else {
                 pending.push(byte);
                 if pending.len() > MAX_LINE_BYTES {
-                    stop_with_error(&runtime, &child, "MCP server sent a message larger than 1 MB");
+                    stop_with_error(
+                        &runtime,
+                        &child,
+                        "MCP server sent a message larger than 1 MB",
+                    );
                     return;
                 }
             }
@@ -245,8 +262,8 @@ pub fn mcp_spawn(
         }
     }
 
-    let child = SharedChild::spawn(&mut cmd)
-        .map_err(|e| format!("failed to spawn '{command}': {e}"))?;
+    let child =
+        SharedChild::spawn(&mut cmd).map_err(|e| format!("failed to spawn '{command}': {e}"))?;
     let stdout = child.take_stdout().ok_or("no stdout pipe")?;
     let stderr = child.take_stderr().ok_or("no stderr pipe")?;
     let stdin = child.take_stdin().ok_or("no stdin pipe")?;
@@ -276,8 +293,8 @@ pub fn mcp_spawn(
                         state.exit_code = status.code();
                         if !status.success() && state.error.is_none() {
                             /* stderr can contain credentials echoed by a broken
-                               integration. Monitor and bound it, but do not send
-                               its raw contents into the webview or AI context. */
+                            integration. Monitor and bound it, but do not send
+                            its raw contents into the webview or AI context. */
                             let diagnostic_hint = if state.stderr_tail.is_empty() {
                                 ""
                             } else {
@@ -285,11 +302,16 @@ pub fn mcp_spawn(
                             };
                             state.error = Some(format!(
                                 "MCP server exited with {}{diagnostic_hint}",
-                                status.code().map_or_else(|| "no status".to_owned(), |code| code.to_string())
+                                status.code().map_or_else(
+                                    || "no status".to_owned(),
+                                    |code| code.to_string()
+                                )
                             ));
                         }
                     }
-                    Err(error) => state.error = Some(format!("Could not monitor MCP server: {error}")),
+                    Err(error) => {
+                        state.error = Some(format!("Could not monitor MCP server: {error}"))
+                    }
                 }
             }
         });
@@ -340,7 +362,7 @@ pub fn mcp_recv(
     Ok(McpReceive {
         lines,
         /* Wait until both the process and stdout reader are finished so its
-           final JSON-RPC response cannot be lost in an exit/read race. */
+        final JSON-RPC response cannot be lost in an exit/read race. */
         running: !(runtime.process_exited && runtime.stdout_closed),
         exit_code: runtime.exit_code,
         error: runtime.error.clone(),
@@ -349,7 +371,12 @@ pub fn mcp_recv(
 
 #[tauri::command]
 pub fn mcp_kill(state: State<'_, McpState>, id: u32) -> Result<(), String> {
-    if let Some(session) = state.sessions.lock().map_err(|e| e.to_string())?.remove(&id) {
+    if let Some(session) = state
+        .sessions
+        .lock()
+        .map_err(|e| e.to_string())?
+        .remove(&id)
+    {
         let _ = session.child.kill();
         let _ = session.child.wait();
     }

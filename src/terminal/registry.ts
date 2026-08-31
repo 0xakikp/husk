@@ -27,6 +27,8 @@ import {
   setFocusTerminalFn,
   setActiveTerminalPtyId,
   setActiveTerminalDraftReader,
+  setActiveRemoteTerminal,
+  type CommandRun,
 } from "../ai/terminalContext";
 import { recordFailure, clearFailure, collapseFailure } from "./failureStore";
 import { clearNextSteps, collapseNextSteps, recordNextSteps } from "./nextSteps";
@@ -50,6 +52,7 @@ import type { Terminal as XTermType } from "@xterm/xterm";
 import type { SearchAddon as SearchAddonType } from "@xterm/addon-search";
 import type { FitAddon as FitAddonType } from "@xterm/addon-fit";
 import { absolutePromptPosition, readEditablePrompt } from "./promptDraft";
+import { parseRemoteShellTarget } from "./remoteShell";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -61,6 +64,7 @@ export type TerminalHandle = {
   focus: () => void;
   getBuffer: (maxLines?: number) => string;
   getSelection: () => string | null;
+  getLastCommandRun: () => CommandRun | null;
   clear: () => void;
   selectAll: () => void;
   hasSelection: () => boolean;
@@ -131,6 +135,8 @@ type Session = {
   historyOpen: boolean;
   menuOpen: boolean;
   isRemoteShell: boolean;
+  remoteTarget: string | null;
+  lastCompletedRun: CommandRun | null;
   /** Start of the editable prompt for this PTY (not globally shared). */
   promptPosition: { row: number; col: number } | null;
   /** Absolute buffer row where the running command's output began (OSC 133 C). */
@@ -359,6 +365,8 @@ export async function createSession(
     historyOpen: false,
     menuOpen: false,
     isRemoteShell: false,
+    remoteTarget: null,
+    lastCompletedRun: null,
     promptPosition: null,
     cmdStartRow: null,
     currentCommand: "",
@@ -419,6 +427,7 @@ export async function createSession(
           exitCode,
           at: Date.now(),
         };
+        session.lastCompletedRun = completedRun;
         /* Pilot listens to this exact PTY completion rather than polling the
            active terminal. It remains correct when the user changes focus
            while an observed command is still running. */
@@ -506,6 +515,8 @@ export async function createSession(
       // Interactive SSH/Mosh sessions are local commands that start a remote
       // shell. When the session ends, the shell is local again.
       session.isRemoteShell = false;
+      session.remoteTarget = null;
+      if (session.active) setActiveRemoteTerminal({ isRemote: false });
     }
     if (data.startsWith("C")) {
       const b = term.buffer.active;
@@ -537,9 +548,11 @@ export async function createSession(
     // Treat an interactive ssh/mosh session as remote for the duration of the
     // command. The remote shell usually doesn't have Husk integration, so the
     // only reliable signal is the local command that started it.
-    const firstWord = cmd.split(/\s+/)[0];
-    if (firstWord === "ssh" || firstWord === "mosh") {
+    const remoteTarget = parseRemoteShellTarget(cmd);
+    if (remoteTarget) {
       session.isRemoteShell = true;
+      session.remoteTarget = remoteTarget;
+      if (session.active) setActiveRemoteTerminal({ isRemote: true, host: remoteTarget });
     }
     return true;
   });
@@ -549,6 +562,8 @@ export async function createSession(
     if (!cmd) return true;
     if (cmd.kind === "remote") {
       session.isRemoteShell = cmd.isRemote;
+      if (!cmd.isRemote) session.remoteTarget = null;
+      if (session.active) setActiveRemoteTerminal({ isRemote: cmd.isRemote, ...(session.remoteTarget ? { host: session.remoteTarget } : {}) });
       return true;
     }
     dispatchBridge(cmd);
@@ -868,6 +883,7 @@ export function setSessionActive(leafId: number, active: boolean): void {
   session.active = active;
 
   if (active) {
+    setActiveRemoteTerminal({ isRemote: session.isRemoteShell, ...(session.remoteTarget ? { host: session.remoteTarget } : {}) });
     setPromptPosition(session.promptPosition);
     setActiveTerminalPtyId(session.ptyId);
     setActiveTerminalReader(() => {
@@ -968,6 +984,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       const sel = session.term.getSelection();
       return sel.length > 0 ? sel : null;
     },
+    getLastCommandRun: () => session.lastCompletedRun ? { ...session.lastCompletedRun } : null,
     clear: () => session.term.clear(),
     selectAll: () => session.term.selectAll(),
     hasSelection: () => session.term.hasSelection(),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Cancel01Icon,
@@ -14,6 +14,7 @@ import {
   TickDouble01Icon,
   ArrowDown01Icon,
   Folder01Icon,
+  NotebookIcon,
   Refresh01Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
@@ -26,6 +27,7 @@ import type { Tool } from "ai";
 import { getActiveAgent, useAgents, setActiveAgent } from "../ai/agents";
 import {
   getActiveTerminalCwd,
+  getActiveRemoteTerminal,
   getActiveTerminalPtyId,
   getActiveTerminalDraft,
   isCommandRunning,
@@ -35,6 +37,7 @@ import {
   getPendingRunAttachment,
   subscribeTerminalCommandRuns,
   useActiveTerminalCwd,
+  useActiveRemoteTerminal,
   type CommandRun,
 } from "../ai/terminalContext";
 import { TerminalPilot, terminalPilotAvailability } from "./TerminalPilot";
@@ -78,6 +81,7 @@ import { registerComposerToggle, registerComposerOpen, registerComposerSend } fr
 import { getEditorFile, getEditorSelection } from "../ai/editorStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readFile, readFileBase64, readFileScoped } from "../fs";
+import { sshPwd, sshReadDirScoped } from "../remote/remoteFs";
 import { buildMcpTools, getMcpToolMeta } from "../mcp/tools";
 import { buildBuiltinTools, mergeTools } from "../ai/builtinTools";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -105,6 +109,14 @@ import {
   isTabSessionId,
 } from "../ai/sessionStore";
 import { loadProjectLensSnapshot, type ProjectLensSnapshot } from "../ai/projectLens";
+import { loadRemoteProjectLensSnapshot } from "../ai/remoteProjectLens";
+import {
+  normalizeRemotePath,
+  normalizeRemoteWorkspace,
+  remoteWorkspaceLabel,
+  type RemoteWorkspaceScope,
+} from "../ai/remoteWorkspace";
+import { AiNoteCaptureMenu, type AiNoteCaptureTarget } from "../notes/AiNoteCaptureMenu";
 import {
   appendAiTaskEvent,
   createAiTask,
@@ -361,7 +373,9 @@ function AiReplyTraceRow({ trace }: { trace: AiReplyTrace }) {
           </div>
           <div className="ai-reply-trace-detail-row">
             <span>workspace</span>
-            <strong>{trace.workspacePath || "general chat · no workspace selected"}</strong>
+            <strong>{trace.remoteWorkspace
+              ? `SSH ${trace.remoteWorkspace.host}:${trace.remoteWorkspace.path}`
+              : trace.workspacePath || "general chat · no workspace selected"}</strong>
           </div>
           <div className="ai-reply-trace-detail-row">
             <span>context</span>
@@ -688,7 +702,11 @@ export function TerminalAiComposer({
     workspacePath: string;
     terminalCwd: string;
   } | null>(null);
+  const [pendingRemoteRun, setPendingRemoteRun] = useState<{ command: string; host: string } | null>(null);
+  const [remotePathDraft, setRemotePathDraft] = useState<string | null>(null);
+  const [remotePathLoading, setRemotePathLoading] = useState(false);
   const [pilotRequest, setPilotRequest] = useState<{ id: number; task: string } | null>(null);
+  const [noteCaptureTarget, setNoteCaptureTarget] = useState<(AiNoteCaptureTarget & { messageIndex: number }) | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const abortRef = useRef(false);
   const abortCtrlRef = useRef<AbortController | null>(null);
@@ -711,6 +729,7 @@ export function TerminalAiComposer({
   const [codeTabMap, setCodeTabMap] = useState<Record<number, number>>({});
   const activeWorkspaceRoot = useWorkspaceRoot();
   const activeTerminalCwd = useActiveTerminalCwd();
+  const activeRemoteTerminal = useActiveRemoteTerminal();
 
   // Right-dock (side panel) state
   /* Docked to either side. Everything about a side dock is shared except which
@@ -731,6 +750,8 @@ export function TerminalAiComposer({
   const messages = session.messages;
   const input = session.input;
   const workspacePath = normalizeWorkspacePath(session.workspacePath);
+  const remoteWorkspace = normalizeRemoteWorkspace(session.remoteWorkspace);
+  const workspaceScopePath = remoteWorkspace?.path || workspacePath;
   const activeTask = session.task;
   const subscriptionAutoApply = useSubscriptionAutoApply(sessionId, workspacePath);
   const currentWorkspacePath = normalizeWorkspacePath(activeWorkspaceRoot);
@@ -741,6 +762,7 @@ export function TerminalAiComposer({
     variant === "docked" &&
     isTabSessionId(sessionId) &&
     !!workspacePath &&
+    !activeRemoteTerminal.isRemote &&
     !!currentWorkspacePath &&
     !!activeTerminalCwd &&
     !isPathInWorkspace(activeTerminalCwd, workspacePath) &&
@@ -778,6 +800,7 @@ export function TerminalAiComposer({
     updateSession(sessionId, (current) => ({
       ...current,
       workspacePath: nextPath || undefined,
+      remoteWorkspace: undefined,
       task: current.task && (current.task.status === "completed" || current.task.status === "stopped") && nextPath !== current.task.workspacePath
         ? undefined
         : current.task,
@@ -792,6 +815,93 @@ export function TerminalAiComposer({
     setWorkspaceScopeOpen(false);
     setDismissedWorkspaceChange(null);
   }, [sessionId]);
+
+  const setRemoteChatWorkspace = useCallback((scope: RemoteWorkspaceScope | null) => {
+    const next = normalizeRemoteWorkspace(scope);
+    const existing = getSession(sessionId);
+    if (existing.task && (existing.task.status === "running" || existing.task.status === "paused")) {
+      toast({
+        title: "This task is pinned to its workspace",
+        message: "Finish or stop the task before changing this chat's workspace.",
+        variant: "warning",
+      });
+      setWorkspaceScopeOpen(false);
+      return;
+    }
+    updateSession(sessionId, (current) => ({
+      ...current,
+      remoteWorkspace: next,
+      workspacePath: next ? undefined : current.workspacePath,
+      workspaceEditAccess: false,
+      task: undefined,
+    }));
+    clearSubscriptionAutoApply(sessionId);
+    setWorkspaceScopeOpen(false);
+    setDismissedWorkspaceChange(null);
+  }, [sessionId]);
+
+  const beginRemoteWorkspaceSelection = useCallback(() => {
+    const host = activeRemoteTerminal.host;
+    if (!activeRemoteTerminal.isRemote || !host) {
+      toast({
+        title: "Focus an SSH terminal first",
+        message: "Husk only enables a remote folder for the SSH host currently visible in the terminal.",
+        variant: "info",
+      });
+      return;
+    }
+    setRemotePathDraft("");
+    setRemotePathLoading(true);
+    void sshPwd(host)
+      .then((path) => {
+        const active = getActiveRemoteTerminal();
+        if (!active.isRemote || active.host !== host) return;
+        const normalized = normalizeRemotePath(path.trim());
+        if (normalized) setRemotePathDraft((current) => current === "" ? normalized : current);
+      })
+      .catch(() => {
+        // Password-only hosts may not permit this separate non-interactive
+        // lookup. The user can still enter an absolute remote path manually.
+      })
+      .finally(() => setRemotePathLoading(false));
+  }, [activeRemoteTerminal]);
+
+  const confirmRemoteWorkspaceSelection = useCallback(() => {
+    const host = activeRemoteTerminal.host;
+    const path = normalizeRemotePath(remotePathDraft ?? "");
+    if (!activeRemoteTerminal.isRemote || !host) {
+      setRemotePathDraft(null);
+      toast({ title: "SSH terminal changed", message: "Husk did not enable remote access. Focus the intended SSH terminal and try again.", variant: "warning" });
+      return;
+    }
+    if (!path) {
+      toast({ title: "Enter an absolute remote folder", message: "For example: /srv/my-app or /home/me/project", variant: "info" });
+      return;
+    }
+    setRemotePathLoading(true);
+    void sshReadDirScoped(host, path, path)
+      .then(() => {
+        const active = getActiveRemoteTerminal();
+        if (!active.isRemote || active.host !== host) {
+          throw new Error("The active SSH terminal changed while Husk checked this folder.");
+        }
+        setRemoteChatWorkspace({ kind: "ssh", host, path });
+        setRemotePathDraft(null);
+      })
+      .catch((error) => {
+        toast({
+          title: "Could not enable that remote folder",
+          message: error instanceof Error ? error.message : String(error),
+          variant: "warning",
+        });
+      })
+      .finally(() => setRemotePathLoading(false));
+  }, [activeRemoteTerminal, remotePathDraft, setRemoteChatWorkspace]);
+
+  useEffect(() => {
+    setRemotePathDraft(null);
+    setRemotePathLoading(false);
+  }, [sessionId, activeRemoteTerminal.isRemote, activeRemoteTerminal.host]);
 
   const setSubscriptionEditAccess = useCallback((enabled: boolean) => {
     updateSession(sessionId, (current) => ({
@@ -984,7 +1094,7 @@ export function TerminalAiComposer({
     setProjectLensAttached(false);
     setPendingProjectLensPrompt(null);
     setProjectLensError(null);
-    if (!workspacePath) {
+    if (!workspaceScopePath) {
       setProjectLensLoading(false);
       return;
     }
@@ -994,7 +1104,12 @@ export function TerminalAiComposer({
       return;
     }
     setProjectLensLoading(true);
-    void loadProjectLensSnapshot(workspacePath)
+    const load = remoteWorkspace
+      ? activeRemoteTerminal.isRemote && activeRemoteTerminal.host === remoteWorkspace.host
+        ? loadRemoteProjectLensSnapshot(remoteWorkspace)
+        : Promise.reject(new Error(`Focus the SSH terminal for ${remoteWorkspace.host} to inspect this remote folder.`))
+      : loadProjectLensSnapshot(workspacePath);
+    void load
       .then((snapshot) => {
         if (!cancelled) setProjectLens(snapshot);
       })
@@ -1005,10 +1120,10 @@ export function TerminalAiComposer({
         if (!cancelled) setProjectLensLoading(false);
       });
     return () => { cancelled = true; };
-  }, [prefs.aiFileToolsEnabled, workspacePath]);
+  }, [activeRemoteTerminal, prefs.aiFileToolsEnabled, remoteWorkspace, workspacePath, workspaceScopePath]);
 
   const refreshProjectLens = useCallback(async (): Promise<ProjectLensSnapshot | null> => {
-    if (!workspacePath) return null;
+    if (!workspaceScopePath) return null;
     if (!prefs.aiFileToolsEnabled) {
       const message = "Turn on workspace inspection in Settings → Agents to use Project Lens.";
       setProjectLensError(message);
@@ -1018,8 +1133,17 @@ export function TerminalAiComposer({
     setProjectLensLoading(true);
     setProjectLensError(null);
     try {
-      const snapshot = await loadProjectLensSnapshot(workspacePath, true);
-      if (normalizeWorkspacePath(getSession(sessionId).workspacePath) === workspacePath) {
+      if (remoteWorkspace && (!activeRemoteTerminal.isRemote || activeRemoteTerminal.host !== remoteWorkspace.host)) {
+        throw new Error(`Focus the SSH terminal for ${remoteWorkspace.host} before refreshing this remote workspace.`);
+      }
+      const snapshot = remoteWorkspace
+        ? await loadRemoteProjectLensSnapshot(remoteWorkspace, true)
+        : await loadProjectLensSnapshot(workspacePath, true);
+      const current = getSession(sessionId);
+      if (
+        (remoteWorkspace && normalizeRemoteWorkspace(current.remoteWorkspace)?.host === remoteWorkspace.host && normalizeRemoteWorkspace(current.remoteWorkspace)?.path === remoteWorkspace.path)
+        || (!remoteWorkspace && normalizeWorkspacePath(current.workspacePath) === workspacePath)
+      ) {
         setProjectLens(snapshot);
       }
       return snapshot;
@@ -1029,14 +1153,14 @@ export function TerminalAiComposer({
     } finally {
       setProjectLensLoading(false);
     }
-  }, [prefs.aiFileToolsEnabled, sessionId, workspacePath]);
+  }, [activeRemoteTerminal, prefs.aiFileToolsEnabled, remoteWorkspace, sessionId, workspacePath, workspaceScopePath]);
 
   const prepareProjectLens = useCallback(async (prompt: string, send: boolean) => {
-    if (!workspacePath) {
+    if (!workspaceScopePath) {
       setWorkspaceScopeOpen(true);
       return;
     }
-    const snapshot = projectLens?.root === workspacePath
+    const snapshot = projectLens?.root === workspaceScopePath
       ? projectLens
       : await refreshProjectLens();
     if (!snapshot) return;
@@ -1045,7 +1169,7 @@ export function TerminalAiComposer({
     setInput(prompt);
     if (send) setPendingProjectLensPrompt(prompt);
     else setTimeout(() => textareaRef.current?.focus(), 40);
-  }, [projectLens, refreshProjectLens, workspacePath]);
+  }, [projectLens, refreshProjectLens, workspaceScopePath]);
 
   const startTaskMode = useCallback(async () => {
     const objective = input.trim();
@@ -1059,11 +1183,13 @@ export function TerminalAiComposer({
       return;
     }
     if (busy) return;
-    if (!workspacePath) {
+    if (!workspacePath || remoteWorkspace) {
       setWorkspaceScopeOpen(true);
       toast({
-        title: "Choose a workspace for this task",
-        message: "Task Mode pins every read, change, and command to one folder.",
+        title: remoteWorkspace ? "Task Mode currently needs a local workspace" : "Choose a workspace for this task",
+        message: remoteWorkspace
+          ? "Use Terminal Pilot for supervised work on an SSH host. Remote Task Mode will not start silently on a server."
+          : "Task Mode pins every read, change, and command to one folder.",
         variant: "info",
       });
       return;
@@ -1095,7 +1221,7 @@ export function TerminalAiComposer({
       setProjectLensAttached(true);
     }
     setPendingTaskStart({ taskId: task.id, prompt: objective, requiresProjectLens: Boolean(snapshot) });
-  }, [activeTask, busy, dockSide, input, prefs.aiFileToolsEnabled, projectLens, refreshProjectLens, sessionId, variant, workspacePath]);
+  }, [activeTask, busy, dockSide, input, prefs.aiFileToolsEnabled, projectLens, refreshProjectLens, remoteWorkspace, sessionId, variant, workspacePath]);
 
   const contextItems = useMemo<AiContextItem[]>(() => {
     const items: AiContextItem[] = [];
@@ -1114,9 +1240,22 @@ export function TerminalAiComposer({
       !!workspacePath &&
       isPathInWorkspace(currentFile, workspacePath) &&
       fileCache?.path === currentFile;
-    const terminalMatchesScope =
-      !workspacePath || isPathInWorkspace(activeTerminalCwd, workspacePath);
-    if (workspacePath) {
+    const terminalMatchesScope = remoteWorkspace
+      ? activeRemoteTerminal.isRemote && activeRemoteTerminal.host === remoteWorkspace.host
+      : activeRemoteTerminal.isRemote
+        ? true
+        : !workspacePath || isPathInWorkspace(activeTerminalCwd, workspacePath);
+    if (remoteWorkspace) {
+      items.push(mk({
+        id: "workspace",
+        kind: "workspace",
+        icon: "⇄",
+        label: `remote · ${remoteWorkspaceLabel(remoteWorkspace)}`,
+        source: `${remoteWorkspace.host}:${remoteWorkspace.path}`,
+        preview: `Explicit SSH workspace\nHost: ${remoteWorkspace.host}\nFolder: ${remoteWorkspace.path}\nAccess remains brokered by Husk and requires this SSH terminal to be active.`,
+        removable: false,
+      }));
+    } else if (workspacePath) {
       items.push(mk({
         id: "workspace",
         kind: "workspace",
@@ -1127,7 +1266,7 @@ export function TerminalAiComposer({
         removable: false,
       }));
     }
-    if (projectLensAttached && projectLens?.root === workspacePath) {
+    if (projectLensAttached && projectLens?.root === workspaceScopePath) {
       items.push(mk({
         id: "project-lens",
         kind: "project-lens",
@@ -1209,7 +1348,7 @@ export function TerminalAiComposer({
         isImage: f.isImage,
       }));
     });
-    const projectNote = getProjectMemory(workspacePath);
+    const projectNote = remoteWorkspace ? "" : getProjectMemory(workspacePath);
     if (projectNote && !excludeProjectMemory) {
       items.push(mk({
         id: "project-memory",
@@ -1247,7 +1386,7 @@ export function TerminalAiComposer({
       }));
     }
     return items;
-  }, [currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, projectLens, projectLensAttached, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick, workspacePath, activeTerminalCwd]);
+  }, [activeRemoteTerminal, currentFile, fileName, fileCache, selection, includeFile, includeSelection, includeTerminal, attachedRuns, attachedFiles, excludeProjectMemory, projectLens, projectLensAttached, prefs.aiGlobalInstructions, prefs.aiPersonalMemory, tick, workspacePath, workspaceScopePath, remoteWorkspace, activeTerminalCwd]);
 
   const removeContextItem = useCallback((id: string) => {
     if (id === "file") setIncludeFile(false);
@@ -1318,15 +1457,21 @@ export function TerminalAiComposer({
     const created = createSession({
       name: "New AI Chat",
       source: "terminal",
-      workspacePath: currentWorkspacePath || undefined,
+      workspacePath: activeRemoteTerminal.isRemote ? undefined : currentWorkspacePath || undefined,
     });
     activateDockedSession(created.id, prefs.aiDefaultIncludeTerminal, false);
-  }, [activateDockedSession, currentWorkspacePath, prefs.aiDefaultIncludeTerminal]);
+  }, [activateDockedSession, activeRemoteTerminal.isRemote, currentWorkspacePath, prefs.aiDefaultIncludeTerminal]);
 
   const attachCurrentTerminal = useCallback(() => {
-    const root = normalizeWorkspacePath(getSession(sessionId).workspacePath);
+    const selected = getSession(sessionId);
+    const remote = normalizeRemoteWorkspace(selected.remoteWorkspace);
+    if (remote && (!activeRemoteTerminal.isRemote || activeRemoteTerminal.host !== remote.host)) {
+      toast({ title: "This chat belongs to another SSH host", message: `Focus ${remote.host} before attaching terminal output.`, variant: "warning" });
+      return;
+    }
+    const root = normalizeWorkspacePath(selected.workspacePath);
     const cwd = normalizeWorkspacePath(activeTerminalCwd);
-    if (root && (!cwd || !isPathInWorkspace(cwd, root))) {
+    if (!activeRemoteTerminal.isRemote && root && (!cwd || !isPathInWorkspace(cwd, root))) {
       toast({
         title: "This terminal is outside the chat workspace",
         message: `Move the terminal into ${workspaceDisplayName(root)}, or change the chat workspace first.`,
@@ -1336,13 +1481,19 @@ export function TerminalAiComposer({
     }
     setIncludeTerminal(true);
     toast({ title: "Current terminal attached", variant: "success", duration: 1800 });
-  }, [activeTerminalCwd, sessionId]);
+  }, [activeRemoteTerminal, activeTerminalCwd, sessionId]);
 
   const sessionGroups = useMemo(() => {
     const selected = getSession(sessionId);
     const selectedRoot = normalizeWorkspacePath(selected.workspacePath);
+    const selectedRemote = normalizeRemoteWorkspace(selected.remoteWorkspace);
     const visible = getAllSessions().filter((item) => !item.archived && item.id !== sessionId);
-    const sameWorkspace = selectedRoot
+    const sameWorkspace = selectedRemote
+      ? visible.filter((item) => {
+          const remote = normalizeRemoteWorkspace(item.remoteWorkspace);
+          return remote?.host === selectedRemote.host && remote.path === selectedRemote.path;
+        })
+      : selectedRoot
       ? visible.filter((item) => normalizeWorkspacePath(item.workspacePath) === selectedRoot)
       : [];
     const sameIds = new Set(sameWorkspace.map((item) => item.id));
@@ -1462,13 +1613,13 @@ export function TerminalAiComposer({
         name: tabSessionName(sessionId),
         source: "terminal",
         tabId,
-        workspacePath: currentWorkspacePath || undefined,
+        workspacePath: activeRemoteTerminal.isRemote ? undefined : currentWorkspacePath || undefined,
       });
-      if (!ensured.workspacePath && ensured.messages.length === 0 && currentWorkspacePath) {
+      if (!activeRemoteTerminal.isRemote && !ensured.workspacePath && !ensured.remoteWorkspace && ensured.messages.length === 0 && currentWorkspacePath) {
         updateSession(sessionId, (current) => ({ ...current, workspacePath: currentWorkspacePath }));
       }
     }
-  }, [sessionId, currentWorkspacePath]);
+  }, [activeRemoteTerminal.isRemote, sessionId, currentWorkspacePath]);
 
   useEffect(() => {
     setDismissedWorkspaceChange(null);
@@ -1476,7 +1627,8 @@ export function TerminalAiComposer({
 
   useEffect(() => {
     setPendingWorkspaceRun(null);
-  }, [sessionId, workspacePath]);
+    setPendingRemoteRun(null);
+  }, [sessionId, workspacePath, remoteWorkspace?.host, remoteWorkspace?.path]);
 
   /* Command output belongs to the chat it was explicitly attached to. Without
      this reset, switching conversations in the full AI view could carry a
@@ -1631,8 +1783,8 @@ export function TerminalAiComposer({
         /* Built-in filesystem access requires a chat-selected root. MCP tools
            retain their own configured scopes and are deliberately not treated
            as local-file access. */
-        const builtinTools = prefs.aiFileToolsEnabled && workspacePath
-          ? buildBuiltinTools(sessionId, workspacePath)
+        const builtinTools = prefs.aiFileToolsEnabled && (workspacePath || remoteWorkspace)
+          ? buildBuiltinTools(sessionId, workspacePath || null, remoteWorkspace)
           : {};
         if (provider.kind !== "cli") tools = mergeTools(builtinTools, mcpTools);
       } catch (e) {
@@ -1672,6 +1824,7 @@ export function TerminalAiComposer({
       modelLabel: modelId,
       mode: provider.kind === "cli" ? "subscription" : "api",
       workspacePath: workspacePath || undefined,
+      remoteWorkspace,
       workspaceEditAccess: subscriptionEditAccess || undefined,
       workspaceAutoApply: subscriptionAutoApplyActive || undefined,
       context: sendItems.map((item) => ({ label: item.label, bytes: item.bytes })),
@@ -1692,6 +1845,7 @@ export function TerminalAiComposer({
         provider,
         model: modelId,
         workspacePath: workspacePath || undefined,
+        remoteWorkspace,
         subscriptionEditAccess,
         subscriptionAutoApply: subscriptionAutoApplyActive,
       }) +
@@ -1778,7 +1932,7 @@ export function TerminalAiComposer({
         let correctedMalformedAction = false;
         let plannedHistory = conversation;
         while (rounds < 3) {
-          const parsedActions = parseSubscriptionActionProposals(assistantResponse, workspacePath || undefined);
+          const parsedActions = parseSubscriptionActionProposals(assistantResponse, workspacePath || undefined, remoteWorkspace);
           if (!parsedActions.actions.length) {
             if (!parsedActions.rejected) break;
 
@@ -1844,6 +1998,7 @@ export function TerminalAiComposer({
             const result = await executeHuskAction(action, {
               sessionId,
               workspaceRoot: workspacePath || undefined,
+              remoteWorkspace,
               fileToolsEnabled: prefs.aiFileToolsEnabled,
               mcpToolsEnabled: prefs.aiMcpToolsEnabled,
             });
@@ -2029,7 +2184,7 @@ export function TerminalAiComposer({
       setStatus(null);
       setAttachedFiles([]);
     }
-  }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled, workspacePath, session.workspaceEditAccess, subscriptionAutoApply, recordTaskEventFor]);
+  }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled, workspacePath, remoteWorkspace, session.workspaceEditAccess, subscriptionAutoApply, recordTaskEventFor]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
@@ -2326,9 +2481,30 @@ export function TerminalAiComposer({
 
   type SendCommandResult = "sent" | "blocked" | "workspace-mismatch";
 
-  const sendCommandToTerminal = (command: string): SendCommandResult => {
+  const sendCommandToTerminal = (command: string, options?: { supervisedRemote?: boolean }): SendCommandResult => {
     const cmd = command.trim();
     if (!cmd) return "blocked";
+
+    const activeRemote = activeRemoteTerminal;
+    if (remoteWorkspace && (!activeRemote.isRemote || activeRemote.host !== remoteWorkspace.host)) {
+      toast({
+        title: "Remote workspace is not connected",
+        message: `Focus the SSH terminal for ${remoteWorkspace.host} before running this command.`,
+        variant: "warning",
+      });
+      return "blocked";
+    }
+    if (activeRemote.isRemote) {
+      if (!activeRemote.host) {
+        toast({ title: "Remote host is unknown", message: "Reconnect with ssh or mosh so Husk can bind this command to the visible host.", variant: "warning" });
+        return "blocked";
+      }
+      if (!remoteWorkspace && !options?.supervisedRemote) {
+        setPendingRemoteRun({ command: cmd, host: activeRemote.host });
+        return "workspace-mismatch";
+      }
+      return writeCommandToActiveTerminal(cmd, `${activeRemote.host} (SSH)`, cmd) ? "sent" : "blocked";
+    }
 
     const target = getWorkspaceRunDecision(workspacePath, getActiveTerminalCwd());
     if (!target.ready) {
@@ -2422,6 +2598,19 @@ export function TerminalAiComposer({
     }
   };
 
+  const confirmRemoteRunOnce = () => {
+    if (!pendingRemoteRun) return;
+    const active = activeRemoteTerminal;
+    if (!active.isRemote || active.host !== pendingRemoteRun.host) {
+      setPendingRemoteRun(null);
+      toast({ title: "SSH terminal changed", message: "Husk did not run the command. Review it again in the intended remote terminal.", variant: "warning" });
+      return;
+    }
+    if (writeCommandToActiveTerminal(pendingRemoteRun.command, `${active.host} (SSH)`, pendingRemoteRun.command)) {
+      setPendingRemoteRun(null);
+    }
+  };
+
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault();
     draggingRef.current = true;
@@ -2476,6 +2665,49 @@ export function TerminalAiComposer({
     }
   };
 
+  const showNoteCaptureActions = (
+    x: number,
+    y: number,
+    content: string,
+    messageIndex: number,
+    selectedText?: string,
+  ) => {
+    if (!content.trim()) return;
+    setNoteCaptureTarget({
+      x,
+      y,
+      content,
+      messageIndex,
+      selectedText,
+      workspacePath: workspacePath || undefined,
+      conversationName: session.name,
+    });
+  };
+
+  const openResponseContextMenu = (
+    event: ReactMouseEvent<HTMLElement>,
+    content: string,
+    messageIndex: number,
+  ) => {
+    event.preventDefault();
+    const selection = window.getSelection();
+    const anchor = selection?.anchorNode;
+    const focus = selection?.focusNode;
+    const selectedText = anchor && focus && event.currentTarget.contains(anchor) && event.currentTarget.contains(focus)
+      ? selection?.toString().trim() || undefined
+      : undefined;
+    showNoteCaptureActions(event.clientX, event.clientY, content, messageIndex, selectedText);
+  };
+
+  const openResponseActionsFromButton = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    content: string,
+    messageIndex: number,
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    showNoteCaptureActions(rect.left, rect.bottom + 4, content, messageIndex);
+  };
+
   /* useConfig, not loadConfig: switching provider or model from the footer has to
      re-render the composer, or the model shown on each message and the
      missing-key warning would keep reporting the old choice. Safe above the early
@@ -2486,10 +2718,10 @@ export function TerminalAiComposer({
   const ctxTotalBytes = totalBytes(contextItems);
   const ctxOverBudget = ctxTotalBytes > budgetBytes(budgetKb);
   const providerAccessLabel = provider.kind === "cli" ? "signed-in" : "API";
-  const capabilityLabel = prefs.aiFileToolsEnabled && !workspacePath
+  const capabilityLabel = prefs.aiFileToolsEnabled && !workspacePath && !remoteWorkspace
     ? `${providerAccessLabel} · select workspace${prefs.aiMcpToolsEnabled ? " + integrations" : ""}`
     : prefs.aiFileToolsEnabled || prefs.aiMcpToolsEnabled
-      ? `${providerAccessLabel} · Husk actions · ${[prefs.aiFileToolsEnabled && "workspace", prefs.aiMcpToolsEnabled && "integrations"].filter(Boolean).join(" + ")}`
+      ? `${providerAccessLabel} · Husk actions · ${[prefs.aiFileToolsEnabled && (remoteWorkspace ? "remote workspace" : "workspace"), prefs.aiMcpToolsEnabled && "integrations"].filter(Boolean).join(" + ")}`
       : `${providerAccessLabel} · chat only`;
 
   const startTerminalPilot = () => {
@@ -2668,14 +2900,16 @@ export function TerminalAiComposer({
                 setSessionPickerOpen(false);
                 setSlashOpen(false);
               }}
-              className={cn("composer-workspace-scope", workspacePath && "is-scoped")}
-              title={workspacePath
+              className={cn("composer-workspace-scope", (workspacePath || remoteWorkspace) && "is-scoped", remoteWorkspace && "is-remote")}
+              title={remoteWorkspace
+                ? `Remote workspace: ${remoteWorkspace.host}:${remoteWorkspace.path}. Access is available only while that SSH terminal is active.`
+                : workspacePath
                 ? `Workspace scope: ${workspacePath}. Change the folder this chat can use.`
                 : "No workspace selected. Choose a folder to give this chat project context and scoped Husk workspace actions."}
               aria-expanded={workspaceScopeOpen}
             >
               <HugeiconsIcon icon={Folder01Icon} size={10} strokeWidth={1.75} className="shrink-0" />
-              <span className="composer-workspace-scope-full truncate">{workspaceDisplayName(workspacePath)}</span>
+              <span className="composer-workspace-scope-full truncate">{remoteWorkspace ? remoteWorkspaceLabel(remoteWorkspace) : workspaceDisplayName(workspacePath)}</span>
               <span className="composer-workspace-scope-compact" aria-hidden="true">Workspace</span>
               <HugeiconsIcon
                 icon={ArrowDown01Icon}
@@ -2687,15 +2921,36 @@ export function TerminalAiComposer({
             {workspaceScopeOpen && (
               <div className="composer-workspace-menu">
                 <p className="composer-workspace-menu-label">WORKSPACE SCOPE</p>
-                {workspacePath ? (
+                {remoteWorkspace ? (
+                  <div className="composer-workspace-current is-remote" title={`${remoteWorkspace.host}:${remoteWorkspace.path}`}>
+                    <span>SSH · {remoteWorkspace.host}</span>
+                    <small>{remoteWorkspace.path}</small>
+                  </div>
+                ) : workspacePath ? (
                   <div className="composer-workspace-current" title={workspacePath}>
                     <span>{workspaceDisplayName(workspacePath)}</span>
                     <small>{workspacePath}</small>
                   </div>
                 ) : (
-                  <p className="composer-workspace-empty">General chat. No project memory or local file tools are attached.</p>
+                  <p className="composer-workspace-empty">
+                    {activeRemoteTerminal.isRemote
+                      ? `Terminal-only SSH session${activeRemoteTerminal.host ? ` on ${activeRemoteTerminal.host}` : ""}. Husk can use attached terminal output, but cannot browse remote files.`
+                      : "General chat. No project memory or local file tools are attached."}
+                  </p>
                 )}
-                {provider.kind === "cli" && (
+                {remoteWorkspace && (
+                  <div className="composer-remote-workspace-note">
+                    <span>Remote access is opt-in</span>
+                    <small>Reads stay inside this folder. Every file change is reviewed, and the matching SSH terminal must remain active.</small>
+                  </div>
+                )}
+                {activeRemoteTerminal.isRemote && !remoteWorkspace && (
+                  <div className="composer-remote-workspace-note is-terminal-only">
+                    <span>SSH terminal only{activeRemoteTerminal.host ? ` · ${activeRemoteTerminal.host}` : ""}</span>
+                    <small>{workspacePath ? "The local folder above remains local reference context." : "No remote files are available to AI."} Choose a remote folder only when you want remote inspection.</small>
+                  </div>
+                )}
+                {provider.kind === "cli" && !remoteWorkspace && (
                   <div className="composer-workspace-edit-access">
                     <div>
                       <span>Reviewable workspace edits</span>
@@ -2736,9 +2991,43 @@ export function TerminalAiComposer({
                   </button>
                 )}
                 <button type="button" className="composer-workspace-menu-item" onClick={() => void chooseChatWorkspace()}>
-                  <HugeiconsIcon icon={Folder01Icon} size={11} strokeWidth={1.75} aria-hidden="true" /> Choose folder…
+                  <HugeiconsIcon icon={Folder01Icon} size={11} strokeWidth={1.75} aria-hidden="true" /> Choose local folder…
                 </button>
-                {workspacePath && (
+                {activeRemoteTerminal.isRemote && activeRemoteTerminal.host && !remoteWorkspace && remotePathDraft === null && (
+                  <button type="button" className="composer-workspace-menu-item is-remote" onClick={beginRemoteWorkspaceSelection}>
+                    ⇄ Enable a remote folder…
+                  </button>
+                )}
+                {activeRemoteTerminal.isRemote && activeRemoteTerminal.host && remotePathDraft !== null && (
+                  <div className="composer-remote-path-form">
+                    <label htmlFor={`remote-workspace-${sessionId}`}>REMOTE FOLDER · {activeRemoteTerminal.host}</label>
+                    <input
+                      id={`remote-workspace-${sessionId}`}
+                      autoFocus
+                      spellCheck={false}
+                      value={remotePathDraft}
+                      placeholder={remotePathLoading ? "finding remote home…" : "/srv/my-app"}
+                      onChange={(event) => setRemotePathDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") confirmRemoteWorkspaceSelection();
+                        if (event.key === "Escape") setRemotePathDraft(null);
+                      }}
+                    />
+                    <small>Use an absolute path. Husk will confine remote reads and reviewed changes to this folder.</small>
+                    <div>
+                      <button type="button" onClick={() => setRemotePathDraft(null)}>cancel</button>
+                      <button type="button" className="is-primary" disabled={remotePathLoading} onClick={confirmRemoteWorkspaceSelection}>
+                        {remotePathLoading ? "checking…" : "enable"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {remoteWorkspace && (
+                  <button type="button" className="composer-workspace-menu-item is-muted" onClick={() => setRemoteChatWorkspace(null)}>
+                    × Return to terminal-only SSH
+                  </button>
+                )}
+                {workspacePath && !remoteWorkspace && (
                   <button type="button" className="composer-workspace-menu-item is-muted" onClick={() => setChatWorkspace(null)}>
                     × Remove workspace
                   </button>
@@ -2970,7 +3259,7 @@ export function TerminalAiComposer({
         }}
       >
         {messages.length === 0 ? (
-          workspacePath ? (
+          workspaceScopePath ? (
             <ProjectLensCard
               snapshot={projectLens}
               loading={projectLensLoading}
@@ -3009,6 +3298,7 @@ export function TerminalAiComposer({
                 <div
                   key={i}
                   className={cn("msg-block msg-block-compact", isUser ? "msg-block-user" : "msg-block-ai")}
+                  onContextMenu={msg.streaming ? undefined : (event) => openResponseContextMenu(event, msg.content, i)}
                 >
                   <span
                     className={cn(
@@ -3032,16 +3322,33 @@ export function TerminalAiComposer({
                         ✎
                       </button>
                     ) : (
-                      <button type="button" onClick={() => redoMessage(i)} className="msg-act msg-act-sm">
-                        ↻
-                      </button>
+                      <>
+                        {!msg.streaming && (
+                          <button
+                            type="button"
+                            onClick={(event) => openResponseActionsFromButton(event, msg.content, i)}
+                            className="msg-act msg-act-sm"
+                            aria-label="Save response to Vault"
+                            title="Save or append to a Vault note"
+                          >
+                            <HugeiconsIcon icon={NotebookIcon} size={10} strokeWidth={1.7} />
+                          </button>
+                        )}
+                        <button type="button" onClick={() => redoMessage(i)} className="msg-act msg-act-sm">
+                          ↻
+                        </button>
+                      </>
                     )}
                   </span>
                 </div>
               );
             }
             return (
-              <div key={i} className={cn("msg-block", isUser ? "msg-block-user" : "msg-block-ai")}>
+              <div
+                key={i}
+                className={cn("msg-block", isUser ? "msg-block-user" : "msg-block-ai")}
+                onContextMenu={!isUser && !msg.streaming ? (event) => openResponseContextMenu(event, msg.content, i) : undefined}
+              >
                 <div className="msg-block-head">
                   <span
                     className={cn(
@@ -3093,6 +3400,16 @@ export function TerminalAiComposer({
                     </button>
                   ) : (
                     <>
+                      {!msg.streaming && (
+                        <button
+                          type="button"
+                          onClick={(event) => openResponseActionsFromButton(event, msg.content, i)}
+                          className="msg-act"
+                          title="Save or append to a Vault note"
+                        >
+                          <HugeiconsIcon icon={NotebookIcon} size={10} strokeWidth={1.7} /> save note
+                        </button>
+                      )}
                       <button type="button" onClick={() => redoMessage(i)} className="msg-act">
                         ↻ redo
                       </button>
@@ -3130,6 +3447,22 @@ export function TerminalAiComposer({
           </div>
         )}
       </div>
+
+      {pendingRemoteRun && (
+        <div className="composer-pending-run is-workspace-mismatch" role="alert">
+          <div className="composer-pending-run-copy flex flex-col gap-1">
+            <span className="text-[10px] font-medium text-amber-400">Run this on SSH host {pendingRemoteRun.host}?</span>
+            <code className="text-[10px] text-foreground/80" title={pendingRemoteRun.command}>{pendingRemoteRun.command}</code>
+            <span className="text-[9.5px] text-muted-foreground">
+              This chat has terminal access only. Husk will run the command in the visible SSH terminal once, without enabling remote file access.
+            </span>
+          </div>
+          <div className="composer-pending-run-actions flex items-center gap-1">
+            <button type="button" onClick={confirmRemoteRunOnce} className="composer-approve-btn">Run on {pendingRemoteRun.host}</button>
+            <button type="button" onClick={() => setPendingRemoteRun(null)} className="composer-cancel-btn">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {pendingWorkspaceRun && (
         <div className="composer-pending-run is-workspace-mismatch" role="alert">
@@ -3324,7 +3657,8 @@ export function TerminalAiComposer({
             cwd={activeTerminalCwd}
             getTargetPtyId={getActiveTerminalPtyId}
             isTerminalRunning={isCommandRunning}
-            runInTargetTerminal={(command) => sendCommandToTerminal(command) === "sent"}
+            runInTargetTerminal={(command) => sendCommandToTerminal(command, { supervisedRemote: true }) === "sent"}
+            providerWorkspacePath={activeRemoteTerminal.isRemote ? undefined : workspacePath || undefined}
             supervisionPaused={Boolean(activeTask && activeTask.status !== "running")}
           />
         )}
@@ -3540,6 +3874,7 @@ export function TerminalAiComposer({
             fileToolsEnabled: prefs.aiFileToolsEnabled,
             mcpToolsEnabled: prefs.aiMcpToolsEnabled,
             workspacePath: workspacePath || undefined,
+            remoteWorkspace,
           }}
           onRemove={removeContextItem}
           onClearAll={clearAllContext}
@@ -3547,6 +3882,13 @@ export function TerminalAiComposer({
             setInspectorOpen(false);
             setTimeout(() => textareaRef.current?.focus(), 40);
           }}
+        />
+      )}
+      {noteCaptureTarget && (
+        <AiNoteCaptureMenu
+          target={noteCaptureTarget}
+          onClose={() => setNoteCaptureTarget(null)}
+          onRedo={() => redoMessage(noteCaptureTarget.messageIndex)}
         />
       )}
     </div>

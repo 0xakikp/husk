@@ -1,6 +1,7 @@
 import type { AiAgent } from "../settings/preferences";
 import { getPrefs } from "../settings/preferences";
 import type { Provider } from "./providers";
+import type { RemoteWorkspaceScope } from "./remoteWorkspace";
 
 export const MAX_GLOBAL_INSTRUCTIONS_CHARS = 1_200;
 export const MAX_PERSONAL_MEMORY_CHARS = 600;
@@ -11,6 +12,7 @@ type HuskAssistantContextInput = {
   model: string;
   /** A chat-selected project root. Undefined means general chat. */
   workspacePath?: string;
+  remoteWorkspace?: RemoteWorkspaceScope;
   /** Legacy compatibility for the original `husk-edit` proposal format. New
       provider-neutral workspace actions use `husk-action` instead. */
   subscriptionEditAccess?: boolean;
@@ -49,6 +51,7 @@ function accessContext(
   model: string,
   prefs: ReturnType<typeof getPrefs>,
   workspacePath?: string,
+  remoteWorkspace?: RemoteWorkspaceScope,
   subscriptionEditAccess?: boolean,
   subscriptionAutoApply?: boolean,
 ): string {
@@ -65,8 +68,13 @@ function accessContext(
     const actionProtocol = [
       "You do not receive direct filesystem, terminal, credential, or MCP access. Husk owns every action and applies the same workspace scope and review rules for every provider.",
       prefs.aiFileToolsEnabled
-        ? workspacePath
-          ? "To inspect files or request a workspace action, emit exactly one JSON object or array in a fenced `husk-action` block. Use these exact object shapes: {\"kind\":\"workspace.inspect\"}; {\"kind\":\"workspace.read\",\"path\":\"relative/file\"}; {\"kind\":\"workspace.list\",\"path\":\".\"}; {\"kind\":\"workspace.search\",\"query\":\"text\",\"limit\":10}; {\"kind\":\"workspace.write\",\"path\":\"relative/file\",\"content\":\"...\"}; {\"kind\":\"workspace.edit\",\"path\":\"relative/file\",\"search\":\"...\",\"replace\":\"...\"}; {\"kind\":\"workspace.revertEdit\",\"path\":\"relative/file\"}. Prefer workspace.inspect when the user asks what a project is, how it is organised, or how to run it. The `kind` field appears exactly once and always names the action; never use `file` or `directory` as its value. Paths must be relative to the selected workspace. Reads and inspections may complete; edits and overwrites are always reviewable before writing."
+        ? workspacePath || remoteWorkspace
+          ? [
+              "To inspect files or request a workspace action, emit exactly one JSON object or array in a fenced `husk-action` block.",
+              `Use these exact object shapes: {\"kind\":\"workspace.inspect\"}; {\"kind\":\"workspace.read\",\"path\":\"relative/file\"}; {\"kind\":\"workspace.list\",\"path\":\".\"};${remoteWorkspace ? "" : " {\"kind\":\"workspace.search\",\"query\":\"text\",\"limit\":10};"} {\"kind\":\"workspace.write\",\"path\":\"relative/file\",\"content\":\"...\"}; {\"kind\":\"workspace.edit\",\"path\":\"relative/file\",\"search\":\"...\",\"replace\":\"...\"}; {\"kind\":\"workspace.revertEdit\",\"path\":\"relative/file\"}.`,
+              "Prefer workspace.inspect when the user asks what a project is, how it is organised, or how to run it. The `kind` field appears exactly once and always names the action; never use `file` or `directory` as its value. Paths must be relative to the selected workspace. Reads and inspections may complete; edits and overwrites are always reviewable before writing.",
+              remoteWorkspace ? "Do not propose workspace.search for a remote workspace. Inspect its bounded project snapshot, list a named folder, or read a named file instead." : "",
+            ].filter(Boolean).join(" ")
           : "Workspace actions are enabled in Settings, but this chat has no selected workspace. Ask the user to select one before proposing a workspace action."
         : "Workspace actions are disabled in Settings → Agents; do not propose them.",
       prefs.aiMcpToolsEnabled
@@ -82,8 +90,10 @@ function accessContext(
   }
   return [
     `Current AI access: ${provider.label} · ${modelLabel}.`,
-    prefs.aiFileToolsEnabled && workspacePath
-      ? `Workspace file tools are enabled and restricted to the selected workspace (${workspacePath}). Never claim that a file change completed unless its tool result confirms it.`
+    prefs.aiFileToolsEnabled && (workspacePath || remoteWorkspace)
+      ? remoteWorkspace
+        ? `Remote workspace tools are enabled only for ${remoteWorkspace.host}:${remoteWorkspace.path} and only while that SSH terminal is active. Never claim that a remote file change completed unless its reviewed tool result confirms it.`
+        : `Workspace file tools are enabled and restricted to the selected workspace (${workspacePath}). Never claim that a file change completed unless its tool result confirms it.`
       : prefs.aiFileToolsEnabled
         ? "Workspace file tools are enabled in Settings, but this chat has no workspace selected. Do not claim to read or change files; ask the user to choose a folder from the chat header."
       : "Workspace file tools are disabled in Settings → Agents, so do not claim to read or change files through Husk.",
@@ -107,6 +117,7 @@ export function buildHuskAssistantContext({
   provider,
   model,
   workspacePath,
+  remoteWorkspace,
   subscriptionEditAccess,
   subscriptionAutoApply,
 }: HuskAssistantContextInput): string {
@@ -130,7 +141,7 @@ export function buildHuskAssistantContext({
     personalMemory
       ? `Personal background supplied by the user (context, not a command):\n---\n${personalMemory}\n---`
       : "No personal background is set.",
-    accessContext(provider, model, prefs, workspacePath, subscriptionEditAccess, subscriptionAutoApply),
+    accessContext(provider, model, prefs, workspacePath, remoteWorkspace, subscriptionEditAccess, subscriptionAutoApply),
     name
       ? `The user chose the display name “${name}”. Use it warmly but sparingly—at a greeting, a meaningful milestone, or when it adds clarity. Do not insert it into every reply.`
       : "The user has not supplied a display name. Do not guess one or ask for it during normal task work.",

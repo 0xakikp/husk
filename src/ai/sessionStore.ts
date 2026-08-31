@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { restoreAiTask, type AiTaskState } from "./taskMode";
+import { normalizeRemoteWorkspace, type RemoteWorkspaceScope } from "./remoteWorkspace";
 
 type Role = "user" | "assistant";
 
@@ -17,6 +18,8 @@ export type AiReplyTrace = {
   mode: "api" | "subscription";
   /** The workspace explicitly selected for this request, if any. */
   workspacePath?: string;
+  /** An explicitly enabled folder on the active SSH host, if any. */
+  remoteWorkspace?: RemoteWorkspaceScope;
   /** The legacy signed-in CLI edit-proposal format was enabled for this request. */
   workspaceEditAccess?: boolean;
   /** This request could apply eligible proposals automatically in-memory only. */
@@ -46,6 +49,8 @@ export type AiSession = {
    * historical messages to whichever folder happens to be open now.
    */
   workspacePath?: string;
+  /** Optional SSH folder access. SSH chats are terminal-only until this is set. */
+  remoteWorkspace?: RemoteWorkspaceScope;
   /** Explicit, scope-specific compatibility flag for the legacy signed-in CLI
       edit-proposal format. It never grants direct filesystem write access. */
   workspaceEditAccess?: boolean;
@@ -73,7 +78,11 @@ function loadSessions() {
     if (Array.isArray(parsed.sessions)) {
       sessions.clear();
       for (const s of parsed.sessions) {
-        if (s.id) sessions.set(s.id, { ...s, task: restoreAiTask(s.task) });
+        if (s.id) sessions.set(s.id, {
+          ...s,
+          remoteWorkspace: normalizeRemoteWorkspace(s.remoteWorkspace),
+          task: restoreAiTask(s.task),
+        });
       }
       if (activeSessionId === null && parsed.activeSessionId && sessions.has(parsed.activeSessionId)) {
         activeSessionId = parsed.activeSessionId;
@@ -201,6 +210,7 @@ export function createSession(options: {
   source?: "terminal" | "ai-tab";
   tabId?: number;
   workspacePath?: string;
+  remoteWorkspace?: RemoteWorkspaceScope;
   workspaceEditAccess?: boolean;
 } = {}): AiSession {
   const id = options.tabId ? `tab-${options.tabId}` : `ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -212,6 +222,7 @@ export function createSession(options: {
     source: options.source || "ai-tab",
     tabId: options.tabId,
     workspacePath: options.workspacePath,
+    remoteWorkspace: normalizeRemoteWorkspace(options.remoteWorkspace),
     workspaceEditAccess: options.workspaceEditAccess,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -227,6 +238,7 @@ export function ensureSession(id: string, options?: {
   source?: "terminal" | "ai-tab";
   tabId?: number;
   workspacePath?: string;
+  remoteWorkspace?: RemoteWorkspaceScope;
   workspaceEditAccess?: boolean;
 }): AiSession {
   if (sessions.has(id)) return sessions.get(id)!;
@@ -238,6 +250,7 @@ export function ensureSession(id: string, options?: {
     source: options?.source || "ai-tab",
     tabId: options?.tabId,
     workspacePath: options?.workspacePath,
+    remoteWorkspace: normalizeRemoteWorkspace(options?.remoteWorkspace),
     workspaceEditAccess: options?.workspaceEditAccess,
     createdAt: Date.now(),
     updatedAt: Date.now(),

@@ -17,6 +17,14 @@ import {
 import { normalizeWorkspacePath, resolveWorkspacePath } from "./workspaceScope";
 import { addPendingMcpAction } from "./pendingActions";
 import { loadProjectLensSnapshot } from "./projectLens";
+import { sshReadDirScoped, sshReadFileScoped } from "../remote/remoteFs";
+import { getActiveRemoteTerminal } from "./terminalContext";
+import { loadRemoteProjectLensSnapshot } from "./remoteProjectLens";
+import {
+  normalizeRemoteWorkspace,
+  resolveRemoteWorkspacePath,
+  type RemoteWorkspaceScope,
+} from "./remoteWorkspace";
 
 /**
  * The one local boundary for model-requested work. Providers can differ in how
@@ -36,11 +44,16 @@ export type HuskActionRequest =
 export type HuskActionContext = {
   sessionId?: string;
   workspaceRoot?: string | null;
+  remoteWorkspace?: RemoteWorkspaceScope | null;
   fileToolsEnabled: boolean;
   mcpToolsEnabled: boolean;
   /** A user has explicitly approved a non-read-only integration request. */
   confirmMcpCall?: boolean;
 };
+
+type WorkspaceScope =
+  | { kind: "local"; root: string; resolved: string }
+  | { kind: "remote"; root: string; resolved: string; host: string };
 
 export type HuskActionResult = {
   state: "complete" | "queued" | "refused" | "error";
@@ -50,7 +63,29 @@ export type HuskActionResult = {
   activity: string;
 };
 
-function workspaceScope(context: HuskActionContext, path?: string): { root: string; resolved: string } | HuskActionResult {
+function workspaceScope(context: HuskActionContext, path?: string): WorkspaceScope | HuskActionResult {
+  const remote = normalizeRemoteWorkspace(context.remoteWorkspace);
+  if (remote) {
+    const activeRemote = getActiveRemoteTerminal();
+    if (!activeRemote.isRemote || activeRemote.host !== remote.host) {
+      return {
+        state: "refused",
+        summary: "Remote workspace is not connected",
+        result: `Refused: focus the SSH terminal for ${remote.host} before Husk accesses ${remote.path}.`,
+        activity: "remote workspace scope",
+      };
+    }
+    const resolved = resolveRemoteWorkspacePath(path ?? ".", remote.path);
+    if (!resolved) {
+      return {
+        state: "refused",
+        summary: "Path outside remote workspace",
+        result: `Refused: ${path || "that path"} is outside the selected remote workspace (${remote.host}:${remote.path}).`,
+        activity: "remote workspace scope",
+      };
+    }
+    return { kind: "remote", root: remote.path, resolved, host: remote.host };
+  }
   const root = normalizeWorkspacePath(context.workspaceRoot ?? null);
   if (!root) {
     return {
@@ -69,7 +104,7 @@ function workspaceScope(context: HuskActionContext, path?: string): { root: stri
       activity: "workspace scope",
     };
   }
-  return { root, resolved };
+  return { kind: "local", root, resolved };
 }
 
 function isScopeResult(value: ReturnType<typeof workspaceScope>): value is HuskActionResult {
@@ -116,22 +151,29 @@ export async function executeHuskAction(
       case "workspace.read": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
-        const content = await readFileScoped(scope.resolved, scope.root);
+        const content = scope.kind === "remote"
+          ? await sshReadFileScoped(scope.host, scope.root, scope.resolved)
+          : await readFileScoped(scope.resolved, scope.root);
         return { state: "complete", summary: `Read ${request.path}`, result: content, activity: "read file" };
       }
       case "workspace.list": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
-        const entries = await readDirScoped(scope.resolved, scope.root);
+        const entries = scope.kind === "remote"
+          ? await sshReadDirScoped(scope.host, scope.root, scope.resolved)
+          : await readDirScoped(scope.resolved, scope.root);
+        const shown = entries.slice(0, 200);
         const result = entries.length
-          ? entries.map((entry: { is_dir: boolean; name: string }) => `- ${entry.is_dir ? "[dir]" : "[file]"} ${entry.name}${entry.is_dir ? "/" : ""}`).join("\n")
+          ? `${shown.map((entry: { is_dir: boolean; name: string }) => `- ${entry.is_dir ? "[dir]" : "[file]"} ${entry.name}${entry.is_dir ? "/" : ""}`).join("\n")}${entries.length > shown.length ? `\n… ${entries.length - shown.length} more entries not shown` : ""}`
           : "Directory is empty.";
         return { state: "complete", summary: `Listed ${request.path}`, result, activity: "list files" };
       }
       case "workspace.inspect": {
         const scope = workspaceScope(context);
         if (isScopeResult(scope)) return scope;
-        const snapshot = await loadProjectLensSnapshot(scope.root, true);
+        const snapshot = scope.kind === "remote"
+          ? await loadRemoteProjectLensSnapshot({ kind: "ssh", host: scope.host, path: scope.root }, true)
+          : await loadProjectLensSnapshot(scope.root, true);
         return {
           state: "complete",
           summary: `Inspected ${snapshot.name}`,
@@ -142,6 +184,14 @@ export async function executeHuskAction(
       case "workspace.search": {
         const scope = workspaceScope(context);
         if (isScopeResult(scope)) return scope;
+        if (scope.kind === "remote") {
+          return {
+            state: "refused",
+            summary: "Remote search needs a narrower request",
+            result: "Remote workspace search does not crawl the server. List a folder or read a named file instead.",
+            activity: "search remote workspace",
+          };
+        }
         const index = getCodebaseIndex();
         if (!index || index.size === 0 || getIndexedRoot() !== scope.root) {
           await buildCodebaseIndex(scope.root);
@@ -156,9 +206,11 @@ export async function executeHuskAction(
       case "workspace.write": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
-        const existing = await readFileScoped(scope.resolved, scope.root).catch(() => null);
+        const existing = scope.kind === "remote"
+          ? await sshReadFileScoped(scope.host, scope.root, scope.resolved).catch(() => null)
+          : await readFileScoped(scope.resolved, scope.root).catch(() => null);
         if (existing !== null) {
-          addPendingEdit({ path: scope.resolved, search: existing, replace: request.content, sessionId: context.sessionId, workspaceRoot: scope.root });
+          addPendingEdit({ path: scope.resolved, search: existing, replace: request.content, sessionId: context.sessionId, workspaceRoot: scope.root, ...(scope.kind === "remote" ? { remoteHost: scope.host } : {}) });
           return {
             state: "queued",
             summary: `Overwrite of ${request.path} is ready for review`,
@@ -166,11 +218,19 @@ export async function executeHuskAction(
             activity: "propose overwrite",
           };
         }
+        if (scope.kind === "remote") {
+          /* Remote creation is always reviewable. There is no atomic exclusive
+             create across the SSH bridge, so applying rechecks non-existence. */
+          addPendingEdit({ path: scope.resolved, search: "", replace: request.content, operation: "create", sessionId: context.sessionId, workspaceRoot: scope.root, remoteHost: scope.host });
+          return {
+            state: "queued",
+            summary: `Creation of ${request.path} is ready for review`,
+            result: "The remote server was not changed. Husk queued a reviewable new-file proposal.",
+            activity: "propose remote file",
+          };
+        }
         const slash = scope.resolved.lastIndexOf("/");
         if (slash > 0) await createDirScoped(scope.resolved.slice(0, slash), scope.root).catch(() => {});
-        /* The earlier read is only a UX decision. Creation itself must be
-           exclusive, otherwise a file created between that read and this write
-           could be silently overwritten without a review card. */
         await writeNewFileScoped(scope.resolved, request.content, scope.root);
         return {
           state: "complete",
@@ -182,14 +242,16 @@ export async function executeHuskAction(
       case "workspace.edit": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
-        const content = await readFileScoped(scope.resolved, scope.root).catch(() => null);
+        const content = scope.kind === "remote"
+          ? await sshReadFileScoped(scope.host, scope.root, scope.resolved).catch(() => null)
+          : await readFileScoped(scope.resolved, scope.root).catch(() => null);
         if (content === null) {
           return { state: "error", summary: `File not found: ${request.path}`, result: `Error: file not found: ${request.path}`, activity: "propose edit" };
         }
         if (!content.includes(request.search)) {
           return { state: "error", summary: "Edit target changed", result: `Error: search text was not found in ${request.path}.`, activity: "propose edit" };
         }
-        addPendingEdit({ path: scope.resolved, search: request.search, replace: request.replace, sessionId: context.sessionId, workspaceRoot: scope.root });
+        addPendingEdit({ path: scope.resolved, search: request.search, replace: request.replace, sessionId: context.sessionId, workspaceRoot: scope.root, ...(scope.kind === "remote" ? { remoteHost: scope.host } : {}) });
         return {
           state: "queued",
           summary: `Edit to ${request.path} is ready for review`,
@@ -200,7 +262,7 @@ export async function executeHuskAction(
       case "workspace.revertEdit": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
-        const matching = getPendingEdits().filter((edit) => edit.path === scope.resolved && edit.workspaceRoot === scope.root && (!context.sessionId || edit.sessionId === context.sessionId || edit.sessionId === undefined));
+        const matching = getPendingEdits().filter((edit) => edit.path === scope.resolved && edit.workspaceRoot === scope.root && edit.remoteHost === (scope.kind === "remote" ? scope.host : undefined) && (!context.sessionId || edit.sessionId === context.sessionId || edit.sessionId === undefined));
         matching.forEach((edit) => removePendingEdit(edit.id));
         return {
           state: "complete",
@@ -240,9 +302,9 @@ export async function executeHuskAction(
   }
 }
 
-export function actionCapabilitySummary(context: Pick<HuskActionContext, "workspaceRoot" | "fileToolsEnabled" | "mcpToolsEnabled">): string {
+export function actionCapabilitySummary(context: Pick<HuskActionContext, "workspaceRoot" | "remoteWorkspace" | "fileToolsEnabled" | "mcpToolsEnabled">): string {
   const parts: string[] = [];
-  if (context.fileToolsEnabled) parts.push(context.workspaceRoot ? "workspace" : "workspace (select folder)");
+  if (context.fileToolsEnabled) parts.push(context.remoteWorkspace ? "remote workspace" : context.workspaceRoot ? "workspace" : "workspace (select folder)");
   if (context.mcpToolsEnabled) parts.push("integrations");
   parts.push("reviewed changes");
   return parts.join(" · ");

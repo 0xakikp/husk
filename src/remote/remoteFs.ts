@@ -5,11 +5,26 @@ export type DirEntry = { name: string; path: string; is_dir: boolean };
 export const sshReadDir = (host: string, path: string) =>
   invoke<DirEntry[]>("ssh_read_dir", { host, path });
 
+export const sshReadDirScoped = (host: string, root: string, path: string) =>
+  invoke<DirEntry[]>("ssh_read_dir_scoped", { host, root, path });
+
 export const sshReadFile = (host: string, path: string) =>
   invoke<string>("ssh_read_file", { host, path });
 
+export const sshReadFileScoped = (host: string, root: string, path: string) =>
+  invoke<string>("ssh_read_file_scoped", { host, root, path });
+
 export const sshWriteFile = (host: string, path: string, contents: string) =>
   invoke<void>("ssh_write_file", { host, path, contents });
+
+export const sshWriteFileScoped = (host: string, root: string, path: string, contents: string) =>
+  invoke<void>("ssh_write_file_scoped", { host, root, path, contents });
+
+export const sshCreateFileScoped = (host: string, root: string, path: string, contents: string) =>
+  invoke<void>("ssh_create_file_scoped", { host, root, path, contents });
+
+export const sshDeleteFileScoped = (host: string, root: string, path: string) =>
+  invoke<void>("ssh_delete_file_scoped", { host, root, path });
 
 export const sshCreateFile = (host: string, path: string) =>
   invoke<void>("ssh_create_file", { host, path });

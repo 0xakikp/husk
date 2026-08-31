@@ -102,6 +102,8 @@ export function searchActiveTerminal(query: string): boolean {
 
 let activeCwd = "";
 let lastExit: number | null = null;
+export type ActiveRemoteTerminal = { isRemote: boolean; host?: string };
+let activeRemote: ActiveRemoteTerminal = { isRemote: false };
 const stateSubscribers = new Set<() => void>();
 
 function emitTerminalState(): void {
@@ -116,6 +118,17 @@ export function setActiveTerminalCwd(cwd: string): void {
 
 export function getActiveTerminalCwd(): string {
   return activeCwd;
+}
+
+export function setActiveRemoteTerminal(next: ActiveRemoteTerminal): void {
+  const normalized = next.isRemote ? { isRemote: true, ...(next.host ? { host: next.host } : {}) } : { isRemote: false };
+  if (activeRemote.isRemote === normalized.isRemote && activeRemote.host === normalized.host) return;
+  activeRemote = normalized;
+  emitTerminalState();
+}
+
+export function getActiveRemoteTerminal(): ActiveRemoteTerminal {
+  return activeRemote;
 }
 
 export function setActiveTerminalExit(code: number | null): void {
@@ -141,6 +154,10 @@ export function useActiveTerminalCwd(): string {
 
 export function useActiveTerminalExit(): number | null {
   return useSyncExternalStore(subscribeTerminalState, getActiveTerminalExit);
+}
+
+export function useActiveRemoteTerminal(): ActiveRemoteTerminal {
+  return useSyncExternalStore(subscribeTerminalState, getActiveRemoteTerminal);
 }
 
 // --- Terminal typing activity ---------------------------------------------

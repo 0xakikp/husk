@@ -1,0 +1,171 @@
+.ai-note-menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+}
+
+.ai-note-menu {
+  position: fixed;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  border-radius: 8px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--background) 97%, transparent);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .48);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  font-family: var(--wb-mono, monospace);
+}
+
+.ai-note-menu-label {
+  padding: 4px 7px 5px;
+  color: color-mix(in srgb, var(--muted-foreground) 58%, transparent);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .13em;
+}
+
+.ai-note-menu > button,
+.ai-note-picker-list > button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 6px 7px;
+  color: color-mix(in srgb, var(--foreground) 84%, transparent);
+  text-align: left;
+  font-size: 10.5px;
+  transition: border-color .13s ease, background .13s ease, color .13s ease;
+}
+
+.ai-note-menu > button:hover,
+.ai-note-menu > button:focus-visible,
+.ai-note-picker-list > button:hover,
+.ai-note-picker-list > button:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 25%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--foreground);
+  outline: none;
+}
+
+.ai-note-menu > button svg,
+.ai-note-picker-list > button svg {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--primary) 82%, var(--foreground));
+}
+
+.ai-note-menu > button:disabled,
+.ai-note-picker-list > button:disabled {
+  cursor: wait;
+  opacity: .48;
+}
+
+.ai-note-menu-separator {
+  height: 1px;
+  margin: 3px 4px;
+  background: color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.ai-note-picker-head {
+  display: flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 3px;
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.ai-note-picker-head button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+}
+
+.ai-note-picker-head button:hover {
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+}
+
+.ai-note-picker-search {
+  display: flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  margin: 1px 3px 4px;
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted) 24%, transparent);
+}
+
+.ai-note-picker-search:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+  color: var(--primary);
+}
+
+.ai-note-picker-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.ai-note-picker-list {
+  max-height: 248px;
+  overflow-y: auto;
+  border-top: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  padding-top: 3px;
+  scrollbar-width: thin;
+}
+
+.ai-note-picker-list > button {
+  align-items: flex-start;
+  padding-block: 5px;
+}
+
+.ai-note-picker-list > button > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ai-note-picker-list strong,
+.ai-note-picker-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-note-picker-list strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.ai-note-picker-list small {
+  color: color-mix(in srgb, var(--muted-foreground) 66%, transparent);
+  font-size: 8.5px;
+}
+
+.ai-note-picker-empty {
+  padding: 24px 10px;
+  color: color-mix(in srgb, var(--muted-foreground) 68%, transparent);
+  text-align: center;
+  font-size: 9px;
+}

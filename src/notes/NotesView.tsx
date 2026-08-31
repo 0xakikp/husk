@@ -198,6 +198,14 @@ export function NotesView({
     loadTree();
   }, [loadTree]);
 
+  useEffect(() => {
+    const refreshVault = () => {
+      void loadTree();
+    };
+    window.addEventListener("husk:vault-changed", refreshVault);
+    return () => window.removeEventListener("husk:vault-changed", refreshVault);
+  }, [loadTree]);
+
   // Fast literal search stays live while typing. Vault Lens is explicitly run
   // with Enter so a natural-language query never triggers a provider request
   // for every keystroke.

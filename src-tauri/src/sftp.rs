@@ -417,11 +417,7 @@ fn remote_basename(path: &str) -> Result<&str, String> {
         .ok_or_else(|| "The remote path has no file name".to_string())
 }
 
-async fn copy_remote_file(
-    sftp: &mut SftpSession,
-    from: &str,
-    to: &str,
-) -> Result<(), String> {
+async fn copy_remote_file(sftp: &mut SftpSession, from: &str, to: &str) -> Result<(), String> {
     let mut source = sftp
         .open(from)
         .await
@@ -448,11 +444,7 @@ async fn copy_remote_file(
     Ok(())
 }
 
-async fn copy_remote_path(
-    sftp: &mut SftpSession,
-    from: &str,
-    to: &str,
-) -> Result<(), String> {
+async fn copy_remote_path(sftp: &mut SftpSession, from: &str, to: &str) -> Result<(), String> {
     if from == to {
         return Err("Choose a different destination to copy this item".to_string());
     }
@@ -515,7 +507,7 @@ async fn delete_remote_tree(sftp: &mut SftpSession, path: &str) -> Result<(), St
     }
 
     /* Post-order traversal: files are removed as they are discovered; folders
-       are only removed after every child has completed. */
+    are only removed after every child has completed. */
     let mut pending = vec![(path.to_string(), false)];
     while let Some((directory, visited)) = pending.pop() {
         if visited {
@@ -735,7 +727,11 @@ async fn upload_local_file(
         .map(|metadata| metadata.len())
         .unwrap_or(0);
     let staging_path = remote_staging_path(remote_path, transfer_id);
-    let staging_size = sftp.metadata(&staging_path).await.ok().map(|metadata| metadata.len());
+    let staging_size = sftp
+        .metadata(&staging_path)
+        .await
+        .ok()
+        .map(|metadata| metadata.len());
 
     // As with downloads, a resumed directory walk skips children that had
     // already been atomically finalized before the interruption.
@@ -1296,6 +1292,9 @@ mod tests {
         let cancelled = AtomicBool::new(false);
         assert!(ensure_not_cancelled(&cancelled).is_ok());
         cancelled.store(true, Ordering::Relaxed);
-        assert_eq!(ensure_not_cancelled(&cancelled), Err("Transfer cancelled".to_string()));
+        assert_eq!(
+            ensure_not_cancelled(&cancelled),
+            Err("Transfer cancelled".to_string())
+        );
     }
 }

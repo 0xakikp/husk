@@ -11,6 +11,8 @@ export interface PendingEdit {
   sessionId?: string;
   /** The chat scope enforced again when this reviewed edit is applied. */
   workspaceRoot?: string;
+  /** Present only for an explicitly enabled SSH workspace. */
+  remoteHost?: string;
   timestamp: number;
 }
 
@@ -22,6 +24,7 @@ export interface AppliedEdit {
   path: string;
   operation: "create" | "edit";
   workspaceRoot: string;
+  remoteHost?: string;
   sessionId?: string;
   before: string | null;
   after: string;
@@ -75,6 +78,7 @@ function recordAppliedEdit(edit: PendingEdit, before: string | null, after: stri
       path: edit.path,
       operation: edit.operation === "create" ? "create" as const : "edit" as const,
       workspaceRoot: edit.workspaceRoot,
+      remoteHost: edit.remoteHost,
       sessionId: edit.sessionId,
       before,
       after,
@@ -108,6 +112,39 @@ export type ApplyResult =
  * matches.
  */
 export async function applyPendingEdit(edit: PendingEdit): Promise<ApplyResult> {
+  if (edit.remoteHost) {
+    if (!edit.workspaceRoot) {
+      return { ok: false, path: edit.path, reason: "this remote edit has no workspace scope; discard it and ask again" };
+    }
+    const remoteRoot = edit.workspaceRoot;
+    const { getActiveRemoteTerminal } = await import("./terminalContext");
+    const active = getActiveRemoteTerminal();
+    if (!active.isRemote || active.host !== edit.remoteHost) {
+      return { ok: false, path: edit.path, reason: `focus the SSH terminal for ${edit.remoteHost} before applying this change` };
+    }
+    const { sshCreateFileScoped, sshReadFileScoped, sshWriteFileScoped } = await import("../remote/remoteFs");
+    try {
+      if (edit.operation === "create") {
+        const existing = await sshReadFileScoped(edit.remoteHost, remoteRoot, edit.path).catch(() => null);
+        if (existing !== null) {
+          return { ok: false, path: edit.path, reason: "the remote file now exists; review it before replacing anything" };
+        }
+        await sshCreateFileScoped(edit.remoteHost, remoteRoot, edit.path, edit.replace);
+        recordAppliedEdit(edit, null, edit.replace);
+        return { ok: true, path: edit.path };
+      }
+      const current = await sshReadFileScoped(edit.remoteHost, remoteRoot, edit.path);
+      if (!current.includes(edit.search)) {
+        return { ok: false, path: edit.path, reason: "the remote file changed since this edit was proposed" };
+      }
+      const after = current.replace(edit.search, edit.replace);
+      await sshWriteFileScoped(edit.remoteHost, remoteRoot, edit.path, after);
+      recordAppliedEdit(edit, current, after);
+      return { ok: true, path: edit.path };
+    } catch (error) {
+      return { ok: false, path: edit.path, reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
   const { createDirScoped, readFileScoped, writeFileScoped, writeNewFileScoped } = await import("../fs");
   const workspaceRoot = edit.workspaceRoot;
   if (!workspaceRoot) {
@@ -145,6 +182,27 @@ export async function applyPendingEdit(edit: PendingEdit): Promise<ApplyResult> 
 /** Undo only if the exact file content Husk wrote is still present. This makes
  * Undo safe around a subsequent user save or a different tool changing it. */
 export async function undoAppliedEdit(edit: AppliedEdit): Promise<ApplyResult> {
+  if (edit.remoteHost) {
+    const { getActiveRemoteTerminal } = await import("./terminalContext");
+    const active = getActiveRemoteTerminal();
+    if (!active.isRemote || active.host !== edit.remoteHost) {
+      return { ok: false, path: edit.path, reason: `focus the SSH terminal for ${edit.remoteHost} before undoing this change` };
+    }
+    const { sshDeleteFileScoped, sshReadFileScoped, sshWriteFileScoped } = await import("../remote/remoteFs");
+    try {
+      const current = await sshReadFileScoped(edit.remoteHost, edit.workspaceRoot, edit.path);
+      if (current !== edit.after) {
+        return { ok: false, path: edit.path, reason: "the remote file changed after Husk applied this edit, so it cannot be undone safely" };
+      }
+      if (edit.operation === "create") await sshDeleteFileScoped(edit.remoteHost, edit.workspaceRoot, edit.path);
+      else if (edit.before !== null) await sshWriteFileScoped(edit.remoteHost, edit.workspaceRoot, edit.path, edit.before);
+      appliedEdits = appliedEdits.filter((item) => item.id !== edit.id);
+      notify();
+      return { ok: true, path: edit.path };
+    } catch (error) {
+      return { ok: false, path: edit.path, reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
   const { deleteFileScoped, readFileScoped, writeFileScoped } = await import("../fs");
   try {
     const current = await readFileScoped(edit.path, edit.workspaceRoot);

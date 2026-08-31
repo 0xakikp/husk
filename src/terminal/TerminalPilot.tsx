@@ -36,6 +36,9 @@ type TerminalPilotProps = {
   apiKey: string;
   baseURL: string;
   cwd: string;
+  /** Local process cwd for signed-in CLI providers. A remote cwd must never be
+      passed to a CLI process running on the user's machine. */
+  providerWorkspacePath?: string;
   getTargetPtyId: () => number | null;
   isTerminalRunning: () => boolean;
   runInTargetTerminal: (command: string) => boolean;
@@ -63,6 +66,7 @@ export function TerminalPilot({
   apiKey,
   baseURL,
   cwd,
+  providerWorkspacePath,
   getTargetPtyId,
   isTerminalRunning,
   runInTargetTerminal,
@@ -150,7 +154,7 @@ export function TerminalPilot({
     setPilotState("planning", "Reading the observed result and choosing one next step…");
     try {
       const response = await generateOnce(
-        { provider, model, apiKey, baseURL, workspacePath: cwd || undefined },
+        { provider, model, apiKey, baseURL, workspacePath: providerWorkspacePath },
         terminalPilotSystemPrompt(),
         terminalPilotPrompt({
           task: currentTaskRef.current,
@@ -198,7 +202,7 @@ export function TerminalPilot({
       if (stoppedRef.current) return;
       setPilotState("error", error instanceof Error ? error.message : String(error));
     }
-  }, [apiKey, baseURL, cwd, execute, model, provider, setPilotState]);
+  }, [apiKey, baseURL, cwd, execute, model, provider, providerWorkspacePath, setPilotState]);
 
   useEffect(() => {
     return subscribeTerminalCommandRuns((run: ObservedCommandRun) => {

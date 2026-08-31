@@ -9,6 +9,7 @@ export type Toast = {
   variant: ToastVariant;
   duration?: number;
   action?: ToastAction;
+  actions?: ToastAction[];
   createdAt: number;
 };
 

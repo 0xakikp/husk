@@ -3,6 +3,7 @@ import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   getPromptPosition,
   isCommandRunning,
+  type CommandRun,
 } from "./ai/terminalContext";
 import { getShellHistory } from "./shellHistory";
 import { TerminalHistoryPanel } from "./TerminalHistory";
@@ -21,6 +22,11 @@ import {
   type TerminalHandle,
 } from "./terminal/registry";
 import type { TerminalCheckpoint } from "./terminalPanes";
+import { AiNoteCaptureMenu, type AiNoteCaptureTarget } from "./notes/AiNoteCaptureMenu";
+import { createAiNote } from "./notes/aiCapture";
+import { showVaultCaptureToast } from "./notes/captureToast";
+import { formatTerminalRun, formatTerminalSelection } from "./notes/terminalCapture";
+import { toast } from "./toast";
 import "@xterm/xterm/css/xterm.css";
 
 /** A single xterm.js terminal backed by a Rust PTY session.
@@ -68,7 +74,13 @@ export function TerminalView({
   const historyOpenRef = useRef(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    selectedText: string;
+    recentRun: CommandRun | null;
+  } | null>(null);
+  const [noteCaptureTarget, setNoteCaptureTarget] = useState<AiNoteCaptureTarget | null>(null);
   const [restoreNoticeOpen, setRestoreNoticeOpen] = useState(restored);
   const hostRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLElement | null>(null);
@@ -274,8 +286,8 @@ export function TerminalView({
 
   // ── Context menu ──────────────────────────────────────────────────────────
   const menuCopy = () => {
+    const sel = menu?.selectedText || handleRef.current?.getSelection();
     setMenu(null);
-    const sel = handleRef.current?.getSelection();
     if (sel) void writeText(sel);
     handleRef.current?.clearSelection();
   };
@@ -287,6 +299,58 @@ export function TerminalView({
         handleRef.current?.focus();
       })
       .catch(() => {});
+  };
+
+  const saveTerminalSelection = () => {
+    const selectedText = menu?.selectedText.trim() || "";
+    if (!selectedText) return;
+    const capture = formatTerminalSelection(selectedText);
+    setMenu(null);
+    void createAiNote(capture.content, {
+      kind: "selection",
+      source: "husk-terminal",
+      title: capture.title,
+    })
+      .then((result) => showVaultCaptureToast(result, "Saved"))
+      .catch((error) => toast({
+        title: "Could not save terminal selection",
+        message: error instanceof Error ? error.message : String(error),
+        variant: "error",
+      }));
+  };
+
+  const appendTerminalSelection = () => {
+    const selectedText = menu?.selectedText.trim() || "";
+    if (!selectedText || !menu) return;
+    const capture = formatTerminalSelection(selectedText);
+    const appendContent = capture.content.replace(/^## Terminal selection\n\n/, "");
+    setNoteCaptureTarget({
+      x: menu.x,
+      y: menu.y,
+      content: appendContent,
+      selectedText: appendContent,
+      source: "husk-terminal",
+      captureTitle: capture.title,
+    });
+    setMenu(null);
+  };
+
+  const saveRecentTerminalRun = () => {
+    const run = menu?.recentRun;
+    if (!run) return;
+    const capture = formatTerminalRun(run);
+    setMenu(null);
+    void createAiNote(capture.content, {
+      kind: "commands",
+      source: "husk-terminal",
+      title: capture.title,
+    })
+      .then((result) => showVaultCaptureToast(result, "Saved"))
+      .catch((error) => toast({
+        title: "Could not save recent command",
+        message: error instanceof Error ? error.message : String(error),
+        variant: "error",
+      }));
   };
 
   // ── Click-to-position cursor ──────────────────────────────────────────────
@@ -436,11 +500,17 @@ export function TerminalView({
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
+    const selectedText = handleRef.current?.getSelection()?.trim() || "";
     const MENU_W = 168;
-    const MENU_H = 220;
+    const MENU_H = selectedText ? 340 : 220;
     const x = Math.min(e.clientX, window.innerWidth - MENU_W - 8);
     const y = Math.min(e.clientY, window.innerHeight - MENU_H - 8);
-    setMenu({ x: Math.max(8, x), y: Math.max(8, y) });
+    setMenu({
+      x: Math.max(8, x),
+      y: Math.max(8, y),
+      selectedText,
+      recentRun: handleRef.current?.getLastCommandRun() ?? null,
+    });
   };
 
   return (
@@ -559,6 +629,27 @@ export function TerminalView({
             <button type="button" className="ectx-item" onClick={() => { setMenu(null); openHistory(); }}>
               History…
             </button>
+            {menu.selectedText ? (
+              <>
+                <div className="ectx-separator" role="separator" />
+                <div className="ectx-label">VAULT</div>
+                <button type="button" className="ectx-item is-vault" onClick={saveTerminalSelection}>
+                  Save selection to Vault
+                </button>
+                <button type="button" className="ectx-item is-vault" onClick={appendTerminalSelection}>
+                  Append selection to existing note…
+                </button>
+                <button
+                  type="button"
+                  className="ectx-item is-vault"
+                  disabled={!menu.recentRun}
+                  title={menu.recentRun ? "Save this pane's most recent completed command and its output" : "Run a command in this terminal first"}
+                  onClick={saveRecentTerminalRun}
+                >
+                  Save recent command + output
+                </button>
+              </>
+            ) : null}
             {onSplit ? (
               <>
                 <button type="button" className="ectx-item" onClick={() => { setMenu(null); onSplit("row"); }}>
@@ -576,6 +667,13 @@ export function TerminalView({
             ) : null}
           </div>
         </>
+      ) : null}
+      {noteCaptureTarget ? (
+        <AiNoteCaptureMenu
+          target={noteCaptureTarget}
+          initialView="append"
+          onClose={() => setNoteCaptureTarget(null)}
+        />
       ) : null}
     </div>
   );

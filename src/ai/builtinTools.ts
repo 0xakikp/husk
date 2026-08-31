@@ -1,6 +1,7 @@
 import { jsonSchema, tool, type Tool } from "ai";
 import { getWorkspaceRoot } from "../workspace/store";
 import { executeHuskAction, type HuskActionContext } from "./actionBroker";
+import type { RemoteWorkspaceScope } from "./remoteWorkspace";
 
 /**
  * API tool declarations are deliberately thin adapters over the Husk Action
@@ -10,16 +11,18 @@ import { executeHuskAction, type HuskActionContext } from "./actionBroker";
 export function buildBuiltinTools(
   sessionId?: string,
   selectedWorkspaceRoot: string | null = getWorkspaceRoot(),
+  remoteWorkspace?: RemoteWorkspaceScope,
 ): Record<string, Tool> {
   const context: HuskActionContext = {
     sessionId,
     workspaceRoot: selectedWorkspaceRoot,
+    remoteWorkspace,
     fileToolsEnabled: true,
     mcpToolsEnabled: false,
   };
   const run = (request: Parameters<typeof executeHuskAction>[0]) => executeHuskAction(request, context).then((result) => result.result ?? result.summary);
 
-  return {
+  const tools: Record<string, Tool> = {
     readFile: tool({
       description: "Read a file inside the selected workspace. Paths may be workspace-relative or absolute within that workspace.",
       inputSchema: jsonSchema({ type: "object", properties: { path: { type: "string" } }, required: ["path"] }),
@@ -50,12 +53,19 @@ export function buildBuiltinTools(
       inputSchema: jsonSchema({ type: "object", properties: { path: { type: "string" } }, required: ["path"] }),
       execute: ({ path }) => run({ kind: "workspace.revertEdit", path }),
     }),
-    searchCodebase: tool({
+  };
+
+  // Remote search would require crawling an arbitrary server. Keep the remote
+  // surface deliberately bounded to explicit list/read/inspect operations.
+  if (!remoteWorkspace) {
+    tools.searchCodebase = tool({
       description: "Search the selected workspace for files, functions, or concepts.",
       inputSchema: jsonSchema({ type: "object", properties: { query: { type: "string" }, limit: { type: "number" } }, required: ["query"] }),
       execute: ({ query, limit }) => run({ kind: "workspace.search", query, ...(typeof limit === "number" ? { limit } : {}) }),
-    }),
-  };
+    });
+  }
+
+  return tools;
 }
 
 /** Merge built-in tools with MCP tools. Built-ins take precedence on name collision. */

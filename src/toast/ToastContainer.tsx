@@ -11,17 +11,22 @@ export function ToastContainer() {
             <div className="toast-title">{t.title}</div>
             {t.message ? <div className="toast-msg">{t.message}</div> : null}
           </div>
-          {t.action ? (
-            <button
-              type="button"
-              className="toast-action"
-              onClick={() => {
-                t.action?.onClick();
-                dismissToast(t.id);
-              }}
-            >
-              {t.action.label}
-            </button>
+          {t.action || t.actions?.length ? (
+            <div className="toast-actions">
+              {[...(t.action ? [t.action] : []), ...(t.actions || [])].map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  className="toast-action"
+                  onClick={() => {
+                    action.onClick();
+                    dismissToast(t.id);
+                  }}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
           ) : null}
           <button
             type="button"

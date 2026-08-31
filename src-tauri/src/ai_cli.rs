@@ -141,8 +141,8 @@ pub fn codex_cli_start(
     cwd: Option<String>,
 ) -> Result<(), String> {
     /* Feature flags remove Codex's known tool families. A Husk-owned deny-all
-       PreToolUse hook is injected last as defence in depth for apply_patch and
-       any future local function tool. The frontend never supplies this path. */
+    PreToolUse hook is injected last as defence in depth for apply_patch and
+    any future local function tool. The frontend never supplies this path. */
     let hook = write_codex_deny_hook(&app)?;
     let hook_command = shell_command_for_path(&hook);
     let hook_config = codex_hook_config(hook_command);
@@ -236,7 +236,8 @@ fn write_husk_cli_profile(app: &AppHandle, name: &str, contents: &str) -> Result
         .app_data_dir()
         .map_err(|e| format!("could not locate Husk application data: {e}"))?
         .join("cli-profiles");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create CLI profile directory: {e}"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("could not create CLI profile directory: {e}"))?;
     let path = dir.join(name);
     std::fs::write(&path, contents).map_err(|e| format!("could not prepare CLI profile: {e}"))?;
     Ok(path.to_string_lossy().into_owned())

@@ -49,6 +49,7 @@ function EditCard({ edit }: { edit: PendingEdit }) {
         <span className="pe-path" title={edit.path}>
           {name}
         </span>
+        {edit.remoteHost && <span className="pe-stat">SSH · {edit.remoteHost}</span>}
         {isCreate && <span className="pe-stat">new file</span>}
         {!isCreate && <span className="pe-stat pe-del">−{removed}</span>}
         <span className="pe-stat pe-add">+{added}</span>
@@ -107,6 +108,7 @@ function AppliedEditCard({ edit }: { edit: AppliedEdit }) {
     <div className="pe-card pe-applied-card">
       <div className="pe-card-head">
         <span className="pe-path" title={edit.path}>{name}</span>
+        {edit.remoteHost && <span className="pe-stat">SSH · {edit.remoteHost}</span>}
         <span className="pe-stat pe-applied-label">{isCreate ? "created" : "updated"}</span>
         <span className="pe-spacer" />
         <button type="button" className="pe-btn" onClick={undo} disabled={busy}>

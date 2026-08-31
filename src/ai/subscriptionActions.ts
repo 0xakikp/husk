@@ -1,4 +1,5 @@
 import { resolveWorkspacePath } from "./workspaceScope";
+import { resolveRemoteWorkspacePath, type RemoteWorkspaceScope } from "./remoteWorkspace";
 import type { HuskActionRequest } from "./actionBroker";
 
 const ACTION_FENCE = /```husk-action\s*\n([\s\S]*?)```/gi;
@@ -15,7 +16,11 @@ function records(value: unknown): unknown[] {
 
 /** Parse a deliberately tiny, explicit bridge format. A CLI never receives a
  * callable tool; it can only request a validated action for Husk to perform. */
-export function parseSubscriptionActionProposals(text: string, workspaceRoot?: string): SubscriptionActionParseResult {
+export function parseSubscriptionActionProposals(
+  text: string,
+  workspaceRoot?: string,
+  remoteWorkspace?: RemoteWorkspaceScope,
+): SubscriptionActionParseResult {
   const actions: HuskActionRequest[] = [];
   let rejected = 0;
   let match: RegExpExecArray | null;
@@ -26,12 +31,18 @@ export function parseSubscriptionActionProposals(text: string, workspaceRoot?: s
       if (actions.length >= MAX_ACTIONS || !item || typeof item !== "object") { rejected += 1; continue; }
       const value = item as Record<string, unknown>;
       const kind = value.kind;
-      const path = typeof value.path === "string" && workspaceRoot ? resolveWorkspacePath(value.path, workspaceRoot) : null;
+      const path = typeof value.path === "string"
+        ? remoteWorkspace
+          ? resolveRemoteWorkspacePath(value.path, remoteWorkspace.path)
+          : workspaceRoot
+            ? resolveWorkspacePath(value.path, workspaceRoot)
+            : null
+        : null;
       if (kind === "workspace.read" || kind === "workspace.list") {
         if (!path) { rejected += 1; continue; }
         actions.push({ kind, path: value.path as string });
       } else if (kind === "workspace.inspect") {
-        if (!workspaceRoot) { rejected += 1; continue; }
+        if (!workspaceRoot && !remoteWorkspace) { rejected += 1; continue; }
         actions.push({ kind });
       } else if (kind === "workspace.search") {
         if (typeof value.query !== "string" || !value.query.trim() || value.query.length > 400) { rejected += 1; continue; }

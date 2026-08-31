@@ -4,6 +4,7 @@ import { Cancel01Icon, Alert02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
 import { formatKb, totalBytes, type AiContextItem } from "./contextItems";
 import { loadMcpServers } from "../mcp/store";
+import type { RemoteWorkspaceScope } from "./remoteWorkspace";
 
 export type ContextInspectorTools = {
   /** e.g. "gpt-5.2" — the model the request would go to. */
@@ -14,6 +15,7 @@ export type ContextInspectorTools = {
   fileToolsEnabled: boolean;
   mcpToolsEnabled: boolean;
   workspacePath?: string;
+  remoteWorkspace?: RemoteWorkspaceScope;
 };
 
 /**
@@ -128,7 +130,9 @@ export function ContextInspector({
             <span className="ctx-inspector-tool-name">File tools</span>
             <span className="ctx-inspector-tool-state">
               {tools.fileToolsEnabled
-                ? tools.workspacePath
+                ? tools.remoteWorkspace
+                  ? `SSH · ${tools.remoteWorkspace.host}:${tools.remoteWorkspace.path}`
+                  : tools.workspacePath
                   ? `enabled · ${tools.workspacePath}`
                   : "select a workspace first"
                 : "disabled"}

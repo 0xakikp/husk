@@ -26,6 +26,7 @@ import { openSettingsWindow } from "./settingsWindow";
 import type { Command } from "./command-palette/CommandPalette";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
 import { getWorkspaceRoot, pickWorkspaceFolder } from "./workspace/store";
+import { normalizeWorkspacePath, resolveWorkspacePath } from "./ai/workspaceScope";
 import { useActiveSshHost, setActiveSshHost } from "./remote/store";
 import { StatusBar } from "./statusbar/StatusBar";
 import type { OpenPanelKind } from "./git/types";
@@ -33,7 +34,7 @@ import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focu
 import { openActiveTerminalLogs } from "./terminal/registry";
 import { loadAccounts as loadTotpAccounts } from "./totp/store";
 import { useLauncherItems, type LauncherCtx } from "./command-palette/useLauncherItems";
-import { pinNote, unpinNote } from "./notes/store";
+import { getNotesDirectory, pinNote, unpinNote } from "./notes/store";
 import { useContext as k8sUseContext } from "./kubernetes/client";
 import { extractParams, composeCommand } from "./workflows/params";
 import type { Workflow } from "./workflows/store";
@@ -857,6 +858,33 @@ function App() {
     window.addEventListener("husk:open-ai-file", openAiFile);
     return () => window.removeEventListener("husk:open-ai-file", openAiFile);
   }, [openFile]);
+
+  /* Vault capture actions live inside the AI composer, while App owns editor
+     navigation and the sidebar. Keep that boundary event-based, and verify the
+     requested file still belongs to the configured Vault before opening it. */
+  useEffect(() => {
+    const openCapturedNote = (event: Event) => {
+      const path = (event as CustomEvent<{ path?: string }>).detail?.path?.replace(/\/+$/, "");
+      if (!path) return;
+      void getNotesDirectory()
+        .then((directory) => {
+          const root = normalizeWorkspacePath(directory);
+          const safePath = resolveWorkspacePath(path, root);
+          if (!safePath || safePath === root) return;
+          showSidebarView("vault");
+          openFile(safePath, safePath.split("/").pop() || safePath);
+        })
+        .catch((error: unknown) => {
+          toast({
+            title: "Could not open the Vault note",
+            message: error instanceof Error ? error.message : String(error),
+            variant: "error",
+          });
+        });
+    };
+    window.addEventListener("husk:open-vault-note", openCapturedNote);
+    return () => window.removeEventListener("husk:open-vault-note", openCapturedNote);
+  }, [openFile, showSidebarView]);
 
   const selectFile = (path: string) => {
     setActiveFile(path);
