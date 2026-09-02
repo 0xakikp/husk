@@ -344,6 +344,24 @@ function load(): Prefs {
 let state: Prefs = load();
 const subscribers = new Set<() => void>();
 
+/* A standalone Settings window has its own module instance. localStorage is
+   shared between same-origin Husk webviews, but the in-memory preference state
+   is not, so listen for the browser's cross-window storage notification and
+   refresh this instance without writing the value back. This keeps wallpaper
+   and every other live appearance control in sync with the main workspace. */
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== PREFS_STORAGE_KEY || !event.newValue) return;
+    try {
+      state = mergePrefs(JSON.parse(event.newValue) as Partial<Prefs>);
+      for (const fn of subscribers) fn();
+    } catch {
+      // Ignore an incomplete/corrupt external value; native config remains the
+      // durable source and the current in-memory settings stay usable.
+    }
+  });
+}
+
 export function getPrefs(): Prefs {
   return state;
 }

@@ -1013,9 +1013,10 @@ function App() {
 
   return (
     <TooltipProvider>
-      <div className="relative flex h-screen flex-col overflow-hidden text-foreground">
-        {/* ── Background image (dark mode only) ─────────────────── */}
-        {prefs.theme === "dark" && bgDataUrl && (
+      <div className="relative isolate flex h-screen flex-col overflow-hidden text-foreground">
+        {/* The isolated root keeps this negative layer behind Husk's surfaces
+            without letting it fall behind the opaque document canvas. */}
+        {bgDataUrl && (
           <>
             <img
               src={bgDataUrl}

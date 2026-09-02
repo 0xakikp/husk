@@ -236,7 +236,7 @@ export function AppearanceFile() {
             })}
           </div>
           <div className="appearance-control-grid">
-            <AppearanceControl label="Enabled" description="Show a custom image behind the terminal and editor.">
+            <AppearanceControl label="Enabled" description="Show the selected image behind the terminal and editor.">
               <CfgBool value={bg.enabled} onChange={(value) => patchBg({ enabled: value })} />
             </AppearanceControl>
             <AppearanceControl label="Fit" description="Cover fills the window; contain shows the whole image.">
