@@ -17,6 +17,11 @@ import { fileIconUrl } from "../explorer/iconResolver";
 import type { OpenFile } from "../editor/EditorArea";
 import type { TermTab } from "../useTerminalTabs";
 import type { ActiveTab } from "./types";
+import {
+  huskContextMenuContentClass,
+  huskContextMenuDangerClass,
+  huskContextMenuItemClass,
+} from "../components/HuskContextMenu";
 
 /* ── TabBar (husk v1 visual style, huskv2 data model) ─────────────────── */
 
@@ -566,7 +571,7 @@ export function TabBar({
                   }}
                 />
                 <div
-                  className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
+                  className={cn(huskContextMenuContentClass, "fixed z-50 min-w-[160px]")}
                   style={{ top: menu.y, left: menu.x }}
                   role="menu"
                 >
@@ -575,7 +580,7 @@ export function TabBar({
                       <button
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        className={huskContextMenuItemClass}
                         onClick={() => {
                           const tab = termTabs.find((t) => t.id === menu.id);
                           if (tab?.pinned) {
@@ -594,7 +599,7 @@ export function TabBar({
                       <button
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        className={huskContextMenuItemClass}
                         onClick={() => beginRename(menu.id, termTabs.find((t) => t.id === menu.id)?.title ?? "")}
                       >
                         <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.75} />
@@ -641,7 +646,7 @@ export function TabBar({
                       <button
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        className={huskContextMenuItemClass}
                         onClick={() => {
                           const file = openFiles.find((f) => f.path === menu.path);
                           if (file?.pinned) {
@@ -663,7 +668,7 @@ export function TabBar({
                       <button
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        className={huskContextMenuItemClass}
                         onClick={() => {
                           if (aiPinned) {
                             onUnpinAi();
@@ -718,11 +723,11 @@ export function TabBar({
                       type="button"
                       role="menuitem"
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent",
+                        huskContextMenuItemClass,
                         (menu.kind === "term" && termTabs.find((t) => t.id === menu.id)?.pinned) ||
                         (menu.kind === "file" && openFiles.find((f) => f.path === menu.path)?.pinned)
                           ? "text-muted-foreground cursor-not-allowed"
-                          : "text-destructive"
+                          : huskContextMenuDangerClass
                       )}
                       onClick={() => {
                         if (menu.kind === "term") {

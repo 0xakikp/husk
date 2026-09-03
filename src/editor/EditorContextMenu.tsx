@@ -8,6 +8,10 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
+import {
+  huskContextMenuContentClass,
+  huskContextMenuItemClass,
+} from "../components/HuskContextMenu";
 
 import type { editor as MonacoEditor } from "monaco-editor";
 
@@ -101,7 +105,7 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
 
   return (
     <div
-      className="fixed z-[200] min-w-[180px] rounded-lg border border-border/60 bg-popover p-1 shadow-[0_8px_30px_rgba(0,0,0,0.4)]"
+      className={cn(huskContextMenuContentClass, "fixed z-[200] min-w-[180px]")}
       style={{ left: menu.x, top: menu.y }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -111,14 +115,13 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
             type="button"
             onClick={handleAskAI}
             className={cn(
-              "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-foreground transition-colors",
-              "hover:bg-accent hover:text-accent-foreground"
+              huskContextMenuItemClass,
             )}
           >
             <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.5} />
             Ask AI
           </button>
-          <div className="my-1 h-px bg-border/40" />
+          <div className="husk-context-menu-separator" />
         </>
       )}
 
@@ -127,9 +130,9 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
         onClick={handleCut}
         disabled={!menu.hasSelection}
         className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
+          huskContextMenuItemClass,
           menu.hasSelection
-            ? "text-foreground hover:bg-accent hover:text-accent-foreground"
+            ? ""
             : "text-muted-foreground/40 cursor-not-allowed"
         )}
       >
@@ -142,9 +145,9 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
         onClick={handleCopy}
         disabled={!menu.hasSelection}
         className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
+          huskContextMenuItemClass,
           menu.hasSelection
-            ? "text-foreground hover:bg-accent hover:text-accent-foreground"
+            ? ""
             : "text-muted-foreground/40 cursor-not-allowed"
         )}
       >
@@ -155,18 +158,18 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
       <button
         type="button"
         onClick={handlePaste}
-        className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        className={huskContextMenuItemClass}
       >
         <HugeiconsIcon icon={ClipboardIcon} size={13} strokeWidth={1.5} />
         Paste
       </button>
 
-      <div className="my-1 h-px bg-border/40" />
+      <div className="husk-context-menu-separator" />
 
       <button
         type="button"
         onClick={handleSelectAll}
-        className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        className={huskContextMenuItemClass}
       >
         <HugeiconsIcon icon={SelectIcon} size={13} strokeWidth={1.5} />
         Select All

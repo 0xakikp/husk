@@ -38,6 +38,11 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "../toast";
 import { getHomeDir } from "../fs";
+import {
+  huskContextMenuContentClass,
+  huskContextMenuDangerClass,
+  huskContextMenuItemClass,
+} from "../components/HuskContextMenu";
 import { markHostConnected, markHostDisconnected } from "../remote/connectionStore";
 import {
   activateSftpTransferQueue,
@@ -161,8 +166,8 @@ function ContextAction({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-mono text-[10.5px] text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40",
-        danger && "text-red-400 hover:bg-red-500/10",
+        huskContextMenuItemClass,
+        danger && huskContextMenuDangerClass,
       )}
     >
       <HugeiconsIcon icon={icon} size={13} strokeWidth={1.65} className="shrink-0 opacity-75" />
@@ -172,7 +177,7 @@ function ContextAction({
 }
 
 function ContextDivider() {
-  return <div className="my-1 h-px bg-border/60" />;
+  return <div className="husk-context-menu-separator" />;
 }
 
 function transferStateLabel(task: SftpTransfer): string {
@@ -734,7 +739,7 @@ export function SftpView({ host, onClose }: SftpViewProps) {
           <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); }} />
           <div
             role="menu"
-            className="fixed z-50 w-48 overflow-hidden rounded-md border border-border/80 bg-popover py-1 shadow-xl shadow-black/45"
+            className={cn(huskContextMenuContentClass, "fixed z-50 w-48")}
             style={{ left: Math.max(8, contextMenu.x), top: Math.max(8, contextMenu.y) }}
           >
             {contextMenu.entry ? (

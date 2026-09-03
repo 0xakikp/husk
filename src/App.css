@@ -1412,6 +1412,12 @@ button {
   color: var(--accent) !important;
 }
 
+.enode.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
 .efile.efile-modified {
   color: var(--accent);
 }
@@ -1589,6 +1595,20 @@ button {
   flex-direction: column;
 }
 
+/* Files established Husk's compact context-menu language. Radix-backed and
+   feature-specific menus use these same visual rules so right-click actions
+   do not turn into a second, generic popover system. */
+.husk-context-menu {
+  min-width: 168px;
+  padding: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  color: var(--text);
+  box-shadow: var(--elev-2);
+  font-family: inherit;
+}
+
 .ectx-item {
   border: none;
   background: none;
@@ -1601,8 +1621,29 @@ button {
   cursor: pointer;
 }
 
-.ectx-item:hover {
+.husk-context-menu-item {
+  min-height: 29px;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 10px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.35;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.ectx-item:hover,
+.ectx-item:focus-visible,
+.husk-context-menu-item:hover,
+.husk-context-menu-item:focus-visible,
+.husk-context-menu-item[data-highlighted] {
   background: var(--hover);
+  color: var(--text-strong);
+  outline: none;
 }
 
 .ectx-item:disabled {
@@ -1612,6 +1653,57 @@ button {
 
 .ectx-item:disabled:hover {
   background: none;
+}
+
+.husk-context-menu-item:disabled:hover,
+.husk-context-menu-item[data-disabled] {
+  background: none;
+}
+
+.husk-context-menu-item svg {
+  color: var(--text-muted);
+  transition: color 100ms ease;
+}
+
+.husk-context-menu-item:hover svg,
+.husk-context-menu-item:focus-visible svg,
+.husk-context-menu-item[data-highlighted] svg {
+  color: var(--accent);
+}
+
+.husk-context-menu-item-danger,
+.husk-context-menu-item-danger svg {
+  color: var(--danger, #ff5f68);
+}
+
+.husk-context-menu-item-danger:hover,
+.husk-context-menu-item-danger:focus-visible,
+.husk-context-menu-item-danger[data-highlighted] {
+  background: color-mix(in srgb, var(--danger, #ff5f68) 11%, transparent);
+  color: var(--danger, #ff5f68);
+}
+
+.husk-context-menu-item-danger:hover svg,
+.husk-context-menu-item-danger:focus-visible svg,
+.husk-context-menu-item-danger[data-highlighted] svg {
+  color: var(--danger, #ff5f68);
+}
+
+.husk-context-menu-label {
+  padding: 3px 10px 5px;
+  color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .11em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.husk-context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in srgb, var(--border-2) 82%, transparent);
 }
 
 .ectx-item.is-vault {

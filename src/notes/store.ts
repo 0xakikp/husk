@@ -1,6 +1,7 @@
-import { readDir, readFile, writeFile, createDir, deletePath, homeDir } from "../fs";
+import { copyPath, readDir, readFile, writeFile, createDir, deletePath, homeDir, renamePath } from "../fs";
 import { toast } from "../toast";
 import { getPrefs } from "../settings/preferences";
+import { isVaultPathWithin, replaceVaultPath } from "./vaultPaths";
 
 export type FileNode = {
   name: string;
@@ -121,6 +122,35 @@ export function removeRecentNote(path: string) {
   } catch {}
 }
 
+/** Keep Vault navigation metadata valid when a note or an entire folder moves. */
+export function replaceNoteReferences(from: string, to: string) {
+  const pinned = [...new Set(getPinnedNotes().map((path) => replaceVaultPath(path, from, to)))];
+  const recentsByPath = new Map<string, RecentNote>();
+  for (const entry of getRecentNoteEntries()) {
+    const path = replaceVaultPath(entry.path, from, to);
+    if (!recentsByPath.has(path)) recentsByPath.set(path, { ...entry, path });
+  }
+  const recents = [...recentsByPath.values()];
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify(pinned));
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(recents));
+    const lastViewed = getLastViewedNote();
+    if (lastViewed && isVaultPathWithin(lastViewed, from)) {
+      setLastViewedNote(replaceVaultPath(lastViewed, from, to));
+    }
+  } catch {}
+}
+
+/** Remove stale references for a deleted note or descendants of a folder. */
+export function removeNoteReferences(path: string) {
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify(getPinnedNotes().filter((entry) => !isVaultPathWithin(entry, path))));
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(getRecentNoteEntries().filter((entry) => !isVaultPathWithin(entry.path, path))));
+    const lastViewed = getLastViewedNote();
+    if (lastViewed && isVaultPathWithin(lastViewed, path)) setLastViewedNote(null);
+  } catch {}
+}
+
 /* ── Last viewed note ─────────────────────────────────────────────── */
 
 const LAST_NOTE_KEY = "huskv2.notes.lastViewed";
@@ -235,8 +265,28 @@ export async function createNoteFolder(dir: string, name: string): Promise<strin
 export async function deleteNote(path: string): Promise<void> {
   try {
     await deletePath(path);
+    removeNoteReferences(path);
   } catch (e) {
     toast({ title: "Failed to delete", variant: "error" });
+    throw e;
+  }
+}
+
+export async function copyNotePath(from: string, to: string): Promise<void> {
+  try {
+    await copyPath(from, to);
+  } catch (e) {
+    toast({ title: "Failed to copy", message: String(e), variant: "error" });
+    throw e;
+  }
+}
+
+export async function moveNotePath(from: string, to: string): Promise<void> {
+  try {
+    await renamePath(from, to);
+    replaceNoteReferences(from, to);
+  } catch (e) {
+    toast({ title: "Failed to move", message: String(e), variant: "error" });
     throw e;
   }
 }

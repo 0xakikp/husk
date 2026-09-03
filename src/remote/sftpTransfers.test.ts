@@ -59,6 +59,26 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("SFTP transfer queue", () => {
+  it("keeps external-store snapshots stable until the queue changes", async () => {
+    const queue = await import("./sftpTransfers");
+
+    const empty = queue.getSftpTransfers("example");
+    expect(queue.getSftpTransfers("example")).toBe(empty);
+
+    queue.enqueueSftpTransfer({
+      host: "example",
+      direction: "upload",
+      kind: "file",
+      localPath: "/Users/me/build.zip",
+      remotePath: "/srv/build.zip",
+      label: "build.zip",
+    });
+
+    const populated = queue.getSftpTransfers("example");
+    expect(populated).not.toBe(empty);
+    expect(queue.getSftpTransfers("example")).toBe(populated);
+  });
+
   it("restores an interrupted transfer as paused rather than restarting it at launch", async () => {
     storage.setItem("huskv2.sftp.transferQueue", JSON.stringify([{
       id: "sftp-running",

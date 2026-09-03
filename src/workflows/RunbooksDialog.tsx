@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { loadWorkflows, saveWorkflows, newWorkflowId, type Workflow } from "./store";
 import { composeCommand, extractParams } from "./params";
 import {
@@ -29,6 +30,8 @@ import {
   InformationCircleIcon,
   WorkflowCircle01Icon,
   SparklesIcon,
+  Copy01Icon,
+  RepeatIcon,
 } from "@hugeicons/core-free-icons";
 import {
   Tooltip,
@@ -36,6 +39,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  HuskContextMenu,
+  HuskContextMenuContent,
+  HuskContextMenuItem,
+  HuskContextMenuSeparator,
+  HuskContextMenuTrigger,
+} from "../components/HuskContextMenu";
 
 type Mode =
   | { kind: "list" }
@@ -95,6 +105,43 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
   const startRun = (wf: Workflow) => {
     if (extractParams(wf.steps).length > 0) setMode({ kind: "run", wf });
     else run(wf, {});
+  };
+
+  const duplicateWorkflow = (workflow: Workflow) => {
+    setWorkflows((current) => {
+      const base = `${workflow.name} copy`;
+      let name = base;
+      let copyNumber = 2;
+      const names = new Set(current.map((item) => item.name.toLocaleLowerCase()));
+      while (names.has(name.toLocaleLowerCase())) name = `${base} ${copyNumber++}`;
+      return [...current, { ...workflow, id: newWorkflowId(), name }];
+    });
+    toast({ title: `Duplicated ${workflow.name}`, variant: "success" });
+  };
+
+  const copyWorkflowCommands = async (workflow: Workflow) => {
+    const separator = workflow.stopOnError === false ? "; \\\n  " : " && \\\n  ";
+    try {
+      await writeText(workflow.steps.join(separator));
+      toast({ title: "Workflow commands copied", variant: "success" });
+    } catch (error) {
+      toast({ title: "Could not copy commands", message: String(error), variant: "error" });
+    }
+  };
+
+  const copyWorkflowJson = async (workflow: Workflow) => {
+    try {
+      await writeText(JSON.stringify(workflow, null, 2));
+      toast({ title: "Workflow JSON copied", message: "Ready to paste into a file or share.", variant: "success" });
+    } catch (error) {
+      toast({ title: "Could not copy workflow", message: String(error), variant: "error" });
+    }
+  };
+
+  const deleteWorkflow = (workflow: Workflow) => {
+    if (!confirm(`Delete workflow “${workflow.name}”?`)) return;
+    setWorkflows((current) => current.filter((item) => item.id !== workflow.id));
+    toast({ title: `Deleted ${workflow.name}`, variant: "success" });
   };
 
   const listHeaderActions = (
@@ -163,7 +210,10 @@ export function RunbooksDialog({ onClose, inline }: { onClose?: () => void; inli
               onIgnoreSuggestion={(suggestion) => dismissWorkflowSuggestionFingerprint(suggestion.fingerprint, true)}
               onNew={() => setMode({ kind: "edit", wf: null })}
               onEdit={(wf) => setMode({ kind: "edit", wf })}
-              onDelete={(id) => setWorkflows((prev) => prev.filter((w) => w.id !== id))}
+              onDuplicate={duplicateWorkflow}
+              onCopyCommands={(workflow) => void copyWorkflowCommands(workflow)}
+              onCopyJson={(workflow) => void copyWorkflowJson(workflow)}
+              onDelete={deleteWorkflow}
               onRun={startRun}
             />
           ) : mode.kind === "run" ? (
@@ -227,6 +277,9 @@ function RunbookList({
   onReviewSuggestion,
   onIgnoreSuggestion,
   onEdit,
+  onDuplicate,
+  onCopyCommands,
+  onCopyJson,
   onDelete,
   onRun,
 }: {
@@ -236,11 +289,16 @@ function RunbookList({
   onReviewSuggestion: (suggestion: WorkflowSuggestion) => void;
   onIgnoreSuggestion: (suggestion: WorkflowSuggestion) => void;
   onEdit: (wf: Workflow) => void;
-  onDelete: (id: string) => void;
+  onDuplicate: (wf: Workflow) => void;
+  onCopyCommands: (wf: Workflow) => void;
+  onCopyJson: (wf: Workflow) => void;
+  onDelete: (wf: Workflow) => void;
   onRun: (wf: Workflow) => void;
 }) {
   return (
-    <div className="modal-body">
+    <HuskContextMenu>
+      <HuskContextMenuTrigger asChild>
+        <div className="modal-body min-h-full">
       {suggestions.length > 0 ? (
         <div className="mb-3 flex flex-col gap-1.5">
           <div className="flex items-center justify-between px-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-primary/80">
@@ -295,32 +353,56 @@ function RunbookList({
       ) : (
         <div className="flex flex-col gap-3">
           <div className="rb-list">
-            {workflows.map((wf) => (
-              <div key={wf.id} className="rb-item">
-                <button type="button" className="rb-run" title="Run" onClick={() => onRun(wf)}>
-                  <HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} />
-                </button>
-                <div className="rb-meta">
-                  <span className="rb-name">{wf.name}</span>
-                  <span className="rb-steps">
-                    {wf.steps.length} step{wf.steps.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <button type="button" className="ai-icon" onClick={() => onEdit(wf)} title="Edit">
-                  <HugeiconsIcon icon={Edit02Icon} size={11} strokeWidth={2} />
-                </button>
-                <button type="button" className="ai-icon" onClick={() => onDelete(wf.id)} title="Delete">
-                  <HugeiconsIcon icon={Delete02Icon} size={11} strokeWidth={2} />
-                </button>
-              </div>
-            ))}
+            {workflows.map((wf) => {
+              const hasParameters = extractParams(wf.steps).length > 0;
+              return (
+                <HuskContextMenu key={wf.id}>
+                  <HuskContextMenuTrigger asChild>
+                    <div className="rb-item" onContextMenu={(event) => event.stopPropagation()}>
+                      <button type="button" className="rb-run" title="Run" onClick={() => onRun(wf)}>
+                        <HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} />
+                      </button>
+                      <div className="rb-meta">
+                        <span className="rb-name">{wf.name}</span>
+                        <span className="rb-steps">
+                          {wf.steps.length} step{wf.steps.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <button type="button" className="ai-icon" onClick={() => onEdit(wf)} title="Edit">
+                        <HugeiconsIcon icon={Edit02Icon} size={11} strokeWidth={2} />
+                      </button>
+                      <button type="button" className="ai-icon" onClick={() => onDelete(wf)} title="Delete">
+                        <HugeiconsIcon icon={Delete02Icon} size={11} strokeWidth={2} />
+                      </button>
+                    </div>
+                  </HuskContextMenuTrigger>
+                  <HuskContextMenuContent title={wf.name}>
+                    <HuskContextMenuItem icon={PlayIcon} onSelect={() => onRun(wf)}>
+                      {hasParameters ? "Fill values & run…" : "Run workflow"}
+                    </HuskContextMenuItem>
+                    <HuskContextMenuItem icon={Edit02Icon} onSelect={() => onEdit(wf)}>Edit workflow…</HuskContextMenuItem>
+                    <HuskContextMenuItem icon={RepeatIcon} onSelect={() => onDuplicate(wf)}>Duplicate</HuskContextMenuItem>
+                    <HuskContextMenuSeparator />
+                    <HuskContextMenuItem icon={Copy01Icon} onSelect={() => onCopyCommands(wf)}>Copy commands</HuskContextMenuItem>
+                    <HuskContextMenuItem icon={Copy01Icon} onSelect={() => onCopyJson(wf)}>Copy workflow JSON</HuskContextMenuItem>
+                    <HuskContextMenuSeparator />
+                    <HuskContextMenuItem icon={Delete02Icon} danger onSelect={() => onDelete(wf)}>Delete workflow…</HuskContextMenuItem>
+                  </HuskContextMenuContent>
+                </HuskContextMenu>
+              );
+            })}
           </div>
           <button type="button" className="rb-new" onClick={onNew}>
             + New workflow
           </button>
         </div>
       )}
-    </div>
+        </div>
+      </HuskContextMenuTrigger>
+      <HuskContextMenuContent title="Workflows">
+        <HuskContextMenuItem icon={Add01Icon} onSelect={onNew}>New workflow…</HuskContextMenuItem>
+      </HuskContextMenuContent>
+    </HuskContextMenu>
   );
 }
 

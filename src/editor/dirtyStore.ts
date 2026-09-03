@@ -20,6 +20,16 @@ export function getFileState(path: string): FileState {
   return dirtyMap.get(path)?.state ?? "clean";
 }
 
+/** Return the first unsaved editor model at or below a filesystem path. */
+export function getUnsavedPathWithin(path: string): string | null {
+  const normalized = path.replace(/\/+$/, "");
+  for (const [candidate, entry] of dirtyMap) {
+    const inside = candidate === normalized || candidate.startsWith(`${normalized}/`);
+    if (inside && entry.state !== "clean") return candidate;
+  }
+  return null;
+}
+
 export function markSaved(path: string, versionId?: number): void {
   const entry = dirtyMap.get(path);
   if (entry?.state === "new") {

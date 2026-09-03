@@ -293,7 +293,43 @@ pub fn ssh_create_dir(host: String, path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn ssh_rename_path(host: String, from: String, to: String) -> Result<(), String> {
-    ssh_stdout(&host, &format!("mv {} {}", shq(&from), shq(&to)))?;
+    let source = from.trim_end_matches('/');
+    let destination = to.trim_end_matches('/');
+    if source == destination {
+        return Err("Choose a different destination".to_string());
+    }
+    if destination.starts_with(&format!("{source}/")) {
+        return Err("A folder cannot be moved inside itself".to_string());
+    }
+    let command = format!(
+        "if [ ! -e {from} ]; then echo 'Source no longer exists' >&2; exit 66; fi; \
+         if [ -e {to} ]; then echo 'An item with that name already exists' >&2; exit 73; fi; \
+         mv -- {from} {to}",
+        from = shq(&from),
+        to = shq(&to),
+    );
+    ssh_stdout(&host, &command)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn ssh_copy_path(host: String, from: String, to: String) -> Result<(), String> {
+    let source = from.trim_end_matches('/');
+    let destination = to.trim_end_matches('/');
+    if source == destination {
+        return Err("Choose a different destination".to_string());
+    }
+    if destination.starts_with(&format!("{source}/")) {
+        return Err("A folder cannot be copied inside itself".to_string());
+    }
+    let command = format!(
+        "if [ ! -e {from} ]; then echo 'Source no longer exists' >&2; exit 66; fi; \
+         if [ -e {to} ]; then echo 'An item with that name already exists' >&2; exit 73; fi; \
+         cp -Rp -- {from} {to}",
+        from = shq(&from),
+        to = shq(&to),
+    );
+    ssh_stdout(&host, &command)?;
     Ok(())
 }
 

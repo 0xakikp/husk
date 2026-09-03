@@ -35,6 +35,9 @@ export const sshCreateDir = (host: string, path: string) =>
 export const sshRenamePath = (host: string, from: string, to: string) =>
   invoke<void>("ssh_rename_path", { host, from, to });
 
+export const sshCopyPath = (host: string, from: string, to: string) =>
+  invoke<void>("ssh_copy_path", { host, from, to });
+
 export const sshDeletePath = (host: string, path: string) =>
   invoke<void>("ssh_delete_path", { host, path });
 

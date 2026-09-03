@@ -35,6 +35,8 @@ import { openActiveTerminalLogs } from "./terminal/registry";
 import { loadAccounts as loadTotpAccounts } from "./totp/store";
 import { useLauncherItems, type LauncherCtx } from "./command-palette/useLauncherItems";
 import { getNotesDirectory, pinNote, unpinNote } from "./notes/store";
+import { isVaultPathWithin, replaceVaultPath } from "./notes/vaultPaths";
+import { isExplorerPathWithin, replaceExplorerPath } from "./explorer/pathOperations";
 import { useContext as k8sUseContext } from "./kubernetes/client";
 import { extractParams, composeCommand } from "./workflows/params";
 import type { Workflow } from "./workflows/store";
@@ -518,7 +520,11 @@ function App() {
   const remoteHost = useActiveSshHost();
   const totpAccountCount = loadTotpAccounts().length;
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
+  const openFilesRef = useRef<OpenFile[]>(openFiles);
+  openFilesRef.current = openFiles;
   const [activeFile, setActiveFile] = useState<string | null>(null);
+  const activeFileRef = useRef<string | null>(activeFile);
+  activeFileRef.current = activeFile;
   const term = useTerminalTabs();
   const [activeKind, setActiveKind] = useState<ActiveKind>("term");
   const [aiOpen, setAiOpen] = useState(true);
@@ -885,6 +891,118 @@ function App() {
     window.addEventListener("husk:open-vault-note", openCapturedNote);
     return () => window.removeEventListener("husk:open-vault-note", openCapturedNote);
   }, [openFile, showSidebarView]);
+
+  /* Vault rename/move/delete operations happen in the sidebar, while App owns
+     editor tabs. Keep clean open notes attached to their new path and close
+     deleted paths instead of leaving a tab that points at a file that no
+     longer exists. NotesView refuses to relocate unsaved editor models. */
+  useEffect(() => {
+    const validateVaultPath = async (path: string) => {
+      const root = normalizeWorkspacePath(await getNotesDirectory());
+      const normalized = normalizeWorkspacePath(path);
+      return isVaultPathWithin(normalized, root) && normalized !== root ? normalized : null;
+    };
+    const onVaultPathMoved = (event: Event) => {
+      const detail = (event as CustomEvent<{ from?: string; to?: string }>).detail;
+      if (!detail?.from || !detail.to) return;
+      void Promise.all([validateVaultPath(detail.from), validateVaultPath(detail.to)])
+        .then(([from, to]) => {
+          if (!from || !to) return;
+          const next = openFilesRef.current.map((file) => {
+            if (!isVaultPathWithin(file.path, from)) return file;
+            const path = replaceVaultPath(file.path, from, to);
+            return { ...file, path, name: path.split("/").pop() || path };
+          });
+          openFilesRef.current = next;
+          setOpenFiles(next);
+          const current = activeFileRef.current;
+          if (current && isVaultPathWithin(current, from)) {
+            const moved = replaceVaultPath(current, from, to);
+            activeFileRef.current = moved;
+            setActiveFile(moved);
+          }
+        })
+        .catch(() => {});
+    };
+    const onVaultPathDeleted = (event: Event) => {
+      const requested = (event as CustomEvent<{ path?: string }>).detail?.path;
+      if (!requested) return;
+      void validateVaultPath(requested)
+        .then((path) => {
+          if (!path) return;
+          const next = openFilesRef.current.filter((file) => !isVaultPathWithin(file.path, path));
+          openFilesRef.current = next;
+          setOpenFiles(next);
+          const active = activeFileRef.current;
+          if (!active || !isVaultPathWithin(active, path)) return;
+          const fallback = next[next.length - 1]?.path ?? null;
+          activeFileRef.current = fallback;
+          setActiveFile(fallback);
+          if (!fallback) setActiveKind("term");
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("husk:vault-path-moved", onVaultPathMoved);
+    window.addEventListener("husk:vault-path-deleted", onVaultPathDeleted);
+    return () => {
+      window.removeEventListener("husk:vault-path-moved", onVaultPathMoved);
+      window.removeEventListener("husk:vault-path-deleted", onVaultPathDeleted);
+    };
+  }, []);
+
+  /* Files can rename or move both local and SSH-backed paths. Keep editor tabs
+     attached to the same item, and close tabs whose path was deleted. These
+     events include the remote host so identical paths on two machines never
+     affect one another. */
+  useEffect(() => {
+    type ExplorerPathDetail = { from?: string; to?: string; path?: string; remoteHost?: string | null };
+    const sameLocation = (file: OpenFile, remoteHost: string | null | undefined) => (
+      (file.remoteHost ?? null) === (remoteHost ?? null)
+    );
+    const onExplorerPathMoved = (event: Event) => {
+      const detail = (event as CustomEvent<ExplorerPathDetail>).detail;
+      if (!detail?.from || !detail.to) return;
+      const next = openFilesRef.current.map((file) => {
+        if (!sameLocation(file, detail.remoteHost) || !isExplorerPathWithin(file.path, detail.from!)) return file;
+        const path = replaceExplorerPath(file.path, detail.from!, detail.to!);
+        return { ...file, path, name: path.split("/").pop() || path };
+      });
+      openFilesRef.current = next;
+      setOpenFiles(next);
+      const active = activeFileRef.current;
+      const activeFileEntry = active ? openFilesRef.current.find((file) => file.path === active) : undefined;
+      if (active && (!activeFileEntry || sameLocation(activeFileEntry, detail.remoteHost)) && isExplorerPathWithin(active, detail.from)) {
+        const moved = replaceExplorerPath(active, detail.from, detail.to);
+        activeFileRef.current = moved;
+        setActiveFile(moved);
+      }
+    };
+    const onExplorerPathDeleted = (event: Event) => {
+      const detail = (event as CustomEvent<ExplorerPathDetail>).detail;
+      if (!detail?.path) return;
+      const removedActive = openFilesRef.current.some((file) => (
+        file.path === activeFileRef.current
+        && sameLocation(file, detail.remoteHost)
+        && isExplorerPathWithin(file.path, detail.path!)
+      ));
+      const next = openFilesRef.current.filter((file) => (
+        !sameLocation(file, detail.remoteHost) || !isExplorerPathWithin(file.path, detail.path!)
+      ));
+      openFilesRef.current = next;
+      setOpenFiles(next);
+      if (!removedActive) return;
+      const fallback = next[next.length - 1]?.path ?? null;
+      activeFileRef.current = fallback;
+      setActiveFile(fallback);
+      if (!fallback) setActiveKind("term");
+    };
+    window.addEventListener("husk:explorer-path-moved", onExplorerPathMoved);
+    window.addEventListener("husk:explorer-path-deleted", onExplorerPathDeleted);
+    return () => {
+      window.removeEventListener("husk:explorer-path-moved", onExplorerPathMoved);
+      window.removeEventListener("husk:explorer-path-deleted", onExplorerPathDeleted);
+    };
+  }, []);
 
   const selectFile = (path: string) => {
     setActiveFile(path);

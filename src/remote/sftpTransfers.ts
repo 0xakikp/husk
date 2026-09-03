@@ -97,6 +97,8 @@ const subscribers = new Set<() => void>();
 const processingHosts = new Set<string>();
 const activeHosts = new Set<string>();
 const hostListeners = new Map<string, UnlistenFn>();
+const transferSnapshots = new Map<string, SftpTransfer[]>();
+const EMPTY_TRANSFERS: SftpTransfer[] = [];
 
 function persist(): void {
   try {
@@ -113,6 +115,10 @@ function persist(): void {
 }
 
 function emit(): void {
+  // useSyncExternalStore compares snapshots by reference. Any queue mutation
+  // invalidates the derived host lists; reads between mutations must return the
+  // same array or React treats every render as another store update.
+  transferSnapshots.clear();
   persist();
   for (const subscriber of subscribers) subscriber();
 }
@@ -262,9 +268,15 @@ export function clearCompletedSftpTransfers(host: string): void {
 }
 
 export function getSftpTransfers(host?: string): SftpTransfer[] {
-  return transfers
+  const key = host ?? "\0all";
+  const cached = transferSnapshots.get(key);
+  if (cached) return cached;
+
+  const snapshot = transfers
     .filter((task) => !host || task.host === host)
     .sort((a, b) => b.updatedAt - a.updatedAt);
+  transferSnapshots.set(key, snapshot);
+  return snapshot;
 }
 
 export function subscribeSftpTransfers(listener: () => void): () => void {
@@ -276,6 +288,6 @@ export function useSftpTransfers(host: string): SftpTransfer[] {
   return useSyncExternalStore(
     subscribeSftpTransfers,
     () => getSftpTransfers(host),
-    () => [],
+    () => EMPTY_TRANSFERS,
   );
 }

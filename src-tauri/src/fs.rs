@@ -3,7 +3,7 @@
 use base64::Engine;
 use serde::Serialize;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Serialize)]
@@ -246,6 +246,91 @@ pub fn create_dir(path: String) -> Result<(), String> {
     fs::create_dir_all(p).map_err(|e| e.to_string())
 }
 
+fn validate_copy_source(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to copy symlink: {}",
+            path.to_string_lossy()
+        ));
+    }
+    if metadata.is_dir() {
+        for entry in fs::read_dir(path).map_err(|e| e.to_string())? {
+            validate_copy_source(&entry.map_err(|e| e.to_string())?.path())?;
+        }
+    } else if !metadata.is_file() {
+        return Err(format!(
+            "unsupported filesystem item: {}",
+            path.to_string_lossy()
+        ));
+    }
+    Ok(())
+}
+
+fn copy_path_entry(from: &Path, to: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(from).map_err(|e| e.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to copy symlink: {}",
+            from.to_string_lossy()
+        ));
+    }
+    if metadata.is_dir() {
+        fs::create_dir(to).map_err(|e| e.to_string())?;
+        for entry in fs::read_dir(from).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            copy_path_entry(&entry.path(), &to.join(entry.file_name()))?;
+        }
+        fs::set_permissions(to, metadata.permissions()).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    if !metadata.is_file() {
+        return Err(format!(
+            "unsupported filesystem item: {}",
+            from.to_string_lossy()
+        ));
+    }
+
+    let mut source = fs::File::open(from).map_err(|e| e.to_string())?;
+    let mut destination = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)
+        .map_err(|e| e.to_string())?;
+    io::copy(&mut source, &mut destination).map_err(|e| e.to_string())?;
+    fs::set_permissions(to, metadata.permissions()).map_err(|e| e.to_string())
+}
+
+/// Copy a regular file or directory tree without overwriting. Symlinks are
+/// refused so a Vault copy cannot unexpectedly reach outside the visible tree.
+#[tauri::command]
+pub fn copy_path(from: String, to: String) -> Result<(), String> {
+    validate_path(&from)?;
+    validate_path(&to)?;
+    let from_path = Path::new(&from);
+    let to_path = Path::new(&to);
+    if !from_path.exists() {
+        return Err(format!("not found: {from}"));
+    }
+    if to_path.exists() {
+        return Err(format!("already exists: {to}"));
+    }
+    if from_path.is_dir() && to_path.starts_with(from_path) {
+        return Err("cannot copy a folder into itself".to_string());
+    }
+    validate_copy_source(from_path)?;
+    if let Err(error) = copy_path_entry(from_path, to_path) {
+        if to_path.is_dir() {
+            let _ = fs::remove_dir_all(to_path);
+        } else if to_path.exists() {
+            let _ = fs::remove_file(to_path);
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
 /// Rename or move a path. Refuses to overwrite an existing target.
 #[tauri::command]
 pub fn rename_path(from: String, to: String) -> Result<(), String> {
@@ -272,5 +357,71 @@ pub fn delete_path(path: String) -> Result<(), String> {
         fs::remove_dir_all(p).map_err(|e| e.to_string())
     } else {
         fs::remove_file(p).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::copy_path;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn scratch(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("husk-fs-{name}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn copies_a_directory_tree_without_overwriting() {
+        let root = scratch("copy-tree");
+        let source = root.join("source");
+        let destination = root.join("destination");
+        fs::create_dir_all(source.join("nested")).unwrap();
+        fs::write(source.join("note.md"), "hello").unwrap();
+        fs::write(source.join("nested").join("todo.txt"), "ship it").unwrap();
+
+        copy_path(
+            source.to_string_lossy().to_string(),
+            destination.to_string_lossy().to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.join("note.md")).unwrap(),
+            "hello"
+        );
+        assert_eq!(
+            fs::read_to_string(destination.join("nested").join("todo.txt")).unwrap(),
+            "ship it"
+        );
+        assert!(copy_path(
+            source.to_string_lossy().to_string(),
+            destination.to_string_lossy().to_string(),
+        )
+        .unwrap_err()
+        .contains("already exists"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn refuses_to_copy_a_directory_into_itself() {
+        let root = scratch("copy-self");
+        let source = root.join("source");
+        fs::create_dir_all(&source).unwrap();
+        let destination = source.join("source");
+
+        let error = copy_path(
+            source.to_string_lossy().to_string(),
+            destination.to_string_lossy().to_string(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "cannot copy a folder into itself");
+        assert!(!destination.exists());
+        let _ = fs::remove_dir_all(root);
     }
 }

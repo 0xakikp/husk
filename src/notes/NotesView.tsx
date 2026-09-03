@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Label } from "@/components/ui/label";
 import {
   Tooltip,
@@ -23,6 +24,12 @@ import {
   InformationCircleIcon,
   NotebookIcon,
   SparklesIcon,
+  ClipboardPasteIcon,
+  Copy01Icon,
+  Edit02Icon,
+  Folder01Icon,
+  Move01Icon,
+  Refresh01Icon,
 } from "@hugeicons/core-free-icons";
 import { PanelHeader } from "../shell/PanelHeader";
 import { folderIconUrl } from "../explorer/iconResolver";
@@ -34,16 +41,17 @@ import {
   writeNote,
   createNote,
   createNoteFolder,
+  copyNotePath,
   deleteNote,
   ensureNotesDirectory,
   isNoteFile,
+  moveNotePath,
   getLastViewedNote,
   setLastViewedNote,
   pinNote,
   unpinNote,
   isNotePinned,
   touchRecentNote,
-  removeRecentNote,
   getPinnedNotes,
   getRecentNoteEntries,
   searchNotesContent,
@@ -66,6 +74,20 @@ import { readFile } from "../fs";
 import { buildVaultIndex, rankVaultSections, type VaultLensResult } from "./vaultLens";
 import { expandVaultLensQuery, organizeNoteWithAi } from "./notesAi";
 import { NoteOrganizeReview } from "./NoteOrganizeReview";
+import { getFileState } from "../editor/dirtyStore";
+import {
+  isVaultPathWithin,
+  normalizedVaultName,
+  replaceVaultPath,
+  vaultJoin,
+  vaultNameError,
+  vaultParent,
+} from "./vaultPaths";
+import {
+  huskContextMenuContentClass,
+  huskContextMenuDangerClass,
+  huskContextMenuItemClass,
+} from "../components/HuskContextMenu";
 
 function noteTitle(name: string): string {
   return name.replace(/\.(md|mdx|txt)$/i, "");
@@ -95,6 +117,70 @@ function notesInTree(nodes?: FileNode[]): number {
     (total, node) => total + (node.isDirectory ? notesInTree(node.children) : isNoteFile(node.name) ? 1 : 0),
     0,
   );
+}
+
+function notePathsInTree(nodes: FileNode[]): string[] {
+  const paths: string[] = [];
+  const walk = (entries: FileNode[]) => {
+    for (const entry of entries) {
+      if (entry.isDirectory) walk(entry.children ?? []);
+      else if (isNoteFile(entry.name)) paths.push(entry.path);
+    }
+  };
+  walk(nodes);
+  return paths;
+}
+
+type VaultContextTarget = {
+  kind: "root" | "folder" | "note" | "file";
+  path: string;
+  name: string;
+  isDirectory: boolean;
+};
+
+type VaultContextState = {
+  x: number;
+  y: number;
+  target: VaultContextTarget;
+};
+
+type VaultClipboard = {
+  operation: "copy" | "move";
+  target: VaultContextTarget;
+};
+
+function VaultContextAction({
+  icon,
+  label,
+  onClick,
+  danger = false,
+  disabled = false,
+}: {
+  icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        huskContextMenuItemClass,
+        danger && huskContextMenuDangerClass,
+      )}
+    >
+      <HugeiconsIcon icon={icon} size={12} strokeWidth={1.7} className="shrink-0 opacity-80" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function VaultContextDivider() {
+  return <div className="husk-context-menu-separator" />;
 }
 
 export function NotesView({ 
@@ -136,6 +222,19 @@ export function NotesView({
   const [pinned, setPinned] = useState<string[]>([]);
   const [recents, setRecents] = useState<RecentNote[]>([]);
   const [activeNotePath, setActiveNotePath] = useState<string | null>(() => getLastViewedNote());
+  const [vaultContext, setVaultContext] = useState<VaultContextState | null>(null);
+  const [vaultClipboard, setVaultClipboard] = useState<VaultClipboard | null>(null);
+  const [renameTarget, setRenameTarget] = useState<VaultContextTarget | null>(null);
+  const [renameName, setRenameName] = useState("");
+
+  useEffect(() => {
+    if (!vaultContext) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setVaultContext(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [vaultContext]);
 
   /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -442,18 +541,28 @@ export function NotesView({
   };
 
   const handleDelete = async (path: string, name: string) => {
+    const unsaved = notePathsInTree(tree).find((candidate) => (
+      isVaultPathWithin(candidate, path) && getFileState(candidate) !== "clean"
+    ));
+    if (unsaved) {
+      toast({
+        title: "Save this note first",
+        message: `${unsaved.split("/").pop() || unsaved} has unsaved changes and would be deleted.`,
+        variant: "info",
+      });
+      return;
+    }
     if (!confirm(`Delete "${name}"?`)) return;
     try {
       await deleteNote(path);
-      unpinNote(path);
-      removeRecentNote(path);
       loadLists();
       await loadTree();
-      if (editingFile === path) {
+      if (editingFile && isVaultPathWithin(editingFile, path)) {
         setEditingFile(null);
         setEditContent("");
       }
-      if (activeNotePath === path) setActiveNotePath(null);
+      if (activeNotePath && isVaultPathWithin(activeNotePath, path)) setActiveNotePath(null);
+      window.dispatchEvent(new CustomEvent("husk:vault-path-deleted", { detail: { path } }));
       toast({ title: "Deleted", variant: "success" });
     } catch {
       // error handled in store
@@ -503,15 +612,7 @@ export function NotesView({
   );
 
   const allNotePaths = useMemo(() => {
-    const paths: string[] = [];
-    function walk(nodes: FileNode[]) {
-      for (const n of nodes) {
-        if (n.isDirectory && n.children) walk(n.children);
-        else if (!n.isDirectory && isNoteFile(n.name)) paths.push(n.path);
-      }
-    }
-    walk(tree);
-    return paths;
+    return notePathsInTree(tree);
   }, [tree]);
 
   const folderCount = useMemo(() => {
@@ -540,6 +641,142 @@ export function NotesView({
       .slice(0, 5);
   }, [recents, allNotePaths, pinned]);
 
+  const rootContextTarget = useCallback((): VaultContextTarget | null => {
+    const path = notesDirRef.current;
+    return path ? { kind: "root", path, name: "Vault", isDirectory: true } : null;
+  }, []);
+
+  const openVaultContext = useCallback((event: ReactMouseEvent, target: VaultContextTarget) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const width = 196;
+    const height = target.kind === "note" ? 278 : target.kind === "folder" ? 324 : 208;
+    setVaultContext({
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
+      target,
+    });
+  }, []);
+
+  const beginCreate = useCallback((directory: string, type: "file" | "folder") => {
+    setVaultContext(null);
+    setCreateType(type);
+    setCreateDir(directory);
+    setCreateName("");
+    setShowCreate(true);
+  }, []);
+
+  const unsavedPathWithin = useCallback((path: string): string | null => {
+    return allNotePaths.find((candidate) => (
+      isVaultPathWithin(candidate, path) && getFileState(candidate) !== "clean"
+    )) ?? null;
+  }, [allNotePaths]);
+
+  const beginClipboardOperation = useCallback((target: VaultContextTarget, operation: VaultClipboard["operation"]) => {
+    const unsaved = unsavedPathWithin(target.path);
+    if (unsaved) {
+      toast({
+        title: "Save this note first",
+        message: `${unsaved.split("/").pop() || unsaved} has unsaved changes. Save it before ${operation === "copy" ? "copying" : "moving"}.`,
+        variant: "info",
+      });
+      setVaultContext(null);
+      return;
+    }
+    setVaultClipboard({ target, operation });
+    setVaultContext(null);
+    toast({
+      title: operation === "copy" ? `Copied ${target.name}` : `Ready to move ${target.name}`,
+      message: "Right-click a destination folder and choose Paste here.",
+      variant: "info",
+    });
+  }, [unsavedPathWithin]);
+
+  const applyMovedPath = useCallback((from: string, to: string) => {
+    setActiveNotePath((current) => current ? replaceVaultPath(current, from, to) : null);
+    setEditingFile((current) => current ? replaceVaultPath(current, from, to) : null);
+    window.dispatchEvent(new CustomEvent("husk:vault-path-moved", { detail: { from, to } }));
+  }, []);
+
+  const pasteVaultClipboard = useCallback(async (directory: string) => {
+    const clipboard = vaultClipboard;
+    if (!clipboard) return;
+    setVaultContext(null);
+    const destination = vaultJoin(directory, clipboard.target.name);
+    if (destination === clipboard.target.path) {
+      toast({ title: "Choose a different folder", message: "The item is already in this folder.", variant: "info" });
+      return;
+    }
+    if (clipboard.target.isDirectory && isVaultPathWithin(directory, clipboard.target.path)) {
+      toast({ title: "Choose a different folder", message: "A folder cannot be placed inside itself.", variant: "error" });
+      return;
+    }
+    try {
+      if (clipboard.operation === "copy") {
+        await copyNotePath(clipboard.target.path, destination);
+        toast({ title: `Copied ${clipboard.target.name}`, message: `To ${directory}`, variant: "success" });
+      } else {
+        await moveNotePath(clipboard.target.path, destination);
+        applyMovedPath(clipboard.target.path, destination);
+        setVaultClipboard(null);
+        toast({ title: `Moved ${clipboard.target.name}`, message: `To ${directory}`, variant: "success" });
+      }
+      setExpanded((current) => new Set(current).add(directory));
+      await loadTree();
+      loadLists();
+    } catch {
+      // The store reports the native filesystem error without replacing files.
+    }
+  }, [applyMovedPath, loadLists, loadTree, vaultClipboard]);
+
+  const beginRename = useCallback((target: VaultContextTarget) => {
+    setVaultContext(null);
+    setRenameTarget(target);
+    setRenameName(target.isDirectory ? target.name : noteTitle(target.name));
+  }, []);
+
+  const confirmRename = useCallback(async () => {
+    const target = renameTarget;
+    if (!target) return;
+    const error = vaultNameError(renameName);
+    if (error) {
+      toast({ title: "Enter a valid name", message: error, variant: "error" });
+      return;
+    }
+    const name = normalizedVaultName(target.name, renameName, target.isDirectory);
+    const destination = vaultJoin(vaultParent(target.path), name);
+    if (destination === target.path) {
+      setRenameTarget(null);
+      return;
+    }
+    const unsaved = unsavedPathWithin(target.path);
+    if (unsaved) {
+      toast({ title: "Save this note first", message: `${unsaved.split("/").pop() || unsaved} has unsaved changes.`, variant: "info" });
+      return;
+    }
+    try {
+      await moveNotePath(target.path, destination);
+      applyMovedPath(target.path, destination);
+      setRenameTarget(null);
+      setRenameName("");
+      await loadTree();
+      loadLists();
+      toast({ title: `Renamed to ${name}`, variant: "success" });
+    } catch {
+      // The store reports conflicts and filesystem failures.
+    }
+  }, [applyMovedPath, loadLists, loadTree, renameName, renameTarget, unsavedPathWithin]);
+
+  const copyVaultPath = useCallback(async (path: string) => {
+    setVaultContext(null);
+    try {
+      await writeText(path);
+      toast({ title: "Vault path copied", variant: "success" });
+    } catch (error) {
+      toast({ title: "Could not copy the path", message: String(error), variant: "error" });
+    }
+  }, []);
+
   const renderNode = (node: FileNode, depth: number) => {
     const isExpanded = expanded.has(node.path) || node.expanded;
     const isActive = activeNotePath === node.path;
@@ -551,9 +788,11 @@ export function NotesView({
           {node.isDirectory ? (
             <button
               type="button"
+              data-vault-item
               className="flex h-7 w-full items-center gap-1.5 pr-2 text-left font-mono text-[11px] font-medium text-foreground/90 transition-colors hover:bg-muted/45"
               style={indent}
               onClick={() => toggleExpanded(node.path)}
+              onContextMenu={(event) => openVaultContext(event, { kind: "folder", path: node.path, name: node.name, isDirectory: true })}
             >
               <span className="inline-flex w-3 shrink-0 justify-center text-[9px] text-muted-foreground/60">{isExpanded ? "▾" : "▸"}</span>
               <img src={folderIconUrl(node.name, !!isExpanded)} className="size-3.5 shrink-0" alt="" draggable={false} />
@@ -563,6 +802,7 @@ export function NotesView({
           ) : (
             <button
               type="button"
+              data-vault-item
               className={cn(
                 "flex h-7 w-full items-center gap-1.5 border-l-2 border-transparent pr-2 text-left font-mono text-[11px] text-foreground/80 transition-colors hover:bg-muted/45 hover:text-foreground",
                 isActive && "border-primary bg-primary/[0.08] text-foreground",
@@ -571,6 +811,12 @@ export function NotesView({
               onClick={() => {
                 if (isNoteFile(node.name)) handleOpenNote(node.path);
               }}
+              onContextMenu={(event) => openVaultContext(event, {
+                kind: isNoteFile(node.name) ? "note" : "file",
+                path: node.path,
+                name: node.name,
+                isDirectory: false,
+              })}
               title={isNoteFile(node.name) ? "Open in editor" : node.name}
             >
               <span className="w-3 shrink-0" />
@@ -637,6 +883,7 @@ export function NotesView({
     return (
       <div
         key={item.path}
+        data-vault-item
         className={cn(
           /* Recent notes are list rows, not content-sized chips. Keep the
              selection aligned with the list while tightening each row's
@@ -646,6 +893,7 @@ export function NotesView({
           isActive && pinnedNote && "border-primary bg-primary/[0.08]",
         )}
         onClick={() => handleOpenNote(item.path)}
+        onContextMenu={(event) => openVaultContext(event, { kind: "note", path: item.path, name: item.name, isDirectory: false })}
       >
         <HugeiconsIcon icon={File02Icon} size={13} strokeWidth={1.6} className={cn("shrink-0 text-muted-foreground/65", isActive && "text-primary")} />
         <span className="min-w-0 flex-1">
@@ -857,7 +1105,14 @@ export function NotesView({
       )}
 
       {/* Tree / Search results */}
-      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onContextMenu={(event) => {
+          if ((event.target as HTMLElement).closest("[data-vault-item]")) return;
+          const target = rootContextTarget();
+          if (target) openVaultContext(event, target);
+        }}
+      >
         {loading || searching ? (
           <div className="py-4 text-center text-[11px] text-muted-foreground">{searching ? (lensMode ? "Searching by meaning…" : "Searching…") : "Loading…"}</div>
         ) : searchIsActive ? (
@@ -870,12 +1125,14 @@ export function NotesView({
               {lensResults.map((result) => (
                 <button
                   type="button"
+                  data-vault-item
                   key={result.id}
                   className={cn(
                     "group flex w-full flex-col gap-1 rounded-md border border-transparent px-2 py-2 text-left transition-colors hover:border-primary/25 hover:bg-primary/[0.06]",
                     activeNotePath === result.path && "border-primary/30 bg-primary/[0.07]",
                   )}
                   onClick={() => void handleOpenNote(result.path, result.startLine)}
+                  onContextMenu={(event) => openVaultContext(event, { kind: "note", path: result.path, name: result.name, isDirectory: false })}
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
                     <HugeiconsIcon icon={File02Icon} size={12} className="shrink-0 text-primary" />
@@ -895,11 +1152,13 @@ export function NotesView({
               {searchResults.map((r) => (
                 <div
                   key={r.path}
+                  data-vault-item
                   className={cn(
                     "group flex cursor-pointer flex-col gap-0.5 border-l-2 border-transparent px-2 py-1.5 hover:bg-muted/45",
                     activeNotePath === r.path && "border-primary bg-primary/[0.08]",
                   )}
                   onClick={() => handleOpenNote(r.path)}
+                  onContextMenu={(event) => openVaultContext(event, { kind: "note", path: r.path, name: r.name, isDirectory: false })}
                 >
                   <div className="flex items-center gap-1.5">
                     <HugeiconsIcon icon={File02Icon} size={12} strokeWidth={1.6} className="shrink-0 text-muted-foreground/65" />
@@ -935,7 +1194,144 @@ export function NotesView({
           <span>{allNotePaths.length} notes</span>
           <span className="px-1.5 text-muted-foreground/35">·</span>
           <span>{folderCount} {folderCount === 1 ? "folder" : "folders"}</span>
+          {vaultClipboard && (
+            <button
+              type="button"
+              onClick={() => setVaultClipboard(null)}
+              className="ml-auto flex min-w-0 items-center gap-1 text-primary/75 hover:text-primary"
+              title={`Cancel ${vaultClipboard.operation}: ${vaultClipboard.target.name}`}
+            >
+              <span className="max-w-20 truncate">{vaultClipboard.operation}: {vaultClipboard.target.name}</span>
+              <HugeiconsIcon icon={Cancel01Icon} size={8} className="shrink-0" />
+            </button>
+          )}
         </div>
+      )}
+
+      {vaultContext && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[80]"
+            onClick={() => setVaultContext(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setVaultContext(null);
+            }}
+          />
+          <div
+            role="menu"
+            aria-label={`${vaultContext.target.name} actions`}
+            className={cn(huskContextMenuContentClass, "fixed z-[81] w-[196px]")}
+            style={{ left: vaultContext.x, top: vaultContext.y }}
+          >
+            <div className="husk-context-menu-label truncate">
+              {vaultContext.target.kind === "root" ? "Vault" : vaultContext.target.name}
+            </div>
+
+            {vaultContext.target.kind === "note" && (
+              <>
+                <VaultContextAction icon={FileEditIcon} label="Edit note" onClick={() => { setVaultContext(null); void handleOpenNote(vaultContext.target.path); }} />
+                <VaultContextAction
+                  icon={isNotePinned(vaultContext.target.path) ? PinOffIcon : PinIcon}
+                  label={isNotePinned(vaultContext.target.path) ? "Unpin note" : "Pin note"}
+                  onClick={() => { togglePin(vaultContext.target.path); setVaultContext(null); }}
+                />
+                <VaultContextDivider />
+              </>
+            )}
+
+            {vaultContext.target.isDirectory && (
+              <>
+                <VaultContextAction icon={PlusSignIcon} label="New note here" onClick={() => beginCreate(vaultContext.target.path, "file")} />
+                <VaultContextAction icon={Folder01Icon} label="New folder here" onClick={() => beginCreate(vaultContext.target.path, "folder")} />
+                {vaultClipboard && (
+                  <VaultContextAction
+                    icon={ClipboardPasteIcon}
+                    label={`Paste ${vaultClipboard.operation === "copy" ? "copy" : "move"} here`}
+                    disabled={
+                      vaultJoin(vaultContext.target.path, vaultClipboard.target.name) === vaultClipboard.target.path
+                      || (vaultClipboard.target.isDirectory && isVaultPathWithin(vaultContext.target.path, vaultClipboard.target.path))
+                    }
+                    onClick={() => void pasteVaultClipboard(vaultContext.target.path)}
+                  />
+                )}
+                <VaultContextDivider />
+              </>
+            )}
+
+            {vaultContext.target.kind !== "root" && (
+              <>
+                <VaultContextAction icon={Edit02Icon} label="Rename…" onClick={() => beginRename(vaultContext.target)} />
+                <VaultContextAction icon={Copy01Icon} label="Copy" onClick={() => beginClipboardOperation(vaultContext.target, "copy")} />
+                <VaultContextAction icon={Move01Icon} label="Move…" onClick={() => beginClipboardOperation(vaultContext.target, "move")} />
+                <VaultContextAction icon={Copy01Icon} label="Copy path" onClick={() => void copyVaultPath(vaultContext.target.path)} />
+                <VaultContextDivider />
+                <VaultContextAction
+                  icon={Delete02Icon}
+                  label={vaultContext.target.isDirectory
+                    ? "Delete folder…"
+                    : vaultContext.target.kind === "note" ? "Delete note…" : "Delete file…"}
+                  danger
+                  onClick={() => {
+                    const target = vaultContext.target;
+                    setVaultContext(null);
+                    void handleDelete(target.path, target.name);
+                  }}
+                />
+              </>
+            )}
+
+            {vaultContext.target.kind === "root" && (
+              <VaultContextAction icon={Refresh01Icon} label="Refresh Vault" onClick={() => { setVaultContext(null); void loadTree(); }} />
+            )}
+          </div>
+        </>,
+        document.body,
+      )}
+
+      {renameTarget && createPortal(
+        <div className="sidebar-sheet" onClick={() => setRenameTarget(null)}>
+          <div
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div data-drag-handle className="flex h-9 shrink-0 cursor-move items-center justify-between border-b border-border px-3">
+              <span className="truncate text-xs font-medium">Rename {renameTarget.name}</span>
+              <button
+                type="button"
+                className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => setRenameTarget(null)}
+                aria-label="Cancel rename"
+              >
+                <span className="text-lg leading-none">×</span>
+              </button>
+            </div>
+            <div className="flex flex-col gap-3 p-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-medium text-foreground">Name</label>
+                <Input
+                  value={renameName}
+                  onChange={(event) => setRenameName(event.target.value)}
+                  onFocus={(event) => event.currentTarget.select()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void confirmRename();
+                    if (event.key === "Escape") setRenameTarget(null);
+                  }}
+                  className="h-8 text-[11px]"
+                  autoFocus
+                />
+                {!renameTarget.isDirectory && (
+                  <span className="font-mono text-[9px] text-muted-foreground">The current note extension is kept unless you enter another one.</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" className="h-7 text-[10px]" onClick={() => void confirmRename()}>Rename</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-[10px]" onClick={() => setRenameTarget(null)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        sheetHost(),
       )}
 
       {/* Create modal */}

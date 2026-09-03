@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { runInActiveTerminal } from "../ai/terminalContext";
 import { toast } from "../toast";
 import { shq } from "../lib/shellQuote";
@@ -18,6 +19,9 @@ import {
   Tag01Icon,
   CloudUploadIcon,
   ArrowDown01Icon,
+  Copy01Icon,
+  Delete02Icon,
+  RepeatIcon,
 } from "@hugeicons/core-free-icons";
 import { setActiveSshHost } from "../remote/store";
 import { useConnectedHosts } from "../remote/connectionStore";
@@ -26,10 +30,20 @@ import {
   getRecentConnections,
   recordConnection,
   addConnection,
+  deleteConnection,
+  removeRecentConnection,
   type SshConnection,
 } from "../remote/connectionManager";
 import { ConnectionDialog } from "./ConnectionDialog";
 import { PortForwardDialog } from "./PortForwardDialog";
+import { sshCommandForConnection, sshConnectionAddress } from "./sshCommand";
+import {
+  HuskContextMenu,
+  HuskContextMenuContent,
+  HuskContextMenuItem,
+  HuskContextMenuSeparator,
+  HuskContextMenuTrigger,
+} from "../components/HuskContextMenu";
 
 async function readSshHosts(): Promise<string[]> {
   try {
@@ -110,25 +124,66 @@ export function RemotesView({
   };
 
   const connectSaved = (conn: SshConnection) => {
-    recordConnection(conn.id);
-    let cmd = `ssh`;
-    if (conn.port !== 22) cmd += ` -p ${conn.port}`;
-    if (conn.authType === "key" && conn.privateKeyPath) {
-      cmd += ` -i ${shq(conn.privateKeyPath)}`;
-    }
-    if (conn.jumpHost) {
-      cmd += ` -J ${shq(conn.jumpHost)}`;
-    }
-    // Build target: user@host if user exists, otherwise just host
-    const target = conn.user ? `${conn.user}@${conn.host}` : conn.host;
-    cmd += ` ${shq(target)}`;
-
-    if (runInActiveTerminal(cmd)) {
+    if (runInActiveTerminal(sshCommandForConnection(conn))) {
+      recordConnection(conn.id);
       toast({ title: `ssh ${conn.name}`, variant: "info" });
       onClose?.();
     } else {
       toast({ title: "No active terminal", variant: "error" });
     }
+  };
+
+  const openSftp = (host: string) => {
+    if (!onSftp) return;
+    setActiveSshHost(host);
+    onSftp(host);
+  };
+
+  const editConnection = (id: string) => {
+    setEditingConn(id);
+    setShowConnDialog(true);
+  };
+
+  const duplicateSavedConnection = (connection: SshConnection) => {
+    const base = `${connection.name} copy`;
+    const names = new Set(savedConnections.map((item) => item.name.toLocaleLowerCase()));
+    let name = base;
+    let copyNumber = 2;
+    while (names.has(name.toLocaleLowerCase())) name = `${base} ${copyNumber++}`;
+    addConnection({
+      name,
+      host: connection.host,
+      port: connection.port,
+      user: connection.user,
+      authType: connection.authType,
+      password: connection.password,
+      privateKeyPath: connection.privateKeyPath,
+      passphrase: connection.passphrase,
+      jumpHost: connection.jumpHost,
+      tags: [...connection.tags],
+      color: connection.color,
+    });
+    toast({ title: `Duplicated ${connection.name}`, message: `Saved as ${name}.`, variant: "success" });
+  };
+
+  const copyConnectionText = async (text: string, label: string) => {
+    try {
+      await writeText(text);
+      toast({ title: `${label} copied`, variant: "success" });
+    } catch (error) {
+      toast({ title: `Could not copy ${label.toLocaleLowerCase()}`, message: String(error), variant: "error" });
+    }
+  };
+
+  const removeSavedConnection = (connection: SshConnection) => {
+    if (!confirm(`Delete saved connection “${connection.name}”?`)) return;
+    deleteConnection(connection.id);
+    toast({ title: `Deleted ${connection.name}`, variant: "success" });
+  };
+
+  const forgetRecentConnection = (connection: SshConnection) => {
+    if (!removeRecentConnection(connection.id)) return;
+    toast({ title: `Removed ${connection.name} from Recent`, variant: "success" });
   };
 
   const headerActions = (
@@ -166,6 +221,9 @@ export function RemotesView({
   return (
     <>
       <Modal title="Remotes" icon={DatabaseIcon} context={`${savedConnections.length} saved`} onClose={onClose} inline={inline} headerActions={headerActions}>
+        <HuskContextMenu>
+          <HuskContextMenuTrigger asChild>
+            <div className="min-h-full">
         {/* Quick Connect — Recent */}
         {recentConns.length > 0 && (
           <div className="mb-3">
@@ -175,15 +233,30 @@ export function RemotesView({
             </div>
             <div className="flex flex-wrap gap-1.5">
               {recentConns.map((conn) => (
-                <button
-                  key={conn.id}
-                  onClick={() => connectSaved(conn)}
-                  className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs bg-accent hover:bg-accent/80 transition-colors"
-                  style={conn.color ? { borderLeft: `3px solid ${conn.color}` } : undefined}
-                >
-                  <span className="truncate max-w-[120px]">{conn.name}</span>
-                  <span className="text-muted-foreground">{conn.user}@{conn.host}</span>
-                </button>
+                <HuskContextMenu key={conn.id}>
+                  <HuskContextMenuTrigger asChild>
+                    <button
+                      type="button"
+                      onContextMenu={(event) => event.stopPropagation()}
+                      onClick={() => connectSaved(conn)}
+                      className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs bg-accent hover:bg-accent/80 transition-colors"
+                      style={conn.color ? { borderLeft: `3px solid ${conn.color}` } : undefined}
+                    >
+                      <span className="truncate max-w-[120px]">{conn.name}</span>
+                      <span className="text-muted-foreground">{conn.user}@{conn.host}</span>
+                    </button>
+                  </HuskContextMenuTrigger>
+                  <HuskContextMenuContent title={conn.name}>
+                    <HuskContextMenuItem icon={PlayIcon} onSelect={() => connectSaved(conn)}>Connect in active terminal</HuskContextMenuItem>
+                    {onSftp ? <HuskContextMenuItem icon={FolderUploadIcon} onSelect={() => openSftp(conn.host)}>Open SFTP</HuskContextMenuItem> : null}
+                    <HuskContextMenuItem icon={Settings02Icon} onSelect={() => editConnection(conn.id)}>Edit connection…</HuskContextMenuItem>
+                    <HuskContextMenuSeparator />
+                    <HuskContextMenuItem icon={Copy01Icon} onSelect={() => void copyConnectionText(sshCommandForConnection(conn), "SSH command")}>Copy SSH command</HuskContextMenuItem>
+                    <HuskContextMenuItem icon={Copy01Icon} onSelect={() => void copyConnectionText(sshConnectionAddress(conn), "Address")}>Copy address</HuskContextMenuItem>
+                    <HuskContextMenuSeparator />
+                    <HuskContextMenuItem icon={ClockIcon} onSelect={() => forgetRecentConnection(conn)}>Remove from Recent</HuskContextMenuItem>
+                  </HuskContextMenuContent>
+                </HuskContextMenu>
               ))}
             </div>
           </div>
@@ -232,60 +305,74 @@ export function RemotesView({
         ) : (
           <div className="space-y-1 mb-3">
             {savedConnections.map((conn) => (
-              <div
-                key={conn.id}
-                className="group flex items-center gap-2 rounded px-2 py-1.5 hover:bg-accent/50 transition-colors"
-                style={conn.color ? { borderLeft: `3px solid ${conn.color}` } : undefined}
-              >
-                <button
-                  onClick={() => connectSaved(conn)}
-                  className="flex-1 flex items-center gap-2 min-w-0 text-left"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{conn.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {conn.user}@{conn.host}:{conn.port}
-                      {conn.jumpHost && ` via ${conn.jumpHost}`}
+              <HuskContextMenu key={conn.id}>
+                <HuskContextMenuTrigger asChild>
+                  <div
+                    className="group flex items-center gap-2 rounded px-2 py-1.5 hover:bg-accent/50 transition-colors"
+                    style={conn.color ? { borderLeft: `3px solid ${conn.color}` } : undefined}
+                    onContextMenu={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => connectSaved(conn)}
+                      className="flex-1 flex items-center gap-2 min-w-0 text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{conn.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {conn.user}@{conn.host}:{conn.port}
+                          {conn.jumpHost && ` via ${conn.jumpHost}`}
+                        </div>
+                      </div>
+                      <HugeiconsIcon
+                        icon={ArrowRight01Icon}
+                        size={14}
+                        className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                      />
+                    </button>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {onSftp && (
+                        <button
+                          type="button"
+                          onClick={() => openSftp(conn.host)}
+                          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                          title="Open SFTP"
+                        >
+                          <HugeiconsIcon icon={FolderUploadIcon} size={12} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => editConnection(conn.id)}
+                        className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title="Edit"
+                      >
+                        <HugeiconsIcon icon={Settings02Icon} size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowPfDialog(conn.id)}
+                        className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title="Port Forwards"
+                      >
+                        <HugeiconsIcon icon={Tag01Icon} size={12} />
+                      </button>
                     </div>
                   </div>
-                  <HugeiconsIcon
-                    icon={ArrowRight01Icon}
-                    size={14}
-                    className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                  />
-                </button>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {onSftp && (
-                    <button
-                      onClick={() => {
-                        setActiveSshHost(conn.host);
-                        onSftp(conn.host);
-                      }}
-                      className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title="Open SFTP"
-                    >
-                      <HugeiconsIcon icon={FolderUploadIcon} size={12} />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setEditingConn(conn.id);
-                      setShowConnDialog(true);
-                    }}
-                    className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title="Edit"
-                  >
-                    <HugeiconsIcon icon={Settings02Icon} size={12} />
-                  </button>
-                  <button
-                    onClick={() => setShowPfDialog(conn.id)}
-                    className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title="Port Forwards"
-                  >
-                    <HugeiconsIcon icon={Tag01Icon} size={12} />
-                  </button>
-                </div>
-              </div>
+                </HuskContextMenuTrigger>
+                <HuskContextMenuContent title={conn.name}>
+                  <HuskContextMenuItem icon={PlayIcon} onSelect={() => connectSaved(conn)}>Connect in active terminal</HuskContextMenuItem>
+                  {onSftp ? <HuskContextMenuItem icon={FolderUploadIcon} onSelect={() => openSftp(conn.host)}>Open SFTP</HuskContextMenuItem> : null}
+                  <HuskContextMenuItem icon={Settings02Icon} onSelect={() => editConnection(conn.id)}>Edit connection…</HuskContextMenuItem>
+                  <HuskContextMenuItem icon={RepeatIcon} onSelect={() => duplicateSavedConnection(conn)}>Duplicate</HuskContextMenuItem>
+                  <HuskContextMenuItem icon={Tag01Icon} onSelect={() => setShowPfDialog(conn.id)}>Port forwards…</HuskContextMenuItem>
+                  <HuskContextMenuSeparator />
+                  <HuskContextMenuItem icon={Copy01Icon} onSelect={() => void copyConnectionText(sshCommandForConnection(conn), "SSH command")}>Copy SSH command</HuskContextMenuItem>
+                  <HuskContextMenuItem icon={Copy01Icon} onSelect={() => void copyConnectionText(sshConnectionAddress(conn), "Address")}>Copy address</HuskContextMenuItem>
+                  <HuskContextMenuSeparator />
+                  <HuskContextMenuItem icon={Delete02Icon} danger onSelect={() => removeSavedConnection(conn)}>Delete saved connection…</HuskContextMenuItem>
+                </HuskContextMenuContent>
+              </HuskContextMenu>
             ))}
           </div>
         )}
@@ -309,61 +396,87 @@ export function RemotesView({
             {showSshConfig && (
               <div className="flex flex-col gap-1">
                 {sshConfigOnly.map((h) => (
-                  <div
-                    key={h}
-                    className="group flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/10"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => connect(h)}
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    >
-                      <HugeiconsIcon
-                        icon={DatabaseIcon}
-                        size={14}
-                        strokeWidth={1.75}
-                        className="shrink-0 text-muted-foreground"
-                      />
-                      <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
-                        {h}
-                      </span>
-                      {connectedSet.has(h) && (
-                        <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-green-500" title="Connected" />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      title="Import to Saved"
-                      onClick={() => importHost(h)}
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                    >
-                      <HugeiconsIcon icon={CloudUploadIcon} size={11} strokeWidth={2} />
-                    </button>
-                    <button
-                      type="button"
-                      title="SFTP"
-                      onClick={() => {
-                        setActiveSshHost(h);
-                        onSftp?.(h);
-                      }}
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                    >
-                      <HugeiconsIcon icon={FolderUploadIcon} size={11} strokeWidth={2} />
-                    </button>
-                    <button
-                      type="button"
-                      title="Connect terminal"
-                      onClick={() => connect(h)}
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                    >
-                      <HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} />
-                    </button>
-                  </div>
+                  <HuskContextMenu key={h}>
+                    <HuskContextMenuTrigger asChild>
+                      <div
+                        className="group flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/10"
+                        onContextMenu={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => connect(h)}
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        >
+                          <HugeiconsIcon
+                            icon={DatabaseIcon}
+                            size={14}
+                            strokeWidth={1.75}
+                            className="shrink-0 text-muted-foreground"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
+                            {h}
+                          </span>
+                          {connectedSet.has(h) && (
+                            <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-green-500" title="Connected" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          title="Import to Saved"
+                          onClick={() => importHost(h)}
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                        >
+                          <HugeiconsIcon icon={CloudUploadIcon} size={11} strokeWidth={2} />
+                        </button>
+                        {onSftp ? (
+                          <button
+                            type="button"
+                            title="SFTP"
+                            onClick={() => openSftp(h)}
+                            className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                          >
+                            <HugeiconsIcon icon={FolderUploadIcon} size={11} strokeWidth={2} />
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          title="Connect terminal"
+                          onClick={() => connect(h)}
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                        >
+                          <HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} />
+                        </button>
+                      </div>
+                    </HuskContextMenuTrigger>
+                    <HuskContextMenuContent title={h}>
+                      <HuskContextMenuItem icon={PlayIcon} onSelect={() => connect(h)}>Connect in active terminal</HuskContextMenuItem>
+                      {onSftp ? <HuskContextMenuItem icon={FolderUploadIcon} onSelect={() => openSftp(h)}>Open SFTP</HuskContextMenuItem> : null}
+                      <HuskContextMenuItem icon={CloudUploadIcon} onSelect={() => importHost(h)}>Import to Saved…</HuskContextMenuItem>
+                      <HuskContextMenuSeparator />
+                      <HuskContextMenuItem icon={Copy01Icon} onSelect={() => void copyConnectionText(`ssh ${shq(h)}`, "SSH command")}>Copy SSH command</HuskContextMenuItem>
+                      <HuskContextMenuItem icon={Copy01Icon} onSelect={() => void copyConnectionText(h, "Host")}>Copy host</HuskContextMenuItem>
+                    </HuskContextMenuContent>
+                  </HuskContextMenu>
                 ))}
               </div>
             )}
           </>
         )}
+            </div>
+          </HuskContextMenuTrigger>
+          <HuskContextMenuContent title="Remotes">
+            <HuskContextMenuItem
+              icon={Add01Icon}
+              onSelect={() => {
+                setEditingConn(undefined);
+                setShowConnDialog(true);
+              }}
+            >
+              New connection…
+            </HuskContextMenuItem>
+            <HuskContextMenuItem icon={Refresh01Icon} onSelect={load}>Refresh SSH config</HuskContextMenuItem>
+          </HuskContextMenuContent>
+        </HuskContextMenu>
       </Modal>
 
       {/* Dialogs */}

@@ -98,6 +98,14 @@ export function recordConnection(id: string): void {
   save();
 }
 
+export function removeRecentConnection(id: string): boolean {
+  const conn = connections.find((candidate) => candidate.id === id);
+  if (!conn || !conn.lastConnected) return false;
+  conn.lastConnected = undefined;
+  save();
+  return true;
+}
+
 export function getPortForwards(connectionId?: string): PortForward[] {
   if (connectionId) {
     return portForwards.filter((pf) => pf.connectionId === connectionId);
