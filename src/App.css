@@ -228,6 +228,30 @@ button {
   color: var(--text-strong);
 }
 
+/* Tab colours are identity cues, not borders around the whole tab. The icon,
+   quiet surface tint and bottom spine all share one colour; inactive tabs keep
+   only the subdued spine so neighbouring colours never form broken corners. */
+.husk-tab-chip[data-tab-color="true"] .tab-identity-icon {
+  color: var(--tab-color);
+}
+
+.husk-tab-chip[data-tab-color="true"][data-active-tab="true"] {
+  background-color: color-mix(in srgb, var(--tab-color) 6%, transparent);
+  box-shadow: inset 0 -5px 10px -13px color-mix(in srgb, var(--tab-color) 45%, transparent);
+}
+
+.husk-tab-chip[data-tab-color="true"][data-active-tab="true"] .husk-tab-color-spine {
+  box-shadow: 0 0 3px color-mix(in srgb, var(--tab-color) 45%, transparent);
+}
+
+.husk-tab-chip[data-tab-color="true"]:not([data-active-tab="true"]):hover {
+  background-color: color-mix(in srgb, var(--tab-color) 5%, transparent);
+}
+
+.husk-tab-chip[data-active-tab="true"]:not([data-tab-color="true"]) .tab-identity-icon {
+  color: var(--accent);
+}
+
 .terminal-stack {
   flex: 1 1 0%;
   min-height: 0;

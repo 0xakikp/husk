@@ -61,6 +61,10 @@ type TabChipProps = {
 function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, animate, color, pinned, draggable, onDragStart, onDragOver, onDrop, onDragEnd, dragOver, onMouseDragStart, onMouseDragEnter, onMouseDragEnd, isMouseDragging, children }: TabChipProps) {
   const chipRef = useRef<HTMLDivElement>(null);
   const mouseDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  /* Persisted tab colours use the original Tailwind border-class tokens. Keep
+     accepting those values, but translate them into a real colour variable so
+     the presentation can evolve without invalidating existing preferences. */
+  const tabColor = TAB_COLORS.find((candidate) => candidate.class === color)?.hex;
 
   const handleCloseClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -99,6 +103,8 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
     <div
       ref={chipRef}
       data-active-tab={active ? "true" : undefined}
+      data-tab-color={tabColor ? "true" : undefined}
+      style={tabColor ? ({ "--tab-color": tabColor } as React.CSSProperties) : undefined}
       onClick={onClick}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
@@ -117,12 +123,10 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
            "P…" and the overflow-x-auto on the strip could never engage, because a
            container whose children shrink to fit never overflows. 112px keeps ~10
            characters legible; past that the strip scrolls. */
-        "group relative flex h-6 shrink items-center gap-1 rounded-md text-xs transition-colors min-w-[112px] max-w-[160px] overflow-hidden border-l-2 select-none",
+        "husk-tab-chip group relative flex h-6 shrink items-center gap-1 overflow-hidden rounded-md text-xs transition-[background-color,color,box-shadow] min-w-[112px] max-w-[160px] select-none",
         onClose ? "pr-1" : "pr-2",
-        active ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
+        active ? "bg-muted/80 text-foreground" : "text-muted-foreground hover:bg-muted/35 hover:text-foreground",
         animate && "animate-tab-slide-in",
-        color || "border-l-transparent",
-        color,
         dragOver && "ring-1 ring-primary/50 bg-primary/5",
         draggable && "cursor-grab active:cursor-grabbing",
         isMouseDragging && "opacity-50",
@@ -144,6 +148,66 @@ function TabChip({ active, onClick, onClose, onContextMenu, onDoubleClick, anima
           <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2.25} />
         </div>
       ) : null}
+      {(active || tabColor) && (
+        <span
+          aria-hidden="true"
+          className={cn(
+            "husk-tab-color-spine pointer-events-none absolute inset-x-2 bottom-0 rounded-full transition-[height,opacity,box-shadow] duration-150",
+            active ? "h-[2px] opacity-100" : "h-px opacity-45",
+          )}
+          style={{ backgroundColor: tabColor ?? "var(--accent)" }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TabColorPicker({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange: (color: string | undefined) => void;
+}) {
+  return (
+    <div className="px-2 py-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</span>
+        <button
+          type="button"
+          onClick={() => onChange(undefined)}
+          className="rounded px-1 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          None
+        </button>
+      </div>
+      <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+        {TAB_COLORS.map((color) => {
+          const selected = value === color.class;
+          return (
+            <button
+              key={color.name}
+              type="button"
+              aria-label={`${color.name} tab color`}
+              aria-pressed={selected}
+              onClick={() => onChange(color.class)}
+              className={cn(
+                "group/swatch flex h-6 items-center justify-center rounded-md border bg-card/30 transition-[border-color,background-color,transform] hover:scale-105 hover:bg-muted/70",
+                selected ? "border-foreground/45 bg-muted/80" : "border-border/35",
+              )}
+              title={color.name}
+            >
+              <span
+                className={cn(
+                  "size-3 rounded-full transition-shadow",
+                  selected && "ring-2 ring-foreground/25 ring-offset-1 ring-offset-background",
+                )}
+                style={{ backgroundColor: color.hex }}
+              />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -214,7 +278,6 @@ export function TabBar({
   const [editValue, setEditValue] = useState("");
   const canClose = termTabs.length + openFiles.length > 1;
   const tabBarRef = useRef<HTMLDivElement>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
 
   // Mouse-based drag state (more reliable than HTML5 DnD in Tauri/WebKit)
   const [mouseDrag, setMouseDrag] = useState<{ kind: "term" | "file"; fromIndex: number } | null>(null);
@@ -226,21 +289,13 @@ export function TabBar({
     e.preventDefault();
   };
 
-  // Update sliding indicator position when active tab changes
+  // Reveal the active tab when selection changes.
   useEffect(() => {
     const bar = tabBarRef.current;
     if (!bar) return;
     const activeTab = bar.querySelector('[data-active-tab="true"]') as HTMLElement | null;
-    if (!activeTab) {
-      setIndicatorStyle(null);
-      return;
-    }
-    const barRect = bar.getBoundingClientRect();
+    if (!activeTab) return;
     const tabRect = activeTab.getBoundingClientRect();
-    setIndicatorStyle({
-      left: tabRect.left - barRect.left + 8,
-      width: tabRect.width - 16,
-    });
 
     /* Reveal the active tab. Selecting a tab with Cmd+1..9 or closing one can
        leave the selection off-screen now that the strip scrolls. Done by hand
@@ -301,7 +356,7 @@ export function TabBar({
               setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
             }}
           >
-            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.75} className="shrink-0" />
+            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.75} className="tab-identity-icon shrink-0" />
             <span className="truncate">Husk</span>
           </TabChip>
         )}
@@ -445,7 +500,7 @@ export function TabBar({
               }}
               isMouseDragging={mouseDrag?.kind === "term" && mouseDrag.fromIndex === index}
             >
-              <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={1.75} className="shrink-0" />
+              <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={1.75} className="tab-identity-icon shrink-0" />
               <span className="truncate">{t.title}</span>
             </TabChip>
           ),
@@ -534,7 +589,7 @@ export function TabBar({
               setMenu({ x: e.clientX, y: e.clientY, kind: "ai", id: -1 });
             }}
           >
-            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.75} className="shrink-0" />
+            <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.75} className="tab-identity-icon shrink-0" />
             <span className="truncate">Husk</span>
           </TabChip>
         )}
@@ -549,14 +604,6 @@ export function TabBar({
         >
           <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={1.75} />
         </Button>
-
-        {/* Sliding active tab indicator */}
-        {indicatorStyle && (
-          <span
-            className="absolute bottom-0.5 h-[2px] rounded-full bg-[var(--accent)] opacity-80 transition-all duration-200 ease-out pointer-events-none"
-            style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
-          />
-        )}
 
         {/* Context menu for rename/color/close */}
         {menu
@@ -605,41 +652,13 @@ export function TabBar({
                         <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.75} />
                         <span className="flex-1 text-left">Rename</span>
                       </button>
-                      {/* Color picker */}
-                      <div className="px-2 py-1.5">
-                        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</span>
-                        <div className="mt-1.5 flex flex-wrap gap-1.5">
-                          {TAB_COLORS.map((c) => (
-                            <button
-                              key={c.name}
-                              type="button"
-                              onClick={() => {
-                                onSetTabColor(menu.id, c.class);
-                                setMenu(null);
-                              }}
-                              className={cn(
-                                "size-4 rounded-full ring-1 ring-transparent transition-all hover:scale-110",
-                                termTabs.find((t) => t.id === menu.id)?.color === c.class && "ring-white/60 scale-110"
-                              )}
-                              style={{ backgroundColor: c.hex }}
-                              title={c.name}
-                            />
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onSetTabColor(menu.id, undefined);
-                              setMenu(null);
-                            }}
-                            className="flex size-4 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-muted/80"
-                            title="Clear"
-                          >
-                            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.2">
-                              <path d="M1 1l6 6M7 1L1 7" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
+                      <TabColorPicker
+                        value={termTabs.find((tab) => tab.id === menu.id)?.color}
+                        onChange={(color) => {
+                          onSetTabColor(menu.id, color);
+                          setMenu(null);
+                        }}
+                      />
                     </>
                   ) : menu.kind === "file" ? (
                     <>
@@ -681,41 +700,13 @@ export function TabBar({
                         <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={1.75} />
                         <span className="flex-1 text-left">{aiPinned ? "Unpin" : "Pin"}</span>
                       </button>
-                      {/* Color picker */}
-                      <div className="px-2 py-1.5">
-                        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</span>
-                        <div className="mt-1.5 flex flex-wrap gap-1.5">
-                          {TAB_COLORS.map((c) => (
-                            <button
-                              key={c.name}
-                              type="button"
-                              onClick={() => {
-                                onSetAiTabColor?.(c.class);
-                                setMenu(null);
-                              }}
-                              className={cn(
-                                "size-4 rounded-full ring-1 ring-transparent transition-all hover:scale-110",
-                                aiColor === c.class && "ring-white/60 scale-110"
-                              )}
-                              style={{ backgroundColor: c.hex }}
-                              title={c.name}
-                            />
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onSetAiTabColor?.(undefined);
-                              setMenu(null);
-                            }}
-                            className="flex size-4 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-muted/80"
-                            title="Clear"
-                          >
-                            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.2">
-                              <path d="M1 1l6 6M7 1L1 7" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
+                      <TabColorPicker
+                        value={aiColor}
+                        onChange={(color) => {
+                          onSetAiTabColor?.(color);
+                          setMenu(null);
+                        }}
+                      />
                     </>
                   )}
                   {canClose && menu.kind !== "ai" ? (
