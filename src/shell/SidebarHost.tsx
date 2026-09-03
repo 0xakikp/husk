@@ -14,8 +14,6 @@ const RemotesView = lazy(() => import("../remotes/RemotesView").then((m) => ({ d
 const RunbooksDialog = lazy(() => import("../workflows/RunbooksDialog").then((m) => ({ default: m.RunbooksDialog })));
 const ToolsHubView = lazy(() => import("../tools-hub/ToolsHubView").then((m) => ({ default: m.ToolsHubView })));
 const KubernetesView = lazy(() => import("../kubernetes/KubernetesView").then((m) => ({ default: m.KubernetesView })));
-const CiCdDialog = lazy(() => import("../ci-cd/CiCdDialog").then((m) => ({ default: m.CiCdDialog })));
-const TerraformView = lazy(() => import("../terraform/TerraformView").then((m) => ({ default: m.TerraformView })));
 const DockerView = lazy(() => import("../docker/DockerView").then((m) => ({ default: m.DockerView })));
 const TailscaleView = lazy(() => import("../tailscale/TailscaleView").then((m) => ({ default: m.TailscaleView })));
 const NotesView = lazy(() => import("../notes/NotesView").then((m) => ({ default: m.NotesView })));
@@ -29,8 +27,6 @@ const VIEW_IDS: SidebarViewId[] = [
   "workflows",
   "tools-hub",
   "kubernetes",
-  "ci-cd",
-  "terraform",
   "docker",
   "tailscale",
   "vault",
@@ -132,8 +128,7 @@ export function SidebarHost({
             sidebar simply never got the same treatment.
 
             Mounted on first visit rather than all at once, so opening Husk does
-            not shell out to docker, kubectl and terraform before you ask for
-            them. */}
+            not shell out to Docker or Kubernetes before you ask for them. */}
         <div className="min-h-0 flex-1 overflow-hidden">
           {VIEW_IDS.filter((id) => visited.has(id)).map((id) => (
             <div
@@ -173,10 +168,6 @@ export function SidebarHost({
                   />,
                   "Kubernetes",
                 )
-              ) : id === "ci-cd" ? (
-                lazyPanel(<CiCdDialog inline onBack={() => persistSidebarView("tools-hub")} />, "CI/CD")
-              ) : id === "terraform" ? (
-                lazyPanel(<TerraformView inline onBack={() => persistSidebarView("tools-hub")} />, "Terraform")
               ) : id === "docker" ? (
                 lazyPanel(
                   <DockerView

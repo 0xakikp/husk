@@ -14,9 +14,7 @@ const TotpDialog = lazy(() => import("../totp/TotpDialog").then((m) => ({ defaul
 const JobsDialog = lazy(() => import("../jobs/JobsDialog").then((m) => ({ default: m.JobsDialog })));
 const DockerView = lazy(() => import("../docker/DockerView").then((m) => ({ default: m.DockerView })));
 const KubernetesView = lazy(() => import("../kubernetes/KubernetesView").then((m) => ({ default: m.KubernetesView })));
-const TerraformView = lazy(() => import("../terraform/TerraformView").then((m) => ({ default: m.TerraformView })));
 const GithubIssuesDialog = lazy(() => import("../github-issues/GithubIssuesDialog").then((m) => ({ default: m.GithubIssuesDialog })));
-const CiCdDialog = lazy(() => import("../ci-cd/CiCdDialog").then((m) => ({ default: m.CiCdDialog })));
 const ToolsHubDialog = lazy(() => import("../tools-hub/ToolsHubDialog").then((m) => ({ default: m.ToolsHubDialog })));
 const DiffDialog = lazy(() => import("../diff/DiffDialog").then((m) => ({ default: m.DiffDialog })));
 const PreviewDialog = lazy(() => import("../preview/PreviewDialog").then((m) => ({ default: m.PreviewDialog })));
@@ -59,12 +57,8 @@ export function DialogHost({
   setDockerOpen,
   k8sOpen,
   setK8sOpen,
-  terraformOpen,
-  setTerraformOpen,
   githubOpen,
   setGithubOpen,
-  cicdOpen,
-  setCicdOpen,
   toolsOpen,
   setToolsOpen,
   diffOpen,
@@ -116,12 +110,8 @@ export function DialogHost({
   setDockerOpen: Setter<boolean>;
   k8sOpen: boolean;
   setK8sOpen: Setter<boolean>;
-  terraformOpen: boolean;
-  setTerraformOpen: Setter<boolean>;
   githubOpen: boolean;
   setGithubOpen: Setter<boolean>;
-  cicdOpen: boolean;
-  setCicdOpen: Setter<boolean>;
   toolsOpen: boolean;
   setToolsOpen: Setter<boolean>;
   diffOpen: boolean;
@@ -187,14 +177,8 @@ export function DialogHost({
       <DialogLayer open={k8sOpen}>
         {lazyPanel(<KubernetesView onClose={() => setK8sOpen(false)} onInspectResource={(sel) => onInspectK8sResource(sel)} />, "Kubernetes")}
       </DialogLayer>
-      <DialogLayer open={terraformOpen}>
-        {lazyPanel(<TerraformView onClose={() => setTerraformOpen(false)} />, "Terraform")}
-      </DialogLayer>
       <DialogLayer open={githubOpen}>
         {lazyPanel(<GithubIssuesDialog onClose={() => setGithubOpen(false)} />, "GitHub Issues")}
-      </DialogLayer>
-      <DialogLayer open={cicdOpen}>
-        {lazyPanel(<CiCdDialog onClose={() => setCicdOpen(false)} />, "CI/CD")}
       </DialogLayer>
       <DialogLayer open={toolsOpen}>
         {lazyPanel(<ToolsHubDialog onClose={() => setToolsOpen(false)} />, "Plugins")}

@@ -26,7 +26,6 @@ import {
   AlertCircleIcon,
   DatabaseIcon,
   Database01Icon,
-  Rocket01Icon,
   GlobalIcon,
   GithubIcon,
   FileDiffIcon,
@@ -42,7 +41,6 @@ import {
   CloudIcon,
   PlusSignIcon,
   PlayIcon,
-  FolderCloudIcon,
   CommandIcon,
   DownloadCircle01Icon,
   NotebookIcon,
@@ -156,10 +154,8 @@ const ICON_MAP: Record<string, typeof Search01Icon> = {
   "explain-error": AlertCircleIcon,
   docker: DatabaseIcon,
   k8s: Database01Icon,
-  terraform: Rocket01Icon,
   remotes: GlobalIcon,
   github: GithubIcon,
-  cicd: FolderCloudIcon,
   diff: FileDiffIcon,
   totp: SecurityCheckIcon,
   clipboard: ClipboardIcon,
@@ -255,7 +251,7 @@ function getIcon(id: string, kind: LauncherKind): typeof Search01Icon {
 function getGroup(id: string, label: string): string {
   const lower = `${id} ${label}`.toLowerCase();
   if (lower.includes("ai") || lower.includes("suggest") || lower.includes("explain")) return "AI";
-  if (lower.includes("docker") || lower.includes("k8s") || lower.includes("kubernetes") || lower.includes("terraform") || lower.includes("remotes") || lower.includes("github") || lower.includes("cicd") || lower.includes("aws")) return "Tools";
+  if (lower.includes("docker") || lower.includes("k8s") || lower.includes("kubernetes") || lower.includes("remotes") || lower.includes("github") || lower.includes("aws")) return "Tools";
   if (lower.includes("git") || lower.includes("diff")) return "Git";
   if (lower.includes("explorer") || lower.includes("sidebar") || lower.includes("folder") || lower.includes("file") || lower.includes("zoom")) return "View";
   if (lower.includes("settings") || lower.includes("workflows") || lower.includes("authenticator") || lower.includes("plugins") || lower.includes("install") || lower.includes("jobs") || lower.includes("totp") || lower.includes("clipboard") || lower.includes("terminal") || lower.includes("tab")) return "General";

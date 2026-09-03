@@ -10,9 +10,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   SiKubernetes,
   SiDocker,
-  SiTerraform,
   SiTailscale,
-  SiGithubactions,
 } from "@icons-pack/react-simple-icons";
 import {
   Tooltip,
@@ -28,7 +26,7 @@ import { DevToolsView } from "../dev-tools/DevToolsView";
 /**
  * Real brand marks, from simple-icons via @icons-pack/react-simple-icons —
  * the official paths rather than a generic glyph standing in for each tool
- * (Kubernetes and Terraform were both showing the same database icon).
+ * rather than generic glyphs standing in for each tool.
  *
  * SVG rather than PNG on purpose: these render at 15px in a sidebar, where a
  * raster would soften on a HiDPI display and be stuck at one colour. Paths stay
@@ -54,27 +52,11 @@ const TOOLS: ToolCard[] = [
     status: "ready",
   },
   {
-    id: "ci-cd",
-    name: "CI / CD",
-    description: "Monitor GitHub Actions and GitLab pipelines",
-    Icon: SiGithubactions,
-    brand: "#2088FF",
-    status: "ready",
-  },
-  {
     id: "docker",
     name: "Docker",
     description: "Manage containers and images",
     Icon: SiDocker,
     brand: "#2496ED",
-    status: "ready",
-  },
-  {
-    id: "terraform",
-    name: "Terraform",
-    description: "View workspaces, state, and resources",
-    Icon: SiTerraform,
-    brand: "#844FBA",
     status: "ready",
   },
   {

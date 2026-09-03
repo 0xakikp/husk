@@ -80,7 +80,7 @@ function readSidebarView(): SidebarViewId {
     const stored = window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY);
     const valid: SidebarViewId[] = [
       "explorer", "source-control", "remotes", "workflows", "tools-hub",
-      "kubernetes", "ci-cd", "terraform", "docker", "tailscale", "sftp", "bookmarks", "timeline",
+      "kubernetes", "docker", "tailscale", "sftp", "bookmarks", "timeline",
     ];
     if (stored && valid.includes(stored as SidebarViewId)) return stored as SidebarViewId;
   } catch (e) { console.error("Failed to read sidebar view", e); }
@@ -202,9 +202,7 @@ function App() {
   const explainLastError = () => setExplainCtx({ command: "", output: readActiveTerminal(), exitCode: getActiveTerminalExit() });
   const [dockerOpen, setDockerOpen] = useState(false);
   const [k8sOpen, setK8sOpen] = useState(false);
-  const [terraformOpen, setTerraformOpen] = useState(false);
   const [githubOpen, setGithubOpen] = useState(false);
-  const [cicdOpen, setCicdOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffPaths, setDiffPaths] = useState<{ left: string; right: string } | null>(null);
@@ -614,7 +612,7 @@ function App() {
         keywords: "totp otp 2fa mfa auth code token verification",
         run: () => setTotpOpen(true),
       },
-      { id: "tools", label: "Open plugins", keywords: "integrations plugins extensions tools kubernetes docker terraform", run: () => { cycleSidebarView("tools-hub"); } },
+      { id: "tools", label: "Open plugins", keywords: "integrations plugins extensions tools kubernetes docker tailscale ports dev tools", run: () => { cycleSidebarView("tools-hub"); } },
       { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
       { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
       { id: "open-clipboard", label: "Open clipboard history", hint: "Ctrl/Cmd+Shift+V", run: () => setClipboardOpen(true) },
@@ -639,10 +637,8 @@ function App() {
         : []),
       { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
       { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
-      { id: "terraform", label: "Open Terraform", run: () => setTerraformOpen(true) },
       { id: "remotes", label: "Open Remotes / SSH", run: () => { cycleSidebarView("remotes"); } },
       { id: "github", label: "Open GitHub", run: () => setGithubOpen(true) },
-      { id: "cicd", label: "Open CI / CD", run: () => setCicdOpen(true) },
       { id: "diff", label: "Open diff viewer", run: () => { setDiffPaths(null); setDiffOpen(true); } },
       { id: "cloud-sync", label: "Cloud sync (export/import)", run: () => setCloudSyncOpen(true) },
       { id: "source-control", label: "Open source control", run: () => { cycleSidebarView("source-control"); } },
@@ -1321,12 +1317,8 @@ function App() {
           setDockerOpen={setDockerOpen}
           k8sOpen={k8sOpen}
           setK8sOpen={setK8sOpen}
-          terraformOpen={terraformOpen}
-          setTerraformOpen={setTerraformOpen}
           githubOpen={githubOpen}
           setGithubOpen={setGithubOpen}
-          cicdOpen={cicdOpen}
-          setCicdOpen={setCicdOpen}
           toolsOpen={toolsOpen}
           setToolsOpen={setToolsOpen}
           diffOpen={diffOpen}

@@ -20,8 +20,6 @@ export type SidebarViewId =
   | "timeline"
   | "tools-hub"
   | "kubernetes"
-  | "ci-cd"
-  | "terraform"
   | "docker"
   | "tailscale"
   | "sftp"
