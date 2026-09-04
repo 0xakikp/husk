@@ -934,12 +934,12 @@
   padding-right: 4px;
   flex: 1 1 0%;
   min-height: 0;
-  font-size: 12px;
+  font-size: var(--composer-font-size, 12px);
   line-height: 1.5;
 }
 
 .composer-full .composer-messages {
-  font-size: 13px;
+  font-size: var(--composer-font-size, 12px);
   line-height: 1.6;
   gap: 14px;
 }
@@ -1019,16 +1019,26 @@
   text-overflow: ellipsis;
 }
 
+.msg-time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  font-family: var(--wb-mono);
+  font-size: 9px;
+  white-space: nowrap;
+  transition: opacity 0.14s ease;
+}
+
 .msg-block-body {
   padding: 3px 0 4px 12px;
-  font-size: 12px;
+  font-size: var(--composer-font-size, 12px);
   line-height: 1.55;
   color: color-mix(in srgb, var(--foreground) 92%, transparent);
   border-left: 2px solid transparent;
 }
 
 .composer-full .msg-block-body {
-  font-size: 13px;
+  font-size: var(--composer-font-size, 12px);
   line-height: 1.6;
   padding: 3px 0 5px 13px;
 }
@@ -1245,6 +1255,7 @@
 /* ── Compact single-line message rows ───────────────────────────────────── */
 
 .msg-block-compact {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1274,7 +1285,7 @@
 .msg-compact-text {
   flex: 1;
   min-width: 0;
-  font-size: 11.5px;
+  font-size: var(--composer-font-size, 12px);
   color: color-mix(in srgb, var(--foreground) 90%, transparent);
   white-space: nowrap;
   overflow: hidden;
@@ -1282,19 +1293,33 @@
 }
 
 .msg-block-compact .msg-meta {
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .msg-compact-actions {
+  position: absolute;
+  top: 50%;
+  right: 0;
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--background) 94%, transparent);
   opacity: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
   transition: opacity 0.15s ease;
 }
 
-.msg-block-compact:hover .msg-compact-actions {
+.msg-block-compact:hover .msg-compact-actions,
+.msg-block-compact:focus-within .msg-compact-actions {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.msg-block-compact:hover .msg-time,
+.msg-block-compact:focus-within .msg-time {
+  opacity: 0;
 }
 
 .msg-act-sm {
@@ -2010,13 +2035,13 @@
   overflow-x: auto;
   padding: 8px 10px;
   font-family: var(--wb-mono);
-  font-size: 10px;
+  font-size: var(--composer-font-size, 12px);
   line-height: 1.45;
   color: color-mix(in srgb, var(--foreground) 88%, transparent);
 }
 
 .composer-full .composer-code-pre {
-  font-size: 11px;
+  font-size: var(--composer-font-size, 12px);
   line-height: 1.5;
 }
 
@@ -2416,7 +2441,7 @@
   box-shadow: none;
   color: var(--foreground);
   font-family: var(--wb-mono);
-  font-size: 12px;
+  font-size: var(--composer-font-size, 12px);
   line-height: 1.5;
   /* Height is set from the content in TerminalAiComposer. Keeping this
      unrestricted lets the docked/full limits be applied deliberately there. */
@@ -2425,7 +2450,7 @@
 }
 
 .composer-full .composer-textarea {
-  font-size: 12.5px;
+  font-size: var(--composer-font-size, 12px);
 }
 
 .composer-textarea:focus,
@@ -2864,7 +2889,7 @@
    Message text keeps its normal reading size; the space comes from repeated
    metadata, padding, and action rows. Pointer users reveal actions on hover,
    while keyboard focus and touch layouts keep every control reachable. */
-@container (max-width: 520px) {
+@container (max-width: 640px) {
   .composer-dock-side {
     gap: 7px;
     padding: 8px 9px 7px;
@@ -2885,7 +2910,7 @@
 
   .composer-dock-side .msg-block-head {
     gap: 6px;
-    padding: 0 72px 3px 9px;
+    padding: 0 2px 3px 9px;
   }
 
   .composer-dock-side .msg-block-body {
@@ -2917,6 +2942,14 @@
     pointer-events: auto;
   }
 
+  /* The timestamp owns the far-right edge until message actions are needed.
+     The hover toolbar then replaces it instead of permanently consuming chat
+     width, which previously left the clock stranded around the middle. */
+  .composer-dock-side .msg-block:not(.msg-block-compact):hover .msg-time,
+  .composer-dock-side .msg-block:not(.msg-block-compact):focus-within .msg-time {
+    opacity: 0;
+  }
+
   .composer-dock-side .msg-block-foot .msg-act {
     min-width: 22px;
     justify-content: center;
@@ -2946,12 +2979,20 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     margin-left: 2px;
     padding: 0;
-    border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
-    border-radius: 5px;
+    border: 0;
+    border-radius: 3px;
+    color: color-mix(in srgb, var(--muted-foreground) 72%, transparent);
+    transition: color .14s ease, background .14s ease;
+  }
+
+  .composer-dock-side .ai-reply-trace-summary:hover .ai-reply-trace-summary-details,
+  .composer-dock-side .ai-reply-trace-summary:focus-visible .ai-reply-trace-summary-details {
+    background: color-mix(in srgb, var(--muted) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 82%, transparent);
   }
 
   .composer-dock-side .ai-reply-trace-summary-details-label {
@@ -2974,9 +3015,13 @@
 }
 
 @media (hover: none), (pointer: coarse) {
-  @container (max-width: 520px) {
+  @container (max-width: 640px) {
     .composer-dock-side .msg-block-head {
       padding-right: 9px;
+    }
+
+    .composer-dock-side .msg-block:not(.msg-block-compact) .msg-time {
+      opacity: 1;
     }
 
     .composer-dock-side .msg-block-foot {
@@ -2992,6 +3037,13 @@
     }
 
     .composer-dock-side .msg-compact-actions {
+      position: static;
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+
+    .composer-dock-side .msg-block-compact .msg-time {
       opacity: 1;
     }
   }

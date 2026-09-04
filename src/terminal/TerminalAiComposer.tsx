@@ -16,10 +16,10 @@ import {
   Folder01Icon,
   NotebookIcon,
   Refresh01Icon,
-  InformationCircleIcon,
+  MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../lib/utils";
-import { getPrefs, usePrefs, setPrefs } from "../settings/preferences";
+import { getPrefs, resolveAiConversationFontSize, usePrefs, setPrefs } from "../settings/preferences";
 import { loadConfig, getKey, useConfig } from "../ai/store";
 import { getProvider } from "../ai/providers";
 import { ModelSwitcher } from "../ai/ModelSwitcher";
@@ -373,8 +373,8 @@ function AiReplyTraceRow({ trace }: { trace: AiReplyTrace }) {
         <span className="ai-reply-trace-summary-details">
           <span className="ai-reply-trace-summary-details-label">{expanded ? "Hide" : "Details"} {expanded ? "▴" : "▾"}</span>
           <HugeiconsIcon
-            icon={InformationCircleIcon}
-            size={11}
+            icon={MoreHorizontalIcon}
+            size={12}
             strokeWidth={1.8}
             className="ai-reply-trace-summary-details-icon"
             aria-hidden="true"
@@ -2837,7 +2837,7 @@ export function TerminalAiComposer({
         ...panelStyle,
         borderRadius: dockSide ? undefined : gap && variant !== "full" ? '16px' : variant !== "full" ? '16px 16px 0 0' : '0',
         '--composer-opacity': prefs.aiMiniOpacity / 100,
-        '--composer-font-size': `${prefs.aiMiniFontSize}px`,
+        '--composer-font-size': `${resolveAiConversationFontSize(prefs)}px`,
         '--composer-bg-color': prefs.aiComposerBgColor,
         '--composer-bg-blur': `${prefs.aiMiniBgBlur}px`,
         '--composer-bg-dim': prefs.aiMiniBgDim / 100,
@@ -3332,11 +3332,11 @@ export function TerminalAiComposer({
               ? new Date(msg.timestamp).toLocaleTimeString(undefined, { hour12: false })
               : "";
             const isCompact =
-              !isUser &&
+              (dockSide || !isUser) &&
               codeBlocks.length === 0 &&
               diffBlocks.length === 0 &&
               !tree &&
-              !msg.trace &&
+              (!msg.trace || Boolean(msg.streaming)) &&
               !msg.content.includes("\n") &&
               msg.content.trim().length <= 80;
             if (isCompact) {
@@ -3344,7 +3344,7 @@ export function TerminalAiComposer({
                 <div
                   key={i}
                   className={cn("msg-block msg-block-compact", isUser ? "msg-block-user" : "msg-block-ai")}
-                  onContextMenu={msg.streaming ? undefined : (event) => openResponseContextMenu(event, msg.content, i)}
+                  onContextMenu={isUser || msg.streaming ? undefined : (event) => openResponseContextMenu(event, msg.content, i)}
                 >
                   <span
                     className={cn(
@@ -3358,8 +3358,8 @@ export function TerminalAiComposer({
                   <span className="msg-compact-text">
                     {msg.content.trim() ? msg.content : msg.streaming ? <LoadingIndicator /> : ""}
                   </span>
-                  {timeLabel && <span className="msg-meta">{timeLabel}</span>}
-                  <span className="msg-compact-actions">
+                  {timeLabel && <span className="msg-time">{timeLabel}</span>}
+                  {!msg.streaming && <span className="msg-compact-actions">
                     <button
                       type="button"
                       onClick={() => copyMessage(msg.content, i)}
@@ -3370,7 +3370,13 @@ export function TerminalAiComposer({
                       {msgCopiedIdx === i ? "✓" : "⧉"}
                     </button>
                     {isUser ? (
-                      <button type="button" onClick={() => editMessage(msg.content)} className="msg-act msg-act-sm">
+                      <button
+                        type="button"
+                        onClick={() => editMessage(msg.content)}
+                        className="msg-act msg-act-sm"
+                        aria-label="Edit message"
+                        title="Edit message"
+                      >
                         ✎
                       </button>
                     ) : (
@@ -3386,12 +3392,18 @@ export function TerminalAiComposer({
                             <HugeiconsIcon icon={NotebookIcon} size={10} strokeWidth={1.7} />
                           </button>
                         )}
-                        <button type="button" onClick={() => redoMessage(i)} className="msg-act msg-act-sm">
+                        <button
+                          type="button"
+                          onClick={() => redoMessage(i)}
+                          className="msg-act msg-act-sm"
+                          aria-label="Regenerate response"
+                          title="Regenerate response"
+                        >
                           ↻
                         </button>
                       </>
                     )}
-                  </span>
+                  </span>}
                 </div>
               );
             }
@@ -3411,11 +3423,12 @@ export function TerminalAiComposer({
                   >
                     {isUser ? "you" : activeAgentName.toLowerCase()}
                   </span>
-                  <span className="msg-meta">
-                    {isUser
-                      ? timeLabel
-                      : `${(msg.trace?.modelLabel || cfg.model || provider.defaultModel).toLowerCase()}${timeLabel ? ` · ${timeLabel}` : ""}`}
-                  </span>
+                  {!isUser && (
+                    <span className="msg-meta">
+                      {(msg.trace?.modelLabel || cfg.model || provider.defaultModel).toLowerCase()}
+                    </span>
+                  )}
+                  {timeLabel && <span className="msg-time">{timeLabel}</span>}
                 </div>
                 <div className="msg-block-body">
                   {isUser ? (
@@ -3443,7 +3456,7 @@ export function TerminalAiComposer({
                 </div>
                 <div className={cn("msg-block-after", !isUser && msg.trace && "has-trace")}>
                   {!isUser && msg.trace && <AiReplyTraceRow trace={msg.trace} />}
-                  <div className="msg-block-foot">
+                  {!msg.streaming && <div className="msg-block-foot">
                     <button
                       type="button"
                       onClick={() => copyMessage(msg.content, i)}
@@ -3491,7 +3504,7 @@ export function TerminalAiComposer({
                         </button>
                       </>
                     )}
-                  </div>
+                  </div>}
                 </div>
               </div>
             );

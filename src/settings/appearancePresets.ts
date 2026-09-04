@@ -15,6 +15,7 @@ type AppearancePrefs = Pick<
   | "activePanelGlow"
   | "editorWallpaperOpacity"
   | "aiMiniOpacity"
+  | "aiFontSizeMode"
   | "aiMiniFontSize"
   | "aiMiniBgBlur"
   | "aiMiniBgDim"
@@ -109,6 +110,7 @@ const APPEARANCE_KEYS: (keyof AppearancePrefs)[] = [
   "activePanelGlow",
   "editorWallpaperOpacity",
   "aiMiniOpacity",
+  "aiFontSizeMode",
   "aiMiniFontSize",
   "aiMiniBgBlur",
   "aiMiniBgDim",

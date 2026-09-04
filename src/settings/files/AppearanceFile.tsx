@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { usePrefs, setPrefs } from "../preferences";
+import { resolveAiConversationFontSize, usePrefs, setPrefs, type AiFontSizeMode } from "../preferences";
 import {
   allPresets,
   applyAppearancePreset,
@@ -65,6 +65,7 @@ function AppearanceControl({
 
 export function AppearanceFile() {
   const p = usePrefs();
+  const aiConversationFontSize = resolveAiConversationFontSize(p);
   /* Custom presets are mirrored from config.toml into the synchronous browser
      cache, so a tick forces the list to re-read after a save or delete. */
   const [presetTick, setPresetTick] = useState(0);
@@ -289,7 +290,26 @@ export function AppearanceFile() {
           <div className="appearance-control-grid">
             <AppearanceControl label="Dock" description="Which side the AI panel sits on, in both the terminal and editor."><CfgEnum<"left" | "right"> value={p.aiPanelDock} onChange={(aiPanelDock) => setPrefs({ aiPanelDock })} options={[{ value: "left", label: "Left" }, { value: "right", label: "Right" }]} /></AppearanceControl>
             <AppearanceControl label="Opacity" description="Composer background transparency."><CfgSlider value={p.aiMiniOpacity} min={10} max={100} step={5} onChange={(aiMiniOpacity) => setPrefs({ aiMiniOpacity })} /></AppearanceControl>
-            <AppearanceControl label="Text size" description="AI composer text size, in pixels."><CfgSlider value={p.aiMiniFontSize} min={9} max={18} step={1} unit="px" onChange={(aiMiniFontSize) => setPrefs({ aiMiniFontSize })} /></AppearanceControl>
+            <AppearanceControl
+              label="Conversation text"
+              description={p.aiFontSizeMode === "terminal"
+                ? `${aiConversationFontSize}px now — one pixel below terminal text, kept between 12–15px.`
+                : `${aiConversationFontSize}px custom size for messages, input, and code.`}
+            >
+              <CfgEnum<AiFontSizeMode>
+                value={p.aiFontSizeMode}
+                onChange={(aiFontSizeMode) => setPrefs({ aiFontSizeMode })}
+                options={[
+                  { value: "terminal", label: "Follow terminal −1px" },
+                  { value: "custom", label: "Custom" },
+                ]}
+              />
+            </AppearanceControl>
+            {p.aiFontSizeMode === "custom" && (
+              <AppearanceControl label="Custom text size" description="Used for AI messages, the composer input, and code blocks.">
+                <CfgSlider value={p.aiMiniFontSize} min={9} max={18} step={1} unit="px" onChange={(aiMiniFontSize) => setPrefs({ aiMiniFontSize })} />
+              </AppearanceControl>
+            )}
             <AppearanceControl label="Background blur" description="Blur behind the AI composer."><CfgSlider value={p.aiMiniBgBlur} min={0} max={20} step={1} unit="px" onChange={(aiMiniBgBlur) => setPrefs({ aiMiniBgBlur })} /></AppearanceControl>
             <AppearanceControl label="Background dim" description="Darken behind the AI composer so text stays readable over a wallpaper."><CfgSlider value={p.aiMiniBgDim} min={0} max={90} step={5} onChange={(aiMiniBgDim) => setPrefs({ aiMiniBgDim })} /></AppearanceControl>
             <AppearanceControl label="Background style" description="Follow the theme, use a gradient, or a solid colour."><CfgEnum value={p.aiComposerBgStyle} onChange={(aiComposerBgStyle) => setPrefs({ aiComposerBgStyle })} options={[{ value: "default", label: "Default" }, { value: "gradient", label: "Gradient" }, { value: "solid", label: "Solid" }]} /></AppearanceControl>

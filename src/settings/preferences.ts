@@ -10,6 +10,7 @@ export type LineNumbers = "on" | "off" | "relative";
 export type RenderWhitespace = "none" | "boundary" | "all";
 export type LineHighlight = "none" | "line" | "gutter" | "all";
 export type AiResponseStyle = "concise" | "balanced" | "detailed";
+export type AiFontSizeMode = "terminal" | "custom";
 
 export type BackgroundSettings = {
   enabled: boolean;
@@ -132,6 +133,8 @@ export type Prefs = {
 
   // AI Composer
   aiMiniOpacity: number;
+  /** Follow the terminal at one pixel smaller, or use aiMiniFontSize exactly. */
+  aiFontSizeMode: AiFontSizeMode;
   aiMiniFontSize: number;
   aiMiniBgBlur: number;
   aiMiniBgDim: number;
@@ -288,7 +291,8 @@ const DEFAULT: Prefs = {
   editorWallpaperOpacity: 0,
 
   aiMiniOpacity: 35,
-  aiMiniFontSize: 11,
+  aiFontSizeMode: "terminal",
+  aiMiniFontSize: 12,
   aiMiniBgBlur: 14,
   aiMiniBgDim: 50,
   aiComposerBgStyle: "default",
@@ -309,6 +313,14 @@ function mergePrefs(saved: Partial<Prefs> & { aiTtsVoice?: unknown }): Prefs {
   // carrying a dead setting forward into localStorage or config.toml.
   const { aiTtsVoice: _legacyTtsVoice, ...current } = saved;
   const merged = { ...DEFAULT, ...current };
+  /* Before this mode existed, 11px was Husk's shipped AI size. Treat that
+     untouched legacy value as the new readable follow-terminal default, while
+     preserving every value a user had deliberately changed as Custom. */
+  if (current.aiFontSizeMode !== "terminal" && current.aiFontSizeMode !== "custom") {
+    merged.aiFontSizeMode = typeof current.aiMiniFontSize === "number" && current.aiMiniFontSize !== 11
+      ? "custom"
+      : "terminal";
+  }
   /* Shallow merge alone would let a stored nested object (e.g. background)
      permanently hide keys added to the defaults later — deep-merge those. */
   merged.background = { ...DEFAULT.background, ...(current.background ?? {}) };
@@ -414,4 +426,13 @@ export function subscribePrefs(fn: () => void): () => void {
 
 export function usePrefs(): Prefs {
   return useSyncExternalStore(subscribePrefs, getPrefs);
+}
+
+export function resolveAiConversationFontSize(
+  prefs: Pick<Prefs, "terminalFontSize" | "aiFontSizeMode" | "aiMiniFontSize">,
+): number {
+  if (prefs.aiFontSizeMode === "custom") {
+    return Math.min(18, Math.max(9, Math.round(prefs.aiMiniFontSize)));
+  }
+  return Math.min(15, Math.max(12, Math.round(prefs.terminalFontSize) - 1));
 }
