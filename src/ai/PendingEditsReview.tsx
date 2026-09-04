@@ -158,7 +158,7 @@ export function AppliedEditsActivity({ sessionId }: { sessionId?: string }) {
         <span className="pe-dock-note">undo is available while unchanged</span>
         <span className="pe-spacer" />
         <button type="button" className="pe-btn" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? "collapse" : "review"}
+          {expanded ? "hide diff" : "show diff"}
         </button>
         <button type="button" className="pe-btn" onClick={() => void undoLatest()} disabled={undoingLatest}>
           {undoingLatest ? "undoing…" : "undo latest"}

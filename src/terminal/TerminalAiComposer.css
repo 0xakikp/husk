@@ -1049,13 +1049,57 @@
   background: transparent;
 }
 
+.msg-block-after {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+}
+
 .msg-block-foot {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 3px;
   padding: 6px 0 0 13px;
   border-top: 0;
   background: transparent;
+}
+
+.msg-block-after.has-trace .ai-reply-trace {
+  display: contents;
+}
+
+.msg-block-after.has-trace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 6px;
+  padding: 5px 0 0 13px;
+}
+
+.msg-block-after.has-trace .ai-reply-trace-summary {
+  grid-column: 1;
+  grid-row: 1;
+  height: 20px;
+  padding-block: 0;
+}
+
+.msg-block-after.has-trace .ai-reply-trace-details {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.msg-block-after.has-trace .msg-block-foot {
+  grid-column: 2;
+  grid-row: 1;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+}
+
+.msg-block-after.has-trace .msg-block-foot .msg-act {
+  padding-block: 1px;
 }
 
 /* Every completed assistant answer carries a terse evidence row. It makes
@@ -1104,10 +1148,14 @@
 
 .ai-reply-trace-summary-details {
   flex: 0 0 auto;
-  margin-left: auto;
+  margin-left: 2px;
   padding: 0 3px;
   color: var(--primary);
   white-space: nowrap;
+}
+
+.ai-reply-trace-summary-details-icon {
+  display: none;
 }
 
 .ai-reply-trace-details {
@@ -1136,6 +1184,9 @@
 }
 
 .msg-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-family: var(--wb-mono);
   font-size: 9.5px;
   color: color-mix(in srgb, var(--muted-foreground) 82%, transparent);
@@ -1144,6 +1195,10 @@
   border-radius: 5px;
   padding: 3px 6px;
   transition: all 0.15s ease;
+}
+
+.msg-act-icon {
+  flex: 0 0 auto;
 }
 
 .msg-act:hover {
@@ -2803,6 +2858,143 @@
   border-color: color-mix(in srgb, var(--primary) 28%, transparent);
   background: color-mix(in srgb, var(--primary) 12%, transparent);
   color: var(--primary);
+}
+
+/* Compact conversation chrome when the side composer is deliberately narrow.
+   Message text keeps its normal reading size; the space comes from repeated
+   metadata, padding, and action rows. Pointer users reveal actions on hover,
+   while keyboard focus and touch layouts keep every control reachable. */
+@container (max-width: 520px) {
+  .composer-dock-side {
+    gap: 7px;
+    padding: 8px 9px 7px;
+  }
+
+  .composer-dock-side .composer-header {
+    padding-bottom: 6px;
+  }
+
+  .composer-dock-side .composer-messages {
+    gap: 8px;
+    padding-right: 2px;
+  }
+
+  .composer-dock-side .msg-block {
+    position: relative;
+  }
+
+  .composer-dock-side .msg-block-head {
+    gap: 6px;
+    padding: 0 72px 3px 9px;
+  }
+
+  .composer-dock-side .msg-block-body {
+    padding: 1px 0 2px 9px;
+    line-height: 1.5;
+  }
+
+  .composer-dock-side .msg-block-foot {
+    position: absolute;
+    z-index: 2;
+    top: -3px;
+    right: 0;
+    gap: 1px;
+    padding: 1px 2px;
+    border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--background) 94%, transparent);
+    opacity: 0;
+    transform: translateY(-2px);
+    pointer-events: none;
+    transition: opacity .14s ease, transform .14s ease, border-color .14s ease;
+  }
+
+  .composer-dock-side .msg-block:hover .msg-block-foot,
+  .composer-dock-side .msg-block:focus-within .msg-block-foot {
+    border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .composer-dock-side .msg-block-foot .msg-act {
+    min-width: 22px;
+    justify-content: center;
+    gap: 0;
+    padding: 2px 5px;
+  }
+
+  .composer-dock-side .msg-block-foot .msg-act-label {
+    display: none;
+  }
+
+  .composer-dock-side .ai-reply-trace {
+    margin: 3px 0 0 9px;
+    max-width: calc(100% - 9px);
+  }
+
+  .composer-dock-side .msg-block-after.has-trace {
+    padding: 3px 0 0 9px;
+  }
+
+  .composer-dock-side .ai-reply-trace-summary {
+    gap: 3px;
+    padding-block: 1px;
+  }
+
+  .composer-dock-side .ai-reply-trace-summary-details {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-left: 2px;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+    border-radius: 5px;
+  }
+
+  .composer-dock-side .ai-reply-trace-summary-details-label {
+    display: none;
+  }
+
+  .composer-dock-side .ai-reply-trace-summary-details-icon {
+    display: block;
+  }
+
+  .composer-dock-side .msg-block-compact {
+    gap: 6px;
+    padding-block: 2px;
+    padding-left: 8px;
+  }
+
+  .composer-dock-side .msg-compact-actions {
+    gap: 1px;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  @container (max-width: 520px) {
+    .composer-dock-side .msg-block-head {
+      padding-right: 9px;
+    }
+
+    .composer-dock-side .msg-block-foot {
+      position: static;
+      justify-content: flex-end;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+
+    .composer-dock-side .msg-compact-actions {
+      opacity: 1;
+    }
+  }
 }
 
 /* The dock can be deliberately narrow. Do not squeeze five long labels into
