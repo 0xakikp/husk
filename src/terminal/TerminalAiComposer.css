@@ -909,6 +909,24 @@
   color: var(--foreground);
 }
 
+/* Returning from the full conversation is part of the header navigation, not
+   a separate call-to-action. Keep it quiet until hover so it sits naturally
+   beside the other compact header controls. */
+.composer-return-terminal-btn {
+  height: 22px;
+  border-color: transparent;
+  border-radius: 5px;
+  padding-inline: 5px;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted-foreground) 74%, transparent);
+}
+
+.composer-return-terminal-btn:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--muted) 48%, transparent);
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+}
+
 /* A full-screen conversation is a workspace surface, not a modal. Keep a
    labelled way back to the shell when there is room, then retain the familiar
    terminal icon (and its tooltip) when the window is narrow. */

@@ -25,6 +25,7 @@ import {
   ensureSession,
   updateSession,
   isTabSessionId,
+  type AiSession,
 } from "./sessionStore";
 import { getPendingEdits, subscribePendingEdits } from "./pendingEdits";
 
@@ -65,7 +66,7 @@ export function AiTabPanel({
   onReturnToTerminal,
   onClose,
 }: {
-  onReturnToTerminal: () => void;
+  onReturnToTerminal: (session: AiSession) => void;
   onClose: () => void;
 }) {
   const sessions = useSessions();
@@ -394,7 +395,7 @@ export function AiTabPanel({
             registerOpen={false}
             registerSend={false}
             onShowSessionList={focusMode ? () => setFocusMode(false) : undefined}
-            onReturnToTerminal={onReturnToTerminal}
+            onReturnToTerminal={() => onReturnToTerminal(activeSession)}
             onCloseFull={onClose}
           />
         ) : (

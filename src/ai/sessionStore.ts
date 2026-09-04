@@ -70,6 +70,37 @@ const subscribers = new Set<() => void>();
 let activeSessionId: string | null = null;
 const activeSubscribers = new Set<() => void>();
 
+/** Names assigned by Husk before a conversation has established a topic. */
+const PLACEHOLDER_NAME = /^(new ai chat|ai chat|general chat|tab \d+|terminal \d+)$/i;
+
+const LOW_SIGNAL_OPENING = /^(hi|hello|hey|yo|test|testing|thanks|thank you|yes|no|ok|okay|how are you|who are you)[!?.\s]*$/i;
+
+/** First line of a user request, trimmed to fit the sidebar. */
+function titleFrom(text: string): string {
+  const line = text
+    .split("\n")
+    .map((value) => value.trim())
+    .find((value) => value.length > 0);
+  if (!line) return "";
+  const clean = line.replace(/^[/>#\s-]+/, "").trim();
+  if (clean.length === 0) return "";
+  return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
+}
+
+/** Keep terminal identity in the session id/source while giving the visible
+ * conversation a useful name. A greeting remains "General chat" until a
+ * substantive request arrives, at which point it can still be replaced. */
+export function automaticSessionName(currentName: string, messages: AiMessage[]): string {
+  if (!PLACEHOLDER_NAME.test(currentName.trim())) return currentName;
+  const userMessages = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content.trim())
+    .filter(Boolean);
+  if (userMessages.length === 0) return currentName;
+  const meaningful = userMessages.find((message) => !LOW_SIGNAL_OPENING.test(message));
+  return titleFrom(meaningful || "") || "General chat";
+}
+
 function loadSessions() {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -78,11 +109,17 @@ function loadSessions() {
     if (Array.isArray(parsed.sessions)) {
       sessions.clear();
       for (const s of parsed.sessions) {
-        if (s.id) sessions.set(s.id, {
-          ...s,
-          remoteWorkspace: normalizeRemoteWorkspace(s.remoteWorkspace),
-          task: restoreAiTask(s.task),
-        });
+        if (s.id) {
+          const restored = {
+            ...s,
+            remoteWorkspace: normalizeRemoteWorkspace(s.remoteWorkspace),
+            task: restoreAiTask(s.task),
+          };
+          sessions.set(s.id, {
+            ...restored,
+            name: automaticSessionName(restored.name, restored.messages),
+          });
+        }
       }
       if (activeSessionId === null && parsed.activeSessionId && sessions.has(parsed.activeSessionId)) {
         activeSessionId = parsed.activeSessionId;
@@ -161,36 +198,14 @@ export function setSessionInput(id: string, input: string) {
   updateSession(id, (s) => ({ ...s, input }));
 }
 
-/** Names auto-assign to "New AI Chat", "AI Chat", "Tab N" and "Terminal N". */
-const PLACEHOLDER_NAME = /^(new ai chat|ai chat|tab \d+|terminal \d+)$/i;
-
-/** First line of the user's opening message, trimmed to fit the sidebar. */
-function titleFrom(text: string): string {
-  const line = text
-    .split("\n")
-    .map((l) => l.trim())
-    .find((l) => l.length > 0);
-  if (!line) return "";
-  const clean = line.replace(/^[/>#\s-]+/, "").trim();
-  if (clean.length === 0) return "";
-  return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
-}
-
 export function appendSessionMessage(id: string, message: AiMessage) {
   updateSession(id, (s) => {
     const messages = [...s.messages, message];
-    /* Title from the first user message, the way every chat app does it. Sessions
-       were left on their auto-assigned names, so the sidebar showed several rows
-       of "Terminal 1" / "Terminal 2" / "Global AI" with identical "No messages yet"
-       subtitles and no way to tell them apart later. Only placeholder names are
-       replaced, so a manual rename via renameSession is never overwritten. */
-    const isFirstUserMessage =
-      message.role === "user" && !s.messages.some((m) => m.role === "user");
-    if (isFirstUserMessage && PLACEHOLDER_NAME.test(s.name.trim())) {
-      const title = titleFrom(typeof message.content === "string" ? message.content : "");
-      if (title) return { ...s, name: title, messages };
-    }
-    return { ...s, messages };
+    return {
+      ...s,
+      name: message.role === "user" ? automaticSessionName(s.name, messages) : s.name,
+      messages,
+    };
   });
 }
 

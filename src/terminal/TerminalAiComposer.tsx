@@ -102,6 +102,7 @@ import {
   type AiReplyTrace,
   type AiSession,
   createSession,
+  appendSessionMessage,
   getAllSessions,
   getSession,
   updateSession,
@@ -1754,7 +1755,7 @@ export function TerminalAiComposer({
     abortCtrlRef.current = new AbortController();
 
     const now = Date.now();
-    setMessages((prev) => [...prev, { role: "user", content: text, timestamp: now }]);
+    appendSessionMessage(sessionId, { role: "user", content: text, timestamp: now });
     setMessages((prev) => [...prev, { role: "assistant", content: "", streaming: true, timestamp: Date.now() }]);
 
     const cfg = loadConfig();
@@ -2784,11 +2785,11 @@ export function TerminalAiComposer({
       toast({ title: "Terminal is busy", message: "Wait for the current command to finish before starting Terminal Pilot.", variant: "info" });
       return;
     }
-    setMessages((current) => [...current, {
+    appendSessionMessage(sessionId, {
       role: "user",
       content: `[Terminal Pilot] ${objective}`,
       timestamp: Date.now(),
-    }]);
+    });
     setInput("");
     setPilotRequest({ id: Date.now(), task: objective });
   };
@@ -3205,10 +3206,10 @@ export function TerminalAiComposer({
               type="button"
               onClick={onReturnToTerminal}
               className="composer-session-list-btn composer-return-terminal-btn"
-              title="Return to the active terminal"
+              title="Return to this chat's terminal or workspace"
             >
               <HugeiconsIcon icon={ComputerTerminal02Icon} size={12} strokeWidth={1.75} />
-              <span className="composer-return-terminal-label">Return to terminal</span>
+              <span className="composer-return-terminal-label">Terminal</span>
             </button>
           )}
           {variant === "docked" && onOpenInAiTab && (

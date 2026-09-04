@@ -195,9 +195,9 @@ export function useTerminalTabs() {
   const updateTab = (tabId: number, fn: (t: TermTab) => TermTab) =>
     setTabs((prev) => prev.map((t) => (t.id === tabId ? fn(t) : t)));
 
-  const addTab = () => {
+  const addTab = (initialCwd?: string) => {
     const id = nextId.current++;
-    setTabs((prev) => [...prev, makeTab(id, getActiveTerminalCwd() || home || undefined)]);
+    setTabs((prev) => [...prev, makeTab(id, initialCwd || getActiveTerminalCwd() || home || undefined)]);
     setActiveId(id);
     return id;
   };

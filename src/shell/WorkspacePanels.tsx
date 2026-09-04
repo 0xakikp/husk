@@ -12,7 +12,7 @@ import { GitActivityStrip } from "../terminal/GitActivityStrip";
 import { SensitiveOutputStrip } from "../terminal/SensitiveOutputStrip";
 import { EnvironmentWarningStrip } from "../terminal/EnvironmentWarningStrip";
 import { WorkflowSuggestionStrip } from "../workflows/WorkflowSuggestionStrip";
-import { tabSessionId } from "../ai/sessionStore";
+import { tabSessionId, type AiSession } from "../ai/sessionStore";
 import { focusActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
 import { TerminalLogs } from "../terminal/TerminalLogs";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -124,7 +124,7 @@ export function WorkspacePanels({
   onOpenSourceControl: () => void;
   onExplainFailure?: (request: FailureExplainRequest) => void;
   onOpenAi: () => void;
-  onReturnFromAi: () => void;
+  onReturnFromAi: (session: AiSession) => void;
   onCloseAi: () => void;
   /** True when a React surface (palette, switcher, settings, detail panels)
       can cover the browser — the native webview must be parked. */

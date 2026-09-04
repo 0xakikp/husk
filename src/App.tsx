@@ -9,7 +9,8 @@ import { typeInActiveTerminal } from "./ai/terminalContext";
 import { setWindowFocused } from "./windowFocus";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { openBubble, toggleComposer, sendToComposer } from "./ai/bubbleStore";
-import { setActiveSessionId } from "./ai/sessionStore";
+import { setActiveSessionId, type AiSession } from "./ai/sessionStore";
+import { resolveTerminalReturn } from "./ai/terminalReturn";
 import { closeEditorFindWidget } from "./ai/editorStore";
 import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
@@ -532,10 +533,46 @@ function App() {
     setActiveKind("ai");
   }, []);
 
-  const returnFromAi = useCallback(() => {
+  const returnFromAi = useCallback((session: AiSession) => {
+    const target = resolveTerminalReturn(session, term.tabs, term.activeId);
+
+    if (target.kind === "reconnect-remote") {
+      toast({
+        title: "SSH terminal was closed",
+        message: `Reconnect to ${target.host} from Remotes, then return to this chat. Husk did not open an unrelated terminal.`,
+        variant: "warning",
+        duration: 6000,
+        action: {
+          label: "Open Remotes",
+          onClick: () => {
+            showSidebarView("remotes");
+            setActiveKind("term");
+          },
+        },
+      });
+      return;
+    }
+
+    if (target.kind === "tab") {
+      term.setActiveId(target.tabId);
+      term.focusLeaf(target.tabId, target.leafId);
+      setActiveKind("term");
+      requestAnimationFrame(() => focusActiveTerminal());
+      return;
+    }
+
+    term.addTab(target.cwd);
     setActiveKind("term");
     requestAnimationFrame(() => focusActiveTerminal());
-  }, []);
+    if (target.cwd) {
+      toast({
+        title: "Opened a fresh terminal",
+        message: `Started a new shell in ${target.cwd}. The closed shell process was not restored.`,
+        variant: "info",
+        duration: 5000,
+      });
+    }
+  }, [showSidebarView, term]);
 
   const closeAi = useCallback(() => {
     setAiOpen(false);
