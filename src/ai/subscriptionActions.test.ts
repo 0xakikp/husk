@@ -48,4 +48,28 @@ describe("subscription action proposals", () => {
   it("removes bridge protocol from visible replies", () => {
     expect(stripSubscriptionActionProposals("I will inspect it.\n```husk-action\n{}\n```\nThen I will report back.")).toBe("I will inspect it.\n\nThen I will report back.");
   });
+
+  it("accepts a write proposal even when its fence immediately follows prose", () => {
+    const response = `I found the right location.\`\`\`husk-action\n${JSON.stringify({
+      kind: "workspace.write",
+      path: "add.sh",
+      content: "#!/usr/bin/env sh\n\nprintf '%s\\n' \"$1\"",
+    })}\n\`\`\`\n`;
+    const result = parseSubscriptionActionProposals(response, root);
+    expect(result.actions).toEqual([{
+      kind: "workspace.write",
+      path: "add.sh",
+      content: "#!/usr/bin/env sh\n\nprintf '%s\\n' \"$1\"",
+    }]);
+    expect(result.rejected).toBe(0);
+    expect(stripSubscriptionActionProposals(response)).toBe("I found the right location.");
+  });
+
+  it("rejects and hides an unterminated action block", () => {
+    const response = "I will create it.```husk-action\n{\"kind\":\"workspace.write\",\"path\":\"add.sh\",\"content\":\"echo ok\"}";
+    const result = parseSubscriptionActionProposals(response, root);
+    expect(result.actions).toHaveLength(0);
+    expect(result.rejected).toBe(1);
+    expect(stripSubscriptionActionProposals(response)).toBe("I will create it.");
+  });
 });

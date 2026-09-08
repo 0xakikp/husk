@@ -24,7 +24,7 @@ export type Provider = {
 export const CLI_SUBSCRIPTION_MODE = {
   title: "Use your signed-in plan",
   summary: "Husk uses the account you are already signed into. You do not need an API key or any extra billing setup.",
-  works: "Ask questions, get terminal help, inspect a chosen folder, prepare file changes for review, use Terminal Pilot, and use enabled integrations.",
+  works: "Ask questions, get terminal help, inspect a chosen folder, prepare file changes for review, run supervised terminal steps in a Task, and use enabled integrations.",
   safety: "Husk asks before changing an existing file or making an integration change that could affect a remote service. Your sign-in and keys stay private.",
   apiNote: "You can keep using this plan. Add an API key only if you would rather use an API provider later.",
 } as const;

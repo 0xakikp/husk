@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getActiveTerminalCwd, runInActiveTerminal } from "../ai/terminalContext";
 import { findProjectRoot } from "./projectRoots";
 import { shq } from "../lib/shellQuote";
+import { workspaceResolutionApplies } from "../ai/workspaceScope";
 
 const LS_KEY = "huskv2.workspaceRoot";
 
@@ -86,7 +87,7 @@ export function syncWorkspaceRootToCwd(cwd: string): void {
        only when the terminal is still inside the resolved root — deeper into
        the same repo counts, a different tree does not. */
     const nowCwd = getActiveTerminalCwd();
-    if (nowCwd === resolved || nowCwd.startsWith(`${resolved}/`)) {
+    if (workspaceResolutionApplies(cwd, resolved, nowCwd)) {
       if (resolved !== root) setWorkspaceRoot(resolved);
     }
   });

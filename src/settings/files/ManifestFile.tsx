@@ -150,8 +150,8 @@ export function ManifestFile() {
                   <span>API models and signed-in subscriptions use the same Husk workspace rules, review flow, and visible actions. The difference is only how the provider connects.</span>
                 </li>
                 <li>
-                  <b>Let Terminal Pilot investigate</b>
-                  <span>Give Pilot a diagnostic goal and it plans narrow commands. Husk runs each one visibly, waits for the result, and asks before anything that could change your system.</span>
+                  <b>Run supervised terminal steps</b>
+                  <span>Start a local Task, then let Husk investigate through narrow terminal commands. On SSH, use Diagnose instead. Each command runs visibly, Husk waits for the result, and anything that could change your system requires approval.</span>
                 </li>
                 <li>
                   <b>Connect tools deliberately</b>

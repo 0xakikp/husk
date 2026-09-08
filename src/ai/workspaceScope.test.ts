@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  currentTerminalWorkspace,
   isPathInWorkspace,
   normalizeWorkspacePath,
   resolveWorkspacePath,
+  workspaceResolutionApplies,
   workspaceDisplayName,
 } from "./workspaceScope";
 
@@ -26,5 +28,25 @@ describe("AI workspace scopes", () => {
   it("uses a compact label without discarding the stored absolute path", () => {
     expect(workspaceDisplayName("/work/husk")).toBe("husk");
     expect(workspaceDisplayName("")).toBe("No workspace");
+  });
+
+  it("uses the live terminal directory when the resolved root is stale", () => {
+    expect(currentTerminalWorkspace("/tmp/husk-pilot-demo", "/work/kelex-download-engine"))
+      .toBe("/tmp/husk-pilot-demo");
+    expect(currentTerminalWorkspace("/work/husk/src", "/work/husk"))
+      .toBe("/work/husk");
+  });
+
+  it("keeps an async resolution requested through a filesystem alias", () => {
+    expect(workspaceResolutionApplies(
+      "/tmp/husk-pilot-demo",
+      "/private/tmp/husk-pilot-demo",
+      "/tmp/husk-pilot-demo",
+    )).toBe(true);
+    expect(workspaceResolutionApplies(
+      "/work/old-project",
+      "/work/old-project",
+      "/work/new-project",
+    )).toBe(false);
   });
 });

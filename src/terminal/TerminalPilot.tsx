@@ -111,13 +111,13 @@ export function TerminalPilot({
     stoppedRef.current = true;
     waitingCommandRef.current = null;
     clearWaitTimer();
-    setPilotState("paused", "Task Mode paused Terminal Pilot. A command already running in the terminal remains visible and under your control.");
+    setPilotState("paused", "Task Mode paused terminal steps. A command already running in the terminal remains visible and under your control.");
   }, [clearWaitTimer, setPilotState, status, supervisionPaused]);
 
   const execute = useCallback((step: PilotStep) => {
     if (stoppedRef.current) return;
     if (targetPtyRef.current == null) {
-      setPilotState("paused", "The selected terminal is no longer available. Start a new Pilot session from the terminal you want to use.");
+      setPilotState("paused", "The selected terminal is no longer available. Start terminal steps again from the terminal you want to use.");
       return;
     }
     if (getTargetPtyId() !== targetPtyRef.current) {
@@ -141,14 +141,14 @@ export function TerminalPilot({
     waitTimerRef.current = window.setTimeout(() => {
       if (waitingCommandRef.current !== step.command.trim()) return;
       stoppedRef.current = true;
-      setPilotState("paused", "Pilot is still waiting for this terminal command. No further command will run automatically; inspect the terminal, then start a new Pilot task if needed.");
+      setPilotState("paused", "Husk is still waiting for this terminal command. No further command will run automatically; inspect the terminal, then start terminal steps again if needed.");
     }, 90_000);
   }, [clearWaitTimer, getTargetPtyId, isTerminalRunning, runInTargetTerminal, setPilotState, updateStep]);
 
   const advance = useCallback(async (history: PilotStep[]) => {
     if (stoppedRef.current) return;
     if (history.length >= MAX_STEPS) {
-      setPilotState("paused", `Pilot reached the ${MAX_STEPS}-step diagnostic limit. Review the visible evidence before continuing manually.`);
+      setPilotState("paused", `Terminal steps reached the ${MAX_STEPS}-step diagnostic limit. Review the visible evidence before continuing manually.`);
       return;
     }
     setPilotState("planning", "Reading the observed result and choosing one next step…");
@@ -169,7 +169,7 @@ export function TerminalPilot({
       if (stoppedRef.current) return;
       const decision = parseTerminalPilotDecision(response);
       if (!decision) {
-        setPilotState("paused", "Pilot received an invalid next-step response and stopped before running anything else.");
+        setPilotState("paused", "Husk received an invalid next-step response and stopped before running anything else.");
         return;
       }
       if (decision.action === "done") {
@@ -228,12 +228,12 @@ export function TerminalPilot({
     if (!request || request.id === requestRef.current) return;
     requestRef.current = request.id;
     if (isTerminalRunning()) {
-      setPilotState("paused", "The selected terminal is busy. Wait for it to finish before starting Pilot.");
+      setPilotState("paused", "The selected terminal is busy. Wait for it to finish before starting terminal steps.");
       return;
     }
     const target = getTargetPtyId();
     if (target == null) {
-      setPilotState("error", "Open and focus a terminal before starting Terminal Pilot.");
+      setPilotState("error", "Open and focus a terminal before starting terminal steps.");
       return;
     }
     stoppedRef.current = false;
@@ -261,8 +261,8 @@ export function TerminalPilot({
     <section className="terminal-pilot" aria-live="polite">
       <div className="terminal-pilot-head">
         <span className="terminal-pilot-dot" aria-hidden="true">●</span>
-        <strong>TERMINAL PILOT</strong>
-        <span className="terminal-pilot-mode">{provider.kind === "cli" ? "CLI PLAN" : "API PLAN"}</span>
+        <strong>TERMINAL STEPS</strong>
+        <span className="terminal-pilot-mode">SUPERVISED</span>
         <span className={`terminal-pilot-state is-${status}`}>{status === "waiting" ? "LIVE" : status}</span>
         <span className="terminal-pilot-spacer" />
         {!running && status !== "complete" && (
@@ -280,7 +280,7 @@ export function TerminalPilot({
             stoppedRef.current = true;
             waitingCommandRef.current = null;
             clearWaitTimer();
-            setPilotState("paused", "Pilot paused. The terminal command, if any, remains visible and under your control.");
+            setPilotState("paused", "Terminal steps paused. The terminal command, if any, remains visible and under your control.");
           }}>
             pause
           </button>
@@ -309,7 +309,7 @@ export function TerminalPilot({
           <button type="button" className="terminal-pilot-btn" onClick={() => {
             stoppedRef.current = true;
             clearWaitTimer();
-            setPilotState("paused", "Command was not run. You can run it yourself from the visible proposal or start a new Pilot task.");
+            setPilotState("paused", "Command was not run. You can run it yourself from the visible proposal or start terminal steps again.");
           }}>
             skip
           </button>
@@ -331,10 +331,4 @@ export function TerminalPilot({
       )}
     </section>
   );
-}
-
-export function terminalPilotAvailability(provider: Provider): string {
-  return provider.kind === "cli"
-    ? "Plan with your signed-in CLI; Husk still executes only supervised terminal steps"
-    : "Run a supervised diagnostic from this request";
 }

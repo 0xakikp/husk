@@ -41,7 +41,7 @@ import {
   useActiveRemoteTerminal,
   type CommandRun,
 } from "../ai/terminalContext";
-import { TerminalPilot, terminalPilotAvailability } from "./TerminalPilot";
+import { TerminalPilot } from "./TerminalPilot";
 import { AppliedEditsActivity, PendingEditsReview } from "../ai/PendingEditsReview";
 import { PendingMcpActionsReview } from "../ai/PendingMcpActionsReview";
 import {
@@ -92,6 +92,7 @@ import { getTerminalRunDecision, getWorkspaceRunDecision } from "./commandRun";
 import { shq } from "../lib/shellQuote";
 import { useWorkspaceRoot } from "../workspace/store";
 import {
+  currentTerminalWorkspace,
   isPathInWorkspace,
   normalizeWorkspacePath,
   workspaceDisplayName,
@@ -574,6 +575,8 @@ function TaskModeCard({
   onStop,
   onDismiss,
   onReview,
+  onRunTerminalSteps,
+  terminalStepsDisabled,
 }: {
   task: AiTaskState;
   busy: boolean;
@@ -583,6 +586,8 @@ function TaskModeCard({
   onStop: () => void;
   onDismiss: () => void;
   onReview: () => void;
+  onRunTerminalSteps?: () => void;
+  terminalStepsDisabled?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const stages = deriveAiTaskStages(task);
@@ -633,6 +638,18 @@ function TaskModeCard({
           </div>
           <div className="task-mode-actions">
             {needsReview && <button type="button" className="is-primary" onClick={onReview}>Review changes</button>}
+            {task.status === "running" && onRunTerminalSteps && (
+              <button
+                type="button"
+                className="is-terminal"
+                disabled={terminalStepsDisabled}
+                onClick={onRunTerminalSteps}
+                title="Let Husk investigate this task through the visible terminal"
+              >
+                <span aria-hidden="true">▶</span>
+                Terminal steps
+              </button>
+            )}
             {task.status === "running" && <button type="button" onClick={onPause}>Pause</button>}
             {task.status === "paused" && <button type="button" className="is-primary" onClick={onResume}>Resume</button>}
             {(task.status === "running" || task.status === "paused") && (
@@ -779,7 +796,7 @@ export function TerminalAiComposer({
   const workspaceScopePath = remoteWorkspace?.path || workspacePath;
   const activeTask = session.task;
   const subscriptionAutoApply = useSubscriptionAutoApply(sessionId, workspacePath);
-  const currentWorkspacePath = normalizeWorkspacePath(activeWorkspaceRoot);
+  const currentWorkspacePath = currentTerminalWorkspace(activeTerminalCwd, activeWorkspaceRoot);
   const workspaceChangeKey = workspacePath && currentWorkspacePath
     ? `${workspacePath}\n${currentWorkspacePath}`
     : "";
@@ -1213,7 +1230,7 @@ export function TerminalAiComposer({
       toast({
         title: remoteWorkspace ? "Task Mode currently needs a local workspace" : "Choose a workspace for this task",
         message: remoteWorkspace
-          ? "Use Terminal Pilot for supervised work on an SSH host. Remote Task Mode will not start silently on a server."
+          ? "Use Diagnose from the docked composer for supervised terminal work on an SSH host. Remote Task Mode will not start silently on a server."
           : "Task Mode pins every read, change, and command to one folder.",
         variant: "info",
       });
@@ -2771,23 +2788,55 @@ export function TerminalAiComposer({
       ? `${providerAccessLabel} · Husk actions · ${[prefs.aiFileToolsEnabled && (remoteWorkspace ? "remote workspace" : "workspace"), prefs.aiMcpToolsEnabled && "integrations"].filter(Boolean).join(" + ")}`
       : `${providerAccessLabel} · chat only`;
 
-  const startTerminalPilot = () => {
-    const objective = input.trim();
-    if (!objective) {
-      toast({ title: "Describe the diagnostic task first", message: "For example: find why this pod is failing.", variant: "info" });
+  const startTaskTerminalSteps = () => {
+    if (!activeTask || activeTask.status !== "running") {
+      toast({ title: "Start or resume the task first", message: "Terminal steps run as part of an active Task.", variant: "info" });
       return;
     }
-    if (activeTask && activeTask.status !== "running") {
-      toast({ title: "Task Mode is paused", message: "Resume the task before starting Terminal Pilot.", variant: "info" });
+    if (busy) return;
+    if (activeRemoteTerminal.isRemote) {
+      toast({
+        title: "This task is pinned to a local workspace",
+        message: "Return to its local terminal before running terminal steps. SSH diagnostics remain available through normal chat and explicit commands.",
+        variant: "info",
+      });
+      return;
+    }
+    if (!isPathInWorkspace(activeTerminalCwd, activeTask.workspacePath)) {
+      toast({
+        title: "Return to the task workspace",
+        message: `Terminal steps for this task must run inside ${activeTask.workspacePath}.`,
+        variant: "info",
+      });
       return;
     }
     if (isCommandRunning()) {
-      toast({ title: "Terminal is busy", message: "Wait for the current command to finish before starting Terminal Pilot.", variant: "info" });
+      toast({ title: "Terminal is busy", message: "Wait for the current command to finish before starting terminal steps.", variant: "info" });
+      return;
+    }
+    const objective = input.trim() || activeTask.objective;
+    if (input.trim()) setInput("");
+    setPilotRequest({ id: Date.now(), task: objective });
+  };
+
+  const startRemoteDiagnosis = () => {
+    const objective = input.trim();
+    if (!objective) {
+      toast({ title: "Describe what to diagnose first", message: "For example: find why this service is failing.", variant: "info" });
+      return;
+    }
+    if (busy) return;
+    if (!activeRemoteTerminal.isRemote) {
+      toast({ title: "Use Task Mode for local work", message: "A local Task can combine workspace changes with supervised terminal steps.", variant: "info" });
+      return;
+    }
+    if (isCommandRunning()) {
+      toast({ title: "Terminal is busy", message: "Wait for the current command to finish before starting the diagnosis.", variant: "info" });
       return;
     }
     appendSessionMessage(sessionId, {
       role: "user",
-      content: `[Terminal Pilot] ${objective}`,
+      content: `[Terminal diagnosis] ${objective}`,
       timestamp: Date.now(),
     });
     setInput("");
@@ -3290,6 +3339,8 @@ export function TerminalAiComposer({
           onStop={stopTask}
           onDismiss={dismissTask}
           onReview={reviewTaskChanges}
+          onRunTerminalSteps={variant === "docked" ? startTaskTerminalSteps : undefined}
+          terminalStepsDisabled={busy}
         />
       )}
 
@@ -3900,26 +3951,27 @@ export function TerminalAiComposer({
             >
               <HugeiconsIcon icon={AttachmentSquareIcon} size={12} strokeWidth={1.75} />
             </button>
-            <button
-              type="button"
-              onClick={startTaskMode}
-              disabled={busy || !input.trim() || Boolean(activeTask)}
-              className={cn("wb-icon-btn wb-task-btn", activeTask && "is-active")}
-              title={activeTask ? `Task Mode is ${activeTask.status}` : "Start a supervised task in this workspace"}
-            >
-              <span aria-hidden="true">◆</span>
-              <span>task</span>
-            </button>
-            {variant === "docked" && (
+            {!activeTask && variant === "docked" && activeRemoteTerminal.isRemote ? (
               <button
                 type="button"
-                onClick={startTerminalPilot}
-                disabled={busy || !input.trim() || Boolean(activeTask && activeTask.status !== "running")}
-                className="wb-icon-btn wb-pilot-btn"
-                title={terminalPilotAvailability(provider)}
+                onClick={startRemoteDiagnosis}
+                disabled={busy || !input.trim()}
+                className="wb-icon-btn wb-diagnose-btn"
+                title="Run a supervised diagnosis in this SSH terminal"
               >
                 <span aria-hidden="true">▶</span>
-                <span>pilot</span>
+                <span>diagnose</span>
+              </button>
+            ) : !activeTask && (
+              <button
+                type="button"
+                onClick={startTaskMode}
+                disabled={busy || !input.trim()}
+                className="wb-icon-btn wb-task-btn"
+                title="Start a supervised task in this workspace"
+              >
+                <span aria-hidden="true">◆</span>
+                <span>task</span>
               </button>
             )}
             <button

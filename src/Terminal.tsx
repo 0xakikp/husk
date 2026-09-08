@@ -64,6 +64,12 @@ export function TerminalView({
   void _onFocusDirection; // used by parent key handler, not directly here
   const containerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<TerminalHandle | null>(null);
+  /* `initialCwd` is a launch seed, not live terminal state. OSC 7 updates the
+     persisted pane cwd after every `cd`; treating that update as an effect
+     dependency detached and reattached the running xterm at each directory
+     change. Keep the value from this leaf's first render instead. */
+  const initialCwdRef = useRef(initialCwd);
+  const [sessionReady, setSessionReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -96,7 +102,7 @@ export function TerminalView({
 
     void (async () => {
       try {
-        await createSession(leafId, initialCwd);
+        await createSession(leafId, initialCwdRef.current);
         if (cancelled) return;
 
         const container = containerRef.current;
@@ -113,6 +119,10 @@ export function TerminalView({
         if (term?.element) {
           screenRef.current = term.element.querySelector(".xterm-screen") as HTMLElement | null;
         }
+        /* Active/focus effects can run before the asynchronous PTY/session is
+           registered. Trigger them again now so a freshly opened terminal is
+           never left visible but disconnected from keyboard focus. */
+        setSessionReady(true);
         console.log("[husk] Terminal session created for leaf", leafId);
       } catch (e) {
         console.error("[husk] Failed to create terminal session:", e);
@@ -124,12 +134,13 @@ export function TerminalView({
       detachSession(leafId);
       handleRef.current = null;
     };
-  }, [leafId, initialCwd]);
+  }, [leafId]);
 
   // ── Track visibility / focus / active state ───────────────────────────────
   useEffect(() => {
+    if (!sessionReady) return;
     setSessionVisible(leafId, active);
-  }, [leafId, active]);
+  }, [leafId, active, sessionReady]);
 
   // True while the user is cycling shell history with arrow keys; used to
   // suppress the autocomplete dropdown so it doesn't block history navigation.
@@ -137,6 +148,7 @@ export function TerminalView({
   const historyNavTimerRef = useRef<number>(0);
 
   useEffect(() => {
+    if (!sessionReady) return;
     if (active) {
       setSessionFocused(leafId, true);
       setSessionActive(leafId, true);
@@ -218,7 +230,7 @@ export function TerminalView({
       setSessionFocused(leafId, false);
       setSessionActive(leafId, false);
     }
-  }, [leafId, active, onFocus, onCwd, onCommandComplete]);
+  }, [leafId, active, onFocus, onCwd, onCommandComplete, sessionReady]);
 
   // ── Autocomplete ──────────────────────────────────────────────────────────
   const {

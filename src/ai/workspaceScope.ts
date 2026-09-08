@@ -23,6 +23,33 @@ export function isPathInWorkspace(path: string | null | undefined, workspaceRoot
 }
 
 /**
+ * Choose the workspace represented by the terminal the user is looking at.
+ * The asynchronously resolved project root is useful while the shell remains
+ * inside it, but it must never win after the terminal has cd-ed elsewhere.
+ * Falling back to the live CWD also handles filesystem aliases such as macOS
+ * `/tmp` and `/private/tmp` without sending the chat back to a stale project.
+ */
+export function currentTerminalWorkspace(
+  terminalCwd: string | null | undefined,
+  resolvedWorkspaceRoot: string | null | undefined,
+): string {
+  const cwd = normalizeWorkspacePath(terminalCwd);
+  const root = normalizeWorkspacePath(resolvedWorkspaceRoot);
+  if (!cwd) return root;
+  return root && isPathInWorkspace(cwd, root) ? root : cwd;
+}
+
+/** True when an async project-root lookup still belongs to the visible shell. */
+export function workspaceResolutionApplies(
+  requestedCwd: string | null | undefined,
+  resolvedWorkspaceRoot: string | null | undefined,
+  currentCwd: string | null | undefined,
+): boolean {
+  return isPathInWorkspace(currentCwd, requestedCwd)
+    || isPathInWorkspace(currentCwd, resolvedWorkspaceRoot);
+}
+
+/**
  * Resolve a model-supplied file reference safely inside a selected workspace.
  * Relative references become absolute; parent traversal and outside absolute
  * paths are refused before any filesystem call is made.

@@ -1765,6 +1765,9 @@
 }
 
 .task-mode-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 5px;
   padding: 3px 6px;
@@ -1780,6 +1783,15 @@
 }
 
 .task-mode-actions button.is-primary { border-color: color-mix(in srgb, var(--primary) 42%, var(--border)); color: var(--primary); }
+.task-mode-actions button.is-terminal {
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  color: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+}
+.task-mode-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
 .task-mode-actions button.is-danger { color: color-mix(in srgb, var(--destructive) 82%, var(--foreground)); }
 
 @container (max-width: 440px) {
@@ -2527,22 +2539,22 @@
   box-shadow: 0 2px 10px color-mix(in srgb, var(--destructive) 20%, transparent);
 }
 
-.wb-pilot-btn {
+.wb-task-btn {
   width: auto;
   gap: 3px;
   padding: 0 6px;
-  color: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+  color: color-mix(in srgb, var(--primary) 82%, var(--foreground));
   font-family: var(--wb-mono);
   font-size: 8.5px;
   letter-spacing: .03em;
   text-transform: uppercase;
 }
 
-.wb-task-btn {
+.wb-diagnose-btn {
   width: auto;
   gap: 3px;
   padding: 0 6px;
-  color: color-mix(in srgb, var(--primary) 82%, var(--foreground));
+  color: color-mix(in srgb, var(--primary) 88%, var(--foreground));
   font-family: var(--wb-mono);
   font-size: 8.5px;
   letter-spacing: .03em;
@@ -2555,10 +2567,9 @@
   background: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
-.wb-pilot-btn:hover:not(:disabled) {
+.wb-diagnose-btn:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 18%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 /* Terminal Pilot deliberately reads like a compact runbook, not a second chat
@@ -3247,17 +3258,17 @@
     padding-inline: 8px;
   }
 
-  .composer-dock-side .wb-pilot-btn {
-    width: 24px;
-    padding: 0;
-  }
-
   .composer-dock-side .wb-task-btn {
     width: 24px;
     padding: 0;
   }
 
-  .composer-dock-side .wb-pilot-btn > span:last-child,
+  .composer-dock-side .wb-diagnose-btn {
+    width: 24px;
+    padding: 0;
+  }
+
+  .composer-dock-side .wb-diagnose-btn > span:last-child,
   .composer-dock-side .wb-task-btn > span:last-child,
   .composer-dock-side .composer-send-btn.is-stop > span:last-child {
     display: none;

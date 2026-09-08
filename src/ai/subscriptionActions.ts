@@ -2,11 +2,62 @@ import { resolveWorkspacePath } from "./workspaceScope";
 import { resolveRemoteWorkspacePath, type RemoteWorkspaceScope } from "./remoteWorkspace";
 import type { HuskActionRequest } from "./actionBroker";
 
-const ACTION_FENCE = /```husk-action\s*\n([\s\S]*?)```/gi;
+const ACTION_OPEN = /```husk-action\b[ \t]*/gi;
+const ACTION_CLOSE = /^[ \t]*```[ \t]*(?=\r?\n|$)/gm;
 const MAX_ACTIONS = 6;
 const MAX_TEXT = 200_000;
 
 export type SubscriptionActionParseResult = { actions: HuskActionRequest[]; rejected: number };
+
+type SubscriptionActionBlock = {
+  start: number;
+  end: number;
+  payload: string;
+  closed: boolean;
+};
+
+/**
+ * Find explicit Husk protocol blocks without depending on a perfectly closed
+ * Markdown fence. Signed-in CLIs occasionally finish a response after the
+ * JSON but before the closing backticks. That must count as a rejected action
+ * (so the bounded correction path runs), and the protocol tail must never be
+ * shown as ordinary chat text.
+ */
+function actionBlocks(text: string): SubscriptionActionBlock[] {
+  const blocks: SubscriptionActionBlock[] = [];
+  const opening = new RegExp(ACTION_OPEN.source, ACTION_OPEN.flags);
+  let match: RegExpExecArray | null;
+
+  while ((match = opening.exec(text)) !== null) {
+    let payloadStart = opening.lastIndex;
+    if (text.startsWith("\r\n", payloadStart)) payloadStart += 2;
+    else if (text[payloadStart] === "\n") payloadStart += 1;
+
+    const closing = new RegExp(ACTION_CLOSE.source, ACTION_CLOSE.flags);
+    closing.lastIndex = payloadStart;
+    const closeMatch = closing.exec(text);
+    if (!closeMatch) {
+      blocks.push({
+        start: match.index,
+        end: text.length,
+        payload: text.slice(payloadStart),
+        closed: false,
+      });
+      break;
+    }
+
+    const end = closeMatch.index + closeMatch[0].length;
+    blocks.push({
+      start: match.index,
+      end,
+      payload: text.slice(payloadStart, closeMatch.index),
+      closed: true,
+    });
+    opening.lastIndex = end;
+  }
+
+  return blocks;
+}
 
 function records(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
@@ -23,10 +74,13 @@ export function parseSubscriptionActionProposals(
 ): SubscriptionActionParseResult {
   const actions: HuskActionRequest[] = [];
   let rejected = 0;
-  let match: RegExpExecArray | null;
-  while ((match = ACTION_FENCE.exec(text)) !== null) {
+  for (const block of actionBlocks(text)) {
+    if (!block.closed) {
+      rejected += 1;
+      continue;
+    }
     let payload: unknown;
-    try { payload = JSON.parse(match[1]); } catch { rejected += 1; continue; }
+    try { payload = JSON.parse(block.payload); } catch { rejected += 1; continue; }
     for (const item of records(payload)) {
       if (actions.length >= MAX_ACTIONS || !item || typeof item !== "object") { rejected += 1; continue; }
       const value = item as Record<string, unknown>;
@@ -68,5 +122,15 @@ export function parseSubscriptionActionProposals(
 }
 
 export function stripSubscriptionActionProposals(text: string): string {
-  return text.replace(ACTION_FENCE, "").replace(/\n{3,}/g, "\n\n").trim();
+  const blocks = actionBlocks(text);
+  if (!blocks.length) return text.trim();
+
+  let visible = "";
+  let cursor = 0;
+  for (const block of blocks) {
+    visible += text.slice(cursor, block.start);
+    cursor = block.end;
+  }
+  visible += text.slice(cursor);
+  return visible.replace(/\n{3,}/g, "\n\n").trim();
 }
