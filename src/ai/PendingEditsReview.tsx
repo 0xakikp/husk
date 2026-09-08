@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   getPendingEdits,
   removePendingEdit,
@@ -10,29 +10,32 @@ import {
   type PendingEdit,
 } from "./pendingEdits";
 import { toast } from "../toast";
+import { useReviewCancellation, useSessionReviewQueue } from "./reviewQueue";
 
 /** Lines of an edit shown before collapsing. A full-file overwrite arrives as one
  *  edit whose `search` is the entire previous file, so this must be bounded. */
 const MAX_LINES = 6;
 
-function splitCapped(text: string): { lines: string[]; hidden: number } {
+function splitCapped(text: string, expanded: boolean): { lines: string[]; hidden: number } {
   const all = text.length === 0 ? [] : text.split("\n");
-  if (all.length <= MAX_LINES) return { lines: all, hidden: 0 };
+  if (expanded || all.length <= MAX_LINES) return { lines: all, hidden: 0 };
   return { lines: all.slice(0, MAX_LINES), hidden: all.length - MAX_LINES };
 }
 
 function EditCard({ edit }: { edit: PendingEdit }) {
   const [busy, setBusy] = useState(false);
+  const [fullDiff, setFullDiff] = useState(false);
+  const cancellation = useReviewCancellation();
   const isCreate = edit.operation === "create";
-  const before = splitCapped(isCreate ? "" : edit.search);
-  const after = splitCapped(edit.replace);
+  const before = splitCapped(isCreate ? "" : edit.search, fullDiff);
+  const after = splitCapped(edit.replace, fullDiff);
   const name = edit.path.split("/").pop() || edit.path;
   const removed = isCreate ? 0 : edit.search ? edit.search.split("\n").length : 0;
   const added = edit.replace ? edit.replace.split("\n").length : 0;
 
   const apply = async () => {
     setBusy(true);
-    const res = await applyPendingEdit(edit);
+    const res = await applyPendingEdit(edit, { signal: cancellation.current.signal });
     setBusy(false);
     if (res.ok) {
       removePendingEdit(edit.id);
@@ -82,15 +85,21 @@ function EditCard({ edit }: { edit: PendingEdit }) {
         ))}
         {after.hidden > 0 && <div className="pe-more">… {after.hidden} more added</div>}
       </pre>
+      {(fullDiff || before.hidden > 0 || after.hidden > 0) && (
+        <button type="button" className="pe-btn" onClick={() => setFullDiff((value) => !value)} aria-expanded={fullDiff}>
+          {fullDiff ? "show fewer lines" : "show complete diff"}
+        </button>
+      )}
     </div>
   );
 }
 
 function AppliedEditCard({ edit }: { edit: AppliedEdit }) {
   const [busy, setBusy] = useState(false);
+  const [fullDiff, setFullDiff] = useState(false);
   const isCreate = edit.operation === "create";
-  const before = splitCapped(edit.before ?? "");
-  const after = splitCapped(edit.after);
+  const before = splitCapped(edit.before ?? "", fullDiff);
+  const after = splitCapped(edit.after, fullDiff);
   const name = edit.path.split("/").pop() || edit.path;
 
   const undo = async () => {
@@ -125,6 +134,11 @@ function AppliedEditCard({ edit }: { edit: AppliedEdit }) {
         ))}
         {after.hidden > 0 && <div className="pe-more">… {after.hidden} more added</div>}
       </pre>
+      {(fullDiff || before.hidden > 0 || after.hidden > 0) && (
+        <button type="button" className="pe-btn" onClick={() => setFullDiff((value) => !value)} aria-expanded={fullDiff}>
+          {fullDiff ? "show fewer lines" : "show complete diff"}
+        </button>
+      )}
     </div>
   );
 }
@@ -132,11 +146,13 @@ function AppliedEditCard({ edit }: { edit: AppliedEdit }) {
 /** In-memory activity for any approved workspace change. It is intentionally
  * close to the composer, where the user can inspect and safely undo it. */
 export function AppliedEditsActivity({ sessionId }: { sessionId?: string }) {
-  const getVisible = () => getAppliedEdits(sessionId);
-  const [edits, setEdits] = useState<AppliedEdit[]>(getVisible);
+  return <SessionAppliedEditsActivity key={sessionId ?? "all"} sessionId={sessionId} />;
+}
+
+function SessionAppliedEditsActivity({ sessionId }: { sessionId?: string }) {
+  const edits = useSessionReviewQueue(getAppliedEdits, subscribePendingEdits, sessionId);
   const [expanded, setExpanded] = useState(false);
   const [undoingLatest, setUndoingLatest] = useState(false);
-  useEffect(() => subscribePendingEdits(() => setEdits(getVisible())), [sessionId]);
 
   if (edits.length === 0) return null;
   const newest = edits[edits.length - 1];
@@ -177,16 +193,14 @@ export function AppliedEditsActivity({ sessionId }: { sessionId?: string }) {
  * more once accepting actually started writing to disk.
  */
 export function PendingEditsReview({ sessionId }: { sessionId?: string }) {
-  const getVisibleEdits = () => getPendingEdits().filter((edit) => {
-    /* New edits always belong to the composer that requested them. Keep the
-       tiny backwards-compatible fallback for an edit that was already waiting
-       when this version was installed. */
-    return !sessionId || edit.sessionId === sessionId || edit.sessionId === undefined;
-  });
-  const [edits, setEdits] = useState<PendingEdit[]>(getVisibleEdits);
+  return <SessionPendingEditsReview key={sessionId ?? "all"} sessionId={sessionId} />;
+}
+
+function SessionPendingEditsReview({ sessionId }: { sessionId?: string }) {
+  const edits = useSessionReviewQueue(getPendingEdits, subscribePendingEdits, sessionId);
   const [expanded, setExpanded] = useState(false);
-  useEffect(() => subscribePendingEdits(() => setEdits(getVisibleEdits())), [sessionId]);
   const [busyAll, setBusyAll] = useState(false);
+  const cancellation = useReviewCancellation();
 
   if (edits.length === 0) return null;
 
@@ -195,7 +209,8 @@ export function PendingEditsReview({ sessionId }: { sessionId?: string }) {
     let applied = 0;
     const failures: string[] = [];
     for (const e of edits) {
-      const res = await applyPendingEdit(e);
+      if (cancellation.current.signal.aborted) break;
+      const res = await applyPendingEdit(e, { signal: cancellation.current.signal });
       if (res.ok) {
         applied += 1;
         removePendingEdit(e.id);

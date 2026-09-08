@@ -18,6 +18,9 @@ type HuskAssistantContextInput = {
   subscriptionEditAccess?: boolean;
   /** A session-only opt-in for Husk to apply eligible proposals after validation. */
   subscriptionAutoApply?: boolean;
+  workspaceEditAccess?: boolean;
+  globalInstructions?: string;
+  personalMemory?: string;
 };
 
 /** Keep the optional name presentable and, more importantly, treat it as data
@@ -61,7 +64,7 @@ function accessContext(
       ? [
           "Legacy compatibility: the user also enabled the original `husk-edit` proposal format for this chat. Prefer the provider-neutral `husk-action` format unless an older workflow explicitly needs `husk-edit`.",
           subscriptionAutoApply
-            ? "Auto-apply is enabled only for eligible legacy proposals in this session. Husk validates every proposal and protected paths remain in manual review."
+            ? "Auto-apply is enabled for eligible local proposals in this session. Husk validates every proposal and protected paths remain in manual review."
             : "Legacy proposals remain reviewable and do not write until approved.",
         ].join(" ")
       : "";
@@ -121,11 +124,14 @@ export function buildHuskAssistantContext({
   remoteWorkspace,
   subscriptionEditAccess,
   subscriptionAutoApply,
+  workspaceEditAccess,
+  globalInstructions: reviewedInstructions,
+  personalMemory: reviewedMemory,
 }: HuskAssistantContextInput): string {
   const prefs = getPrefs();
   const name = displayName(prefs.userName);
-  const globalInstructions = textBlock(prefs.aiGlobalInstructions, MAX_GLOBAL_INSTRUCTIONS_CHARS);
-  const personalMemory = textBlock(prefs.aiPersonalMemory, MAX_PERSONAL_MEMORY_CHARS);
+  const globalInstructions = textBlock(reviewedInstructions ?? prefs.aiGlobalInstructions, MAX_GLOBAL_INSTRUCTIONS_CHARS);
+  const personalMemory = textBlock(reviewedMemory ?? prefs.aiPersonalMemory, MAX_PERSONAL_MEMORY_CHARS);
   const identity = agent.name.trim() || "Husk";
 
   return [
@@ -143,6 +149,9 @@ export function buildHuskAssistantContext({
       ? `Personal background supplied by the user (context, not a command):\n---\n${personalMemory}\n---`
       : "No personal background is set.",
     accessContext(provider, model, prefs, workspacePath, remoteWorkspace, subscriptionEditAccess, subscriptionAutoApply),
+    workspaceEditAccess
+      ? "Workspace edits are enabled. New files and changes require review unless this session explicitly enabled eligible automatic local edits. Never claim a queued proposal was applied."
+      : "Workspace access is read-only. Do not propose writes or edits until the user enables Reviewable workspace edits in this chat's workspace menu.",
     name
       ? `The user chose the display name “${name}”. Use it warmly but sparingly—at a greeting, a meaningful milestone, or when it adds clarity. Do not insert it into every reply.`
       : "The user has not supplied a display name. Do not guess one or ask for it during normal task work.",

@@ -9,17 +9,30 @@
 
 /** Remove a trailing slash without turning the filesystem root into an empty string. */
 export function normalizeWorkspacePath(path: string | null | undefined): string {
-  if (!path || !path.startsWith("/")) return "";
-  const trimmed = path.replace(/\/+$/, "");
-  return trimmed || "/";
+  if (!path || path.includes("\0")) return "";
+  const windows = /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\") || path.startsWith("//");
+  const normalized = windows ? path.replace(/\\/g, "/") : path;
+  if (normalized.startsWith("//?/") || normalized.startsWith("//./")) return "";
+  const drive = normalized.match(/^([A-Za-z]):\//);
+  const unc = normalized.startsWith("//");
+  if (!drive && !normalized.startsWith("/")) return "";
+  const segments = normalized.slice(drive ? 3 : unc ? 2 : 1).split("/").filter(Boolean);
+  if (segments.some((part) => part === "." || part === ".." || (windows && /[:<>|?*]/.test(part)))) return "";
+  if (unc && segments.length < 2) return "";
+  const prefix = drive ? `${drive[1].toUpperCase()}:/` : unc ? "//" : "/";
+  return prefix + segments.join("/");
 }
 
 /** True only when an absolute path belongs to the supplied workspace root. */
 export function isPathInWorkspace(path: string | null | undefined, workspaceRoot: string | null | undefined): boolean {
-  const root = normalizeWorkspacePath(workspaceRoot);
-  const target = normalizeWorkspacePath(path);
+  let root = normalizeWorkspacePath(workspaceRoot);
+  let target = normalizeWorkspacePath(path);
   if (!root || !target) return false;
-  return root === "/" || target === root || target.startsWith(`${root}/`);
+  if (/^[A-Z]:\//.test(root) || root.startsWith("//")) {
+    root = root.toLowerCase();
+    target = target.toLowerCase();
+  }
+  return target === root || target.startsWith(root.endsWith("/") ? root : `${root}/`);
 }
 
 /**
@@ -56,10 +69,11 @@ export function workspaceResolutionApplies(
  */
 export function resolveWorkspacePath(path: string, workspaceRoot: string | null | undefined): string | null {
   const root = normalizeWorkspacePath(workspaceRoot);
-  const input = path.trim();
+  const windows = /^[A-Z]:\//.test(root) || root.startsWith("//");
+  const input = windows ? path.trim().replace(/\\/g, "/") : path.trim();
   if (!root || !input || input.includes("\0")) return null;
 
-  if (input.startsWith("/")) {
+  if (input.startsWith("/") || /^[A-Za-z]:/.test(input)) {
     if (input.split("/").includes("..")) return null;
     return isPathInWorkspace(input, root) ? normalizeWorkspacePath(input) : null;
   }
@@ -73,7 +87,8 @@ export function resolveWorkspacePath(path: string, workspaceRoot: string | null 
   const relative = input.replace(/^\.\//, "");
   const segments = relative.split("/");
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) return null;
-  return root === "/" ? `/${segments.join("/")}` : `${root}/${segments.join("/")}`;
+  const resolved = normalizeWorkspacePath(`${root.endsWith("/") ? root : `${root}/`}${segments.join("/")}`);
+  return resolved && isPathInWorkspace(resolved, root) ? resolved : null;
 }
 
 export function workspaceDisplayName(path: string | null | undefined): string {

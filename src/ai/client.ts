@@ -9,12 +9,32 @@ import { runClaudeCli } from "./claudeCli";
 import { runCodexCli } from "./codexCli";
 import { runGeminiCli } from "./geminiCli";
 import { runKimiCli } from "./kimiCli";
+import { abortError } from "./cliProcess";
 
 // Route model HTTP through Tauri (Rust) so provider APIs aren't blocked by the
 // webview's CORS policy.
 const tfetch = tauriFetch as unknown as typeof globalThis.fetch;
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatImage = { dataUrl: string; mediaType?: string };
+export type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
+
+export function modelMessages(messages: ChatMessage[]): ModelMessage[] {
+  return messages.map((message): ModelMessage => {
+    if (message.role === "assistant") return { role: "assistant", content: message.content };
+    if (!message.images?.length) return { role: "user", content: message.content };
+    return {
+      role: "user",
+      content: [
+        { type: "text", text: message.content },
+        ...message.images.map((image) => ({
+          type: "image" as const,
+          image: image.dataUrl,
+          ...(image.mediaType ? { mediaType: image.mediaType } : {}),
+        })),
+      ],
+    };
+  });
+}
 
 export type ChatConfig = {
   provider: Provider;
@@ -30,7 +50,7 @@ export type ChatConfig = {
  * what happened without accidentally exposing private context in its chrome. */
 export type ToolActivity = {
   name: string;
-  state: "running" | "complete";
+  state: "running" | "complete" | "error" | "refused" | "queued";
 };
 
 /**
@@ -44,6 +64,9 @@ export type ToolActivity = {
  * looks.
  */
 function flattenForCli(system: string, messages: ChatMessage[]): string {
+  if (messages.some((message) => message.images?.length)) {
+    throw new Error("Image attachments require an API provider with image support. Remove the image or switch providers.");
+  }
   const parts: string[] = [];
   if (system.trim()) parts.push(system.trim());
   for (const m of messages) {
@@ -75,7 +98,7 @@ function buildModel(cfg: ChatConfig) {
       return createOpenAICompatible({
         name: provider.id,
         apiKey: apiKey || "noauth",
-        baseURL: baseURL || provider.baseURL || "",
+        baseURL: provider.configurableBaseURL ? baseURL || provider.baseURL || "" : provider.baseURL || "",
         fetch: tfetch,
       })(resolvedModel);
     }
@@ -127,6 +150,7 @@ export async function streamChat(
   onStatus?: (status: string) => void,
   onToolActivity?: (activity: ToolActivity) => void,
 ): Promise<void> {
+  if (abortSignal?.aborted) throw abortError();
   if (cfg.provider.kind === "cli") {
     /* Husk tools are never forwarded to a subscription CLI. It can only return
        an explicit proposal, which the renderer validates and executes through
@@ -135,8 +159,10 @@ export async function streamChat(
     const run = runSubscriptionCli(cfg, prompt, onDelta, onStatus);
     const onAbort = () => run.stop();
     abortSignal?.addEventListener("abort", onAbort, { once: true });
+    if (abortSignal?.aborted) onAbort();
     try {
       await run.done;
+      if (abortSignal?.aborted) throw abortError();
     } finally {
       abortSignal?.removeEventListener("abort", onAbort);
     }
@@ -146,13 +172,14 @@ export async function streamChat(
   const result = streamText({
     model: buildModel(cfg),
     system,
-    messages: messages as ModelMessage[],
+    messages: modelMessages(messages),
     tools: tools && Object.keys(tools).length > 0 ? tools : undefined,
     stopWhen: stepCountIs(8),
+    maxOutputTokens: 2048,
     abortSignal,
   });
   for await (const event of result.fullStream) {
-    if (abortSignal?.aborted) break;
+    if (abortSignal?.aborted) throw abortError();
     switch (event.type) {
       case "text-delta":
         onDelta(event.text);
@@ -162,8 +189,16 @@ export async function streamChat(
         onToolActivity?.({ name: event.toolName, state: "running" });
         break;
       case "tool-result":
-        onStatus?.(`✅ ${event.toolName}`);
-        onToolActivity?.({ name: event.toolName, state: "complete" });
+        {
+          const output = event.output as { state?: string } | null;
+          const state = output && ["error", "refused", "queued"].includes(output.state ?? "") ? output.state as "error" | "refused" | "queued" : "complete";
+          onStatus?.(`${state === "complete" ? "✅" : state === "queued" ? "Review" : "Failed"} ${event.toolName}`);
+          onToolActivity?.({ name: event.toolName, state });
+        }
+        break;
+      case "tool-error":
+        onStatus?.(`Failed ${event.toolName}`);
+        onToolActivity?.({ name: event.toolName, state: "error" });
         break;
       case "error":
         // The AI SDK reports some failures as stream events instead of throws.
@@ -178,6 +213,7 @@ export async function streamChat(
         break;
     }
   }
+  if (abortSignal?.aborted) throw abortError();
 }
 
 /** One-shot, non-streaming completion — used for command suggestions and
@@ -186,14 +222,9 @@ export async function generateOnce(
   cfg: ChatConfig,
   system: string,
   prompt: string,
+  abortSignal?: AbortSignal,
 ): Promise<string> {
-  if (cfg.provider.kind === "cli") {
-    let out = "";
-    const cliPrompt = flattenForCli(system, [{ role: "user", content: prompt }]);
-    const run = runSubscriptionCli(cfg, cliPrompt, (text) => { out += text; });
-    await run.done;
-    return out.trim();
-  }
-  const result = streamText({ model: buildModel(cfg), system, prompt });
-  return (await result.text).trim();
+  let out = "";
+  await streamChat(cfg, system, [{ role: "user", content: prompt }], (text) => { out += text; }, undefined, abortSignal);
+  return out.trim();
 }

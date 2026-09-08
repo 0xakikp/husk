@@ -47,6 +47,10 @@ Most developer tools make you choose a primary surface: an editor with a hidden 
 
 Husk AI is available as a docked terminal composer and as a dedicated full-screen AI workspace with named sessions. It can include the active terminal, the current file, a selection, attachments, or a particular command result—only when those context chips are enabled.
 
+Conversations and drafts are saved locally in a transactional archive, with token updates batched per chat. Existing history migrates automatically; failed saves remain queued with a visible retry action, and normal window closure waits for pending saves. Chat attachments and action reviews remain associated with the conversation that requested them. Long requests reserve space for the model's response and show when older messages are left out of the context.
+
+Image attachments are sent as image inputs to API models that support vision. Signed-in CLI chat does not currently forward images; use a vision-capable API model for screenshot questions.
+
 **Project Lens** gives a selected workspace a reliable first introduction. Husk prepares a bounded local snapshot from the root structure, known manifests, package commands, a short README excerpt, and Git state; it never crawls the repository or opens credential files. The snapshot is visible as removable context before it reaches a model. Use **Understand project** in an empty workspace chat or `/project` in an existing conversation to ask either an API-backed or signed-in subscription model for a grounded orientation.
 
 **Task Mode** turns a clear request into a persistent, supervised piece of work. Enter an objective in a workspace-scoped composer and choose **Task**. Husk pins the task to that folder, keeps a compact progress card above the conversation, and advances its Context, Work, Changes, and Checks stages only from evidence it actually observed. When shell investigation is useful, **Terminal steps** uses Husk's supervised terminal engine inside the Task rather than presenting a competing mode. Tool calls, proposed and applied edits, terminal commands, and real exit codes are recorded; Husk does not invent completion percentages or claim that an unseen check passed. Tasks can be paused, resumed, finished, or stopped, and unfinished work returns paused after an app restart. Terminal steps follow the same pause boundary, while file changes and risky commands retain their existing review gates.
@@ -66,7 +70,7 @@ Signed-in CLI modes are available for Claude Code, Codex, Gemini CLI, and Kimi C
 
 Each AI chat can be given its own workspace folder from the composer header. This is a deliberate per-chat boundary: terminal-originated chats begin with that terminal’s current workspace, while a general chat stays unscoped until you choose a folder. Workspace actions and selected context stay inside that folder.
 
-The **Husk Action Broker** is the local permission boundary for every model. API models use native tool calls; signed-in CLIs return small action proposals. Both go through the same workspace validation, including the native symlink boundary. Reads, listings, searches, and bounded Project Lens inspections can complete in place; existing-file edits always render a diff for review. New files are created only inside the selected workspace. Generic MCP tools are treated as potentially mutating unless the integration is explicitly read-only, so non-read-only calls appear in an approval queue before Husk contacts the remote service. Applied subscription changes remain visible below the composer and can be undone while the file remains unchanged.
+The **Husk Action Broker** is the local permission boundary for every model. API models use native tool calls; signed-in CLIs return small action proposals. Both go through the same workspace validation, including the native symlink boundary for searches. Reads, listings, searches, and bounded Project Lens inspections can complete in place. The workspace's edit switch applies to every provider: turning it off makes workspace actions read-only. With edits enabled, new files and existing-file edits enter review; only eligible changes can bypass review when the user explicitly enables auto-apply. Complete proposed diffs can be expanded before approval, and every applied change is recorded with Undo while the file remains unchanged. Generic MCP tools are treated as potentially mutating unless the integration is explicitly read-only, so non-read-only calls appear in the requesting chat's approval queue before Husk contacts the remote service.
 
 #### AI that adapts to the person and project
 
@@ -100,7 +104,7 @@ Husk’s first-run defaults are deliberately opinionated: Iosevka typography, th
 4. In **Settings → Agents**, choose an agent, set a response style, and decide what context a new AI chat should attach.
 5. In a Husk AI chat, choose a workspace folder from the header, then use **Understand project** or `/project` for a grounded Project Lens overview before asking it to inspect or change files.
 6. For longer work, describe the outcome and select **Task**. The task stays pinned to that workspace and shows evidence-backed progress until you finish or stop it.
-7. For a multi-step diagnosis, enter the goal in the docked composer and select **Pilot**. It runs only observed diagnostics until it needs your approval or reaches a conclusion.
+7. For a multi-step diagnosis, choose **Terminal steps** inside the Task, or **Diagnose** in a docked SSH composer. Commands outside the diagnostic allowlist require approval before execution.
 8. If you use integrations, add them in **Settings → Integrations**. Read-only calls can run in place; other calls are shown for approval before they reach the service.
 
 ## Keyboard shortcuts
@@ -128,10 +132,10 @@ Husk makes the important boundaries explicit.
 - Your durable non-secret settings are written atomically to `~/.husk/config.toml`; the previous valid version is retained as `~/.husk/config.toml.bak` during an update.
 - Custom agents and edits to built-in agents are readable Markdown files in `~/.husk/agents/`. The default Vault lives in `~/.husk/notes/` unless you choose another notes directory.
 - These user-home files are kept when Husk is normally removed and reinstalled. Deleting `~/.husk/` deliberately removes them.
-- Chat history, terminal session restoration, project memory, recents, and other transient workspace state remain local application data for now; they are not placed in the readable config or agent files.
+- Chat history and drafts use a local transactional IndexedDB archive, separate from the readable config and agent files. Terminal session restoration, project memory, recents, and other workspace state also remain local application data.
 - Terminal output, file contents, attachments, project memory, personal memory, and display name can be sent to the selected AI provider when included in an AI request. Review context chips before sending sensitive output.
 - File and MCP action access can be disabled in **Settings → Agents**. Every provider sends Husk action requests through the same broker: APIs use native tool calls, while signed-in CLIs return validated proposals. Husk never forwards its filesystem-write, terminal-execution, keychain, or MCP credentials to a provider.
-- Workspace actions are restricted to the folder selected by the current chat; the native layer checks the boundary again, including symlink escapes. Existing-file changes are reviewable, non-read-only MCP calls require approval, and Undo refuses to overwrite a file that changed after Husk’s edit.
+- Workspace actions are restricted to the folder selected by the current chat; the native layer checks the boundary again, including symlink escapes. New files and existing-file changes require edit access and review unless explicitly eligible for auto-apply. Non-read-only MCP calls require approval, and Undo refuses to overwrite a file that changed after Husk’s edit.
 
 ## Run from source
 

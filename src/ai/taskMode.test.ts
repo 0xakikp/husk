@@ -50,4 +50,22 @@ describe("AI Task Mode", () => {
     task = appendAiTaskEvent(task, { id: "edit-waiting", type: "edit-proposed", label: "b.ts", state: "review", at: 12 });
     expect(deriveAiTaskStages(task)[2]).toMatchObject({ state: "review", detail: "1 to review" });
   });
+
+  it("does not let a different passing check hide an unresolved failure", () => {
+    let task = createAiTask("Repair checks", "/work/app", { now: 10 });
+    task = appendAiTaskEvent(task, { id: "lint", type: "check", label: "pnpm lint", state: "failed", at: 12 });
+    task = appendAiTaskEvent(task, { id: "test", type: "check", label: "pnpm test", state: "complete", at: 13 });
+    expect(deriveAiTaskStages(task)[3].state).toBe("failed");
+    task = appendAiTaskEvent(task, { id: "lint-retry", type: "check", label: "pnpm lint", state: "complete", at: 14 });
+    expect(deriveAiTaskStages(task)[3].state).toBe("complete");
+  });
+
+  it("invalidates checks that started before the latest edit", () => {
+    let task = createAiTask("Fix code", "/work/app", { now: 10 });
+    task = appendAiTaskEvent(task, { id: "edit", type: "edit-applied", label: "app.ts", state: "complete", at: 20 });
+    task = appendAiTaskEvent(task, { id: "test", type: "check", label: "pnpm test", state: "complete", startedAt: 15, at: 25 });
+    expect(deriveAiTaskStages(task)[3].state).toBe("pending");
+    task = appendAiTaskEvent(task, { id: "retry", type: "check", label: "pnpm test", state: "complete", startedAt: 26, at: 30 });
+    expect(deriveAiTaskStages(task)[3].state).toBe("complete");
+  });
 });

@@ -34,6 +34,7 @@ export function parseTerminalPilotDecision(response: string): TerminalPilotDecis
     if (!record) return null;
     const action = text(record.action, 20).toLowerCase();
     if (action === "run") {
+      if (typeof record.command !== "string" || record.command.trim().length > MAX_COMMAND_LENGTH) return null;
       const command = text(record.command, MAX_COMMAND_LENGTH);
       const reason = text(record.reason, 320);
       if (!command || !reason) return null;
@@ -54,42 +55,63 @@ export function parseTerminalPilotDecision(response: string): TerminalPilotDecis
  * command outside this narrow list may still be useful, but it must be shown
  * to the user with an explicit Run button. Shell operators also go to review:
  * even a safe-looking first binary can become unsafe when chained. */
-const SAFE_COMMANDS: RegExp[] = [
-  /^(?:pwd|ls|find|rg|grep|cat|sed|head|tail|stat)\b/i,
-  /^git\s+(?:status|diff|log|show|branch|remote\s+-v|rev-parse)\b/i,
-  /^kubectl\s+(?:get|describe|logs|events|top|config\s+(?:current-context|view))\b/i,
-  /^docker\s+(?:ps|logs|inspect|images|stats|context\s+show)\b/i,
-  /^terraform\s+(?:show|workspace\s+(?:show|list)|state\s+list|version)\b/i,
-  /^(?:node|python3?|ruby|go|cargo|rustc)\s+(?:--version|-V|version)\b/i,
-  /^(?:which|command\s+-v|type)\b/i,
-];
+const SHELL_SYNTAX = /[\x00-\x1f\x7f;&|\x60$<>\\(){}!*?~]/;
+const SIMPLE_WORD = /^[a-zA-Z0-9_./:@%+,=-]+$/;
 
-const SHELL_OPERATOR_RE = /(?:\n|;|&&|\|\||\||`|\$\(|>|<)/;
-const EXPLICITLY_RISKY_RE = /\b(?:sudo|su\s+-|rm\b|dd\b|mkfs\b|chmod\b|chown\b|kill\b|pkill\b|shutdown\b|reboot\b|git\s+(?:reset|clean|checkout|switch|commit|push|merge|rebase)|kubectl\s+(?:apply|delete|patch|edit|scale|set\b|rollout\s+(?:restart|undo))|helm\s+(?:install|upgrade|uninstall|delete)|terraform\s+(?:apply|destroy|import)|docker\s+(?:rm|rmi|system\s+prune|run|exec)|(?:npm|pnpm|yarn|pip|pip3)\s+(?:install|add|remove|publish)|curl\b|wget\b)\b/i;
-const AMBIGUOUS_DIAGNOSTIC_RE = /(?:\b(?:sed|perl)\s+-[^\s]*i\b|\bfind\b.*\s-(?:delete|exec|execdir|ok)\b|\bkubectl\s+logs\b.*(?:\s-f\b|--follow\b)|\bdocker\s+stats\b)/i;
+/** A small literal argv grammar. Shell expansion, escapes and backgrounding
+ * never enter the unattended path, including when they occur inside quotes. */
+function diagnosticArgs(command: string): string[] | null {
+  if (SHELL_SYNTAX.test(command)) return null;
+  const parts = command.match(/"[^"]*"|'[^']*'|[^\s"']+/g) ?? [];
+  if (parts.join(" ").replace(/\s+/g, " ") !== command.replace(/\s+/g, " ")) return null;
+  const args = parts.map((part) => /^["']/.test(part) ? part.slice(1, -1) : part);
+  if (args.some((part) => !part || part.split(/\s+/).some((word) => !SIMPLE_WORD.test(word)))) return null;
+  return args;
+}
+
+function onlyFlagsAndPaths(args: string[], flags: Set<string>): boolean {
+  let pathsOnly = false;
+  return args.every((arg) => {
+    if (arg === "--") { pathsOnly = true; return true; }
+    return pathsOnly || !arg.startsWith("-") || flags.has(arg);
+  });
+}
+
+function isDiagnostic(args: string[]): boolean {
+  const [program, subcommand, ...rest] = args;
+  const tail = args.slice(1);
+  if (program === "pwd") return tail.length === 0 || tail.length === 1 && ["-L", "-P"].includes(tail[0]);
+  if (program === "ls") return onlyFlagsAndPaths(tail, new Set(["-a", "-l", "-h", "-la", "-al", "-lah", "-alh", "-lh", "-1", "-d", "--all"]));
+  if (program === "cat") return onlyFlagsAndPaths(tail, new Set(["-n", "-b", "-s", "-v"]));
+  if (program === "head" || program === "tail") {
+    if (tail[0] === "-n") return /^\d{1,4}$/.test(tail[1] ?? "") && onlyFlagsAndPaths(tail.slice(2), new Set());
+    return onlyFlagsAndPaths(tail, new Set());
+  }
+  if (program === "git") {
+    if (subcommand === "status") return rest.every((arg) => ["--short", "-s", "--branch", "-b", "--porcelain", "--porcelain=v1", "--porcelain=v2", "--untracked-files=no", "--untracked-files=normal", "--untracked-files=all"].includes(arg));
+    if (subcommand === "branch") return rest.every((arg) => ["--show-current", "--list", "-a", "-r", "-v", "-vv"].includes(arg));
+    if (subcommand === "remote") return rest.length === 1 && rest[0] === "-v";
+    if (subcommand === "rev-parse") return rest.length > 0 && rest.every((arg) => ["--show-toplevel", "--is-inside-work-tree", "--abbrev-ref", "HEAD"].includes(arg));
+    // git diff/log/show can run configured external programs or write output.
+    return false;
+  }
+  if (["node", "python", "python3", "ruby", "go", "cargo", "rustc", "terraform"].includes(program)) return tail.length === 1 && ["--version", "-V", "version"].includes(tail[0]);
+  // Remote clients, sed, find, and extensible programs need explicit review.
+  return false;
+}
 
 export function assessTerminalPilotCommand(
   command: string,
   protectedTargets: string[] = [],
 ): TerminalPilotSafety {
   const normalized = command.trim();
-  if (!normalized || normalized.length > MAX_COMMAND_LENGTH) {
-    return { kind: "review", reason: "the command is empty or too long" };
-  }
-  if (SHELL_OPERATOR_RE.test(normalized)) {
-    return { kind: "review", reason: "it uses shell operators or redirection" };
-  }
-  if (EXPLICITLY_RISKY_RE.test(normalized)) {
-    return { kind: "review", reason: "it can change files, credentials, or a remote environment" };
-  }
-  if (AMBIGUOUS_DIAGNOSTIC_RE.test(normalized)) {
-    return { kind: "review", reason: "it can modify state or may not return a complete result" };
-  }
-  if (protectedTargets.length > 0) {
-    return { kind: "review", reason: `a protected target is active (${protectedTargets[0]})` };
-  }
-  if (SAFE_COMMANDS.some((pattern) => pattern.test(normalized))) return { kind: "safe" };
-  return { kind: "review", reason: "it is outside Terminal Pilot's diagnostic command allowlist" };
+  if (!normalized || normalized.length > MAX_COMMAND_LENGTH) return { kind: "review", reason: "the command is empty or too long" };
+  if (protectedTargets.length) return { kind: "review", reason: `a protected target is active (${protectedTargets[0]})` };
+  const args = diagnosticArgs(normalized);
+  if (!args) return { kind: "review", reason: "it uses shell syntax or arguments that require review" };
+  return isDiagnostic(args)
+    ? { kind: "safe" }
+    : { kind: "review", reason: "this command and its arguments require explicit approval" };
 }
 
 export function terminalPilotSystemPrompt(): string {

@@ -17,7 +17,6 @@ import { setAiQueryListener } from "./ai/terminalInput";
 import type { OpenFile } from "./editor/EditorArea";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
-import { initKeys } from "./ai/store";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { readFileBase64 } from "./fs";
 import { getBuiltInWallpaper, stepWallpaper, randomWallpaper } from "./settings/wallpapers";
@@ -293,10 +292,6 @@ function App() {
     document.documentElement.style.setProperty("--panel-gaps", `${prefs.panelGaps}px`);
     document.documentElement.style.setProperty("--active-gap-glow", prefs.activePanelGlow ? "color-mix(in srgb, var(--accent) 20%, transparent)" : "transparent");
   }, [prefs.panelGaps, prefs.panelShadows, prefs.activePanelGlow]);
-
-  useEffect(() => {
-    void initKeys();
-  }, []);
 
   // Auto-check for updates on app start (non-blocking)
   useEffect(() => {

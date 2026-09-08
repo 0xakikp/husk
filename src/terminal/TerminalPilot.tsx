@@ -12,6 +12,8 @@ import {
   terminalPilotSystemPrompt,
 } from "../ai/terminalPilot";
 import { protectedTargets } from "./envSignals";
+import { getActiveRemoteTerminal, getActiveTerminalCwd } from "../ai/terminalContext";
+import { scanForSecrets } from "../ai/contextItems";
 
 type PilotStepState = "running" | "complete" | "failed" | "approval";
 
@@ -83,6 +85,10 @@ export function TerminalPilot({
   const currentTaskRef = useRef("");
   const stepsRef = useRef<PilotStep[]>([]);
   const stoppedRef = useRef(false);
+  const planningRef = useRef<AbortController | null>(null);
+  const targetHostRef = useRef<string | null>(null);
+  const targetRemoteRef = useRef(false);
+  const targetCwdRef = useRef("");
 
   useEffect(() => {
     stepsRef.current = steps;
@@ -109,6 +115,7 @@ export function TerminalPilot({
   useEffect(() => {
     if (!supervisionPaused || !["planning", "waiting", "approval"].includes(status)) return;
     stoppedRef.current = true;
+    planningRef.current?.abort();
     waitingCommandRef.current = null;
     clearWaitTimer();
     setPilotState("paused", "Task Mode paused terminal steps. A command already running in the terminal remains visible and under your control.");
@@ -122,6 +129,15 @@ export function TerminalPilot({
     }
     if (getTargetPtyId() !== targetPtyRef.current) {
       setPilotState("paused", "Terminal focus changed. Return to the Pilot terminal before continuing so no command lands in another session.");
+      return;
+    }
+    const remote = getActiveRemoteTerminal();
+    if (remote.isRemote !== targetRemoteRef.current || (remote.isRemote ? remote.host ?? null : null) !== targetHostRef.current) {
+      setPilotState("paused", "The SSH connection changed. Start terminal steps again in the intended session.");
+      return;
+    }
+    if (getActiveTerminalCwd() !== targetCwdRef.current) {
+      setPilotState("paused", "The terminal folder changed. Start terminal steps again in the intended folder.");
       return;
     }
     if (isTerminalRunning()) {
@@ -151,22 +167,23 @@ export function TerminalPilot({
       setPilotState("paused", `Terminal steps reached the ${MAX_STEPS}-step diagnostic limit. Review the visible evidence before continuing manually.`);
       return;
     }
+    planningRef.current?.abort();
+    const controller = new AbortController();
+    planningRef.current = controller;
+    const prompt = terminalPilotPrompt({ task: currentTaskRef.current, cwd, steps: history.map((step) => ({ command: step.command, exitCode: step.exitCode ?? null, output: step.output ?? "" })) });
+    if (scanForSecrets("terminal diagnosis", prompt).length) {
+      setPilotState("paused", "Diagnostic output may contain secrets. Review a selected excerpt in chat before sending it.");
+      return;
+    }
     setPilotState("planning", "Reading the observed result and choosing one next step…");
     try {
       const response = await generateOnce(
         { provider, model, apiKey, baseURL, workspacePath: providerWorkspacePath },
         terminalPilotSystemPrompt(),
-        terminalPilotPrompt({
-          task: currentTaskRef.current,
-          cwd,
-          steps: history.map((step) => ({
-            command: step.command,
-            exitCode: step.exitCode ?? null,
-            output: step.output ?? "",
-          })),
-        }),
+        prompt,
+        controller.signal,
       );
-      if (stoppedRef.current) return;
+      if (stoppedRef.current || controller.signal.aborted || planningRef.current !== controller) return;
       const decision = parseTerminalPilotDecision(response);
       if (!decision) {
         setPilotState("paused", "Husk received an invalid next-step response and stopped before running anything else.");
@@ -181,7 +198,7 @@ export function TerminalPilot({
         return;
       }
 
-      const safety = assessTerminalPilotCommand(decision.command, protectedTargets());
+      const safety = assessTerminalPilotCommand(decision.command, [...protectedTargets(), ...(targetHostRef.current && /prod|production|live/i.test(targetHostRef.current) ? [`SSH/${targetHostRef.current}`] : [])]);
       const nextStep: PilotStep = {
         id: stepId(),
         command: decision.command,
@@ -196,10 +213,12 @@ export function TerminalPilot({
         setPilotState("approval", `Review required: ${safety.reason}.`);
       } else {
         /* Let React commit the new step before it changes state again. */
-        window.setTimeout(() => execute(nextStep), 0);
+        window.setTimeout(() => {
+          if (!controller.signal.aborted && planningRef.current === controller) execute(nextStep);
+        }, 0);
       }
     } catch (error) {
-      if (stoppedRef.current) return;
+      if (stoppedRef.current || controller.signal.aborted || planningRef.current !== controller) return;
       setPilotState("error", error instanceof Error ? error.message : String(error));
     }
   }, [apiKey, baseURL, cwd, execute, model, provider, providerWorkspacePath, setPilotState]);
@@ -220,13 +239,25 @@ export function TerminalPilot({
       if (stoppedRef.current) return;
       /* Registry clears its running state after publishing the command event.
          Scheduling avoids racing the next command into that final cleanup. */
-      window.setTimeout(() => void advance(completed), 80);
+      const generation = requestRef.current;
+      const controller = planningRef.current;
+      window.setTimeout(() => {
+        if (requestRef.current === generation && planningRef.current === controller && !controller?.signal.aborted) void advance(completed);
+      }, 80);
     });
   }, [advance, clearWaitTimer]);
 
   useEffect(() => {
     if (!request || request.id === requestRef.current) return;
     requestRef.current = request.id;
+    stoppedRef.current = true;
+    planningRef.current?.abort();
+    waitingCommandRef.current = null;
+    clearWaitTimer();
+    if (supervisionPaused) {
+      setPilotState("paused", "Resume Task Mode before starting terminal steps.");
+      return;
+    }
     if (isTerminalRunning()) {
       setPilotState("paused", "The selected terminal is busy. Wait for it to finish before starting terminal steps.");
       return;
@@ -237,17 +268,27 @@ export function TerminalPilot({
       return;
     }
     stoppedRef.current = false;
+    planningRef.current?.abort();
     targetPtyRef.current = target;
+    const remote = getActiveRemoteTerminal();
+    targetHostRef.current = remote.isRemote ? remote.host ?? null : null;
+    targetRemoteRef.current = remote.isRemote;
+    targetCwdRef.current = getActiveTerminalCwd();
+    if (remote.isRemote && !remote.host) {
+      setPilotState("paused", "The SSH host is unknown. Reconnect before starting supervised terminal steps.");
+      return;
+    }
     waitingCommandRef.current = null;
     clearWaitTimer();
     currentTaskRef.current = request.task;
     setTask(request.task);
     setSteps([]);
     void advance([]);
-  }, [advance, clearWaitTimer, getTargetPtyId, isTerminalRunning, provider.kind, request, setPilotState]);
+  }, [advance, clearWaitTimer, getTargetPtyId, isTerminalRunning, provider.kind, request, setPilotState, supervisionPaused]);
 
   useEffect(() => () => {
     stoppedRef.current = true;
+    planningRef.current?.abort();
     waitingCommandRef.current = null;
     clearWaitTimer();
   }, [clearWaitTimer]);
@@ -268,6 +309,7 @@ export function TerminalPilot({
         {!running && status !== "complete" && (
           <button type="button" className="terminal-pilot-btn" onClick={() => {
             stoppedRef.current = true;
+            planningRef.current?.abort();
             waitingCommandRef.current = null;
             clearWaitTimer();
             setPilotState("idle");
@@ -278,6 +320,7 @@ export function TerminalPilot({
         {(running || awaitingApproval || status === "paused") && (
           <button type="button" className="terminal-pilot-btn" onClick={() => {
             stoppedRef.current = true;
+            planningRef.current?.abort();
             waitingCommandRef.current = null;
             clearWaitTimer();
             setPilotState("paused", "Terminal steps paused. The terminal command, if any, remains visible and under your control.");

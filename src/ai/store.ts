@@ -11,6 +11,7 @@ export type StoredConfig = {
   providerId: string;
   model: string;
   baseURL: string;
+  providerBaseURLs?: Record<string, string>;
 };
 
 /* Named, not positional. This was PROVIDERS[0], so adding a provider to the top
@@ -38,8 +39,8 @@ function knownModel(id: string | undefined, providerId: string): string {
   // deliberately absent from the static registry. Preserve the saved slug and
   // let the CLI validate it; otherwise a refresh would silently replace a
   // user's selected Codex model with the generic default.
-  if (providerId === "codex" && id) return id;
-  if (id && MODELS.some((m) => m.id === id)) return id;
+  if (["codex", "local"].includes(providerId) && id) return id;
+  if (id && MODELS.some((m) => m.id === id && m.provider.id === providerId)) return id;
   return PROVIDERS.find((p) => p.id === providerId)?.defaultModel ?? DEFAULT.model;
 }
 
@@ -48,6 +49,43 @@ function knownModel(id: string | undefined, providerId: string): string {
    stable snapshot or it re-renders forever. */
 let configCache: StoredConfig | null = null;
 const configSubs = new Set<() => void>();
+// Preserve existing plaintext entries only when their keychain migration fails.
+// Native hydration must not erase the user's only recoverable copy.
+let unmigratedKeys: Record<string, string> = {};
+
+export function providerBaseURL(config: StoredConfig, providerId: string): string {
+  const provider = PROVIDERS.find((item) => item.id === providerId);
+  if (!provider?.configurableBaseURL) return provider?.baseURL ?? "";
+  return config.providerBaseURLs?.[providerId] ?? (config.providerId === providerId ? config.baseURL : undefined) ?? provider.baseURL ?? "";
+}
+
+function normaliseConfig(value: unknown): StoredConfig {
+  const parsed = value && typeof value === "object" ? value as Partial<StoredConfig> : {};
+  const provider = PROVIDERS.find((item) => item.id === parsed.providerId) ?? PROVIDERS.find((item) => item.id === DEFAULT_PROVIDER_ID)!;
+  const endpoints: Record<string, string> = {};
+  for (const candidate of PROVIDERS.filter((item) => item.configurableBaseURL)) {
+    const url = parsed.providerBaseURLs?.[candidate.id];
+    if (typeof url === "string") endpoints[candidate.id] = url;
+  }
+  // Only configurable providers have an editable URL. Old shared URLs on a
+  // named provider can belong to whichever provider was previously selected.
+  if (provider.configurableBaseURL && endpoints[provider.id] === undefined && typeof parsed.baseURL === "string") endpoints[provider.id] = parsed.baseURL;
+  return {
+    providerId: provider.id,
+    model: knownModel(typeof parsed.model === "string" ? parsed.model : undefined, provider.id),
+    baseURL: endpoints[provider.id] ?? provider.baseURL ?? "",
+    providerBaseURLs: endpoints,
+  };
+}
+
+function persistBrowserConfig(config: StoredConfig): void {
+  try {
+    localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
+      ...config,
+      ...(Object.keys(unmigratedKeys).length ? { keys: unmigratedKeys } : {}),
+    }));
+  } catch { /* Native settings remain the durable source when browser storage is unavailable. */ }
+}
 
 export function subscribeConfig(fn: () => void): () => void {
   configSubs.add(fn);
@@ -63,13 +101,7 @@ function readConfig(): StoredConfig {
   try {
     const raw = localStorage.getItem(AI_CONFIG_STORAGE_KEY);
     if (!raw) return DEFAULT;
-    const parsed = JSON.parse(raw) as Partial<StoredConfig>;
-    const providerId = parsed.providerId ?? DEFAULT.providerId;
-    return {
-      providerId,
-      model: knownModel(parsed.model, providerId),
-      baseURL: parsed.baseURL ?? DEFAULT.baseURL,
-    };
+    return normaliseConfig(JSON.parse(raw));
   } catch {
     return DEFAULT;
   }
@@ -81,35 +113,38 @@ export function loadConfig(): StoredConfig {
 }
 
 export function saveConfig(cfg: StoredConfig): void {
-  configCache = { providerId: cfg.providerId, model: cfg.model, baseURL: cfg.baseURL };
+  const previous = loadConfig();
+  const endpoints = { ...previous.providerBaseURLs, ...cfg.providerBaseURLs };
+  const provider = PROVIDERS.find((item) => item.id === cfg.providerId);
+  if (provider?.configurableBaseURL && cfg.providerId === previous.providerId) endpoints[cfg.providerId] = cfg.baseURL;
+  configCache = normaliseConfig({ ...cfg, baseURL: endpoints[cfg.providerId] ?? provider?.baseURL ?? "", providerBaseURLs: endpoints });
   for (const fn of configSubs) fn();
-  try {
-    // Persist only non-secret fields — never the keys.
-    localStorage.setItem(
-      AI_CONFIG_STORAGE_KEY,
-      JSON.stringify({ providerId: cfg.providerId, model: cfg.model, baseURL: cfg.baseURL }),
-    );
-  } catch {
-    // storage unavailable — keep config in memory only
-  }
+  persistBrowserConfig(configCache);
   persistNativeConfigSection("ai", configCache);
+  broadcast("husk-ai-config-changed", { config: configCache });
+}
+
+/** Resolve the selected provider's own endpoint before changing providers. */
+export function updateConfig(patch: Partial<StoredConfig>): void {
+  const current = loadConfig();
+  const providerId = patch.providerId ?? current.providerId;
+  const endpoints = { ...current.providerBaseURLs, ...patch.providerBaseURLs };
+  if (patch.baseURL !== undefined) endpoints[providerId] = patch.baseURL;
+  saveConfig({
+    ...current,
+    ...patch,
+    providerId,
+    model: patch.model ?? (providerId !== current.providerId ? PROVIDERS.find((provider) => provider.id === providerId)?.defaultModel ?? DEFAULT.model : current.model),
+    baseURL: patch.baseURL ?? providerBaseURL({ ...current, providerBaseURLs: endpoints }, providerId),
+    providerBaseURLs: endpoints,
+  });
 }
 
 /** Apply the non-secret AI selection from config.toml before either composer
  * renders. API keys are intentionally hydrated through the keychain below. */
 export function hydrateAiConfigFromNative(value: unknown): void {
-  const parsed = value && typeof value === "object" ? (value as Partial<StoredConfig>) : {};
-  const providerId = parsed.providerId ?? DEFAULT.providerId;
-  configCache = {
-    providerId,
-    model: knownModel(parsed.model, providerId),
-    baseURL: parsed.baseURL ?? DEFAULT.baseURL,
-  };
-  try {
-    localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(configCache));
-  } catch {
-    // The native config is still authoritative for the next launch.
-  }
+  configCache = normaliseConfig(value);
+  persistBrowserConfig(configCache);
   for (const fn of configSubs) fn();
 }
 
@@ -121,6 +156,10 @@ export function hydrateAiConfigFromNative(value: unknown): void {
 let keyCache: Record<string, string> = {};
 const keySubs = new Set<() => void>();
 const writeTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+const keyErrors: Record<string, string> = {};
+const keyVersions: Record<string, number> = {};
+const writeChains: Record<string, Promise<void>> = {};
+const writing = new Set<string>();
 
 function emitKeys(): void {
   for (const fn of keySubs) fn();
@@ -137,12 +176,35 @@ export function getKey(providerId: string): string {
 
 export function setKey(providerId: string, value: string): void {
   keyCache = { ...keyCache, [providerId]: value };
+  delete keyErrors[providerId];
+  keyVersions[providerId] = (keyVersions[providerId] ?? 0) + 1;
+  const version = keyVersions[providerId];
   emitKeys();
   clearTimeout(writeTimers[providerId]);
   writeTimers[providerId] = setTimeout(() => {
-    if (value) void secretsSet(providerId, value).catch(() => {});
-    else void secretsDelete(providerId).catch(() => {});
+    delete writeTimers[providerId];
+    writing.add(providerId);
+    writeChains[providerId] = (writeChains[providerId] ?? Promise.resolve()).catch(() => {}).then(async () => {
+      try {
+        if (value) await secretsSet(providerId, value);
+        else await secretsDelete(providerId);
+        if (unmigratedKeys[providerId]) {
+          delete unmigratedKeys[providerId];
+          persistBrowserConfig(loadConfig());
+        }
+        broadcast("husk-ai-keys-changed");
+      } catch {
+        if (keyVersions[providerId] === version) keyErrors[providerId] = "Could not save this key to the OS keychain. Edit and save it again to retry.";
+      } finally {
+        if (keyVersions[providerId] === version) writing.delete(providerId);
+        emitKeys();
+      }
+    });
   }, 400);
+}
+
+export function useKeyError(providerId: string): string {
+  return useSyncExternalStore(subscribeKeys, () => keyErrors[providerId] ?? "");
 }
 
 export function useKey(providerId: string): string {
@@ -168,11 +230,12 @@ export async function initKeys(): Promise<void> {
     const raw = localStorage.getItem(AI_CONFIG_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as { keys?: Record<string, string> };
-      legacy = parsed.keys ?? {};
+      legacy = Object.fromEntries(Object.entries(parsed.keys ?? {}).filter((entry) => typeof entry[1] === "string" && !!entry[1]));
     }
   } catch {
     legacy = {};
   }
+  unmigratedKeys = { ...legacy };
 
   try {
     const vals = await secretsGetAll(ids);
@@ -183,18 +246,77 @@ export async function initKeys(): Promise<void> {
     });
     // Migrate legacy keys not already in the keychain.
     for (const [id, v] of Object.entries(legacy)) {
-      if (v && !next[id]) {
+      try {
+        if (v && !next[id]) {
+          await secretsSet(id, v);
+          next[id] = v;
+        }
+        delete unmigratedKeys[id];
+      } catch {
         next[id] = v;
-        await secretsSet(id, v).catch(() => {});
+        keyErrors[id] = "Could not migrate this key to the OS keychain. The existing key is retained; retry saving it.";
       }
     }
     keyCache = next;
     emitKeys();
     // Migration succeeded — remove plaintext keys from localStorage.
-    if (Object.keys(legacy).length) saveConfig(loadConfig());
+    if (Object.keys(legacy).length) persistBrowserConfig(loadConfig());
   } catch {
     // Keychain unavailable — keep working from whatever was in localStorage.
     keyCache = { ...legacy };
+    for (const id of ids) keyErrors[id] = "The OS keychain is unavailable. Stored keys could not be loaded.";
     emitKeys();
   }
+}
+
+async function refreshKeys(): Promise<void> {
+  const ids = PROVIDERS.map((provider) => provider.id);
+  const versions = { ...keyVersions };
+  try {
+    const values = await secretsGetAll(ids);
+    const next = { ...keyCache };
+    ids.forEach((id, index) => {
+      if (writeTimers[id] || writing.has(id) || keyVersions[id] !== versions[id]) return;
+      next[id] = values[index] ?? unmigratedKeys[id] ?? "";
+    });
+    keyCache = next;
+    emitKeys();
+  } catch { /* Keep usable in-memory credentials if a keychain refresh fails. */ }
+}
+
+const syncSource = Math.random().toString(36).slice(2);
+let syncStarted: Promise<void> | undefined;
+
+function broadcast(event: string, payload: Record<string, unknown> = {}): void {
+  if (typeof window === "undefined") return;
+  void import("@tauri-apps/api/event").then(({ emit }) => emit(event, { ...payload, source: syncSource })).catch(() => {});
+}
+
+/** Events carry public configuration or a key-cache invalidation, never credentials. */
+export function initialiseAiSync(): Promise<void> {
+  syncStarted ??= (async () => {
+    if (typeof window === "undefined") return;
+    const acceptConfig = (value: unknown) => {
+      const next = normaliseConfig(value);
+      if (JSON.stringify(next) === JSON.stringify(loadConfig())) return;
+      configCache = next;
+      persistBrowserConfig(next);
+      persistNativeConfigSection("ai", next);
+      for (const fn of configSubs) fn();
+    };
+    window.addEventListener("storage", (event) => {
+      if (event.key === AI_CONFIG_STORAGE_KEY) acceptConfig(readConfig());
+    });
+    window.addEventListener("focus", () => { acceptConfig(readConfig()); void refreshKeys(); });
+    try {
+      const { listen } = await import("@tauri-apps/api/event");
+      await listen<{ source: string; config: StoredConfig }>("husk-ai-config-changed", ({ payload }) => {
+        if (payload.source !== syncSource) acceptConfig(payload.config);
+      });
+      await listen<{ source: string }>("husk-ai-keys-changed", ({ payload }) => {
+        if (payload.source !== syncSource) void refreshKeys();
+      });
+    } catch { /* Browser preview uses storage/focus events. */ }
+  })();
+  return syncStarted;
 }

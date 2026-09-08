@@ -1,4 +1,6 @@
 /** Pending edit queue — AI proposes edits, user reviews before applying. */
+import { canAutoApplySubscriptionEdits } from "./subscriptionAutoApplySafety";
+import { isPathInWorkspace, normalizeWorkspacePath } from "./workspaceScope";
 
 export interface PendingEdit {
   id: string;
@@ -6,7 +8,7 @@ export interface PendingEdit {
   search: string;
   replace: string;
   /** `create` is a new file; `edit` replaces exactly one verified match. */
-  operation?: "create" | "edit";
+  operation?: "create" | "edit" | "overwrite";
   /** The chat that proposed this edit. Older in-memory edits may not have one. */
   sessionId?: string;
   /** The chat scope enforced again when this reviewed edit is applied. */
@@ -97,6 +99,57 @@ export type ApplyResult =
   | { ok: true; path: string }
   | { ok: false; path: string; reason: string };
 
+/** Shared by native tools and CLI proposals. Whole-file overwrites and remote
+ * writes always need review; the existing protected-path/size policy applies
+ * equally to both proposal formats. */
+export function isAutoApplyEligible(edit: Omit<PendingEdit, "id" | "timestamp">): boolean {
+  if (!edit.workspaceRoot || edit.remoteHost || edit.operation === "overwrite") return false;
+  if (edit.operation !== "create" && (!edit.search || !edit.replace)) return false;
+  return canAutoApplySubscriptionEdits([edit.operation === "create"
+    ? { kind: "create", path: edit.path, content: edit.replace }
+    : { kind: "edit", path: edit.path, search: edit.search, replace: edit.replace }]).ok;
+}
+
+/** Return a literal replacement only when its complete target is unambiguous. */
+export function replaceVerifiedEdit(current: string, edit: Pick<PendingEdit, "operation" | "search" | "replace">): string {
+  if (edit.operation === "overwrite") {
+    if (current !== edit.search) throw new Error("the file changed since this overwrite was proposed");
+    return edit.replace;
+  }
+  if (!edit.search) throw new Error("empty search text is not a valid edit");
+  const start = current.indexOf(edit.search);
+  if (start < 0) throw new Error("the file changed since this edit was proposed");
+  if (current.indexOf(edit.search, start + 1) >= 0) throw new Error("search text matches more than once; request a unique edit");
+  return current.slice(0, start) + edit.replace + current.slice(start + edit.search.length);
+}
+
+/** Re-check the live permission and scope at application time, including after
+ * asynchronous reads. A queued proposal cannot outlive a revoked permission. */
+async function requireEditAuthority(edit: Pick<PendingEdit, "sessionId" | "workspaceRoot" | "remoteHost">, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new Error("the request was cancelled");
+  if (!edit.sessionId || !edit.workspaceRoot) throw new Error("this edit has no chat scope; discard it and ask again");
+  const { getPrefs } = await import("../settings/preferences");
+  const prefs = getPrefs();
+  if (!prefs.aiEnabled || !prefs.aiFileToolsEnabled) throw new Error("workspace actions are disabled in Settings → Agents");
+  const { getAllSessions } = await import("./sessionStore");
+  const session = getAllSessions().find((item) => item.id === edit.sessionId);
+  if (!session?.workspaceEditAccess) throw new Error("workspace edits are disabled for this chat");
+  if (edit.remoteHost) {
+    if (session.remoteWorkspace?.host !== edit.remoteHost || session.remoteWorkspace?.path !== edit.workspaceRoot) {
+      throw new Error("the chat's remote workspace changed; discard this proposal and ask again");
+    }
+    const { getActiveRemoteTerminal } = await import("./terminalContext");
+    const active = getActiveRemoteTerminal();
+    if (!active.isRemote || active.host !== edit.remoteHost) throw new Error("the active SSH host changed; review this edit again in the intended terminal");
+  } else {
+    const current = normalizeWorkspacePath(session.workspacePath);
+    if (session.remoteWorkspace || !isPathInWorkspace(current, edit.workspaceRoot) || !isPathInWorkspace(edit.workspaceRoot, current)) {
+      throw new Error("the chat's workspace changed; discard this proposal and ask again");
+    }
+  }
+  if (signal?.aborted) throw new Error("the request was cancelled");
+}
+
 /**
  * Write one queued edit to disk.
  *
@@ -111,7 +164,12 @@ export type ApplyResult =
  * whitespace for uniqueness, and a blind replace-all could rewrite unintended
  * matches.
  */
-export async function applyPendingEdit(edit: PendingEdit): Promise<ApplyResult> {
+export async function applyPendingEdit(edit: PendingEdit, options: { signal?: AbortSignal } = {}): Promise<ApplyResult> {
+  try {
+    await requireEditAuthority(edit, options.signal);
+  } catch (error) {
+    return { ok: false, path: edit.path, reason: error instanceof Error ? error.message : String(error) };
+  }
   if (edit.remoteHost) {
     if (!edit.workspaceRoot) {
       return { ok: false, path: edit.path, reason: "this remote edit has no workspace scope; discard it and ask again" };
@@ -129,15 +187,14 @@ export async function applyPendingEdit(edit: PendingEdit): Promise<ApplyResult> 
         if (existing !== null) {
           return { ok: false, path: edit.path, reason: "the remote file now exists; review it before replacing anything" };
         }
+        await requireEditAuthority(edit, options.signal);
         await sshCreateFileScoped(edit.remoteHost, remoteRoot, edit.path, edit.replace);
         recordAppliedEdit(edit, null, edit.replace);
         return { ok: true, path: edit.path };
       }
       const current = await sshReadFileScoped(edit.remoteHost, remoteRoot, edit.path);
-      if (!current.includes(edit.search)) {
-        return { ok: false, path: edit.path, reason: "the remote file changed since this edit was proposed" };
-      }
-      const after = current.replace(edit.search, edit.replace);
+      const after = replaceVerifiedEdit(current, edit);
+      await requireEditAuthority(edit, options.signal);
       await sshWriteFileScoped(edit.remoteHost, remoteRoot, edit.path, after);
       recordAppliedEdit(edit, current, after);
       return { ok: true, path: edit.path };
@@ -157,20 +214,16 @@ export async function applyPendingEdit(edit: PendingEdit): Promise<ApplyResult> 
   try {
     if (edit.operation === "create") {
       const parent = edit.path.slice(0, edit.path.lastIndexOf("/"));
+      await requireEditAuthority(edit, options.signal);
       if (parent) await createDirScoped(parent, workspaceRoot).catch(() => {});
+      await requireEditAuthority(edit, options.signal);
       await writeNewFileScoped(edit.path, edit.replace, workspaceRoot);
       recordAppliedEdit(edit, null, edit.replace);
       return { ok: true, path: edit.path };
     }
     const current = await readFileScoped(edit.path, workspaceRoot);
-    if (!current.includes(edit.search)) {
-      return {
-        ok: false,
-        path: edit.path,
-        reason: "the file changed since this edit was proposed",
-      };
-    }
-    const after = current.replace(edit.search, edit.replace);
+    const after = replaceVerifiedEdit(current, edit);
+    await requireEditAuthority(edit, options.signal);
     await writeFileScoped(edit.path, after, workspaceRoot);
     recordAppliedEdit(edit, current, after);
     return { ok: true, path: edit.path };

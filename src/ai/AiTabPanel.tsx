@@ -389,6 +389,7 @@ export function AiTabPanel({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {prefs.aiEnabled ? (
           <TerminalAiComposer
+            key={activeSession.id}
             sessionId={activeSession.id}
             variant="full"
             registerToggle={false}

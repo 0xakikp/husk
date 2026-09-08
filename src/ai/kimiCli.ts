@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { runCliProcess } from "./cliProcess";
 
 /**
  * Kimi Code as a signed-in Husk planning backend.
@@ -66,70 +66,34 @@ export function runKimiCli(opts: KimiCliOptions): KimiCliRun {
   ];
   if (opts.model && opts.model !== "kimi") args.push("--model", opts.model);
 
-  const unlisten: UnlistenFn[] = [];
-  let stderr = "";
   let eventError = "";
-  let sawText = false;
-  let settled = false;
-
-  const done = new Promise<void>((resolve, reject) => {
-    const cleanup = () => {
-      for (const fn of unlisten) fn();
-      unlisten.length = 0;
-    };
-
-    void (async () => {
+  return runCliProcess({
+    id,
+    prefix: "kimi-cli",
+    command: "kimi_cli",
+    args,
+    cwd: opts.cwd,
+    error: () => eventError,
+    onLine: (payload) => {
+      let line: KimiEvent;
       try {
-        unlisten.push(
-          await listen<string>(`kimi-cli://line/${id}`, (event) => {
-            let line: KimiEvent;
-            try {
-              line = JSON.parse(event.payload) as KimiEvent;
-            } catch {
-              return;
-            }
-
-            const message = typeof line.message === "object" ? line.message : undefined;
-            const role = line.role || message?.role;
-            const isAssistant = role === "assistant" || line.type === "assistant";
-            const text = textFrom(line.content) || textFrom(message?.content) || (isAssistant ? line.text || message?.text || "" : "");
-            if (isAssistant && text) {
-              sawText = true;
-              opts.onDelta(text);
-            } else if (line.type === "error") {
-              eventError = typeof line.error === "string"
-                ? line.error
-                : line.error?.message || "Kimi Code reported an error.";
-            }
-          }),
-        );
-        unlisten.push(
-          await listen<string>(`kimi-cli://err/${id}`, (event) => {
-            stderr += `${event.payload}\n`;
-          }),
-        );
-        unlisten.push(
-          await listen<number | null>(`kimi-cli://exit/${id}`, (event) => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            if (eventError) reject(new Error(eventError));
-            else if (event.payload === 0 || sawText) resolve();
-            else reject(new Error(stderr.trim() || `kimi exited with ${event.payload ?? "no status"}`));
-          }),
-        );
-        await invoke("kimi_cli_start", { id, args, cwd: opts.cwd ?? null });
-      } catch (error) {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(error instanceof Error ? error : new Error(String(error)));
+        line = JSON.parse(payload) as KimiEvent;
+      } catch {
+        return;
       }
-    })();
-  });
 
-  return {
-    done,
-    stop: () => void invoke("kimi_cli_stop", { id }).catch(() => {}),
-  };
+      const message = typeof line.message === "object" ? line.message : undefined;
+      const role = line.role || message?.role;
+      const isAssistant = role === "assistant" || line.type === "assistant";
+      const text = textFrom(line.content) || textFrom(message?.content) || (isAssistant ? line.text || message?.text || "" : "");
+      if (isAssistant && text) {
+
+        opts.onDelta(text);
+      } else if (line.type === "error") {
+        eventError = typeof line.error === "string"
+          ? line.error
+          : line.error?.message || "Kimi Code reported an error.";
+      }
+    },
+  });
 }

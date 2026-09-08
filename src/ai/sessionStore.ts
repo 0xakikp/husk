@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { restoreAiTask, type AiTaskState } from "./taskMode";
 import { normalizeRemoteWorkspace, type RemoteWorkspaceScope } from "./remoteWorkspace";
+import { dismissToast, toast } from "../toast/store";
+import { openSessionDatabase, SessionSaveQueue, type SessionDatabase } from "./sessionPersistence";
 
 type Role = "user" | "assistant";
 
@@ -9,7 +11,7 @@ type Role = "user" | "assistant";
  * an unexplained wall of text. */
 export type AiToolTrace = {
   name: string;
-  state: "running" | "complete";
+  state: "running" | "complete" | "error" | "refused" | "queued";
 };
 
 export type AiReplyTrace = {
@@ -20,20 +22,23 @@ export type AiReplyTrace = {
   workspacePath?: string;
   /** An explicitly enabled folder on the active SSH host, if any. */
   remoteWorkspace?: RemoteWorkspaceScope;
-  /** The legacy signed-in CLI edit-proposal format was enabled for this request. */
+  /** The user enabled reviewed workspace changes for this request. */
   workspaceEditAccess?: boolean;
   /** This request could apply eligible proposals automatically in-memory only. */
   workspaceAutoApply?: boolean;
   context: { label: string; bytes: number }[];
   tools: AiToolTrace[];
+  historyMessagesOmitted?: number;
 };
 
 export type AiMessage = {
+  id?: string;
   role: Role;
   content: string;
   streaming?: boolean;
   timestamp?: number;
   trace?: AiReplyTrace;
+  images?: { dataUrl: string; mediaType?: string }[];
 };
 
 export type AiSession = {
@@ -51,8 +56,8 @@ export type AiSession = {
   workspacePath?: string;
   /** Optional SSH folder access. SSH chats are terminal-only until this is set. */
   remoteWorkspace?: RemoteWorkspaceScope;
-  /** Explicit, scope-specific compatibility flag for the legacy signed-in CLI
-      edit-proposal format. It never grants direct filesystem write access. */
+  /** Explicit, scope-specific consent for reviewed changes from any provider.
+      It never grants a provider direct filesystem write access. */
   workspaceEditAccess?: boolean;
   /** Persistent supervised work state. Running tasks restore paused so Husk
       never resumes actions silently after an application restart. */
@@ -69,6 +74,71 @@ const subscribers = new Set<() => void>();
 
 let activeSessionId: string | null = null;
 const activeSubscribers = new Set<() => void>();
+const changedBeforeLoad = new Set<string>();
+let activeChangedBeforeLoad = false;
+let initialized = false;
+let initialization: Promise<boolean> | undefined;
+let database: SessionDatabase<AiSession> | undefined;
+let saveQueue: SessionSaveQueue<AiSession> | undefined;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let storageToast: string | undefined;
+let lifecycleInstalled = false;
+let legacyLoadError: unknown;
+
+export type SessionStorageStatus = { state: "loading" | "saving" | "saved" | "error"; message?: string };
+let storageStatus: SessionStorageStatus = { state: "loading" };
+const storageSubscribers = new Set<() => void>();
+
+function setStorageStatus(state: SessionStorageStatus["state"], error?: unknown) {
+  const message = error === undefined ? undefined : error instanceof Error ? error.message : String(error);
+  storageStatus = { state, message };
+  storageSubscribers.forEach((listener) => listener());
+  if (state === "error" && !storageToast && typeof window !== "undefined") {
+    storageToast = toast({
+      title: "Chat changes have not been saved",
+      message: `${message || "Chat storage is unavailable."} Keep Husk open while saving is retried.`,
+      variant: "error",
+      duration: 0,
+      action: { label: "Retry save", onClick: () => { void flushSessionPersistence(); } },
+    });
+  } else if (state === "saved" && storageToast) {
+    dismissToast(storageToast);
+    storageToast = undefined;
+  }
+}
+
+export function getSessionStorageStatus(): SessionStorageStatus { return storageStatus; }
+export function useSessionStorageStatus(): SessionStorageStatus {
+  return useSyncExternalStore((listener) => {
+    storageSubscribers.add(listener);
+    return () => storageSubscribers.delete(listener);
+  }, getSessionStorageStatus);
+}
+
+function restoreSession(value: unknown): AiSession | null {
+  if (!value || typeof value !== "object") return null;
+  const session = value as AiSession;
+  if (typeof session.id !== "string" || !session.id || typeof session.name !== "string" || !Array.isArray(session.messages)) return null;
+  const messages = session.messages.filter((message) => message && (message.role === "user" || message.role === "assistant") && typeof message.content === "string").map((message, index) => ({
+    ...message,
+    id: message.id || `${session.id}-restored-${index}`,
+    streaming: false,
+    // A process cannot continue a tool after a restart. Do not leave stale
+    // running indicators that imply a command is still being supervised.
+    trace: message.trace && {
+      ...message.trace,
+      tools: (message.trace.tools || []).map((tool) => tool.state === "running" ? { ...tool, state: "error" as const } : tool),
+    },
+  }));
+  return {
+    ...session,
+    messages,
+    input: typeof session.input === "string" ? session.input : "",
+    remoteWorkspace: normalizeRemoteWorkspace(session.remoteWorkspace),
+    task: restoreAiTask(session.task),
+    name: automaticSessionName(session.name, messages),
+  };
+}
 
 /** Names assigned by Husk before a conversation has established a topic. */
 const PLACEHOLDER_NAME = /^(new ai chat|ai chat|general chat|tab \d+|terminal \d+)$/i;
@@ -107,39 +177,130 @@ function loadSessions() {
     if (!raw) return;
     const parsed = JSON.parse(raw) as { sessions: AiSession[]; activeSessionId?: string | null };
     if (Array.isArray(parsed.sessions)) {
-      sessions.clear();
       for (const s of parsed.sessions) {
-        if (s.id) {
-          const restored = {
-            ...s,
-            remoteWorkspace: normalizeRemoteWorkspace(s.remoteWorkspace),
-            task: restoreAiTask(s.task),
-          };
-          sessions.set(s.id, {
-            ...restored,
-            name: automaticSessionName(restored.name, restored.messages),
-          });
-        }
+        const restored = restoreSession(s);
+        if (restored) sessions.set(restored.id, restored);
+        else legacyLoadError = new Error("The previous chat archive contains an invalid conversation.");
       }
       if (activeSessionId === null && parsed.activeSessionId && sessions.has(parsed.activeSessionId)) {
         activeSessionId = parsed.activeSessionId;
       }
-    }
-  } catch {
-    // ignore
+    } else legacyLoadError = new Error("The previous chat archive has an invalid format.");
+  } catch (error) {
+    if (typeof localStorage !== "undefined") legacyLoadError = error;
   }
 }
 
-function saveSessions() {
-  try {
-    const payload = {
-      sessions: Array.from(sessions.values()),
-      activeSessionId,
-    };
-    localStorage.setItem(LS_KEY, JSON.stringify(payload));
-  } catch {
-    // ignore
-  }
+/** Called before mounting the main window. Legacy data is retained until the
+ * first IndexedDB transaction commits, so a failed migration is retryable. */
+export async function initialiseSessionPersistence(): Promise<boolean> {
+  if (initialized) return true;
+  if (initialization) return initialization;
+  initialization = (async () => {
+    try {
+      database = await openSessionDatabase<AiSession>();
+      const archive = await database.load();
+      if (archive.initialized) {
+        const untouched = new Map<string, AiSession>();
+        for (const value of archive.sessions) {
+          const restored = restoreSession(value);
+          if (restored && !changedBeforeLoad.has(restored.id)) untouched.set(restored.id, restored);
+        }
+        for (const [id, value] of sessions) if (changedBeforeLoad.has(id)) untouched.set(id, value);
+        sessions.clear();
+        for (const [id, value] of untouched) sessions.set(id, value);
+        if (!activeChangedBeforeLoad) activeSessionId = archive.activeSessionId && sessions.has(archive.activeSessionId) ? archive.activeSessionId : null;
+      }
+      ensureGlobalSession();
+      initialized = true;
+      const currentDatabase = database;
+      saveQueue = new SessionSaveQueue((batch) => currentDatabase.commit(batch), setStorageStatus);
+      if (!archive.initialized) {
+        for (const session of sessions.values()) saveQueue.put(session);
+        saveQueue.select(activeSessionId);
+      } else {
+        for (const id of changedBeforeLoad) {
+          const session = sessions.get(id);
+          if (session) saveQueue.put(session);
+          else saveQueue.delete(id);
+        }
+        if (activeChangedBeforeLoad) saveQueue.select(activeSessionId);
+      }
+      changedBeforeLoad.clear();
+      cachedSessionsDirty = true;
+      subscribers.forEach((listener) => listener());
+      activeSubscribers.forEach((listener) => listener());
+      const saved = await saveQueue.flush();
+      if (saved) setStorageStatus("saved");
+      if (saved && !legacyLoadError) {
+        try { localStorage.removeItem(LS_KEY); } catch { /* Keep the old backup if removal is unavailable. */ }
+      }
+      if (legacyLoadError && typeof window !== "undefined") {
+        toast({ title: "Some previous chats could not be loaded", message: "The original chat archive has been kept for recovery.", variant: "error", duration: 0 });
+      }
+      return saved;
+    } catch (error) {
+      database?.close();
+      database = undefined;
+      setStorageStatus("error", error);
+      if (!retryTimer && typeof window !== "undefined") retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        void initialiseSessionPersistence();
+      }, 5000);
+      return false;
+    }
+  })();
+  installPersistenceLifecycle();
+  const success = await initialization;
+  initialization = undefined;
+  return success;
+}
+
+export async function flushSessionPersistence(): Promise<boolean> {
+  if (!initialized && !await initialiseSessionPersistence()) return false;
+  return saveQueue?.flush() ?? false;
+}
+
+export function hasUnsavedSessions(): boolean {
+  return Boolean(saveQueue?.hasPending() || changedBeforeLoad.size || activeChangedBeforeLoad && !initialized);
+}
+
+function installPersistenceLifecycle() {
+  if (lifecycleInstalled || typeof window === "undefined") return;
+  lifecycleInstalled = true;
+  window.addEventListener("pagehide", () => { if (hasUnsavedSessions()) void flushSessionPersistence(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && hasUnsavedSessions()) void flushSessionPersistence();
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if (!hasUnsavedSessions()) return;
+    void flushSessionPersistence();
+    event.preventDefault();
+    event.returnValue = "";
+  });
+  if (!("__TAURI_INTERNALS__" in window)) return;
+  void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
+    const win = getCurrentWindow();
+    let closeInProgress = false;
+    let allowSavedClose = false;
+    await win.onCloseRequested(async (event) => {
+      if (allowSavedClose || !hasUnsavedSessions()) return;
+      event.preventDefault();
+      if (closeInProgress) return;
+      closeInProgress = true;
+      try {
+        if (await flushSessionPersistence()) {
+          allowSavedClose = true;
+          await win.close();
+        }
+      } catch (error) {
+        allowSavedClose = false;
+        setStorageStatus("error", error);
+      } finally { closeInProgress = false; }
+    });
+  }).catch((error) => {
+    console.error("Chat save-on-close could not be registered", error);
+  });
 }
 
 function ensureGlobalSession() {
@@ -181,17 +342,27 @@ export function getAllSessions(): AiSession[] {
   return cachedSessions;
 }
 
-function invalidateSessions() {
+function invalidateSessions(id: string) {
   cachedSessionsDirty = true;
-  saveSessions();
+  if (!initialized) { changedBeforeLoad.add(id); return; }
+  const session = sessions.get(id);
+  if (session) saveQueue?.put(session);
+  else saveQueue?.delete(id);
 }
 
 export function updateSession(id: string, updater: (s: AiSession) => AiSession) {
-  const next = updater(getSession(id));
-  next.updatedAt = Date.now();
+  updateExistingSession(id, updater);
+}
+
+/** Late stream/tool callbacks must not recreate a deleted conversation. */
+export function updateExistingSession(id: string, updater: (s: AiSession) => AiSession): boolean {
+  const existing = sessions.get(id);
+  if (!existing) return false;
+  const next = { ...updater(existing), id, updatedAt: Date.now() };
   sessions.set(id, next);
-  invalidateSessions();
+  invalidateSessions(id);
   subscribers.forEach((fn) => fn());
+  return true;
 }
 
 export function setSessionInput(id: string, input: string) {
@@ -200,7 +371,7 @@ export function setSessionInput(id: string, input: string) {
 
 export function appendSessionMessage(id: string, message: AiMessage) {
   updateSession(id, (s) => {
-    const messages = [...s.messages, message];
+    const messages = [...s.messages, { ...message, id: message.id || crypto.randomUUID() }];
     return {
       ...s,
       name: message.role === "user" ? automaticSessionName(s.name, messages) : s.name,
@@ -243,7 +414,7 @@ export function createSession(options: {
     updatedAt: Date.now(),
   };
   sessions.set(id, session);
-  invalidateSessions();
+  invalidateSessions(id);
   subscribers.forEach((fn) => fn());
   return session;
 }
@@ -271,7 +442,7 @@ export function ensureSession(id: string, options?: {
     updatedAt: Date.now(),
   };
   sessions.set(id, session);
-  invalidateSessions();
+  invalidateSessions(id);
   subscribers.forEach((fn) => fn());
   return session;
 }
@@ -291,11 +462,14 @@ export function unarchiveSession(id: string) {
 export function deleteSession(id: string) {
   if (id === "global" && sessions.size <= 1) return;
   sessions.delete(id);
+  ensureGlobalSession();
   if (activeSessionId === id) {
     activeSessionId = "global";
+    if (initialized) saveQueue?.select(activeSessionId);
+    else activeChangedBeforeLoad = true;
     activeSubscribers.forEach((fn) => fn());
   }
-  invalidateSessions();
+  invalidateSessions(id);
   subscribers.forEach((fn) => fn());
 }
 
@@ -310,7 +484,8 @@ export function getActiveSessionId(): string | null {
 
 export function setActiveSessionId(id: string) {
   activeSessionId = id;
-  saveSessions();
+  if (initialized) saveQueue?.select(id);
+  else activeChangedBeforeLoad = true;
   activeSubscribers.forEach((fn) => fn());
 }
 

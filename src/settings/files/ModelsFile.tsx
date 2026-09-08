@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { MODELS } from "../../ai/models";
 import { CLI_SUBSCRIPTION_MODE, PROVIDERS, type Provider } from "../../ai/providers";
-import { loadConfig, saveConfig, useKey, setKey } from "../../ai/store";
+import { loadConfig, updateConfig, useConfig, useKey, useKeyError, setKey, providerBaseURL } from "../../ai/store";
 import { codexCliModels, type CodexCliModel } from "../../ai/codexCli";
 import { cliAvailable, cliCommand, cliDisplayName, cliLoginHelp } from "../../ai/cliProvider";
 import {
@@ -60,6 +60,7 @@ function SubscriptionModeNotice({ provider }: { provider: Provider }) {
 /** One provider's inspector content with keychain-backed API key editing. */
 function ProviderBlock({ provider }: { provider: Provider }) {
   const apiKey = useKey(provider.id);
+  const keyError = useKeyError(provider.id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -148,6 +149,7 @@ function ProviderBlock({ provider }: { provider: Provider }) {
           <CfgAct onClick={startEdit}>{apiKey ? "edit" : "add key"}</CfgAct>
         </CfgRow>
       )}
+      {keyError ? <p role="alert" className="px-3 text-xs text-destructive">{keyError}</p> : null}
       <CfgRow
         name="configured"
         comment={
@@ -288,8 +290,8 @@ function LocalProviderBlock({
       <CfgComment>LM Studio, Ollama, or any OpenAI-compatible server. No key needed.</CfgComment>
       <CfgRow name="baseURL" comment="Endpoint for the local server, e.g. http://localhost:11434 for Ollama.">
         <CfgText
-          value={config.baseURL}
-          onChange={(baseURL) => onUpdate({ baseURL })}
+          value={providerBaseURL(config, "local")}
+          onChange={(baseURL) => onUpdate({ baseURL, providerId: "local" })}
           placeholder="http://localhost:1234/v1"
           widthCh={30}
         />
@@ -337,7 +339,7 @@ function ModelProviderInspector({
 }
 
 export function ModelsFile() {
-  const [config, setConfig] = useState(() => loadConfig());
+  const config = useConfig();
   const [codexModels, setCodexModels] = useState<CodexCliModel[]>([]);
   const [view, setView] = useState<ModelsView>({ kind: "overview" });
   const subscriptionProvider = PROVIDERS.find((provider) => provider.id === config.providerId && provider.kind === "cli");
@@ -348,12 +350,6 @@ export function ModelsFile() {
   useEffect(() => {
     void codexCliModels().then(setCodexModels);
   }, []);
-
-  const updateConfig = (patch: Partial<ReturnType<typeof loadConfig>>) => {
-    const next = { ...config, ...patch };
-    setConfig(next);
-    saveConfig(next);
-  };
 
   const modelOptions = [
     ...MODELS.map((model) => ({

@@ -1,4 +1,5 @@
-import { readDir, readFile } from "../fs";
+import { readDirScoped, readFileScoped } from "../fs";
+import { normalizeWorkspacePath, resolveWorkspacePath } from "./workspaceScope";
 
 interface CodebaseIndexEntry {
   path: string;
@@ -17,8 +18,18 @@ export function getIndexedRoot(): string | null {
 }
 
 /** Build or refresh the codebase index for a given root directory. */
-export async function buildCodebaseIndex(root: string): Promise<void> {
+export async function buildCodebaseIndex(root: string, options: { signal?: AbortSignal } = {}): Promise<Map<string, CodebaseIndexEntry>> {
+  root = normalizeWorkspacePath(root);
+  if (!root) throw new Error("Select an absolute workspace before searching.");
   const entries = new Map<string, CodebaseIndexEntry>();
+  const started = Date.now();
+  let scannedEntries = 0;
+  let scannedDirectories = 0;
+  let indexedBytes = 0;
+  const maxBytes = 8 * 1024 * 1024;
+  const encoder = new TextEncoder();
+  const exhausted = () => scannedEntries >= 5_000 || scannedDirectories >= 256 || entries.size >= 1_000 || indexedBytes >= maxBytes || Date.now() - started > 10_000;
+  const checkCancellation = () => { if (options.signal?.aborted) throw new Error("Workspace search was cancelled."); };
   const ignorePatterns = [
     /node_modules/,
     /\.git/,
@@ -99,10 +110,13 @@ export async function buildCodebaseIndex(root: string): Promise<void> {
     ".prisma", ".proto",
   ];
 
-  async function scan(dir: string) {
+  async function scan(dir: string, depth = 0) {
+    checkCancellation();
+    if (depth > 12 || exhausted()) return;
+    scannedDirectories += 1;
     let items;
     try {
-      items = await readDir(dir);
+      items = await readDirScoped(dir, root);
     } catch {
       return;
     }
@@ -112,22 +126,31 @@ export async function buildCodebaseIndex(root: string): Promise<void> {
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
       for (const item of batch) {
-        const fullPath = dir + "/" + item.name;
-        const relPath = fullPath.slice(root.length + 1);
+        checkCancellation();
+        if (exhausted()) return;
+        scannedEntries += 1;
+        const fullPath = resolveWorkspacePath(`${dir.endsWith("/") ? dir : `${dir}/`}${item.name}`, root);
+        if (!fullPath) continue;
+        const relPath = fullPath.slice(root.endsWith("/") ? root.length : root.length + 1);
 
         if (ignorePatterns.some((p) => p.test(relPath) || p.test(item.name))) {
           continue;
         }
 
         if (item.is_dir) {
-          await scan(fullPath);
+          await scan(fullPath, depth + 1);
         } else {
           const ext = item.name.slice(item.name.lastIndexOf(".")).toLowerCase();
           if (!textExtensions.includes(ext)) continue;
 
           try {
-            const content = await readFile(fullPath);
-            if (content.length > 500_000) continue; // Skip huge files
+            // The native check rejects symlink escapes before reading and caps
+            // the read itself, rather than allocating an arbitrary-size file.
+            const content = await readFileScoped(fullPath, root, 500_000);
+            checkCancellation();
+            const bytes = encoder.encode(content).byteLength;
+            if (bytes > 500_000 || indexedBytes + bytes > maxBytes) continue;
+            indexedBytes += bytes;
 
             const lines = content.split("\n");
             entries.set(relPath, {
@@ -148,8 +171,10 @@ export async function buildCodebaseIndex(root: string): Promise<void> {
   }
 
   await scan(root);
+  checkCancellation();
   index = entries;
   indexRoot = root;
+  return entries;
 }
 
 /** Get the current index, or null if not built. */
@@ -171,23 +196,25 @@ export interface SearchResult {
 }
 
 /** Search the codebase for files matching a query. */
-export function searchCodebase(query: string, limit = 10): SearchResult[] {
-  if (!index || index.size === 0) {
+export function searchCodebase(query: string, limit = 10, snapshot = index): SearchResult[] {
+  if (!snapshot || snapshot.size === 0) {
     return [];
   }
 
-  const terms = query
+  const terms = query.slice(0, 256)
     .toLowerCase()
     .split(/\s+/)
     .filter((t) => t.length > 1 && !["the", "and", "or", "in", "on", "at", "to", "for", "of", "with", "by", "is", "are", "was", "were", "be", "been", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "can", "a", "an", "this", "that", "these", "those", "it", "its", "from", "as", "into", "through", "during", "before", "after", "above", "below", "between", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "just", "now"].includes(t));
 
+  terms.splice(16);
   if (terms.length === 0) {
     return [];
   }
 
   const results: SearchResult[] = [];
 
-  for (const entry of index.values()) {
+  const escapedTerms = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  for (const entry of snapshot.values()) {
     let score = 0;
     const matches: { line: number; text: string }[] = [];
     const pathLower = entry.path.toLowerCase();
@@ -223,14 +250,14 @@ export function searchCodebase(query: string, limit = 10): SearchResult[] {
       }
 
       if (lineMatched) {
-        matches.push({ line: i + 1, text: line.trim() });
+        if (matches.length < 5) matches.push({ line: i + 1, text: line.trim().slice(0, 600) });
       }
     }
 
     // Boost for function/class definitions containing query terms
     const definitionPatterns = [
-      new RegExp(`(?:function|class|interface|type|const|let|var|def|fn|func|method|struct|enum|trait|impl|async|export|import|from|require)\s+.*(?:${terms.join("|")})`, "i"),
-      new RegExp(`(?:${terms.join("|")})\s*[:=]\s*(?:function|class|=>|\{)`, "i"),
+      new RegExp(`(?:function|class|interface|type|const|let|var|def|fn|func|method|struct|enum|trait|impl|async|export|import|from|require)\\s+.*(?:${escapedTerms.join("|")})`, "i"),
+      new RegExp(`(?:${escapedTerms.join("|")})\\s*[:=]\\s*(?:function|class|=>|\\{)`, "i"),
     ];
     for (const pattern of definitionPatterns) {
       if (pattern.test(entry.content)) {
@@ -245,7 +272,7 @@ export function searchCodebase(query: string, limit = 10): SearchResult[] {
         const firstMatch = matches[0];
         const startLine = Math.max(0, firstMatch.line - 3);
         const endLine = Math.min(entry.lines.length, firstMatch.line + 3);
-        snippet = entry.lines.slice(startLine, endLine).join("\n");
+        snippet = entry.lines.slice(startLine, endLine).join("\n").slice(0, 2_000);
       }
 
       results.push({
@@ -260,7 +287,7 @@ export function searchCodebase(query: string, limit = 10): SearchResult[] {
   // Sort by score descending
   results.sort((a, b) => b.score - a.score);
 
-  return results.slice(0, limit);
+  return results.slice(0, Math.max(1, Math.min(20, Number.isFinite(limit) ? Math.floor(limit) : 10)));
 }
 
 /** Format search results as markdown for the AI. */

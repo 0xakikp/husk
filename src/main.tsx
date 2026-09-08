@@ -8,7 +8,7 @@ import {
 import { fontStack } from "./styles/fonts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getSentryEnabled } from "./settings/crashReporting";
-import { loadConfig, hydrateAiConfigFromNative } from "./ai/store";
+import { loadConfig, hydrateAiConfigFromNative, initKeys, initialiseAiSync } from "./ai/store";
 import { loadMcpServers, hydrateMcpServersFromNative, saveMcpServers } from "./mcp/store";
 import { getCustomPresets, hydrateAppearancePresetsFromNative } from "./settings/appearancePresets";
 import { initialiseNativeConfig, readNativeConfig } from "./settings/nativeConfig";
@@ -115,6 +115,9 @@ async function startApplication() {
   const [loaded] = await Promise.all([
     readNativeConfig(),
     initialiseWorkflowStore(),
+    // Migrate legacy keys before hydrateAiConfigFromNative rewrites config.
+    // This also initializes credentials in the standalone Settings window.
+    initKeys(),
   ]);
   let configLoad = loaded;
 
@@ -160,6 +163,12 @@ async function startApplication() {
   hydrateMcpServersFromNative(configDocument.mcp);
   hydrateAppearancePresetsFromNative(configDocument.appearance_presets);
   applyStartupChrome();
+
+  await initialiseAiSync();
+  if (!isSettings) {
+    const { initialiseSessionPersistence } = await import("./ai/sessionStore");
+    await initialiseSessionPersistence();
+  }
 
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>

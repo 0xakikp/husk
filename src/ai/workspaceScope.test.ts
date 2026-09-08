@@ -49,4 +49,32 @@ describe("AI workspace scopes", () => {
       "/work/new-project",
     )).toBe(false);
   });
+
+  it("normalizes Windows drive roots and resolves local file references", () => {
+    expect(normalizeWorkspacePath("c:\\Users\\demo\\project\\")).toBe("C:/Users/demo/project");
+    expect(normalizeWorkspacePath("c:\\")).toBe("C:/");
+    expect(resolveWorkspacePath("src\\main.ts", "C:\\Users\\demo\\project")).toBe("C:/Users/demo/project/src/main.ts");
+    expect(resolveWorkspacePath(".\\README.md", "C:\\Users\\demo\\project")).toBe("C:/Users/demo/project/README.md");
+    expect(isPathInWorkspace("c:\\users\\DEMO\\project\\src\\main.ts", "C:\\Users\\demo\\project")).toBe(true);
+    expect(workspaceDisplayName("C:\\Users\\demo\\project")).toBe("project");
+  });
+
+  it("enforces Windows drive, directory, and traversal boundaries", () => {
+    const root = "C:\\Users\\demo\\project";
+    expect(resolveWorkspacePath("..\\secrets.txt", root)).toBeNull();
+    expect(resolveWorkspacePath("D:\\Users\\demo\\project\\file.txt", root)).toBeNull();
+    expect(resolveWorkspacePath("C:\\Users\\demo\\project-other\\file.txt", root)).toBeNull();
+    expect(resolveWorkspacePath("C:relative.txt", root)).toBeNull();
+    expect(resolveWorkspacePath("file.txt:secret", root)).toBeNull();
+    expect(normalizeWorkspacePath("\\\\?\\C:\\Users\\demo\\project")).toBe("");
+    expect(normalizeWorkspacePath("\\\\.\\PhysicalDrive0")).toBe("");
+  });
+
+  it("supports UNC workspaces while preserving share boundaries", () => {
+    expect(normalizeWorkspacePath("\\\\server\\share\\project\\")).toBe("//server/share/project");
+    expect(resolveWorkspacePath("src\\file.ts", "\\\\server\\share\\project")).toBe("//server/share/project/src/file.ts");
+    expect(isPathInWorkspace("//SERVER/SHARE/project/file.ts", "\\\\server\\share\\project")).toBe(true);
+    expect(resolveWorkspacePath("\\\\server\\other-share\\file.ts", "\\\\server\\share")).toBeNull();
+    expect(normalizeWorkspacePath("\\\\server")).toBe("");
+  });
 });

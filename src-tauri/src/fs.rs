@@ -3,7 +3,7 @@
 use base64::Engine;
 use serde::Serialize;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Serialize)]
@@ -114,9 +114,33 @@ pub fn read_dir_scoped(path: String, root: String) -> Result<Vec<DirEntry>, Stri
 }
 
 #[tauri::command]
-pub fn read_file_scoped(path: String, root: String) -> Result<String, String> {
+pub fn read_file_scoped(
+    path: String,
+    root: String,
+    max_bytes: Option<usize>,
+) -> Result<String, String> {
     let path = scoped_existing_path(&path, &root)?;
-    fs::read_to_string(path).map_err(|e| e.to_string())
+    let max_bytes = max_bytes.unwrap_or(2 * 1024 * 1024).min(2 * 1024 * 1024);
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file() {
+        return Err("AI workspace reads require a regular file".to_string());
+    }
+    if metadata.len() > max_bytes as u64 {
+        return Err(format!(
+            "File exceeds the AI read limit of {max_bytes} bytes; no partial content was returned"
+        ));
+    }
+    let mut contents = Vec::new();
+    file.take(max_bytes as u64 + 1)
+        .read_to_end(&mut contents)
+        .map_err(|e| e.to_string())?;
+    if contents.len() > max_bytes {
+        return Err(format!(
+            "File exceeds the AI read limit of {max_bytes} bytes; no partial content was returned"
+        ));
+    }
+    String::from_utf8(contents).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -362,7 +386,7 @@ pub fn delete_path(path: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::copy_path;
+    use super::{copy_path, read_file_scoped, write_new_file_scoped};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -373,6 +397,67 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("husk-fs-{name}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn scoped_reads_refuse_partial_or_invalid_text_and_creates_never_overwrite() {
+        let root = scratch("bounded-read");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("file.txt").to_string_lossy().to_string();
+        let scope = root.to_string_lossy().to_string();
+        fs::write(&path, "original").unwrap();
+        assert!(read_file_scoped(path.clone(), scope.clone(), Some(3))
+            .unwrap_err()
+            .contains("no partial content"));
+        assert_eq!(
+            read_file_scoped(path.clone(), scope.clone(), Some(8)).unwrap(),
+            "original"
+        );
+        assert!(write_new_file_scoped(path.clone(), "replacement".into(), scope.clone()).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        fs::write(&path, [0xff]).unwrap();
+        assert!(read_file_scoped(path, scope, None).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scoped_operations_refuse_file_and_directory_symlink_escapes() {
+        use std::os::unix::fs::symlink;
+        let root = scratch("symlink-scope");
+        let workspace = root.join("workspace");
+        let outside = root.join("outside");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "private").unwrap();
+        symlink(outside.join("secret.txt"), workspace.join("file-link")).unwrap();
+        symlink(&outside, workspace.join("dir-link")).unwrap();
+        let scope = workspace.to_string_lossy().to_string();
+        for relative in ["file-link", "dir-link/secret.txt"] {
+            assert!(read_file_scoped(
+                workspace.join(relative).to_string_lossy().to_string(),
+                scope.clone(),
+                None
+            )
+            .unwrap_err()
+            .contains("outside"));
+        }
+        assert!(super::read_dir_scoped(
+            workspace.join("dir-link").to_string_lossy().to_string(),
+            scope.clone()
+        )
+        .is_err());
+        assert!(write_new_file_scoped(
+            workspace
+                .join("dir-link/new.txt")
+                .to_string_lossy()
+                .to_string(),
+            "new".into(),
+            scope
+        )
+        .is_err());
+        assert!(!outside.join("new.txt").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -47,7 +47,7 @@ export type AiContextItem = {
 /* ── Size helpers ────────────────────────────────────────────────────────── */
 
 export function byteLength(text: string): number {
-  return text.length;
+  return new TextEncoder().encode(text).byteLength;
 }
 
 export function formatKb(bytes: number): string {
@@ -121,10 +121,8 @@ const SENSITIVE_FILENAME_RE = /(?:^|\/)\.env(?:\.|$)|(?:^|\/)(?:id_rsa|id_ed2551
 export function scanForSecrets(label: string, text: string): string[] {
   const reasons = new Set<string>();
   if (SENSITIVE_FILENAME_RE.test(label)) reasons.add("sensitive filename");
-  /* Cap the scan: huge terminal buffers do not need every line regexed. */
-  const sample = text.length > 64_000 ? text.slice(0, 64_000) : text;
   for (const { re, reason } of SECRET_PATTERNS) {
-    if (re.test(sample)) reasons.add(reason);
+    if (re.test(text)) reasons.add(reason);
   }
   return [...reasons];
 }
@@ -152,7 +150,7 @@ export function itemToRequestBlock(item: AiContextItem): string {
       return `\n\nSelected ${item.source}:\n\`\`\`\n${item.preview}\n\`\`\``;
     case "file":
       return item.isImage
-        ? `\n\n--- attached image: ${item.source} ---\n${item.preview}`
+        ? `\n\nAttached image: ${item.source}. The image is supplied with the user's message.`
         : `\n\n--- attached file: ${item.source} ---\n\`\`\`\n${item.preview}\n\`\`\``;
     case "project-memory":
       return `\n\nBackground on this project (written by the user, not part of their current question):\n${item.preview}`;

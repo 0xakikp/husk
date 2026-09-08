@@ -4,7 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { AiChipIcon } from "@hugeicons/core-free-icons";
 import { CLI_SUBSCRIPTION_MODE, PROVIDERS, getProvider, type Provider } from "./providers";
 import { MODELS } from "./models";
-import { loadConfig, saveConfig, useConfig, getKey } from "./store";
+import { updateConfig, useConfig, getKey, subscribeKeys } from "./store";
 import { codexCliModels, type CodexCliModel } from "./codexCli";
 import {
   CLI_PROVIDER_IDS,
@@ -41,6 +41,8 @@ function cliLoginHelp(provider: Provider): string {
 
 export function ModelSwitcher({ busy }: { busy?: boolean }) {
   const cfg = useConfig();
+  const [, refreshKeys] = useState(0);
+  useEffect(() => subscribeKeys(() => refreshKeys((version) => version + 1)), []);
   const [open, setOpen] = useState(false);
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [cliAvailability, setCliAvailability] = useState<CliAvailability>(EMPTY_CLI_AVAILABILITY);
@@ -106,8 +108,7 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
   });
 
   const pick = (providerId: string, model: string) => {
-    const p = getProvider(providerId);
-    saveConfig({ ...loadConfig(), providerId, model, baseURL: p.baseURL ?? "" });
+    updateConfig({ providerId, model });
     setOpen(false);
   };
 

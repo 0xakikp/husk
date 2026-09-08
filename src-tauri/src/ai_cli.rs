@@ -322,7 +322,7 @@ fn cli_start(
 
     // stdout, line by line. read_line rather than a byte buffer, so a JSON object
     // split across two reads is never handed over half-parsed.
-    {
+    let stdout_reader = {
         let app = app.clone();
         let id = id.clone();
         thread::spawn(move || {
@@ -336,10 +336,10 @@ fn cli_start(
                     Err(_) => break,
                 }
             }
-        });
-    }
+        })
+    };
 
-    {
+    let stderr_reader = {
         let app = app.clone();
         let id = id.clone();
         thread::spawn(move || {
@@ -349,8 +349,8 @@ fn cli_start(
                     let _ = app.emit(&format!("{event_prefix}://err/{id}"), line);
                 }
             }
-        });
-    }
+        })
+    };
 
     // Reap, report, and drop the handle so a finished chat does not leak.
     {
@@ -359,6 +359,10 @@ fn cli_start(
         let id_for_exit = id.clone();
         thread::spawn(move || {
             let code = waiter.wait().ok().and_then(|s| s.code());
+            // A process can exit before its final JSONL/error bytes are read.
+            // Report completion only once both readers have forwarded them.
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
             let _ = app.emit(&format!("{event_prefix}://exit/{id_for_exit}"), code);
             if let Some(state) = app.try_state::<AiCliState>() {
                 if let Ok(mut running) = state.running.lock() {

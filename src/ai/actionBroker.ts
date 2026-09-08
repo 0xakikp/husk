@@ -1,17 +1,10 @@
-import {
-  createDirScoped,
-  readDirScoped,
-  readFileScoped,
-  writeNewFileScoped,
-} from "../fs";
+import { readDirScoped, readFileScoped } from "../fs";
 import { callMcpTool, getAllMcpTools } from "../mcp/client";
 import { loadMcpServers } from "../mcp/store";
-import { addPendingEdit, getPendingEdits, removePendingEdit } from "./pendingEdits";
+import { addPendingEdit, applyPendingEdit, getPendingEdits, isAutoApplyEligible, removePendingEdit, replaceVerifiedEdit, type PendingEdit } from "./pendingEdits";
 import {
   buildCodebaseIndex,
   formatSearchResults,
-  getCodebaseIndex,
-  getIndexedRoot,
   searchCodebase,
 } from "./codebaseSearch";
 import { normalizeWorkspacePath, resolveWorkspacePath } from "./workspaceScope";
@@ -49,6 +42,10 @@ export type HuskActionContext = {
   mcpToolsEnabled: boolean;
   /** A user has explicitly approved a non-read-only integration request. */
   confirmMcpCall?: boolean;
+  /** Explicit per-chat write consent. Reading a workspace does not grant it. */
+  workspaceEditAccess?: boolean;
+  autoApply?: boolean;
+  signal?: AbortSignal;
 };
 
 type WorkspaceScope =
@@ -132,11 +129,51 @@ function mcpResultToString(result: unknown): string {
   return record.isError ? `Error: ${JSON.stringify(record)}` : JSON.stringify(result, null, 2);
 }
 
+function checkCancellation(context: HuskActionContext): void {
+  if (context.signal?.aborted) throw new Error("The request was cancelled; no further actions will run.");
+}
+
+async function readExisting(scope: WorkspaceScope): Promise<string | null> {
+  try {
+    return scope.kind === "remote"
+      ? await sshReadFileScoped(scope.host, scope.root, scope.resolved)
+      : await readFileScoped(scope.resolved, scope.root);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Permission, size-limit, disconnection and symlink errors are not evidence
+    // that a file is absent. In particular never turn a truncated read into an
+    // overwrite or a misleading create proposal.
+    if (/no such file or directory|os error 2\b/i.test(message)) return null;
+    throw error;
+  }
+}
+
+async function proposeEdit(
+  edit: Omit<PendingEdit, "id" | "timestamp">,
+  context: HuskActionContext,
+  label: string,
+): Promise<HuskActionResult> {
+  checkCancellation(context);
+  const pending = addPendingEdit(edit);
+  const activity = edit.operation === "create" ? "propose file" : edit.operation === "overwrite" ? "propose overwrite" : "propose edit";
+  if (context.autoApply && isAutoApplyEligible(pending)) {
+    checkCancellation(context);
+    const applied = await applyPendingEdit(pending, { signal: context.signal });
+    if (applied.ok) {
+      removePendingEdit(pending.id);
+      return { state: "complete", summary: `Applied ${label}`, result: `Applied ${label}. The change is recorded and can be undone while unchanged.`, activity: "apply edit" };
+    }
+    return { state: "error", summary: `Could not apply ${label}`, result: `Error: ${applied.reason}. The proposal remains available for review.`, activity };
+  }
+  return { state: "queued", summary: `${label} is ready for review`, result: "The file was not changed. Husk queued a diff for review.", activity };
+}
+
 /** Execute or queue one request under the same policy for every provider. */
 export async function executeHuskAction(
   request: HuskActionRequest,
   context: HuskActionContext,
 ): Promise<HuskActionResult> {
+  if (context.signal?.aborted) return { state: "refused", summary: "Request cancelled", result: "Refused: this request was cancelled.", activity: request.kind };
   if (request.kind.startsWith("workspace.") && !context.fileToolsEnabled) {
     return {
       state: "refused",
@@ -144,6 +181,9 @@ export async function executeHuskAction(
       result: "Refused: workspace actions are disabled in Settings → Agents.",
       activity: "workspace action",
     };
+  }
+  if ((request.kind === "workspace.write" || request.kind === "workspace.edit") && context.workspaceEditAccess !== true) {
+    return { state: "refused", summary: "Workspace edits are disabled", result: "Refused: ask the user to enable workspace edits for this chat before proposing changes.", activity: "workspace edit" };
   }
 
   try {
@@ -192,77 +232,43 @@ export async function executeHuskAction(
             activity: "search remote workspace",
           };
         }
-        const index = getCodebaseIndex();
-        if (!index || index.size === 0 || getIndexedRoot() !== scope.root) {
-          await buildCodebaseIndex(scope.root);
-        }
+        // Use this request's fresh snapshot. Another chat may build an index at
+        // the same time, and files may change between successive searches.
+        const index = await buildCodebaseIndex(scope.root, { signal: context.signal });
+        checkCancellation(context);
         return {
           state: "complete",
           summary: `Searched workspace for ${request.query}`,
-          result: formatSearchResults(searchCodebase(request.query, request.limit ?? 10)),
+          result: formatSearchResults(searchCodebase(request.query, request.limit ?? 10, index)),
           activity: "search workspace",
         };
       }
       case "workspace.write": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
-        const existing = scope.kind === "remote"
-          ? await sshReadFileScoped(scope.host, scope.root, scope.resolved).catch(() => null)
-          : await readFileScoped(scope.resolved, scope.root).catch(() => null);
-        if (existing !== null) {
-          addPendingEdit({ path: scope.resolved, search: existing, replace: request.content, sessionId: context.sessionId, workspaceRoot: scope.root, ...(scope.kind === "remote" ? { remoteHost: scope.host } : {}) });
-          return {
-            state: "queued",
-            summary: `Overwrite of ${request.path} is ready for review`,
-            result: "The existing file was not changed. Husk queued a reviewable overwrite proposal.",
-            activity: "propose overwrite",
-          };
-        }
-        if (scope.kind === "remote") {
-          /* Remote creation is always reviewable. There is no atomic exclusive
-             create across the SSH bridge, so applying rechecks non-existence. */
-          addPendingEdit({ path: scope.resolved, search: "", replace: request.content, operation: "create", sessionId: context.sessionId, workspaceRoot: scope.root, remoteHost: scope.host });
-          return {
-            state: "queued",
-            summary: `Creation of ${request.path} is ready for review`,
-            result: "The remote server was not changed. Husk queued a reviewable new-file proposal.",
-            activity: "propose remote file",
-          };
-        }
-        const slash = scope.resolved.lastIndexOf("/");
-        if (slash > 0) await createDirScoped(scope.resolved.slice(0, slash), scope.root).catch(() => {});
-        await writeNewFileScoped(scope.resolved, request.content, scope.root);
-        return {
-          state: "complete",
-          summary: `Created ${request.path}`,
-          result: `New file created: ${request.path}`,
-          activity: "create file",
-        };
+        const existing = await readExisting(scope);
+        return await proposeEdit({ path: scope.resolved, search: existing ?? "", replace: request.content,
+          operation: existing === null ? "create" : "overwrite", sessionId: context.sessionId, workspaceRoot: scope.root,
+          ...(scope.kind === "remote" ? { remoteHost: scope.host } : {}) }, context,
+        `${existing === null ? "Creation" : "Overwrite"} of ${request.path}`);
       }
       case "workspace.edit": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
-        const content = scope.kind === "remote"
-          ? await sshReadFileScoped(scope.host, scope.root, scope.resolved).catch(() => null)
-          : await readFileScoped(scope.resolved, scope.root).catch(() => null);
+        const content = await readExisting(scope);
         if (content === null) {
           return { state: "error", summary: `File not found: ${request.path}`, result: `Error: file not found: ${request.path}`, activity: "propose edit" };
         }
-        if (!content.includes(request.search)) {
-          return { state: "error", summary: "Edit target changed", result: `Error: search text was not found in ${request.path}.`, activity: "propose edit" };
-        }
-        addPendingEdit({ path: scope.resolved, search: request.search, replace: request.replace, sessionId: context.sessionId, workspaceRoot: scope.root, ...(scope.kind === "remote" ? { remoteHost: scope.host } : {}) });
-        return {
-          state: "queued",
-          summary: `Edit to ${request.path} is ready for review`,
-          result: "The file was not changed. Husk queued a diff for review.",
-          activity: "propose edit",
-        };
+        replaceVerifiedEdit(content, request);
+        return await proposeEdit({ path: scope.resolved, search: request.search, replace: request.replace,
+          operation: "edit", sessionId: context.sessionId, workspaceRoot: scope.root,
+          ...(scope.kind === "remote" ? { remoteHost: scope.host } : {}) }, context, `Edit to ${request.path}`);
       }
       case "workspace.revertEdit": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
-        const matching = getPendingEdits().filter((edit) => edit.path === scope.resolved && edit.workspaceRoot === scope.root && edit.remoteHost === (scope.kind === "remote" ? scope.host : undefined) && (!context.sessionId || edit.sessionId === context.sessionId || edit.sessionId === undefined));
+        checkCancellation(context);
+        const matching = getPendingEdits().filter((edit) => edit.path === scope.resolved && edit.workspaceRoot === scope.root && edit.remoteHost === (scope.kind === "remote" ? scope.host : undefined) && edit.sessionId === context.sessionId);
         matching.forEach((edit) => removePendingEdit(edit.id));
         return {
           state: "complete",
@@ -293,7 +299,14 @@ export async function executeHuskAction(
             activity: actionLabel,
           };
         }
-        const output = mcpResultToString(await callMcpTool(request.serverId, request.toolName, request.input));
+        checkCancellation(context);
+        const response = await callMcpTool(request.serverId, request.toolName, request.input);
+        const output = mcpResultToString(response);
+        if (response && typeof response === "object" && (response as { isError?: unknown }).isError === true) {
+          return { state: "error", summary: `${actionLabel} failed`, result: output || "The integration reported an error.", activity: actionLabel };
+        }
+        // The tool may already have completed externally. Report its result
+        // honestly; the cancelled signal still gates every subsequent action.
         return { state: "complete", summary: `${actionLabel} completed`, result: output, activity: actionLabel };
       }
     }

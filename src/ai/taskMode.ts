@@ -17,6 +17,8 @@ export type AiTaskEvent = {
   label: string;
   state: AiTaskEventState;
   at: number;
+  /** When a command started; completion must not validate later edits. */
+  startedAt?: number;
   detail?: string;
   command?: string;
   commandFingerprint?: string;
@@ -115,7 +117,7 @@ export function restoreAiTask(raw: unknown, now = Date.now()): AiTaskState | und
       ? value.status
       : "paused";
   const events = Array.isArray(value.events)
-    ? value.events.filter((event): event is AiTaskEvent => Boolean(event) && typeof event.id === "string" && typeof event.label === "string").slice(-MAX_TASK_EVENTS)
+    ? value.events.filter((event): event is AiTaskEvent => Boolean(event) && typeof event.id === "string" && typeof event.label === "string").slice(-MAX_TASK_EVENTS).map((event) => event.state === "running" ? { ...event, state: "info" as const, detail: "Interrupted by application restart; run again to verify." } : event)
     : [];
   return {
     id: value.id,
@@ -156,7 +158,12 @@ export function deriveAiTaskStages(task: AiTaskState): AiTaskStage[] {
   const responses = task.events.filter((event) => event.type === "response" && event.state === "complete").length;
   const proposed = task.events.filter((event) => event.type === "edit-proposed" && event.state === "review").length;
   const applied = task.events.filter((event) => event.type === "edit-applied" && event.state === "complete").length;
-  const checks = task.events.filter((event) => event.type === "check");
+  const lastChange = Math.max(0, ...task.events.filter((event) => event.type === "edit-applied").map((event) => event.at));
+  const latestChecks = new Map<string, AiTaskEvent>();
+  for (const event of task.events.filter((event) => event.type === "check")) {
+    latestChecks.set(event.commandFingerprint ?? event.command ?? event.label, event);
+  }
+  const checks = [...latestChecks.values()].filter((event) => (event.startedAt ?? event.at) >= lastChange);
   const newestCheck = (state: AiTaskEventState) => [...checks].reverse().find((event) => event.state === state);
   const failedCheck = newestCheck("failed");
   const passedCheck = newestCheck("complete");
@@ -175,7 +182,7 @@ export function deriveAiTaskStages(task: AiTaskState): AiTaskStage[] {
       : "pending";
   const verifyState: AiTaskStageState = runningCheck
     ? "active"
-    : failedCheck && (!passedCheck || failedCheck.at > passedCheck.at)
+    : failedCheck
       ? "failed"
       : passedCheck
         ? "complete"
@@ -185,7 +192,7 @@ export function deriveAiTaskStages(task: AiTaskState): AiTaskStage[] {
     { id: "context", label: "Context", state: contextState, detail: hasProject ? "Project Lens ready" : "Workspace pinned" },
     { id: "work", label: "Work", state: workState, detail: tools ? `${tools} Husk action${tools === 1 ? "" : "s"}` : responses ? `${responses} response${responses === 1 ? "" : "s"}` : requests ? "AI working" : "Not started" },
     { id: "changes", label: "Changes", state: changesState, detail: proposed ? `${proposed} to review` : applied ? `${applied} applied` : "No file changes" },
-    { id: "verify", label: "Checks", state: verifyState, detail: runningCheck?.label ?? (failedCheck && (!passedCheck || failedCheck.at > passedCheck.at) ? `${failedCheck.label} failed` : passedCheck ? `${passedCheck.label} passed` : "Not run") },
+    { id: "verify", label: "Checks", state: verifyState, detail: runningCheck?.label ?? (failedCheck ? `${failedCheck.label} failed` : passedCheck ? `${passedCheck.label} passed` : lastChange ? "Run after latest change" : "Not run") },
   ];
 }
 

@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { executeHuskAction } from "./actionBroker";
 import { getPendingMcpActions, removePendingMcpAction, subscribePendingMcpActions, type PendingMcpAction } from "./pendingActions";
 import { getPrefs } from "../settings/preferences";
 import { toast } from "../toast";
+import { useSessionReviewQueue, useReviewCancellation } from "./reviewQueue";
 
 function ActionCard({ action }: { action: PendingMcpAction }) {
   const [busy, setBusy] = useState(false);
+  const cancellation = useReviewCancellation();
   const approve = async () => {
     setBusy(true);
     const prefs = getPrefs();
@@ -14,6 +16,7 @@ function ActionCard({ action }: { action: PendingMcpAction }) {
       fileToolsEnabled: prefs.aiFileToolsEnabled,
       mcpToolsEnabled: prefs.aiMcpToolsEnabled,
       confirmMcpCall: true,
+      signal: cancellation.current.signal,
     });
     setBusy(false);
     if (result.state === "complete") {
@@ -40,10 +43,12 @@ function ActionCard({ action }: { action: PendingMcpAction }) {
 /** Generic MCP contracts cannot safely reveal mutation intent. Show any
  * non-read-only call here before it reaches the remote service. */
 export function PendingMcpActionsReview({ sessionId }: { sessionId?: string }) {
-  const visible = () => getPendingMcpActions().filter((action) => !sessionId || action.sessionId === sessionId || action.sessionId === undefined);
-  const [actions, setActions] = useState<PendingMcpAction[]>(visible);
+  return <SessionPendingMcpActionsReview key={sessionId ?? "all"} sessionId={sessionId} />;
+}
+
+function SessionPendingMcpActionsReview({ sessionId }: { sessionId?: string }) {
+  const actions = useSessionReviewQueue(getPendingMcpActions, subscribePendingMcpActions, sessionId);
   const [expanded, setExpanded] = useState(false);
-  useEffect(() => subscribePendingMcpActions(() => setActions(visible())), [sessionId]);
   if (!actions.length) return null;
   if (!expanded) {
     return <div className="pe-dock"><span className="pe-dock-marker" aria-hidden="true">●</span><span>{actions.length} integration action{actions.length === 1 ? "" : "s"}</span><span className="pe-dock-note">approval required</span><span className="pe-spacer" /><button type="button" className="pe-btn pe-btn-apply" onClick={() => setExpanded(true)}>review</button><button type="button" className="pe-btn" onClick={() => actions.forEach((action) => removePendingMcpAction(action.id))}>discard all</button></div>;

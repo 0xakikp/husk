@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { runCliProcess } from "./cliProcess";
 
 /**
  * The `claude` CLI as an AI backend.
@@ -103,93 +103,60 @@ export function runClaudeCli(opts: ClaudeCliOptions): ClaudeCliRun {
   const id = `husk-${Date.now().toString(36)}-${(counter += 1)}`;
   const args = buildClaudeCliArgs(opts.prompt, opts.model);
 
-  const unlisten: UnlistenFn[] = [];
-  let stderr = "";
+  let eventError = "";
   let sawText = false;
-  let settled = false;
-
-  const done = new Promise<void>((resolve, reject) => {
-    const cleanup = () => {
-      for (const fn of unlisten) fn();
-      unlisten.length = 0;
-    };
-
-    void (async () => {
+  return runCliProcess({
+    id,
+    prefix: "ai-cli",
+    command: "ai_cli",
+    args,
+    cwd: opts.cwd,
+    error: () => eventError,
+    onLine: (payload) => {
+      let line: StreamLine;
       try {
-        unlisten.push(
-          await listen<string>(`ai-cli://line/${id}`, (e) => {
-            let line: StreamLine;
-            try {
-              line = JSON.parse(e.payload) as StreamLine;
-            } catch {
-              return; // not JSON: a banner or progress note, not ours to render
-            }
-
-            if (line.type === "system" && "session_id" in line && line.session_id) {
-              opts.onSession?.(line.session_id);
-            } else if (line.type === "assistant" && "message" in line) {
-              for (const block of line.message?.content ?? []) {
-                if (block.type === "text" && block.text) {
-                  sawText = true;
-                  opts.onDelta(block.text);
-                } else if (block.type === "tool_use" && block.name) {
-                  opts.onStatus?.(block.name);
-                }
-              }
-            } else if (line.type === "rate_limit_event" && "rate_limit_info" in line) {
-              /* Observed in a real run: the CLI reports plan limits mid-stream.
-                 Without surfacing it, hitting a weekly cap looks like the model
-                 being slow or the request quietly failing — the user has no way
-                 to tell a quota problem from a bug. */
-              const info = line.rate_limit_info ?? {};
-              if (info.status === "rejected") {
-                opts.onNotice?.(
-                  `Claude plan limit reached${info.rateLimitType ? ` (${info.rateLimitType.replace(/_/g, " ")})` : ""}` +
-                    (info.isUsingOverage ? " — running on overage" : ""),
-                );
-              } else if (info.isUsingOverage) {
-                opts.onNotice?.("Running on Claude plan overage");
-              }
-            } else if (line.type === "result") {
-              if ("session_id" in line && line.session_id) opts.onSession?.(line.session_id);
-              /* The CLI can finish with its answer only in `result` and never as
-                 an assistant block — a short reply, or one served from cache.
-                 Emitting it when nothing streamed avoids an empty bubble; doing
-                 it unconditionally would duplicate the whole answer. */
-              if (!sawText && "result" in line && line.result) opts.onDelta(line.result);
-            }
-          }),
-        );
-
-        unlisten.push(
-          await listen<string>(`ai-cli://err/${id}`, (e) => {
-            stderr += `${e.payload}\n`;
-          }),
-        );
-
-        unlisten.push(
-          await listen<number | null>(`ai-cli://exit/${id}`, (e) => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            const code = e.payload;
-            if (code === 0 || sawText) resolve();
-            else reject(new Error(stderr.trim() || `claude exited with ${code ?? "no status"}`));
-          }),
-        );
-
-        await invoke("ai_cli_start", { id, args, cwd: opts.cwd ?? null });
-      } catch (e) {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(e instanceof Error ? e : new Error(String(e)));
+        line = JSON.parse(payload) as StreamLine;
+      } catch {
+        return; // not JSON: a banner or progress note, not ours to render
       }
-    })();
-  });
 
-  return {
-    done,
-    stop: () => void invoke("ai_cli_stop", { id }).catch(() => {}),
-  };
+      if (line.type === "system" && "session_id" in line && line.session_id) {
+        opts.onSession?.(line.session_id);
+      } else if (line.type === "assistant" && "message" in line) {
+        for (const block of line.message?.content ?? []) {
+          if (block.type === "text" && block.text) {
+            sawText = true;
+            opts.onDelta(block.text);
+          } else if (block.type === "tool_use" && block.name) {
+            opts.onStatus?.(block.name);
+          }
+        }
+      } else if (line.type === "rate_limit_event" && "rate_limit_info" in line) {
+        /* Observed in a real run: the CLI reports plan limits mid-stream.
+           Without surfacing it, hitting a weekly cap looks like the model
+           being slow or the request quietly failing — the user has no way
+           to tell a quota problem from a bug. */
+        const info = line.rate_limit_info ?? {};
+        if (info.status === "rejected") {
+          opts.onNotice?.(
+            `Claude plan limit reached${info.rateLimitType ? ` (${info.rateLimitType.replace(/_/g, " ")})` : ""}` +
+              (info.isUsingOverage ? " — running on overage" : ""),
+          );
+        } else if (info.isUsingOverage) {
+          opts.onNotice?.("Running on Claude plan overage");
+        }
+      } else if (line.type === "result") {
+        if ("is_error" in line && line.is_error) {
+          eventError = ("result" in line && line.result) || "Claude could not complete this request.";
+          return;
+        }
+        if ("session_id" in line && line.session_id) opts.onSession?.(line.session_id);
+        /* The CLI can finish with its answer only in `result` and never as
+           an assistant block — a short reply, or one served from cache.
+           Emitting it when nothing streamed avoids an empty bubble; doing
+           it unconditionally would duplicate the whole answer. */
+        if (!sawText && "result" in line && line.result) opts.onDelta(line.result);
+      }
+    },
+  });
 }

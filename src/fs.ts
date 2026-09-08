@@ -11,8 +11,8 @@ export const writeFile = (path: string, contents: string) =>
     is checked again in Rust, including against symlink escapes. */
 export const readDirScoped = (path: string, root: string) =>
   invoke<DirEntry[]>("read_dir_scoped", { path, root });
-export const readFileScoped = (path: string, root: string) =>
-  invoke<string>("read_file_scoped", { path, root });
+export const readFileScoped = (path: string, root: string, maxBytes?: number) =>
+  invoke<string>("read_file_scoped", { path, root, ...(maxBytes === undefined ? {} : { maxBytes }) });
 export const writeFileScoped = (path: string, contents: string, root: string) =>
   invoke<void>("write_file_scoped", { path, contents, root });
 export const writeNewFileScoped = (path: string, contents: string, root: string) =>

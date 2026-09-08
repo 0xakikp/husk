@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { runCliProcess } from "./cliProcess";
 
 /**
  * The signed-in `codex` CLI as an AI backend.
@@ -111,75 +111,39 @@ export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
   const id = `husk-codex-${Date.now().toString(36)}-${(counter += 1)}`;
   const args = buildCodexCliArgs(opts.prompt, opts.model);
 
-  const unlisten: UnlistenFn[] = [];
-  let stderr = "";
   let eventError = "";
-  let sawText = false;
-  let settled = false;
-
-  const done = new Promise<void>((resolve, reject) => {
-    const cleanup = () => {
-      for (const fn of unlisten) fn();
-      unlisten.length = 0;
-    };
-
-    void (async () => {
+  return runCliProcess({
+    id,
+    prefix: "codex-cli",
+    command: "codex_cli",
+    args,
+    cwd: opts.cwd,
+    error: () => eventError,
+    onLine: (payload) => {
+      let line: CodexEvent;
       try {
-        unlisten.push(
-          await listen<string>(`codex-cli://line/${id}`, (event) => {
-            let line: CodexEvent;
-            try {
-              line = JSON.parse(event.payload) as CodexEvent;
-            } catch {
-              return;
-            }
-
-            if (line.type === "item.completed" && line.item?.type === "agent_message" && line.item.text) {
-              sawText = true;
-              opts.onDelta(line.item.text);
-            } else if (
-              line.type === "item.started" &&
-              ["command_execution", "file_change", "mcp_tool_call", "web_search"].includes(line.item?.type ?? "")
-            ) {
-              /* This should be unreachable because launch disables tool
-                 families and Rust installs a deny-all hook. Fail closed if a
-                 future CLI introduces a path that slips through both. */
-              eventError = `Codex attempted a blocked ${line.item?.type?.replace(/_/g, " ") ?? "tool"} action.`;
-              void invoke("codex_cli_stop", { id }).catch(() => {});
-            } else if (line.type === "turn.failed") {
-              eventError = line.error?.message || "Codex could not complete this request.";
-            } else if (line.type === "error") {
-              eventError = line.message || "Codex reported an error.";
-            }
-          }),
-        );
-        unlisten.push(
-          await listen<string>(`codex-cli://err/${id}`, (event) => {
-            stderr += `${event.payload}\n`;
-          }),
-        );
-        unlisten.push(
-          await listen<number | null>(`codex-cli://exit/${id}`, (event) => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            if (eventError) reject(new Error(eventError));
-            else if (event.payload === 0 || sawText) resolve();
-            else reject(new Error(stderr.trim() || `codex exited with ${event.payload ?? "no status"}`));
-          }),
-        );
-        await invoke("codex_cli_start", { id, args, cwd: opts.cwd ?? null });
-      } catch (error) {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(error instanceof Error ? error : new Error(String(error)));
+        line = JSON.parse(payload) as CodexEvent;
+      } catch {
+        return;
       }
-    })();
-  });
 
-  return {
-    done,
-    stop: () => void invoke("codex_cli_stop", { id }).catch(() => {}),
-  };
+      if (line.type === "item.completed" && line.item?.type === "agent_message" && line.item.text) {
+
+        opts.onDelta(line.item.text);
+      } else if (
+        line.type === "item.started" &&
+        ["command_execution", "file_change", "mcp_tool_call", "web_search"].includes(line.item?.type ?? "")
+      ) {
+        /* This should be unreachable because launch disables tool
+           families and Rust installs a deny-all hook. Fail closed if a
+           future CLI introduces a path that slips through both. */
+        eventError = `Codex attempted a blocked ${line.item?.type?.replace(/_/g, " ") ?? "tool"} action.`;
+        void invoke("codex_cli_stop", { id }).catch(() => {});
+      } else if (line.type === "turn.failed") {
+        eventError = line.error?.message || "Codex could not complete this request.";
+      } else if (line.type === "error") {
+        eventError = line.message || "Codex reported an error.";
+      }
+    },
+  });
 }

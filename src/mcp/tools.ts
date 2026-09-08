@@ -15,7 +15,8 @@ let cachedDiscovered: McpDiscoveredTool[] = [];
  * Connect to all enabled MCP servers and build AI SDK tools from their tools.
  * Call before an AI run to get a fresh tool set.
  */
-export async function buildMcpTools(actionContext: Pick<HuskActionContext, "sessionId"> = {}): Promise<Record<string, Tool>> {
+export async function buildMcpTools(actionContext: Pick<HuskActionContext, "sessionId" | "signal"> = {}): Promise<Record<string, Tool>> {
+  actionContext.signal?.throwIfAborted();
   const enabled = loadMcpServers().filter((c) => c.enabled);
 
   // Drop servers that are no longer enabled.
@@ -26,6 +27,7 @@ export async function buildMcpTools(actionContext: Pick<HuskActionContext, "sess
 
   // Connect enabled servers.
   for (const config of enabled) {
+    actionContext.signal?.throwIfAborted();
     reportMcpConnecting(config.id);
     try {
       const env = await resolveMcpServerEnv(config);
@@ -55,12 +57,14 @@ export async function buildMcpTools(actionContext: Pick<HuskActionContext, "sess
     result[`mcp_${t.serverId}_${t.name}`] = tool({
       description: `[${t.serverName}] ${t.description ?? t.name}`,
       inputSchema: jsonSchema(t.inputSchema as unknown as Record<string, unknown>),
-      execute: async (input) => {
+      execute: async (input, options) => {
+        actionContext.signal?.throwIfAborted();
+        options.abortSignal?.throwIfAborted();
         const result = await executeHuskAction(
           { kind: "mcp.call", serverId: t.serverId, toolName: t.name, input: input as Record<string, unknown> },
-          { ...actionContext, fileToolsEnabled: false, mcpToolsEnabled: true },
+          { ...actionContext, signal: options.abortSignal ?? actionContext.signal, fileToolsEnabled: false, mcpToolsEnabled: true },
         );
-        return result.result ?? result.summary;
+        return result;
       },
     });
   }

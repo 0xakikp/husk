@@ -2,8 +2,10 @@
 //! Spawns `ssh host "command"` subprocesses to reuse the user's existing
 //! SSH config, keys, and agent.
 
-use std::process::Command;
+use std::io::{Read, Write};
+use std::process::{Command, Output, Stdio};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -109,77 +111,106 @@ fn parse_scoped_dir_entries(output: &str, path: &str) -> Vec<DirEntry> {
     entries
 }
 
-/// Run an SSH command and return stdout on success.
-fn ssh_stdout(host: &str, cmd: &str) -> Result<String, String> {
+fn complete_remote_text(bytes: Vec<u8>) -> Result<String, String> {
+    if bytes.len() > MAX_OUT {
+        return Err("Remote content exceeds the 256 KiB limit; nothing was changed. Use SFTP or a local editor for larger files.".to_string());
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| "Remote content is not UTF-8 text; nothing was changed.".to_string())
+}
+
+/// Pass file content over stdin, never a shell argument. Bound both output
+/// pipes and kill the SSH child on timeout instead of abandoning a live writer.
+fn run_ssh(host: &str, cmd: &str, input: Option<&str>) -> Result<Output, String> {
     validate_host(host)?;
-    let ssh_cmd = format!(
-        "ssh -o BatchMode=yes -o ConnectTimeout=5 {} {}",
-        shq(host),
-        shq(cmd),
-    );
-
-    let (tx, rx) = mpsc::channel();
-
-    std::thread::spawn(move || {
-        #[cfg(not(windows))]
-        let output = {
-            let mut c = Command::new("sh");
-            c.arg("-lc").arg(&ssh_cmd);
-            c.output()
-        };
-        #[cfg(windows)]
-        let output = {
-            let mut c = Command::new("cmd");
-            c.arg("/C").arg(&ssh_cmd);
-            c.output()
-        };
-        let _ = tx.send(output);
-    });
-
-    match rx.recv_timeout(Duration::from_secs(SSH_TIMEOUT)) {
-        Ok(Ok(output)) => {
-            if !output.status.success() {
-                let err = String::from_utf8_lossy(&output.stderr);
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                return Err(format!(
-                    "SSH failed (exit {:?}): {} {}",
-                    output.status.code(),
-                    err.trim(),
-                    stdout.trim(),
-                ));
+    let mut command = Command::new("ssh");
+    command.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, cmd]);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child =
+        Arc::new(shared_child::SharedChild::spawn(&mut command).map_err(|e| e.to_string())?);
+    let mut stdin = child.take_stdin().ok_or("No SSH stdin")?;
+    let stdout = child.take_stdout().ok_or("No SSH stdout")?;
+    let stderr = child.take_stderr().ok_or("No SSH stderr")?;
+    let contents = input.unwrap_or("").as_bytes().to_vec();
+    let writer = std::thread::spawn(move || stdin.write_all(&contents));
+    let collect = |reader: Box<dyn Read + Send>, child: Arc<shared_child::SharedChild>| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let result = reader.take((MAX_OUT + 1) as u64).read_to_end(&mut bytes);
+            if bytes.len() > MAX_OUT {
+                let _ = child.kill();
             }
-            let out = String::from_utf8_lossy(&output.stdout[..output.stdout.len().min(MAX_OUT)]);
-            Ok(out.to_string())
+            result.map(|_| bytes)
+        })
+    };
+    let out = collect(Box::new(stdout), child.clone());
+    let err = collect(Box::new(stderr), child.clone());
+    let (tx, rx) = mpsc::channel();
+    let waiter = child.clone();
+    std::thread::spawn(move || {
+        let result = (|| -> Result<Output, String> {
+            let status = waiter.wait().map_err(|e| e.to_string())?;
+            let stdout = out
+                .join()
+                .map_err(|_| "SSH output reader failed")?
+                .map_err(|e| e.to_string())?;
+            let stderr = err
+                .join()
+                .map_err(|_| "SSH error reader failed")?
+                .map_err(|e| e.to_string())?;
+            writer
+                .join()
+                .map_err(|_| "SSH input writer failed")?
+                .map_err(|e| e.to_string())?;
+            if stdout.len() > MAX_OUT || stderr.len() > MAX_OUT {
+                return Err(
+                    "Remote output exceeds the 256 KiB limit; a complete read is required.".into(),
+                );
+            }
+            Ok(Output {
+                status,
+                stdout,
+                stderr,
+            })
+        })();
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(Duration::from_secs(SSH_TIMEOUT)) {
+        Ok(result) => result,
+        Err(_) => {
+            let _ = child.kill();
+            Err("SSH command timed out; the connection was stopped. Check the remote file before retrying a write.".to_string())
         }
-        Ok(Err(e)) => Err(format!("Failed to spawn ssh: {e}")),
-        Err(_) => Err("SSH command timed out".to_string()),
     }
 }
 
+/// Run an SSH command and return stdout on success.
+fn ssh_stdout(host: &str, cmd: &str) -> Result<String, String> {
+    let output = run_ssh(host, cmd, None)?;
+    if !output.status.success() {
+        return Err(format!(
+            "SSH failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    complete_remote_text(output.stdout)
+}
+
 fn ssh_stdin(host: &str, cmd: &str, contents: &str, label: &str) -> Result<(), String> {
-    validate_host(host)?;
-    let ssh_cmd = format!(
-        "printf '%s' {} | ssh -o BatchMode=yes -o ConnectTimeout=5 {} {}",
-        shq(contents),
-        shq(host),
-        shq(cmd),
-    );
-    let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        #[cfg(not(windows))]
-        let output = Command::new("sh").arg("-lc").arg(&ssh_cmd).output();
-        #[cfg(windows)]
-        let output = Command::new("cmd").arg("/C").arg(&ssh_cmd).output();
-        let _ = tx.send(output);
-    });
-    match rx.recv_timeout(Duration::from_secs(SSH_TIMEOUT)) {
-        Ok(Ok(output)) if output.status.success() => Ok(()),
-        Ok(Ok(output)) => Err(format!(
+    if contents.len() > MAX_OUT {
+        return Err("Remote write exceeds the 256 KiB limit; nothing was changed.".to_string());
+    }
+    let output = run_ssh(host, cmd, Some(contents))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
             "SSH {label} failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
-        )),
-        Ok(Err(e)) => Err(format!("Failed to spawn ssh: {e}")),
-        Err(_) => Err(format!("SSH {label} timed out")),
+        ))
     }
 }
 
@@ -349,4 +380,38 @@ pub fn ssh_home_dir(host: String) -> Result<String, String> {
 pub fn ssh_pwd(host: String) -> Result<String, String> {
     let pwd = ssh_stdout(&host, "pwd")?;
     Ok(pwd.trim().to_string())
+}
+
+#[cfg(test)]
+mod ai_remote_tests {
+    use super::*;
+
+    #[test]
+    fn oversized_read_is_refused_instead_of_becoming_editable_prefix() {
+        assert_eq!(
+            complete_remote_text(vec![b'a'; MAX_OUT]).unwrap().len(),
+            MAX_OUT
+        );
+        assert!(complete_remote_text(vec![b'a'; MAX_OUT + 1])
+            .unwrap_err()
+            .contains("256 KiB"));
+    }
+
+    #[test]
+    fn binary_content_is_never_lossily_rewritten_as_text() {
+        assert!(complete_remote_text(vec![0xff, 0xfe]).is_err());
+        assert_eq!(
+            complete_remote_text("hello é".as_bytes().to_vec()).unwrap(),
+            "hello é"
+        );
+    }
+
+    #[test]
+    fn large_write_is_rejected_before_ssh_is_started() {
+        assert!(
+            ssh_stdin("invalid host", "unused", &"x".repeat(MAX_OUT + 1), "write")
+                .unwrap_err()
+                .contains("256 KiB")
+        );
+    }
 }
