@@ -7,13 +7,16 @@ import { TerminalBottomBar } from "../terminal/TerminalBottomBar";
 import { FailureStrip } from "../terminal/FailureStrip";
 import type { FailureExplainRequest } from "../terminal/FailureStrip";
 import { NextStepStrip } from "../terminal/NextStepStrip";
+import { RunComparisonStrip } from "../terminal/runComparisonStrip";
+import { RememberFixStrip } from "../terminal/RememberFixStrip";
 import { PortDetectedStrip } from "../terminal/PortDetectedStrip";
 import { GitActivityStrip } from "../terminal/GitActivityStrip";
 import { SensitiveOutputStrip } from "../terminal/SensitiveOutputStrip";
 import { EnvironmentWarningStrip } from "../terminal/EnvironmentWarningStrip";
 import { WorkflowSuggestionStrip } from "../workflows/WorkflowSuggestionStrip";
 import { tabSessionId, type AiSession } from "../ai/sessionStore";
-import { focusActiveTerminal, runInActiveTerminal } from "../ai/terminalContext";
+import { focusActiveTerminal, getActiveTerminalPtyId, runInActiveTerminal } from "../ai/terminalContext";
+import { getSessionHandle } from "../terminal/registry";
 import { TerminalLogs } from "../terminal/TerminalLogs";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { toast } from "../toast";
@@ -269,6 +272,11 @@ export function WorkspacePanels({
             onExplain={onExplainFailure}
           />
           <EnvironmentWarningStrip leafId={activeLeafId} />
+          {activeKind === "term" && activeLeafId != null && <RememberFixStrip leafId={activeLeafId} onClose={() => {
+            const handle = getSessionHandle(activeLeafId);
+            if (handle && handle.getPtyId() != null && handle.getPtyId() === getActiveTerminalPtyId()) handle.focus();
+          }} />}
+          {activeLeafId != null && <RunComparisonStrip leafId={activeLeafId} aiEnabled={prefs.aiEnabled} />}
           <SensitiveOutputStrip leafId={activeLeafId} />
           <PortDetectedStrip leafId={activeLeafId} onOpenBrowser={onOpenBrowser} />
           <GitActivityStrip leafId={activeLeafId} onOpenSourceControl={onOpenSourceControl} />

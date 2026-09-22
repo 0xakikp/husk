@@ -1,0 +1,37 @@
+.plugin-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--foreground); font-size: 11px; }
+.plugin-panel button { cursor: pointer; color: var(--muted-foreground); border-radius: 4px; }
+.plugin-panel button:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.plugin-panel button:disabled { opacity: .45; cursor: default; }
+.plugin-panel button:focus-visible, .plugin-panel input:focus-visible { outline: 1px solid var(--primary); outline-offset: 1px; }
+.plugin-panel__back { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; }
+.plugin-panel__tabs { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 3px; padding: 5px; border-bottom: 1px solid var(--border); }
+.plugin-panel__tabs button { padding: 3px 6px; font-size: 10.5px; }
+.plugin-panel__tabs button[aria-selected=true] { color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.plugin-panel__content { overflow: auto; min-height: 0; flex: 1; padding: 8px; scrollbar-width: thin; }
+.plugin-panel__scope, .plugin-panel__source { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 9px; }
+.plugin-panel__scope > span, .plugin-panel__source > span { color: var(--muted-foreground); font-size: 10px; }
+.plugin-panel code, .plugin-panel pre { font-family: var(--font-mono, monospace); font-size: 10.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.plugin-panel pre { margin: 0; }
+.plugin-panel__source pre, .plugin-panel__preview > pre { padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--background); max-height: 150px; overflow: auto; }
+.plugin-panel__notice, .plugin-panel__warning { margin: 7px 0; line-height: 1.5; overflow-wrap: anywhere; color: var(--muted-foreground); font-size: 10.5px; }
+.plugin-panel__warning { color: var(--destructive); }
+.plugin-panel__controls { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 8px 0; }
+.plugin-panel__controls > button { border: 1px solid var(--border); padding: 4px 6px; font-size: 10.5px; }
+.plugin-panel__updated { font-size: 9px; color: var(--muted-foreground); }
+.plugin-panel__auto { display: flex; align-items: flex-start; gap: 5px; margin: 7px 0; font-size: 10px; line-height: 1.45; color: var(--muted-foreground); }
+.plugin-panel__auto input { margin-top: 2px; accent-color: var(--primary); flex-shrink: 0; }
+.plugin-panel__error { border: 1px solid color-mix(in srgb, var(--destructive) 35%, transparent); background: color-mix(in srgb, var(--destructive) 4%, transparent); border-radius: 5px; padding: 6px; color: var(--destructive); margin: 7px 0; }
+.plugin-panel__error > span { display: block; margin-top: 5px; color: var(--muted-foreground); font-size: 10px; }
+.plugin-panel__error pre { max-height: 140px; overflow: auto; }
+.plugin-panel__empty { text-align: center; padding: 9px 3px; color: var(--muted-foreground); font-size: 10.5px; }
+.plugin-panel__row { border-bottom: 1px solid var(--border); }
+.plugin-panel__row-toggle { display: flex; width: 100%; align-items: center; gap: 5px; padding: 6px 3px; text-align: left; }
+.plugin-panel__row-toggle > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
+.plugin-panel__row-details { padding: 3px 3px 8px 13px; }
+.plugin-panel__row-details dl { margin: 0 0 6px; }
+.plugin-panel__row-details dl > div { display: grid; grid-template-columns: minmax(50px, 30%) minmax(0, 1fr); gap: 6px; margin: 4px 0; }
+.plugin-panel__row-details dt { color: var(--muted-foreground); font-size: 10px; overflow-wrap: anywhere; }
+.plugin-panel__row-details dd { margin: 0; font-family: var(--font-mono, monospace); font-size: 10.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.plugin-panel__row-details > button { margin: 2px 4px 2px 0; padding: 3px 5px; border: 1px solid var(--border); font-size: 10px; }
+.plugin-panel__preview { margin: 9px 0; padding: 7px; border: 1px solid var(--border); border-radius: 5px; }
+.plugin-panel__preview > strong { font-size: 11px; font-weight: 500; }

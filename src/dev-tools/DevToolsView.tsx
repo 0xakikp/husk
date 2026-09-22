@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, Cancel01Icon, Copy01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, Cancel01Icon, Copy01Icon, CodeIcon } from "@hugeicons/core-free-icons";
+import { PanelHeader } from "../shell/PanelHeader";
 import { cn } from "@/lib/utils";
 import { toast } from "../toast";
 import { DEV_TOOL_MODES, transformDevValue, type DevToolMode, type JsonOperation } from "./transforms";
@@ -61,13 +62,11 @@ export function DevToolsView({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-8 shrink-0 items-center gap-1 border-b border-border/40 px-2">
-        <button type="button" onClick={onBack} title="Back to plugins" className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground">
+      <PanelHeader icon={CodeIcon} title="Dev Tools" context="Local only" actions={
+        <button type="button" onClick={onBack} aria-label="Back to tools" title="Back to tools" className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground">
           <HugeiconsIcon icon={ArrowLeft01Icon} size={13} strokeWidth={2} />
         </button>
-        <span className="truncate text-xs font-semibold text-primary">Dev Tools</span>
-        <span className="ml-auto text-[9px] text-muted-foreground">local only</span>
-      </header>
+      } />
 
       <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-border/30 p-1.5">
         {DEV_TOOL_MODES.map((tool) => (

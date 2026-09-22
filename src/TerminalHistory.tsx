@@ -1,6 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { getPrefs } from "./settings/preferences";
+import { usePrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
+import { requestScreenAssist } from "./ai/screenAssist";
+import {
+  HISTORY_RECALL_SYSTEM, historyRecallMetadata, historyRecallPrompt, parseHistoryRecall, prepareHistoryRecall,
+  type HistoryRecallCandidate, type HistoryRecallRow,
+} from "./ai/historyRecall";
+import "./TerminalHistory.css";
 
 /**
  * Ordered-character fuzzy match: every character of `query` must appear in
@@ -244,17 +250,27 @@ const ICONS: Record<CommandType, React.ReactNode> = {
  */
 export function TerminalHistoryPanel({
   entries,
+  rows,
+  terminalId,
   loading,
   onSelect,
   onClose,
 }: {
   entries: string[];
+  rows?: HistoryRecallRow[];
+  terminalId?: string | number;
   loading: boolean;
   onSelect: (command: string) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
+  const [aiMode, setAiMode] = useState(false);
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [aiMatches, setAiMatches] = useState<HistoryRecallCandidate[] | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const requestRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -271,8 +287,51 @@ export function TerminalHistoryPanel({
 
   // Use the user's chosen terminal font so the panel feels native; sizing
   // follows the spotlight palette (13px rows / 15px input), not the terminal.
-  const prefs = getPrefs();
+  const prefs = usePrefs();
   const fontFamily = fontStack(prefs.fontFamily);
+  const historyRows = useMemo(() => rows ?? entries.map((command) => ({ command, timestamp: null, source: "Local shell history" })), [rows, entries]);
+  const snapshot = useMemo(() => aiMode ? prepareHistoryRecall(historyRows, query)
+    : { candidates: [], sensitiveExcluded: 0, omitted: historyRows.length, total: historyRows.length }, [historyRows, query, aiMode]);
+  const liveContextRef = useRef({ snapshot, terminalId, aiMode });
+  liveContextRef.current = { snapshot, terminalId, aiMode };
+  const reviewedCandidates = snapshot.candidates.filter((candidate) => !excluded.has(candidate.id));
+
+  function cancelRecall(): void {
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setAiBusy(false);
+  }
+  function close(): void { cancelRecall(); onClose(); }
+
+  useEffect(() => {
+    cancelRecall(); setAiMatches(null); setAiError(""); setExcluded(new Set()); setIndex(0);
+  }, [query, entries, rows, terminalId]);
+  useEffect(() => {
+    if (!prefs.aiEnabled) { cancelRecall(); setAiMode(false); }
+  }, [prefs.aiEnabled]);
+  useEffect(() => () => { requestRef.current?.abort(); }, []);
+
+  async function findHistoryMatches(): Promise<void> {
+    if (!prefs.aiEnabled || !aiMode || aiBusy || loading) return;
+    const capturedSnapshot = snapshot;
+    const capturedTerminal = terminalId;
+    const candidates = reviewedCandidates.map((candidate) => ({ ...candidate }));
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setAiBusy(true); setAiError(""); setAiMatches(null);
+    try {
+      const result = await requestScreenAssist({
+        system: HISTORY_RECALL_SYSTEM, prompt: historyRecallPrompt(query, candidates), signal: controller.signal,
+      });
+      if (controller.signal.aborted || requestRef.current !== controller || liveContextRef.current.snapshot !== capturedSnapshot
+        || liveContextRef.current.terminalId !== capturedTerminal || !liveContextRef.current.aiMode) return;
+      setAiMatches(parseHistoryRecall(result, candidates)); setIndex(0);
+    } catch (error) {
+      if (!controller.signal.aborted && requestRef.current === controller) setAiError(error instanceof Error ? error.message : "Could not search history with AI.");
+    } finally {
+      if (requestRef.current === controller) { requestRef.current = null; setAiBusy(false); }
+    }
+  }
 
   const scored = useMemo(() => {
     const q = query.trim();
@@ -319,7 +378,7 @@ export function TerminalHistoryPanel({
 
   useEffect(() => {
     const el = listRef.current?.children[index] as HTMLElement | undefined;
-    el?.scrollIntoView({ block: "nearest" });
+    el?.scrollIntoView?.({ block: "nearest" });
   }, [index]);
 
   /* xterm can retain its hidden textarea as the event target for the first
@@ -332,6 +391,7 @@ export function TerminalHistoryPanel({
     const captureEarlyHistoryInput = (event: KeyboardEvent) => {
       const input = inputRef.current;
       if (!input || event.target === input) return;
+      if (panelRef.current?.contains(event.target as Node)) return;
 
       const isPlainCharacter =
         event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
@@ -342,7 +402,7 @@ export function TerminalHistoryPanel({
       event.stopPropagation();
       event.stopImmediatePropagation();
       input.focus({ preventScroll: true });
-      setQuery((current) => isBackspace ? current.slice(0, -1) : `${current}${event.key}`);
+      setQuery((current) => isBackspace ? current.slice(0, -1) : `${current}${event.key}`.slice(0, 2000));
     };
 
     window.addEventListener("keydown", captureEarlyHistoryInput, true);
@@ -353,13 +413,13 @@ export function TerminalHistoryPanel({
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (!panelRef.current?.contains(e.target as Node)) {
-        onClose();
+        close();
       }
     };
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        close();
       }
     };
     const timer = setTimeout(() => {
@@ -374,7 +434,7 @@ export function TerminalHistoryPanel({
   }, [onClose]);
 
   const choose = (i: number) => {
-    const cmd = scored[i]?.command;
+    const cmd = aiMode ? aiMatches?.[i]?.command : scored[i]?.command;
     if (cmd) onSelect(cmd);
   };
 
@@ -382,16 +442,17 @@ export function TerminalHistoryPanel({
     <>
       <div
         className="term-hist-backdrop"
-        onClick={onClose}
+        onClick={close}
         onMouseDown={(e) => {
           e.preventDefault();
-          onClose();
+          close();
         }}
       />
       <div
         className="term-hist"
         ref={panelRef}
         style={{ fontFamily }}
+        onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="term-hist-input-wrap">
           <span className="term-hist-input-chip">
@@ -407,14 +468,16 @@ export function TerminalHistoryPanel({
             autoCorrect="off"
             autoCapitalize="off"
             spellCheck={false}
+            maxLength={2000}
             className="term-hist-input"
             value={query}
-            placeholder={loading ? "Loading history…" : "Search history…"}
+            placeholder={loading ? "Loading history…" : aiMode ? "e.g. The command I used to forward Postgres" : "Search history…"}
+            aria-label={aiMode ? "Describe a saved command" : "Search history"}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown" || (e.ctrlKey && e.key.toLowerCase() === "r")) {
                 e.preventDefault();
-                setIndex((i) => Math.min(Math.max(scored.length - 1, 0), i + 1));
+                setIndex((i) => Math.min(Math.max((aiMode ? aiMatches?.length ?? 0 : scored.length) - 1, 0), i + 1));
               } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key.toLowerCase() === "p")) {
                 e.preventDefault();
                 setIndex((i) => Math.max(0, i - 1));
@@ -423,7 +486,7 @@ export function TerminalHistoryPanel({
                 choose(index);
               } else if (e.key === "Escape") {
                 e.preventDefault();
-                onClose();
+                close();
               }
             }}
           />
@@ -445,7 +508,42 @@ export function TerminalHistoryPanel({
           <kbd className="term-hist-esc">esc</kbd>
         </div>
 
+        {prefs.aiEnabled && <div className="term-hist-modes" aria-label="History search mode">
+          <button type="button" aria-pressed={!aiMode} onClick={() => { cancelRecall(); setAiMode(false); setAiError(""); inputRef.current?.focus(); }}>Local search</button>
+          <button type="button" aria-pressed={aiMode} onClick={() => { setAiMode(true); inputRef.current?.focus(); }}>Ask AI</button>
+          <span>Saved commands only</span>
+        </div>}
+
+        {aiMode && <div className="term-hist-recall">
+          <p>Review the commands below, then send your question and the checked entries to your selected AI provider. Local shell history is not your remote host’s history.</p>
+          <details open={aiMatches === null} className="term-hist-recall-review">
+            <summary>Review {reviewedCandidates.length} of {snapshot.total} saved commands</summary>
+            {(snapshot.sensitiveExcluded > 0 || snapshot.omitted > 0) && <p className="term-hist-recall-note">{snapshot.sensitiveExcluded} possible sensitive entries excluded · {snapshot.omitted} other entries outside this bounded sample</p>}
+            <div className="term-hist-recall-candidates">
+              {snapshot.candidates.map((candidate) => <label key={candidate.id}>
+                <input type="checkbox" checked={!excluded.has(candidate.id)} disabled={aiBusy} aria-label={`Include ${candidate.command}`} onChange={() => {
+                  setExcluded((current) => { const next = new Set(current); if (next.has(candidate.id)) next.delete(candidate.id); else next.add(candidate.id); return next; });
+                  setAiMatches(null); setAiError("");
+                }} />
+                <span><code>{candidate.command}</code><small>{historyRecallMetadata(candidate)}</small></span>
+              </label>)}
+              {!snapshot.candidates.length && <p className="term-hist-recall-note">No eligible history entries in this sample.</p>}
+            </div>
+          </details>
+          <div className="term-hist-recall-actions">
+            <button type="button" disabled={aiBusy || loading || !query.trim() || !reviewedCandidates.length} onClick={() => { void findHistoryMatches(); }}>{aiBusy ? "Finding matches…" : "Find matches"}</button>
+            {aiBusy && <button type="button" onClick={cancelRecall}>Stop</button>}
+            <span>No commands are generated or executed.</span>
+          </div>
+          {aiError && <p role="alert" className="term-hist-recall-note">{aiError}</p>}
+        </div>}
+
         <div className="term-hist-list" ref={listRef}>
+          {aiMode ? aiMatches && (aiMatches.length ? aiMatches.map((candidate, resultIndex) => <button
+            type="button" key={candidate.id} className={`term-hist-item term-hist-recall-result ${resultIndex === index ? "active" : ""}`}
+            title={`Stage this saved command: ${candidate.command}`} onMouseEnter={() => setIndex(resultIndex)} onClick={() => choose(resultIndex)}
+          ><span><code>{candidate.command}</code><small>{historyRecallMetadata(candidate)}</small></span><span className="term-hist-recall-stage">stage</span></button>)
+            : <div className="term-hist-empty">No strong match in this reviewed sample. Try another description or local search.</div>) : <>
           {scored.length === 0 ? (
             <div className="term-hist-empty">
               {loading ? "Loading history…" : query.trim() ? "No matching history" : "No history entries"}
@@ -490,10 +588,11 @@ export function TerminalHistoryPanel({
               );
             })
           )}
+          </>}
         </div>
         <div className="term-hist-footer">
           <span className="term-hist-footer-count">
-            {scored.length > 0
+            {aiMode ? aiMatches ? `${aiMatches.length} saved match${aiMatches.length === 1 ? "" : "es"}` : "Review before sending" : scored.length > 0
               ? `${scored.length}${entries.length > 20 ? "+" : ""} result${scored.length === 1 ? "" : "s"}`
               : query.trim()
                 ? "0 results"
@@ -502,7 +601,7 @@ export function TerminalHistoryPanel({
           <span className="term-hist-footer-hints">
             <kbd>↑↓</kbd> navigate
             <span className="term-hist-footer-divider" />
-            <kbd>↵</kbd> run
+            <kbd>↵</kbd> stage
             <span className="term-hist-footer-divider" />
             <kbd>Esc</kbd> close
           </span>

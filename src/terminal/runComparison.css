@@ -1,0 +1,53 @@
+.run-comparison {
+  container-type: inline-size;
+  flex-shrink: 0;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--background) 94%, transparent);
+  color: var(--foreground);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+.run-comparison button {
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 5px;
+}
+.run-comparison button:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.run-comparison button:focus-visible, .run-comparison__line:focus { outline: 1px solid var(--primary); outline-offset: -1px; }
+.run-comparison button:disabled { cursor: default; opacity: .45; }
+.run-comparison__strip { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 26px; padding: 1px 5px; }
+.run-comparison__toggle { display: flex; align-items: center; gap: 5px; flex-shrink: 0; color: var(--foreground); }
+.run-comparison__toggle > span { color: var(--primary); }
+.run-comparison__command { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); }
+.run-comparison__counts { margin-left: auto; flex-shrink: 0; font-size: 10px; color: var(--muted-foreground); }
+.run-comparison__dismiss { flex-shrink: 0; color: var(--muted-foreground); }
+.run-comparison__body { padding: 7px; border-top: 1px solid var(--border); max-height: min(360px, 42vh); overflow: auto; }
+.run-comparison__meta { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 10px; color: var(--muted-foreground); }
+.run-comparison__meta > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-comparison__notice { margin: 5px 0; color: var(--muted-foreground); line-height: 1.45; }
+.run-comparison__actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.run-comparison__actions > button { border: 1px solid var(--border); }
+.run-comparison__actions label { margin-left: auto; display: flex; align-items: center; gap: 4px; color: var(--muted-foreground); font-size: 10px; }
+.run-comparison__actions input { accent-color: var(--primary); }
+.run-comparison__claims { list-style: none; margin: 5px 0 8px; padding: 0; font-size: 12px; line-height: 1.5; }
+.run-comparison__claims li + li { margin-top: 5px; }
+.run-comparison__citations { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.run-comparison__citations button { color: var(--muted-foreground); border: 1px solid var(--border); font-size: 9px; line-height: 1.2; }
+.run-comparison__evidence { overflow: auto; max-height: 210px; border: 1px solid var(--border); border-radius: 4px; }
+.run-comparison__line { display: flex; align-items: flex-start; gap: 8px; min-width: max-content; line-height: 1.5; padding: 1px 5px; }
+.run-comparison__line code { white-space: pre; font-family: inherit; font-size: 11px; }
+.run-comparison__line-number { flex-shrink: 0; width: 42px; text-align: right; color: var(--muted-foreground); font-size: 10px; user-select: none; }
+.run-comparison__line--removed { background: color-mix(in srgb, #f87171 8%, transparent); }
+.run-comparison__line--added { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.run-comparison__line--unchanged { color: var(--muted-foreground); }
+.run-comparison__line--status { border-top: 1px solid var(--border); }
+.run-comparison__same { margin: 5px; color: var(--muted-foreground); }
+@container (max-width: 420px) {
+  .run-comparison__command { display: none; }
+}
+@container (max-width: 320px) {
+  .run-comparison__counts { display: none; }
+  .run-comparison__dismiss { margin-left: auto; }
+}

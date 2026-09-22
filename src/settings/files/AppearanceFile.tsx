@@ -312,7 +312,7 @@ export function AppearanceFile() {
             )}
             <AppearanceControl label="Background blur" description="Blur behind the AI composer."><CfgSlider value={p.aiMiniBgBlur} min={0} max={20} step={1} unit="px" onChange={(aiMiniBgBlur) => setPrefs({ aiMiniBgBlur })} /></AppearanceControl>
             <AppearanceControl label="Background dim" description="Darken behind the AI composer so text stays readable over a wallpaper."><CfgSlider value={p.aiMiniBgDim} min={0} max={90} step={5} onChange={(aiMiniBgDim) => setPrefs({ aiMiniBgDim })} /></AppearanceControl>
-            <AppearanceControl label="Background style" description="Follow the theme, use a gradient, or a solid colour."><CfgEnum value={p.aiComposerBgStyle} onChange={(aiComposerBgStyle) => setPrefs({ aiComposerBgStyle })} options={[{ value: "default", label: "Default" }, { value: "gradient", label: "Gradient" }, { value: "solid", label: "Solid" }]} /></AppearanceControl>
+            <AppearanceControl label="Background style" description="Flat theme background or a custom solid colour."><CfgEnum value={p.aiComposerBgStyle === "gradient" ? "solid" : p.aiComposerBgStyle} onChange={(aiComposerBgStyle) => setPrefs({ aiComposerBgStyle })} options={[{ value: "default", label: "Theme" }, { value: "solid", label: "Solid" }]} /></AppearanceControl>
             <AppearanceControl label="Background color" description="Used by gradient or solid."><CfgColor value={p.aiComposerBgColor} onChange={(aiComposerBgColor) => setPrefs({ aiComposerBgColor })} /></AppearanceControl>
           </div>
         </section>

@@ -1,5 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { runCliProcess } from "./cliProcess";
+import { formatCodexError } from "./codexError";
+import { availableCodexModels, resolveCodexSubscriptionModel, type CodexCliModel } from "./codexModels";
+export type { CodexCliModel } from "./codexModels";
 
 /**
  * The signed-in `codex` CLI as an AI backend.
@@ -13,12 +16,6 @@ import { runCliProcess } from "./cliProcess";
 let availability: Promise<boolean> | null = null;
 let models: Promise<CodexCliModel[]> | null = null;
 
-export type CodexCliModel = {
-  id: string;
-  label: string;
-  description: string;
-};
-
 export function codexCliAvailable(refresh = false): Promise<boolean> {
   if (refresh) availability = null;
   availability ??= invoke<boolean>("codex_cli_available").catch(() => false);
@@ -26,8 +23,9 @@ export function codexCliAvailable(refresh = false): Promise<boolean> {
 }
 
 /** Models are discovered from this user's Codex cache, not hard-coded. */
-export function codexCliModels(): Promise<CodexCliModel[]> {
-  models ??= invoke<CodexCliModel[]>("codex_cli_models").catch(() => []);
+export function codexCliModels(refresh = false): Promise<CodexCliModel[]> {
+  if (refresh) models = null;
+  models ??= invoke<CodexCliModel[]>("codex_cli_models").then(availableCodexModels).catch(() => []);
   return models;
 }
 
@@ -93,7 +91,9 @@ export function buildCodexCliArgs(prompt: string, model?: string): string[] {
     "--config",
     'web_search="disabled"',
   ];
-  if (model && model !== "codex") args.push("--model", model);
+  // Defend non-settings callers too (for example an already-open chat or a
+  // one-shot screen action holding a pre-migration configuration).
+  if (model && model !== "codex") args.push("--model", resolveCodexSubscriptionModel(model));
   args.push(
     [
       "You are the signed-in Codex planner inside Husk.",
@@ -112,7 +112,7 @@ export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
   const args = buildCodexCliArgs(opts.prompt, opts.model);
 
   let eventError = "";
-  return runCliProcess({
+  const run = runCliProcess({
     id,
     prefix: "codex-cli",
     command: "codex_cli",
@@ -126,6 +126,7 @@ export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
       } catch {
         return;
       }
+      if (!line || typeof line !== "object") return;
 
       if (line.type === "item.completed" && line.item?.type === "agent_message" && line.item.text) {
 
@@ -140,10 +141,17 @@ export function runCodexCli(opts: CodexCliOptions): CodexCliRun {
         eventError = `Codex attempted a blocked ${line.item?.type?.replace(/_/g, " ") ?? "tool"} action.`;
         void invoke("codex_cli_stop", { id }).catch(() => {});
       } else if (line.type === "turn.failed") {
-        eventError = line.error?.message || "Codex could not complete this request.";
+        eventError = formatCodexError(line);
       } else if (line.type === "error") {
-        eventError = line.message || "Codex reported an error.";
+        eventError = formatCodexError(line);
       }
     },
   });
+  return {
+    stop: run.stop,
+    done: run.done.catch((error: unknown) => {
+      if (error && typeof error === "object" && "name" in error && error.name === "AbortError") throw error;
+      throw new Error(formatCodexError(error));
+    }),
+  };
 }

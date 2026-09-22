@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { AppHeader } from "./shell/AppHeader";
@@ -30,7 +30,7 @@ import { normalizeWorkspacePath, resolveWorkspacePath } from "./ai/workspaceScop
 import { useActiveSshHost, setActiveSshHost } from "./remote/store";
 import { StatusBar } from "./statusbar/StatusBar";
 import type { OpenPanelKind } from "./git/types";
-import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId, runInActiveTerminal } from "./ai/terminalContext";
+import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focusActiveTerminal, getActiveTerminalPtyId } from "./ai/terminalContext";
 import { openActiveTerminalLogs } from "./terminal/registry";
 import { loadAccounts as loadTotpAccounts } from "./totp/store";
 import { useLauncherItems, type LauncherCtx } from "./command-palette/useLauncherItems";
@@ -38,7 +38,9 @@ import { getNotesDirectory, pinNote, unpinNote } from "./notes/store";
 import { isVaultPathWithin, replaceVaultPath } from "./notes/vaultPaths";
 import { isExplorerPathWithin, replaceExplorerPath } from "./explorer/pathOperations";
 import { useContext as k8sUseContext } from "./kubernetes/client";
-import { extractParams, composeCommand } from "./workflows/params";
+import { requestWorkflowRun } from "./workflows/runRequest";
+import { WorkflowWorkspace } from "./workflows/WorkflowWorkspace";
+import { useWorkflowCaptureRequest } from "./workflows/captureRequest";
 import type { Workflow } from "./workflows/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { SidebarViewId } from "./sidebar/SidebarRail";
@@ -56,6 +58,7 @@ export type { ActiveTab } from "./shell/types";
 export type { OpenPanelKind } from "./git/types";
 
 const SIDEBAR_DEFAULT_WIDTH = 220;
+const WorkflowCapture = lazy(() => import("./workflows/WorkflowCapture").then((module) => ({ default: module.WorkflowCapture })));
 const SIDEBAR_MIN_WIDTH = 220;
 const SIDEBAR_MAX_WIDTH = 480;
 const SIDEBAR_WIDTH_STORAGE_KEY = "husk.sidebar.width";
@@ -99,6 +102,7 @@ function reportWallpaper(name: string | null) {
 }
 
 function App() {
+  const workflowCapture = useWorkflowCaptureRequest();
   // One listener for every dialog in the app — drag any of them by its header.
   useDialogDrag();
 
@@ -156,14 +160,20 @@ function App() {
     [explorerOpen, sidebarView, persistSidebarView],
   );
 
-  /* Workflow suggestions and Timeline selections use one app-level route so
-     they can open the existing sidebar editor without coupling those features
-     to App's sidebar state. */
+  /* Suggestions/Timeline drafts share the Workflows rail. Revealing that editor
+     never remounts the terminal/chat that supplied its commands. */
   useEffect(() => {
-    const openWorkflowDraft = () => showSidebarView("workflows");
+    const openWorkflowDraft = () => {
+      void Promise.all([import("./workflows/draftStore"), import("./workflows/editorActions"), import("./workflows/store")]).then(([drafts, editor, workflows]) => {
+        const draft = drafts.getWorkflowDraft();
+        if (!draft) return;
+        editor.openWorkflowEditor(draft.targetWorkflowId ? workflows.loadWorkflows().find((workflow) => workflow.id === draft.targetWorkflowId) ?? null : null, draft);
+        drafts.clearWorkflowDraft();
+      }).catch((reason) => toast({ title: "Could not open workflow draft", message: String(reason), variant: "error" }));
+    };
     window.addEventListener("husk:open-workflow-draft", openWorkflowDraft);
     return () => window.removeEventListener("husk:open-workflow-draft", openWorkflowDraft);
-  }, [showSidebarView]);
+  }, []);
 
   const persistSidebarWidth = useCallback((next: number) => {
     if (sidebarWidthWriteTimerRef.current) window.clearTimeout(sidebarWidthWriteTimerRef.current);
@@ -644,7 +654,7 @@ function App() {
         keywords: "totp otp 2fa mfa auth code token verification",
         run: () => setTotpOpen(true),
       },
-      { id: "tools", label: "Open plugins", keywords: "integrations plugins extensions tools kubernetes docker tailscale ports dev tools", run: () => { cycleSidebarView("tools-hub"); } },
+      { id: "tools", label: "Open tools", keywords: "integrations plugins extensions tools kubernetes docker tailscale ports dev tools", run: () => { cycleSidebarView("tools-hub"); } },
       { id: "cli-tools", label: "Install CLI tools", run: () => setToolsOpen(true) },
       { id: "jobs", label: "Open background jobs", run: () => setJobsOpen(true) },
       { id: "open-clipboard", label: "Open clipboard history", hint: "Ctrl/Cmd+Shift+V", run: () => setClipboardOpen(true) },
@@ -1067,13 +1077,8 @@ function App() {
         setK8sOpen(true);
       },
       runWorkflow: (wf: Workflow) => {
-        if (extractParams(wf.steps).length > 0) {
-          showSidebarView("workflows");
-          toast({ title: "Workflow needs parameters — run it from the workflows panel", variant: "info", duration: 2500 });
-          return;
-        }
-        const cmd = composeCommand(wf.steps, {}, { stopOnError: wf.stopOnError !== false });
-        if (cmd) runInActiveTerminal(cmd);
+        requestWorkflowRun(wf);
+        showSidebarView("workflows");
       },
       openWorkflows: () => showSidebarView("workflows"),
       openJobs: () => setJobsOpen(true),
@@ -1250,7 +1255,7 @@ function App() {
           {/* The breadcrumb belongs to file and terminal surfaces. Full-page AI
               and Settings views are self-contained, so neither needs a
               redundant navigation strip above it. */}
-          <div
+          <WorkflowWorkspace editorVisible={explorerOpen && sidebarView === "workflows"} onRevealEditor={() => showSidebarView("workflows")}><div
             className="flex min-h-0 min-w-0 flex-1 flex-col"
             /* Panel gap between the breadcrumb and the terminal, so they float
                apart like the sidebar does rather than sitting flush. Set on the
@@ -1308,10 +1313,11 @@ function App() {
             onOpenAi={openAi}
             onReturnFromAi={returnFromAi}
             onCloseAi={closeAi}
-            chromeOccluded={paletteOpen || switcherOpen}
+            chromeOccluded={paletteOpen || switcherOpen || !!workflowCapture}
           />
-          </div>
+          </div></WorkflowWorkspace>
         </main>
+        {workflowCapture && <Suspense fallback={null}><WorkflowCapture /></Suspense>}
 
         {/* ── Status bar ─────────────────────────────────────────── */}
         {/* Chrome, so flush to the window edge like the header. The margins left

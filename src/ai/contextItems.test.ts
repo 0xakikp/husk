@@ -37,6 +37,8 @@ describe("AI context safety", () => {
   it("warns about sensitive filenames and token-shaped values before they are attached", () => {
     expect(scanForSecrets(".env.production", "PORT=3000")).toContain("sensitive filename");
     expect(scanForSecrets("terminal output", "token=super-secret-value")).toContain("assigned secret");
+    expect(scanForSecrets("terminal output", "AWS_SECRET_ACCESS_KEY=example-secret-value")).toContain("assigned secret");
+    expect(scanForSecrets("terminal output", "tool --password example-password")).toContain("credential argument");
     expect(scanForSecrets("terminal output", "ghp_abcdefghijklmnopqrstuvwxyz")).toContain("GitHub token");
   });
 

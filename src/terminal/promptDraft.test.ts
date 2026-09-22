@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { absolutePromptPosition, readEditablePrompt, type PromptBuffer } from "./promptDraft";
+import { absolutePromptPosition, inspectPromptReadiness, readEditablePrompt, type PromptBuffer } from "./promptDraft";
 
 function buffer(lines: string[], overrides: Partial<PromptBuffer> = {}): PromptBuffer {
   return {
@@ -7,7 +7,8 @@ function buffer(lines: string[], overrides: Partial<PromptBuffer> = {}): PromptB
     baseY: 0,
     cursorY: 0,
     cursorX: 0,
-    getLine: (row) => lines[row] == null ? undefined : { translateToString: () => lines[row] },
+    length: lines.length,
+    getLine: (row) => lines[row] == null ? undefined : { translateToString: (_trimRight, startColumn = 0, endColumn) => lines[row].slice(startColumn, endColumn) },
     ...overrides,
   };
 }
@@ -36,3 +37,29 @@ describe("terminal prompt draft", () => {
   });
 });
 
+describe("verified empty prompt for staging", () => {
+  it("accepts a known empty prompt with blank rows below it", () => {
+    expect(inspectPromptReadiness(buffer(["❯ ", "", ""], { cursorX: 2 }), { row: 0, col: 2 })).toEqual({ ready: true });
+  });
+  it.each([
+    { text: "❯ existing input", cursorX: 2 },
+    { text: "❯ ghost autosuggestion", cursorX: 2 },
+    { text: "❯ typed", cursorX: 7 },
+    { text: "❯   ", cursorX: 4 },
+  ])("refuses visible or entered text, including to the right of Home: %j", ({ text, cursorX }) => {
+    expect(inspectPromptReadiness(buffer([text], { cursorX }), { row: 0, col: 2 }).ready).toBe(false);
+  });
+  it("refuses continuation text below the cursor", () => {
+    expect(inspectPromptReadiness(buffer(["❯ ", "continuation"], { cursorX: 2 }), { row: 0, col: 2 }).ready).toBe(false);
+  });
+  it("fails closed when the marker is missing, stale after clear, or not a normal shell buffer", () => {
+    const view = buffer(["❯ existing"], { cursorX: 2 });
+    expect(inspectPromptReadiness(view, null).ready).toBe(false);
+    expect(inspectPromptReadiness(view, { row: 100, col: 2 }).ready).toBe(false);
+    expect(inspectPromptReadiness({ ...view, type: "alternate" }, { row: 0, col: 2 }).ready).toBe(false);
+  });
+  it("bounds scans and refuses missing lines instead of assuming they are blank", () => {
+    expect(inspectPromptReadiness(buffer(["❯ "], { cursorX: 2, length: 600 }), { row: 0, col: 2 }).ready).toBe(false);
+    expect(inspectPromptReadiness(buffer(["❯ "], { cursorX: 2, length: 2 }), { row: 0, col: 2 }).ready).toBe(false);
+  });
+});

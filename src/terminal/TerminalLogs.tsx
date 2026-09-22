@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSessionHandle, subscribeTerminalOutput } from "./registry";
+import { usePrefs } from "../settings/preferences";
+import { captureLogHighlights, type LogHighlightSnapshot } from "../ai/logHighlights";
+import { LogHighlightsPanel } from "./LogHighlightsPanel";
+import { captureOutput, type OutputSnapshot } from "./outputExplore";
+import { OutputExplorePanel } from "./OutputExplorePanel";
 
 type LogLevel = "info" | "warn" | "error" | "output";
 type LogFilter = "all" | LogLevel;
@@ -66,9 +71,13 @@ export function TerminalLogs({
   const [filter, setFilter] = useState<LogFilter>("all");
   const [paused, setPaused] = useState(false);
   const [follow, setFollow] = useState(true);
+  const prefs = usePrefs();
+  const [highlights, setHighlights] = useState<{ leafId: number; id: number; snapshot: LogHighlightSnapshot } | null>(null);
+  const [explore, setExplore] = useState<{ leafId: number; id: number; snapshot: OutputSnapshot } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef("");
   const nextIdRef = useRef(1);
+  const captureIdRef = useRef(0);
   const pausedRef = useRef(paused);
 
   useEffect(() => {
@@ -78,8 +87,10 @@ export function TerminalLogs({
   useEffect(() => {
     pendingRef.current = "";
     const snapshot = getSessionHandle(leafId)?.getBuffer(SNAPSHOT_LINES) ?? "";
-    const initial = entriesFromLines(snapshot.split(/\r?\n/), nextIdRef.current);
-    nextIdRef.current += initial.length;
+    const initialLines = snapshot.split(/\r?\n/);
+    const initial = entriesFromLines(initialLines, nextIdRef.current);
+    // IDs include skipped blank rows so later output cannot reuse an evidence ID.
+    nextIdRef.current += initialLines.length;
     setEntries(initial.slice(-MAX_LOG_LINES));
 
     return subscribeTerminalOutput(leafId, (raw) => {
@@ -93,7 +104,7 @@ export function TerminalLogs({
       pendingRef.current = lines.pop() ?? "";
       if (lines.length === 0) return;
       const fresh = entriesFromLines(lines, nextIdRef.current);
-      nextIdRef.current += fresh.length;
+      nextIdRef.current += lines.length;
       if (fresh.length === 0) return;
       setEntries((previous) => [...previous, ...fresh].slice(-MAX_LOG_LINES));
     });
@@ -112,6 +123,29 @@ export function TerminalLogs({
 
   const selectFilter = (next: LogFilter) => setFilter(next);
 
+  function captureVisibleSource() {
+    const selection = window.getSelection();
+    let selectedIds = new Set<number>();
+    if (selection && !selection.isCollapsed && selection.rangeCount && listRef.current?.contains(selection.anchorNode) && listRef.current.contains(selection.focusNode)) {
+      const range = selection.getRangeAt(0);
+      selectedIds = new Set(Array.from(listRef.current.querySelectorAll<HTMLElement>("[data-log-id]")).filter((row) => range.intersectsNode(row)).map((row) => Number(row.dataset.logId)));
+    }
+    const source = selectedIds.size ? visibleEntries.filter((entry) => selectedIds.has(entry.id)) : visibleEntries;
+    return { lines: source, label: selectedIds.size ? "Selected log lines" : `Visible ${filter} logs` };
+  }
+
+  function openHighlights() {
+    const source = captureVisibleSource();
+    setExplore(null);
+    setHighlights({ leafId, id: ++captureIdRef.current, snapshot: captureLogHighlights(source.lines, source.label) });
+  }
+
+  function openExplore() {
+    const source = captureVisibleSource();
+    setHighlights(null);
+    setExplore({ leafId, id: ++captureIdRef.current, snapshot: captureOutput(source.lines, source.label) });
+  }
+
   return (
     <section className="terminal-logs" aria-label="Live terminal logs">
       <header className="terminal-logs-header">
@@ -121,6 +155,8 @@ export function TerminalLogs({
           <span className="terminal-logs-session">· LIVE</span>
         </div>
         <div className="terminal-logs-actions">
+          <button type="button" className="terminal-logs-action" disabled={!visibleEntries.length} onMouseDown={(event) => event.preventDefault()} onClick={openExplore} title="Explore selected or filtered output locally as text, a table, or a chart">Explore</button>
+          {prefs.aiEnabled && <button type="button" className="terminal-logs-action" disabled={!visibleEntries.length} onMouseDown={(event) => event.preventDefault()} onClick={openHighlights} title="Review selected log lines, or the recent filtered output, before asking AI">Highlights</button>}
           <button
             type="button"
             className={`terminal-logs-action${follow ? " active" : ""}`}
@@ -155,6 +191,8 @@ export function TerminalLogs({
         ))}
         <span className="terminal-logs-count">{visibleEntries.length} lines</span>
       </div>
+      {prefs.aiEnabled && highlights?.leafId === leafId && <LogHighlightsPanel key={highlights.id} snapshot={highlights.snapshot} onClose={() => setHighlights(null)} />}
+      {explore?.leafId === leafId && <OutputExplorePanel key={explore.id} snapshot={explore.snapshot} onClose={() => setExplore(null)} />}
       <div
         ref={listRef}
         className="terminal-logs-list"
@@ -167,7 +205,7 @@ export function TerminalLogs({
           <div className="terminal-logs-empty">Waiting for terminal output…</div>
         ) : (
           visibleEntries.map((entry) => (
-            <div key={entry.id} className={`terminal-log-row ${entry.level}`}>
+            <div key={entry.id} data-log-id={entry.id} className={`terminal-log-row ${entry.level}`}>
               <time>{timestamp(entry.at)}</time>
               <span className="terminal-log-level">{LEVEL_LABEL[entry.level]}</span>
               <span className="terminal-log-message">{entry.text}</span>

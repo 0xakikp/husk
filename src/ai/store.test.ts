@@ -68,6 +68,27 @@ describe("AI key migration", () => {
 });
 
 describe("provider configuration", () => {
+  it.each([["gpt-5.4-mini", "gpt-5.6-luna"], ["gpt-5.4", "gpt-5.6-terra"]])("migrates saved retired Codex selection %s before a quick action can read it", async (model, replacement) => {
+    localStorage.setItem(KEY, JSON.stringify({ providerId: "codex", model, baseURL: "" }));
+    const store = await import("./store");
+    expect(store.loadConfig()).toMatchObject({ providerId: "codex", model: replacement });
+    store.hydrateAiConfigFromNative({ providerId: "codex", model });
+    expect(store.loadConfig().model).toBe(replacement);
+    expect(JSON.parse(localStorage.getItem(KEY)!).model).toBe(replacement);
+    store.updateConfig({ model });
+    expect(store.loadConfig().model).toBe(replacement);
+  });
+
+  it("does not migrate unrelated Codex, API or custom model configurations", async () => {
+    const store = await import("./store");
+    store.updateConfig({ providerId: "codex", model: "future-account-model" });
+    expect(store.loadConfig().model).toBe("future-account-model");
+    store.updateConfig({ providerId: "openai", model: "gpt-4.1-mini" });
+    expect(store.loadConfig().model).toBe("gpt-4.1-mini");
+    store.updateConfig({ providerId: "local", model: "gpt-5.4-mini", baseURL: "http://localhost:1234/v1" });
+    expect(store.loadConfig()).toMatchObject({ providerId: "local", model: "gpt-5.4-mini" });
+  });
+
   it("preserves an arbitrary local model and its endpoint after reload", async () => {
     const store = await import("./store");
     store.updateConfig({ providerId: "local", model: "my-custom-model:quantized", baseURL: "http://localhost:4321/v1" });

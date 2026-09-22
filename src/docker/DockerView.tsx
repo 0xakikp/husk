@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   checkDocker,
   listContainers,
@@ -25,7 +25,7 @@ export function DockerView({
   active = true,
 }: {
   onClose?: () => void;
-  /** Present when this built-in panel was opened from Plugins. */
+  /** Present when this built-in panel was opened from Tools. */
   onBack?: () => void;
   inline?: boolean;
   onInspectResource?: (sel: DockerResourceSelection) => void;
@@ -39,18 +39,46 @@ export function DockerView({
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"containers" | "images">("containers");
   const [selectedResource, setSelectedResource] = useState<DockerResourceSelection | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(true);
+  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
+  const inFlight = useRef(false);
+  const generation = useRef(0);
+  const canRefresh = useRef(active && visible); canRefresh.current = active && visible;
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
 
   const refresh = useCallback(async () => {
+    if (inFlight.current || !canRefresh.current) return;
+    inFlight.current = true;
+    const request = generation.current;
     setLoading(true);
+    setError(null);
     try {
       const ok = await checkDocker();
-      setAvailable(ok);
+      if (request !== generation.current || !canRefresh.current) return;
       if (ok) {
-        setContainers(await listContainers().catch(() => []));
-        setImages(await listImages().catch(() => []));
+        // Hold the single-flight gate until both requests settle, even if one
+        // fails early while the other native command is still running.
+        const [nextContainers, nextImages] = await Promise.allSettled([listContainers(), listImages()]);
+        if (request !== generation.current || !canRefresh.current) return;
+        if (nextContainers.status === "rejected") throw nextContainers.reason;
+        if (nextImages.status === "rejected") throw nextImages.reason;
+        setContainers(nextContainers.value);
+        setImages(nextImages.value);
+      } else {
+        setContainers([]); setImages([]);
       }
+      setAvailable(ok);
+      setStale(false);
+    } catch (reason) {
+      if (request === generation.current && canRefresh.current) { setError(String(reason)); setStale(true); }
     } finally {
-      setLoading(false);
+      inFlight.current = false;
+      if (request === generation.current) setLoading(false);
     }
   }, []);
 
@@ -59,11 +87,14 @@ export function DockerView({
        views, so an ungated interval would run `docker ps` every 5s forever while
        you were reading Notes. Becoming visible refreshes once, so what you see on
        return is current rather than however stale it was when you left. */
-    if (!active) return;
+    generation.current += 1;
+    setLoading(false);
+    setStale(true);
+    if (!active || !visible) return;
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
-    return () => clearInterval(timer);
-  }, [refresh, active]);
+    return () => { clearInterval(timer); generation.current += 1; };
+  }, [refresh, active, visible]);
 
   const runningCount = containers.filter((c) => c.state === "running").length;
 
@@ -72,6 +103,7 @@ export function DockerView({
       type="button"
       aria-label="Refresh"
       title="Refresh"
+      disabled={loading}
       onClick={() => void refresh()}
       className="inline-flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
@@ -82,8 +114,8 @@ export function DockerView({
   const leadingAction = onBack ? (
     <button
       type="button"
-      aria-label="Back to plugins"
-      title="Back to plugins"
+      aria-label="Back to tools"
+      title="Back to tools"
       onClick={onBack}
       className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
     >
@@ -92,6 +124,7 @@ export function DockerView({
   ) : undefined;
 
   const handleSelect = (sel: DockerResourceSelection) => {
+    if (loading || stale || error || !active || !visible) return;
     if (onInspectResource) {
       onInspectResource(sel);
       return;
@@ -117,7 +150,13 @@ export function DockerView({
   };
 
   return (
-    <Modal title="Docker" onClose={onClose} inline={inline} leadingAction={leadingAction} headerActions={headerActions}>
+    <Modal title="Docker" icon={ContainerIcon} context="Local CLI" onClose={onClose} inline={inline} headerActions={<>{leadingAction}{headerActions}</>}>
+      <details className="mb-2 text-[10px] leading-relaxed text-muted-foreground">
+        <summary className="cursor-pointer rounded outline-none focus-visible:ring-1 focus-visible:ring-ring">Local Docker configuration</summary>
+        <p className="mt-1">Uses this computer’s Docker CLI and configured connection, not the active SSH terminal. The configured Docker daemon may be remote.</p>
+      </details>
+      {error && <p role="alert" className="rounded border border-destructive/30 p-2 text-[10px] text-muted-foreground">Could not refresh Docker: {error}. Previously loaded data is stale; refresh before opening a resource.</p>}
+      {stale && !error && !loading && (containers.length > 0 || images.length > 0) && <p role="status" className="text-[10px] text-muted-foreground">Waiting for a fresh Docker snapshot. Resource actions are paused.</p>}
       {available === false ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
@@ -169,6 +208,7 @@ export function DockerView({
                   <button
                     key={c.id}
                     type="button"
+                    disabled={loading || stale || Boolean(error)}
                     onClick={() =>
                       handleSelect({ kind: "container", id: c.id, name: c.name })
                     }
@@ -206,6 +246,7 @@ export function DockerView({
                   <button
                     key={`${im.id}-${im.tag}`}
                     type="button"
+                    disabled={loading || stale || Boolean(error)}
                     onClick={() =>
                       handleSelect({
                         kind: "image",

@@ -15,13 +15,9 @@
   flex-direction: column;
   gap: 10px;
   border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--card) calc(var(--composer-opacity, 0.97) * 100%), transparent) 0%,
-    color-mix(in srgb, var(--background) calc(var(--composer-opacity, 0.98) * 100%), transparent) 100%
-  );
+  background: color-mix(in srgb, var(--background) calc(var(--composer-opacity, 0.97) * 100%), transparent);
   padding: 10px 12px 8px;
-  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: none;
   backdrop-filter: blur(var(--composer-bg-blur, 16px));
   -webkit-backdrop-filter: blur(var(--composer-bg-blur, 16px));
   border-radius: 10px 10px 0 0;
@@ -70,17 +66,14 @@
 }
 
 .composer-panel[data-bg-style="gradient"] {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--composer-bg-color, #000000) 40%, transparent) 0%,
-    color-mix(in srgb, var(--composer-bg-color, #000000) 10%, transparent) 100%
-  );
+  /* Retain the saved color/opacity, but no decorative fade across the panel. */
+  background: color-mix(in srgb, var(--composer-bg-color, var(--background)) calc(var(--composer-opacity, 0.97) * 100%), transparent);
 }
 
 .composer-panel[data-bg-style="solid"] {
   background: color-mix(
     in srgb,
-    var(--composer-bg-color, #000000) calc(var(--composer-opacity, 0.97) * 100%),
+    var(--composer-bg-color, var(--background)) calc(var(--composer-opacity, 0.97) * 100%),
     transparent
   );
 }
@@ -119,7 +112,7 @@
      terminal's own bordered, clipped box. */
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.28);
+  box-shadow: none;
   /* Sized by stretch, NOT by percentage. `height: 100%` measured 236px in a
      216px row: a percentage height needs a definite containing block, and the
      row gets its height from `flex: 1`, so the percentage resolved to auto and
@@ -138,12 +131,12 @@
   container-type: inline-size;
 }
 
-/* Left dock: the panel is on the other side of the editor, so the shadow falls
-   the other way and the resize handle moves to its right edge. Everything else
+/* Left dock: the panel is on the other side of the editor, so the resize
+   handle moves to its right edge. Everything else
    about a side dock is identical. */
 .composer-dock-left {
   border-left: 1px solid var(--border);
-  box-shadow: 8px 0 28px rgba(0, 0, 0, 0.28);
+  box-shadow: none;
 }
 
 .composer-dock-left .composer-resize-handle-side {
@@ -186,7 +179,7 @@
 .composer-resize-handle-side:active::after {
   height: 72px;
   background: color-mix(in srgb, var(--primary) 78%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 40%, transparent);
+  box-shadow: none;
 }
 
 /* ── Header: agent chip + breadcrumb ────────────────────────────────────── */
@@ -1410,7 +1403,7 @@
   font-size: 20px;
   font-weight: 700;
   color: var(--primary);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--primary) 50%, transparent);
+  text-shadow: none;
 }
 
 .wb-empty-title {
@@ -1437,12 +1430,10 @@
   margin: 8px auto 4px;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 10px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent 44%),
-    color-mix(in srgb, var(--background) 72%, transparent);
+  background: color-mix(in srgb, var(--background) 72%, transparent);
   padding: 11px 12px 10px;
   font-family: var(--wb-mono);
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--primary) 70%, transparent);
+  box-shadow: none;
 }
 
 .project-lens-head {
@@ -1885,7 +1876,7 @@
   height: 7px;
   border-radius: 50%;
   background: var(--primary);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 60%, transparent);
+  box-shadow: none;
   animation: pulse-dot 1.4s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -1937,6 +1928,7 @@
 
 .composer-code-tabs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
@@ -1948,7 +1940,7 @@
 .composer-code-tab-list {
   display: flex;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 100px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -1984,8 +1976,10 @@
 
 .composer-code-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 4px;
   padding: 4px 8px;
   background: color-mix(in srgb, var(--muted) 50%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
@@ -2003,8 +1997,13 @@
 
 .composer-code-actions {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
 }
 
@@ -2333,7 +2332,7 @@
 /* ── Warp composer (input block) ────────────────────────────────────────── */
 
 .wb-composer {
-  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--muted) 40%, transparent);
   overflow: hidden;
@@ -2342,7 +2341,7 @@
 
 .wb-composer:focus-within {
   border-color: var(--primary);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 50%, transparent), 0 6px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 50%, transparent);
 }
 
 .wb-composer-head {
@@ -2429,7 +2428,7 @@
   font-size: 13px;
   font-weight: 700;
   color: var(--primary);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--primary) 50%, transparent);
+  text-shadow: none;
   flex-shrink: 0;
   user-select: none;
 }
@@ -2519,7 +2518,7 @@
 
 .composer-send-btn:hover:not(:disabled) {
   background: var(--primary);
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--primary) 30%, transparent);
+  box-shadow: none;
 }
 
 .composer-send-btn:disabled {
@@ -2536,7 +2535,7 @@
 
 .composer-send-btn.is-stop:hover:not(:disabled) {
   background: color-mix(in srgb, var(--destructive) 22%, var(--background));
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--destructive) 20%, transparent);
+  box-shadow: none;
 }
 
 .wb-task-btn {
@@ -3291,7 +3290,7 @@
 
 .wb-status-dot {
   color: var(--primary);
-  text-shadow: 0 0 6px color-mix(in srgb, var(--primary) 60%, transparent);
+  text-shadow: none;
   font-size: 7px;
 }
 
@@ -3312,20 +3311,20 @@
 
 :root[data-theme="light"] .composer-panel,
 [data-theme="light"] .composer-panel {
-  background: linear-gradient(180deg, var(--card) 0%, var(--background) 100%) !important;
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.08) !important;
+  background: color-mix(in srgb, var(--background) calc(var(--composer-opacity, 0.97) * 100%), transparent) !important;
+  box-shadow: none !important;
   border-top: 1px solid var(--border) !important;
   color: var(--foreground) !important;
 }
 
 :root[data-theme="light"] .composer-panel[data-bg-style="gradient"],
 [data-theme="light"] .composer-panel[data-bg-style="gradient"] {
-  background: linear-gradient(180deg, var(--card) 0%, var(--background) 100%) !important;
+  background: color-mix(in srgb, var(--background) calc(var(--composer-opacity, 0.97) * 100%), transparent) !important;
 }
 
 :root[data-theme="light"] .composer-panel[data-bg-style="solid"],
 [data-theme="light"] .composer-panel[data-bg-style="solid"] {
-  background: var(--background) !important;
+  background: color-mix(in srgb, var(--background) calc(var(--composer-opacity, 0.97) * 100%), transparent) !important;
 }
 
 :root[data-theme="light"] .composer-panel::before,
@@ -3369,13 +3368,13 @@
 :root[data-theme="light"] .wb-composer,
 [data-theme="light"] .wb-composer {
   background: var(--background);
-  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  border-color: var(--border);
 }
 
 :root[data-theme="light"] .wb-composer:focus-within,
 [data-theme="light"] .wb-composer:focus-within {
   border-color: var(--primary);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 50%, transparent), 0 4px 14px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 50%, transparent);
 }
 
 :root[data-theme="light"] .wb-composer-head,

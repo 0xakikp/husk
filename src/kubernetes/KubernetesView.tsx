@@ -87,7 +87,7 @@ export function KubernetesView({
   onInspectResource,
 }: {
   onClose?: () => void;
-  /** Present when this built-in panel was opened from Plugins. */
+  /** Present when this built-in panel was opened from Tools. */
   onBack?: () => void;
   inline?: boolean;
   onInspectResource?: (sel: K8sResourceSelection) => void;
@@ -240,8 +240,8 @@ export function KubernetesView({
   const leadingAction = onBack ? (
     <button
       type="button"
-      aria-label="Back to plugins"
-      title="Back to plugins"
+      aria-label="Back to tools"
+      title="Back to tools"
       onClick={onBack}
       className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
     >
@@ -250,7 +250,11 @@ export function KubernetesView({
   ) : undefined;
 
   return (
-    <Modal title="Kubernetes" onClose={onClose} inline={inline} leadingAction={leadingAction} headerActions={headerActions}>
+    <Modal title="Kubernetes" icon={Database01Icon} context="Local CLI" onClose={onClose} inline={inline} headerActions={<>{leadingAction}{headerActions}</>}>
+      <details className="mb-2 text-[10px] leading-relaxed text-muted-foreground">
+        <summary className="cursor-pointer rounded outline-none focus-visible:ring-1 focus-visible:ring-ring">Local kubeconfig</summary>
+        <p className="mt-1">Uses this computer’s kubectl and kubeconfig, not the active SSH terminal. The selected context determines the cluster.</p>
+      </details>
       {loading && available === null ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           {/* Rotation, not a pulse: a fading icon can read as a static gradient,

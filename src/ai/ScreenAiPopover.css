@@ -1,0 +1,44 @@
+.screen-ai-popover {
+  position: fixed;
+  z-index: 220;
+  width: min(390px, calc(100vw - 16px));
+  max-height: min(560px, calc(100dvh - 16px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  box-shadow: var(--elev-1);
+}
+.screen-ai-popover header, .screen-ai-popover footer { display: flex; gap: 8px; align-items: center; flex-shrink: 0; padding: 6px 9px; font-size: 10px; }
+.screen-ai-popover header { border-bottom: 1px solid var(--border); }
+.screen-ai-popover header strong { font-size: 9px; letter-spacing: .08em; white-space: nowrap; }
+.screen-ai-popover header > span { color: var(--text-muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.screen-ai-popover footer { border-top: 1px solid var(--border); justify-content: flex-end; }
+.screen-ai-popover button { color: var(--text-muted); font: inherit; font-size: 10px; padding: 2px 5px; border: 1px solid transparent; border-radius: 4px; background: transparent; cursor: pointer; }
+.screen-ai-popover button:hover { color: var(--text); background: var(--hover); }
+.screen-ai-popover button:focus-visible, .screen-ai-popover input:focus-visible, .screen-ai-popover summary:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.screen-ai-popover button:disabled { cursor: default; opacity: .5; }
+.screen-ai-body { padding: 8px 10px; overflow: auto; min-height: 0; }
+.screen-ai-body p { margin: 4px 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.screen-ai-status, .screen-ai-error, .screen-ai-popover summary, .screen-ai-citations, .screen-ai-proposal > span, .screen-ai-body label { font-size: 10px; color: var(--text-muted); }
+.screen-ai-error { color: #e47b72; }
+.screen-ai-popover summary { cursor: pointer; margin-top: 6px; }
+.screen-ai-input-row { display: flex; gap: 5px; margin: 5px 0 8px; }
+.screen-ai-input-row input { flex: 1; min-width: 0; border: 1px solid var(--border-2); border-radius: 4px; padding: 5px 7px; background: var(--bg-input); color: var(--text); font: inherit; font-size: 12px; }
+.screen-ai-source { border: 1px solid var(--border); margin-top: 5px; max-height: 180px; overflow: auto; font-size: 11px; }
+.screen-ai-source > div { display: flex; gap: 8px; padding: 1px 5px; }
+.screen-ai-source > div > span { flex: 0 0 20px; color: var(--text-faint); user-select: none; }
+.screen-ai-source code { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.screen-ai-source .is-highlighted { background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: inset 2px 0 var(--accent); }
+.screen-ai-proposal { margin-top: 8px; }
+.screen-ai-proposal pre { margin: 4px 0; padding: 6px 8px; border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.screen-ai-proposal p { color: var(--text-muted); font-size: 10px; }
+.screen-command-review { font-size: 11px; }
+.screen-command-review strong { color: var(--text-muted); font-size: 10px; }
+.screen-command-review ul { padding-left: 17px; margin: 5px 0 8px; }
+.screen-command-review li { margin: 4px 0; overflow-wrap: anywhere; }

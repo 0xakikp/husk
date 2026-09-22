@@ -17,7 +17,6 @@ import {
 import type { DockerContainer } from "../docker/client";
 import { bgKill, type BgJob } from "../jobs/client";
 import type { Workflow } from "../workflows/store";
-import { composeCommand } from "../workflows/params";
 import { removeRecentNote } from "../notes/store";
 import { toast } from "../toast";
 import { getAllSessions, deleteSession } from "../ai/sessionStore";
@@ -508,9 +507,9 @@ export function useLauncherItems(
         secondary: { label: "edit", run: () => ctx.openWorkflows() },
         actions: [
           {
-            label: "Copy composed command",
+            label: "Copy step templates",
             run: () =>
-              copy(composeCommand(wf.steps, {}, { stopOnError: wf.stopOnError !== false })),
+              copy(wf.steps.join("\n")),
           },
           { label: "Copy name", run: () => copy(wf.name) },
         ],

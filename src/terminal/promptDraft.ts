@@ -1,12 +1,13 @@
 export type PromptPosition = { row: number; col: number };
 
-type PromptLine = { translateToString(trimRight?: boolean): string } | undefined;
+type PromptLine = { translateToString(trimRight?: boolean, startColumn?: number, endColumn?: number): string } | undefined;
 
 export type PromptBuffer = {
   type: string;
   baseY: number;
   cursorY: number;
   cursorX: number;
+  length?: number;
   getLine(row: number): PromptLine;
 };
 
@@ -36,3 +37,32 @@ export function readEditablePrompt(buffer: PromptBuffer, prompt: PromptPosition 
   return parts.join("").trim();
 }
 
+export type PromptReadiness = { ready: true } | { ready: false; reason: string };
+
+/** Staging must prove a genuinely empty prompt, not just an empty prefix to
+ * the cursor. Unknown/stale markers, Home before a draft, trailing text and
+ * autosuggestions all fail closed. This does not mutate or clear shell input. */
+export function inspectPromptReadiness(buffer: PromptBuffer, prompt: PromptPosition | null): PromptReadiness {
+  const unknown: PromptReadiness = { ready: false, reason: "Husk cannot verify an empty shell prompt. Return to a fresh prompt or copy the command instead." };
+  const input: PromptReadiness = { ready: false, reason: "The terminal already has visible input. Clear or submit it before staging this proposal." };
+  if (!prompt || buffer.type !== "normal" || !Number.isInteger(prompt.row) || !Number.isInteger(prompt.col)
+    || prompt.row < 0 || prompt.col < 0) return unknown;
+  const cursorRow = buffer.baseY + buffer.cursorY;
+  // A cursor before the saved prompt normally means a screen clear or stale marker.
+  if (cursorRow < prompt.row || (cursorRow === prompt.row && buffer.cursorX < prompt.col)) return unknown;
+  if (cursorRow !== prompt.row || buffer.cursorX !== prompt.col) return input;
+  const length = buffer.length;
+  if (length == null || !Number.isInteger(length) || length <= cursorRow || length - cursorRow > 512) return unknown;
+  let characters = 0;
+  // Include the remainder of the line and visible continuation lines. A
+  // bounded conservative scan may reject decoration, but never inserts into it.
+  for (let row = cursorRow; row < length; row++) {
+    const line = buffer.getLine(row);
+    if (!line) return unknown;
+    const text = line.translateToString(true, row === cursorRow ? prompt.col : 0);
+    characters += text.length;
+    if (characters > 32 * 1024) return unknown;
+    if (text.trim()) return input;
+  }
+  return { ready: true };
+}

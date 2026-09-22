@@ -1,342 +1,184 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { cn } from "@/lib/utils";
-import { InformationCircleIcon, PlusSignIcon, AlertCircleIcon, PuzzleIcon, SecurityCheckIcon, ComputerTerminal02Icon, CodeIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowLeft01Icon, MoreHorizontalIcon, PuzzleIcon, SecurityCheckIcon, ComputerTerminal02Icon, CodeIcon } from "@hugeicons/core-free-icons";
+import { SiKubernetes, SiDocker, SiTailscale } from "@icons-pack/react-simple-icons";
 import { usePrefs, setPrefs } from "../settings/preferences";
 import { loadPlugins, type LoadedPlugin } from "../plugins/loader";
 import { PluginPanel } from "../plugins/PluginPanel";
 import type { Plugin } from "../plugins/types";
-import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  SiKubernetes,
-  SiDocker,
-  SiTailscale,
-} from "@icons-pack/react-simple-icons";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import type { SidebarViewId } from "../sidebar/SidebarRail";
 import { PanelHeader } from "../shell/PanelHeader";
 import { PortsView } from "../ports/PortsView";
 import { DevToolsView } from "../dev-tools/DevToolsView";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import "./ToolsHubView.css";
 
-/**
- * Real brand marks, from simple-icons via @icons-pack/react-simple-icons —
- * the official paths rather than a generic glyph standing in for each tool
- * rather than generic glyphs standing in for each tool.
- *
- * SVG rather than PNG on purpose: these render at 15px in a sidebar, where a
- * raster would soften on a HiDPI display and be stuck at one colour. Paths stay
- * sharp at any size and take `brand` below as their fill.
- */
-type ToolCard = {
-  id: SidebarViewId;
-  name: string;
-  description: string;
-  Icon: typeof SiKubernetes;
-  /** Official brand colour, also tinting the icon tile behind it. */
-  brand: string;
-  status: "ready" | "coming-soon";
-};
+const TOOLS = [
+  { id: "kubernetes", bin: "kubectl", name: "Kubernetes", description: "Contexts, workloads, and logs", Icon: SiKubernetes, brand: "#326CE5" },
+  { id: "docker", bin: "docker", name: "Docker", description: "Containers, images, and logs", Icon: SiDocker, brand: "#2496ED" },
+  { id: "tailscale", bin: null, name: "Tailscale", description: "Tailnet devices and SSH connections", Icon: SiTailscale, brand: "currentColor" },
+] as const;
 
-const TOOLS: ToolCard[] = [
-  {
-    id: "kubernetes",
-    name: "Kubernetes",
-    description: "Switch contexts, view pods, and stream logs",
-    Icon: SiKubernetes,
-    brand: "#326CE5",
-    status: "ready",
-  },
-  {
-    id: "docker",
-    name: "Docker",
-    description: "Manage containers and images",
-    Icon: SiDocker,
-    brand: "#2496ED",
-    status: "ready",
-  },
-  {
-    id: "tailscale",
-    name: "Tailscale",
-    /* Tailscale's mark is monochrome black-on-white, which disappears on a dark
-       sidebar, so it follows the theme's foreground instead of its brand hex. */
-    description: "List tailnet devices and connect via SSH",
-    Icon: SiTailscale,
-    brand: "currentColor",
-    status: "ready",
-  },
-];
+function ToolRow({ name, description, icon, onClick, status, detail }: {
+  name: string; description: string; icon: ReactNode; onClick: () => void; status?: string; detail?: string;
+}) {
+  return <Tooltip>
+    <TooltipTrigger asChild><button type="button" className="tools-hub-row" onClick={onClick}>
+      <span className="tools-hub-icon" aria-hidden="true">{icon}</span>
+      <span className="tools-hub-row-title">{name}</span>
+      {status && <span className="tools-hub-row-status">{status}</span>}
+    </button></TooltipTrigger>
+    <TooltipContent side="right" sideOffset={8} className="tools-hub-tooltip rounded-md border border-border bg-popover text-popover-foreground">
+      <span>{description}{detail && <span className="tools-hub-tooltip-detail">{detail}</span>}</span>
+    </TooltipContent>
+  </Tooltip>;
+}
 
 type Props = {
+  active?: boolean;
   onSelectView: (view: SidebarViewId) => void;
   onTypeCommand: (cmd: string) => void;
-  onRunCommand: (cmd: string) => void;
   onOpenTotp: () => void;
   onOpenBrowser: (url: string) => void;
 };
 
-export function ToolsHubView({ onSelectView, onTypeCommand, onRunCommand, onOpenTotp, onOpenBrowser }: Props) {
+export function ToolsHubView({ active = true, onSelectView, onTypeCommand, onOpenTotp, onOpenBrowser }: Props) {
   const dir = usePrefs().pluginsDir;
-  const [loaded, setLoaded] = useState<LoadedPlugin[]>([]);
-  const [active, setActive] = useState<Plugin | null>(null);
+  const [catalog, setCatalog] = useState<{ dir: string; loaded: LoadedPlugin[]; error: string | null; loading: boolean }>({ dir: "", loaded: [], error: null, loading: false });
+  const [selected, setSelected] = useState<{ plugin: Plugin; dir: string } | null>(null);
   const [utility, setUtility] = useState<"ports" | "dev-tools" | null>(null);
+  const [managing, setManaging] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [installed, setInstalled] = useState<Set<string> | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
-  const reload = useCallback(() => {
-    void loadPlugins(dir).then(setLoaded);
-  }, [dir]);
-  useEffect(reload, [reload]);
+  useEffect(() => {
+    let current = true;
+    setSelected(null);
+    setCatalog({ dir, loaded: [], error: null, loading: !!dir });
+    if (dir) void loadPlugins(dir).then(
+      (loaded) => { if (current) setCatalog({ dir, loaded, error: null, loading: false }); },
+      (reason) => { if (current) setCatalog({ dir, loaded: [], error: String(reason), loading: false }); },
+    );
+    return () => { current = false; };
+  }, [dir, revision]);
 
   const pickDir = useCallback(async () => {
-    const selected = await openDialog({ directory: true, multiple: false });
-    if (selected && typeof selected === "string") setPrefs({ pluginsDir: selected });
+    setPicking(true); setFolderError(null);
+    try {
+      const chosen = await openDialog({ directory: true, multiple: false, title: "Choose custom plugin folder" });
+      if (alive.current && typeof chosen === "string") setPrefs({ pluginsDir: chosen });
+    } catch (reason) {
+      if (alive.current) setFolderError(String(reason));
+    } finally { if (alive.current) setPicking(false); }
   }, []);
 
-  /* A plugin fills the panel, the same way the workflow editor does — not a
-     dialog. It was opened from inside the sidebar, so it belongs here. */
-  if (active) {
-    return (
-      <PluginPanel
-        plugin={active}
-        onBack={() => setActive(null)}
-        onTypeCommand={onTypeCommand}
-        onRunCommand={onRunCommand}
-      />
-    );
-  }
+  const checkTools = async () => {
+    if (checking) return;
+    setChecking(true); setCheckError(null); setInstalled(null);
+    try {
+      const bins = await invoke<string[]>("detect_binaries", { bins: TOOLS.flatMap((tool) => tool.bin ? [tool.bin] : []) });
+      if (alive.current) setInstalled(new Set(bins));
+    } catch (reason) {
+      if (alive.current) setCheckError("Could not check local CLIs: " + String(reason));
+    } finally { if (alive.current) setChecking(false); }
+  };
 
-  if (utility === "ports") {
-    return <PortsView onBack={() => setUtility(null)} onTypeCommand={onTypeCommand} onOpenBrowser={onOpenBrowser} />;
+  if (selected?.dir === dir) {
+    return <PluginPanel plugin={selected.plugin} active={active} onBack={() => setSelected(null)} />;
   }
+  if (utility === "ports") return <PortsView onBack={() => setUtility(null)} onTypeCommand={onTypeCommand} onOpenBrowser={onOpenBrowser} />;
+  if (utility === "dev-tools") return <DevToolsView onBack={() => setUtility(null)} />;
 
-  if (utility === "dev-tools") {
-    return <DevToolsView onBack={() => setUtility(null)} />;
-  }
+  const currentCatalog = catalog.dir === dir ? catalog : { loaded: [], loading: !!dir, error: null };
+  const validCount = currentCatalog.loaded.filter((entry) => "plugin" in entry).length;
+  const invalidCount = currentCatalog.loaded.length - validCount;
+  const pluginRows = currentCatalog.loaded.flatMap((entry, index) => "plugin" in entry ? [
+    <ToolRow key={entry.plugin.id + ":" + index} name={entry.plugin.name} description={entry.plugin.description || entry.plugin.views.length + " views"}
+      detail="Custom tool · review its command before running."
+      icon={<HugeiconsIcon icon={PuzzleIcon} size={14} style={{ color: entry.plugin.brand }} />}
+      onClick={() => { setManaging(false); setSelected({ plugin: entry.plugin, dir }); }} />,
+  ] : []);
+
+  if (managing) return <TooltipProvider delayDuration={350}>
+    <div className="tools-hub">
+      <PanelHeader icon={PuzzleIcon} title="Custom plugins" actions={
+        <button type="button" aria-label="Back to tools" title="Back to tools" className="tools-hub-menu-button" onClick={() => setManaging(false)}>
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={14} />
+        </button>
+      } />
+      <div className="tools-hub-content tools-hub-manager">
+        <p className="tools-hub-help">Load local JSON definitions. Only run commands from authors you trust; Husk asks before running a view.</p>
+        <div className="tools-hub-management-actions">
+          <button type="button" className="tools-hub-text-button" disabled={picking} onClick={() => void pickDir()}>{picking ? "Choosing…" : dir ? "Change folder" : "Choose folder"}</button>
+          {dir && <button type="button" className="tools-hub-text-button" disabled={currentCatalog.loading || picking} onClick={() => setRevision((value) => value + 1)}>Reload plugins</button>}
+        </div>
+        {dir && <p className="tools-hub-folder">{dir}</p>}
+        {folderError && <p role="alert" className="tools-hub-error">Could not choose folder: {folderError}</p>}
+        {!dir ? <p className="tools-hub-empty">No folder selected. Built-in tools work without plugins.</p>
+          : currentCatalog.loading ? <p role="status" className="tools-hub-empty">Loading plugin definitions…</p>
+          : currentCatalog.error ? <div role="alert" className="tools-hub-error">Could not read plugin folder: {currentCatalog.error}<br /><button type="button" className="tools-hub-text-button" onClick={() => setRevision((value) => value + 1)}>Retry</button></div>
+          : currentCatalog.loaded.length === 0 ? <p className="tools-hub-empty">No .json plugin files in this folder.</p>
+          : <section aria-label="Plugin definitions">
+            {pluginRows}
+            {currentCatalog.loaded.map((entry, index) => "error" in entry && <div key={entry.id + ":" + index} className="tools-hub-error" role="alert"><strong>{entry.id}</strong><br />{entry.error}</div>)}
+          </section>}
+        {dir && <div className="tools-hub-disconnect">
+          <button type="button" className="tools-hub-text-button" disabled={picking} onClick={() => { setPrefs({ pluginsDir: "" }); setFolderError(null); }}>Clear folder selection</button>
+          <p className="tools-hub-help">Removes the folder from Husk. Files on disk are not deleted.</p>
+        </div>}
+      </div>
+    </div>
+  </TooltipProvider>;
 
   return (
-    <TooltipProvider delayDuration={200}>
-      <div className="flex h-full flex-col">
-        <PanelHeader
-          icon={PuzzleIcon}
-          title="Plugins"
-          context={`${TOOLS.length + 3} built-in`}
-          actions={
-            <>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex size-6 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
-                    aria-label="What is this?"
-                  >
-                    <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={1.75} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="bottom"
-                  sideOffset={6}
-                  className="max-w-[220px] border border-border/60 bg-zinc-950 text-zinc-100 text-[10.5px] p-2 shadow-lg"
-                >
-                  Local utilities, infrastructure tools, and 2FA codes. Support for your own plugins is planned.
-                </TooltipContent>
-              </Tooltip>
-              <button
-                type="button"
-                onClick={pickDir}
-                title={dir ? `Plugins folder: ${dir}` : "Choose a plugins folder"}
-                className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
-              </button>
-            </>
-          }
-        />
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="px-0.5 pb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50">
-            Utilities
-          </div>
-          <div className="flex flex-col gap-1">
-            <button
-              type="button"
-              onClick={onOpenTotp}
-              title="Open 2FA Codes"
-              className="group flex w-full items-start gap-2 rounded-lg border border-border/40 bg-card/30 px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.05]"
-            >
-              <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/12 text-primary">
-                <HugeiconsIcon icon={SecurityCheckIcon} size={13} strokeWidth={1.75} />
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-[11.5px] font-medium text-foreground">2FA Codes</span>
-                <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">Generate and copy locally stored time-based codes.</span>
-              </div>
+    <TooltipProvider delayDuration={350}><div className="tools-hub">
+      <PanelHeader icon={PuzzleIcon} title="Tools" status={checking ? <span className="tools-hub-checking" role="status">Checking CLIs…</span> : undefined} actions={
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" aria-label="Tools options" className="tools-hub-menu-button">
+              <HugeiconsIcon icon={MoreHorizontalIcon} size={15} strokeWidth={1.75} />
             </button>
-            <button
-              type="button"
-              onClick={() => setUtility("ports")}
-              title="Inspect local ports"
-              className="group flex w-full items-start gap-2 rounded-lg border border-border/40 bg-card/30 px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.05]"
-            >
-              <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-cyan-500/10 text-cyan-300">
-                <HugeiconsIcon icon={ComputerTerminal02Icon} size={13} strokeWidth={1.75} />
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-[11.5px] font-medium text-foreground">Ports</span>
-                <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">Inspect local listeners, open localhost, and stop dev servers.</span>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => setUtility("dev-tools")}
-              title="Open local developer tools"
-              className="group flex w-full items-start gap-2 rounded-lg border border-border/40 bg-card/30 px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.05]"
-            >
-              <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-violet-500/10 text-violet-300">
-                <HugeiconsIcon icon={CodeIcon} size={13} strokeWidth={1.75} />
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-[11.5px] font-medium text-foreground">Dev Tools</span>
-                <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">Format, decode, convert, and generate locally.</span>
-              </div>
-            </button>
-          </div>
-
-          {/* gap-1 and py-1.5: five rows of two lines each had gap-2 between
-              them plus py-2.5 inside, which spread the list over more height
-              than it had content for. */}
-          {/* Labelled "Built-in" deliberately. These five ship with Husk and
-              cannot be added or removed, so presenting them under a bare
-              "Plugins" heading — with nothing to install — would promise a
-              capability that does not exist yet. */}
-          <div className="mt-3 px-0.5 pb-1 text-[9px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase">
-            Built-in
-          </div>
-          <div className="flex flex-col gap-1">
-            {TOOLS.map((tool) => {
-              const disabled = tool.status !== "ready";
-              const { Icon } = tool;
-              return (
-                <button
-                  key={tool.name}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onSelectView(tool.id)}
-                  title={tool.description}
-                  className={cn(
-                    /* Keep the sidebar narrow without hiding what a tool does:
-                       its name gets a line and the description may use two. */
-                    "group flex items-start gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors",
-                    disabled
-                      ? "border-border/20 bg-card/20 opacity-50 cursor-not-allowed"
-                      : "border-border/40 bg-card/30 hover:border-border/60 hover:bg-card/50",
-                  )}
-                >
-                  <div
-                    className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md"
-                    /* Tile tinted from the mark's own colour, so each row reads
-                       as that product rather than as five identical green
-                       chips. color-mix keeps it subtle at 14%. */
-                    style={
-                      disabled
-                        ? undefined
-                        : { backgroundColor: `color-mix(in srgb, ${tool.brand} 14%, transparent)` }
-                    }
-                  >
-                    <Icon
-                      size={13}
-                      color={disabled ? "currentColor" : tool.brand}
-                      className={disabled ? "text-muted-foreground" : undefined}
-                    />
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-[11.5px] font-medium text-foreground">{tool.name}</span>
-                      {disabled && (
-                        <span className="shrink-0 rounded bg-muted/30 px-1.5 py-0 text-[9px] text-muted-foreground uppercase tracking-wide">
-                          Soon
-                        </span>
-                      )}
-                    </div>
-                    <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground">
-                      {tool.description}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* User plugins. Broken ones are listed with their reason rather than
-              omitted: a plugin that simply fails to appear gives its author
-              nothing to debug. */}
-          <div className="mt-3 px-0.5 pb-1 text-[9px] font-semibold tracking-[0.12em] text-muted-foreground/50 uppercase">
-            Installed
-          </div>
-          {!dir ? (
-            <button
-              type="button"
-              onClick={pickDir}
-              className="w-full rounded-lg border border-dashed border-border/40 px-2.5 py-2 text-left text-[10.5px] text-muted-foreground transition-colors hover:border-border/70 hover:text-foreground"
-            >
-              Choose a folder of plugin files to load them here.
-            </button>
-          ) : loaded.length === 0 ? (
-            <p className="px-1 py-2 text-[10.5px] text-muted-foreground">No plugin files in that folder.</p>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {loaded.map((entry) =>
-                "plugin" in entry ? (
-                  <button
-                    key={entry.plugin.id}
-                    type="button"
-                    onClick={() => setActive(entry.plugin)}
-                    className="group flex items-start gap-2.5 rounded-lg border border-border/40 bg-card/30 px-2.5 py-1.5 text-left transition-colors hover:border-border/60 hover:bg-card/50"
-                  >
-                    <div
-                      className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md"
-                      style={{
-                        backgroundColor: `color-mix(in srgb, ${entry.plugin.brand ?? "var(--primary)"} 14%, transparent)`,
-                      }}
-                    >
-                      <HugeiconsIcon
-                        icon={PuzzleIcon}
-                        size={15}
-                        strokeWidth={1.75}
-                        style={{ color: entry.plugin.brand ?? "var(--primary)" }}
-                      />
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="text-[12.5px] font-medium text-foreground">{entry.plugin.name}</span>
-                      <span className="text-[11px] leading-snug text-muted-foreground">
-                        {entry.plugin.description ??
-                          `${entry.plugin.views.length} view${entry.plugin.views.length === 1 ? "" : "s"}`}
-                      </span>
-                    </div>
-                  </button>
-                ) : (
-                  <div
-                    key={entry.id}
-                    className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-2.5 py-1.5"
-                  >
-                    <HugeiconsIcon
-                      icon={AlertCircleIcon}
-                      size={13}
-                      strokeWidth={2}
-                      className="mt-0.5 shrink-0 text-destructive"
-                    />
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <span className="text-[11.5px] font-medium text-foreground">{entry.id}</span>
-                      <span className="text-[10px] leading-snug text-muted-foreground">{entry.error}</span>
-                    </div>
-                  </div>
-                ),
-              )}
-            </div>
-          )}
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="border border-border">
+            <DropdownMenuItem disabled={checking} onSelect={() => void checkTools()} className="rounded-md px-2 py-1.5 text-[11px]">{checking ? "Checking CLIs…" : "Check CLIs"}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setManaging(true)} className="rounded-md px-2 py-1.5 text-[11px]">Manage custom plugins…</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      } />
+      <div className="tools-hub-content">
+        <section aria-labelledby="tools-utilities-heading">
+          <h3 id="tools-utilities-heading">Utilities</h3>
+          <ToolRow name="2FA Codes" description="Generate locally stored time-based codes" icon={<HugeiconsIcon icon={SecurityCheckIcon} size={14} />} onClick={onOpenTotp} />
+          <ToolRow name="Ports" description="Local listeners and development servers" icon={<HugeiconsIcon icon={ComputerTerminal02Icon} size={14} />} onClick={() => setUtility("ports")} />
+          <ToolRow name="Dev Tools" description="Format, decode, convert, and generate locally" icon={<HugeiconsIcon icon={CodeIcon} size={14} />} onClick={() => setUtility("dev-tools")} />
+        </section>
+        <section aria-labelledby="tools-infrastructure-heading">
+          <h3 id="tools-infrastructure-heading">Infrastructure</h3>
+          {checkError && <p className="tools-hub-error" role="alert">{checkError}</p>}
+          {TOOLS.map(({ Icon, ...tool }) => <ToolRow key={tool.id} name={tool.name} description={tool.description}
+            icon={<Icon size={14} color={tool.brand} />} onClick={() => onSelectView(tool.id)}
+            status={tool.bin && installed && !installed.has(tool.bin) ? "Unavailable" : undefined}
+            detail={!tool.bin ? "Uses the API connection configured in Tailscale." : installed
+              ? installed.has(tool.bin) ? "Local CLI found; service connection not checked." : tool.bin + " was not found locally. Install it, then check CLIs again."
+              : "Uses local CLI configuration, not the active SSH terminal."} />)}
+          <span className="sr-only" role="status">{installed && (TOOLS.filter((tool) => tool.bin && !installed.has(tool.bin)).map((tool) => tool.name).join(", ") || "No") + " local CLIs missing. Service connections were not checked."}</span>
+        </section>
+        {dir && (currentCatalog.loading || currentCatalog.error || currentCatalog.loaded.length > 0) && <section aria-labelledby="tools-custom-heading">
+          <h3 id="tools-custom-heading">Custom plugins</h3>
+          {currentCatalog.loading ? <p role="status" className="tools-hub-help">Loading plugins…</p> : pluginRows}
+          {(currentCatalog.error || invalidCount > 0) && <ToolRow name="Plugin setup" description="Review plugin loading errors and retry in Manage custom plugins."
+            status="Needs attention" icon={<HugeiconsIcon icon={PuzzleIcon} size={14} />} onClick={() => setManaging(true)} />}
+        </section>}
       </div>
-    </TooltipProvider>
+    </div></TooltipProvider>
   );
 }

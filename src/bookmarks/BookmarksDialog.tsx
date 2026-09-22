@@ -2,17 +2,13 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { CompactForm, CompactButton, CompactInput, CompactLabel, CompactSelectTrigger, CompactSelectContent, CompactSelectItem } from "../components/compact-form";
+import { PanelHeader } from "../shell/PanelHeader";
 import {
   Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -91,21 +87,17 @@ export function BookmarksDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <HugeiconsIcon icon={StarIcon} size={16} />
-            Bookmarks
-          </DialogTitle>
-        </DialogHeader>
-
+      <DialogContent className="compact-panel compact-dialog flex max-h-[calc(100dvh-48px)] max-w-md flex-col gap-0 overflow-hidden p-0" showCloseButton={false} aria-describedby={undefined}>
+        <PanelHeader icon={StarIcon} title={<DialogTitle className="compact-title">Bookmarks</DialogTitle>}
+          actions={<DialogClose asChild><CompactButton icon variant="ghost" aria-label="Close bookmarks">×</CompactButton></DialogClose>} />
+        <div className="compact-body flex flex-col gap-3">
         {bookmarks.length === 0 && !showAdd && (
-          <p className="text-muted-foreground text-sm text-center py-4">
+          <p className="compact-help py-3 text-center">
             No bookmarks yet. Add directories, files, or commands for quick access.
           </p>
         )}
 
-        <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+        {bookmarks.length > 0 && <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
           {bookmarks.map((b) => (
             <div
               key={b.id}
@@ -133,80 +125,75 @@ export function BookmarksDialog({
               </button>
             </div>
           ))}
-        </div>
+        </div>}
 
         {showAdd && (
-          <div className="flex flex-col gap-2 border-t border-border/50 pt-3">
+          <CompactForm className={bookmarks.length > 0 ? "border-t border-border pt-3" : undefined} aria-label="Add bookmark">
+            <div className="compact-field"><CompactLabel htmlFor="bookmark-type">Type</CompactLabel>
             <Select value={type} onValueChange={(v) => setType(v as Bookmark["type"])}>
-              <SelectTrigger className="h-8 text-[12px]">
+              <CompactSelectTrigger id="bookmark-type">
                 <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="directory">Directory</SelectItem>
-                <SelectItem value="file">File</SelectItem>
-                <SelectItem value="command">Command</SelectItem>
-              </SelectContent>
-            </Select>
+              </CompactSelectTrigger>
+              <CompactSelectContent>
+                <CompactSelectItem value="directory">Directory</CompactSelectItem>
+                <CompactSelectItem value="file">File</CompactSelectItem>
+                <CompactSelectItem value="command">Command</CompactSelectItem>
+              </CompactSelectContent>
+            </Select></div>
 
-            <div>
-              <Label className="text-[11px]">Label</Label>
-              <Input
+            <div className="compact-field">
+              <CompactLabel htmlFor="bookmark-label">Label</CompactLabel>
+              <CompactInput id="bookmark-label"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="e.g., Project Root"
-                className="h-8 text-[12px]"
               />
             </div>
 
             {type !== "command" ? (
-              <div>
-                <Label className="text-[11px]">Path</Label>
-                <Input
+              <div className="compact-field">
+                <CompactLabel htmlFor="bookmark-path">Path</CompactLabel>
+                <CompactInput id="bookmark-path"
                   value={path}
                   onChange={(e) => setPath(e.target.value)}
-                  placeholder={type === "directory" ? "/Users/akikp/huskv2" : "/Users/akikp/huskv2/README.md"}
-                  className="h-8 text-[12px]"
+                  placeholder={type === "directory" ? "/path/to/project" : "/path/to/project/README.md"}
                 />
               </div>
             ) : (
-              <div>
-                <Label className="text-[11px]">Command</Label>
-                <Input
+              <div className="compact-field">
+                <CompactLabel htmlFor="bookmark-command">Command</CompactLabel>
+                <CompactInput id="bookmark-command"
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
                   placeholder="pnpm tauri dev"
-                  className="h-8 text-[12px]"
                 />
               </div>
             )}
 
-            <div className="flex gap-2">
-              <Button size="sm" className="text-[11px] h-7" onClick={handleAdd}>
-                Add
-              </Button>
-              <Button
-                size="sm"
+            <div className="compact-actions">
+              <div className="compact-actions-main">
+              <CompactButton
                 variant="ghost"
-                className="text-[11px] h-7"
                 onClick={() => setShowAdd(false)}
               >
                 Cancel
-              </Button>
+              </CompactButton>
+              <CompactButton variant="primary" onClick={handleAdd}>Add</CompactButton>
+              </div>
             </div>
-          </div>
+          </CompactForm>
         )}
 
         {!showAdd && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-[11px] h-7 w-full"
+          <CompactButton
+            className="w-full"
             onClick={() => setShowAdd(true)}
           >
             <HugeiconsIcon icon={StarIcon} size={12} className="mr-1" />
             Add Bookmark
-          </Button>
+          </CompactButton>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );

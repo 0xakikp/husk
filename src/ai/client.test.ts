@@ -37,6 +37,12 @@ function config(id = "openai"): ChatConfig {
 beforeEach(() => { fixtures.events = []; fixtures.beforeEvent = undefined; });
 
 describe("AI request images and endpoints", () => {
+  it("does not apply Codex subscription retirement rules to API model requests", async () => {
+    await streamChat({ ...config("openai"), model: "gpt-5.4-mini" }, "system", [{ role: "user", content: "Explain icons" }], vi.fn());
+    expect(vi.mocked(streamText).mock.calls[0][0].model).toEqual({ id: "gpt-5.4-mini" });
+    expect(runCodexCli).not.toHaveBeenCalled();
+  });
+
   it("passes screenshot attachments to the API as real image parts", async () => {
     const image = { dataUrl: "data:image/png;base64,Zml4dHVyZQ==", mediaType: "image/png" };
     await streamChat(config(), "system", [{ role: "user", content: "Describe this screenshot", images: [image] }], vi.fn());

@@ -2,7 +2,8 @@ import { lazy, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { FileExplorer } from "../explorer/FileExplorer";
 import { SidebarRail, type SidebarViewId } from "../sidebar/SidebarRail";
-import { runInActiveTerminal } from "../ai/terminalContext";
+import { stageLocalToolCommandWithNotice } from "../tools-hub/stageLocalToolCommand";
+import { shq } from "../lib/shellQuote";
 import { lazyPanel } from "./lazy";
 import { SHEET_HOST_ID, SidebarSheetContext } from "../components/sheetHost";
 import type { Prefs } from "../settings/preferences";
@@ -55,7 +56,6 @@ export function SidebarHost({
   persistSidebarWidth,
   sidebarMinWidth,
   sidebarMaxWidth,
-  typeInActiveTerminal,
 }: {
   explorerOpen: boolean;
   explorerWidth: number;
@@ -147,17 +147,17 @@ export function SidebarHost({
               ) : id === "remotes" ? (
                 lazyPanel(<RemotesView inline onSftp={(h) => openSftp(h)} />, "Remotes")
               ) : id === "workflows" ? (
-                lazyPanel(<RunbooksDialog inline />, "Workflows")
+                lazyPanel(<RunbooksDialog inline active={sidebarView === "workflows"} />, "Workflows")
               ) : id === "tools-hub" ? (
                 lazyPanel(
                   <ToolsHubView
+                    active={sidebarView === "tools-hub"}
                     onSelectView={(v) => persistSidebarView(v)}
-                    onTypeCommand={(cmd) => typeInActiveTerminal(cmd)}
-                    onRunCommand={(cmd) => runInActiveTerminal(cmd)}
+                    onTypeCommand={(cmd) => { void stageLocalToolCommandWithNotice(cmd); }}
                     onOpenTotp={openTotp}
                     onOpenBrowser={openBrowser}
                   />,
-                  "Plugins",
+                  "Tools",
                 )
               ) : id === "kubernetes" ? (
                 lazyPanel(
@@ -187,7 +187,7 @@ export function SidebarHost({
                     onBack={() => persistSidebarView("tools-hub")}
                     onConnect={(device) => {
                       const sshUser = device.user || "root";
-                      typeInActiveTerminal(`ssh ${sshUser}@${device.ipv4}`);
+                      void stageLocalToolCommandWithNotice(`ssh -l ${shq(sshUser)} -- ${shq(device.ipv4)}`);
                     }}
                   />,
                   "Tailscale",
@@ -214,7 +214,21 @@ export function SidebarHost({
           "husk-resize-seam husk-resize-seam-vertical relative flex shrink-0 cursor-col-resize items-center justify-center bg-border/60 hover:bg-border",
           prefs.panelGaps > 0 ? "w-2" : "w-px",
         )}
-        title="Drag to resize sidebar"
+        role="separator"
+        tabIndex={0}
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+        aria-valuemin={sidebarMinWidth}
+        aria-valuemax={sidebarMaxWidth}
+        aria-valuenow={explorerWidth}
+        title="Drag or use arrow keys to resize sidebar"
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault(); event.stopPropagation();
+          const next = event.key === "Home" ? sidebarMinWidth : event.key === "End" ? sidebarMaxWidth
+            : Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, explorerWidth + (event.key === "ArrowRight" ? 24 : -24)));
+          setExplorerWidth(next); persistSidebarWidth(next);
+        }}
         onMouseDown={(e) => {
           e.preventDefault();
           const startX = e.clientX;

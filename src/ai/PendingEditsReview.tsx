@@ -11,6 +11,7 @@ import {
 } from "./pendingEdits";
 import { toast } from "../toast";
 import { useReviewCancellation, useSessionReviewQueue } from "./reviewQueue";
+import { useReviewNavigation } from "./reviewNavigation";
 
 /** Lines of an edit shown before collapsing. A full-file overwrite arrives as one
  *  edit whose `search` is the entire previous file, so this must be bounded. */
@@ -47,7 +48,7 @@ function EditCard({ edit }: { edit: PendingEdit }) {
   };
 
   return (
-    <div className="pe-card">
+    <div className="pe-card" tabIndex={-1} data-review-item={edit.id} data-review-kind="edit" data-review-session={edit.sessionId}>
       <div className="pe-card-head">
         <span className="pe-path" title={edit.path}>
           {name}
@@ -198,7 +199,7 @@ export function PendingEditsReview({ sessionId }: { sessionId?: string }) {
 
 function SessionPendingEditsReview({ sessionId }: { sessionId?: string }) {
   const edits = useSessionReviewQueue(getPendingEdits, subscribePendingEdits, sessionId);
-  const [expanded, setExpanded] = useState(false);
+  const { reviewRef, expanded, setExpanded } = useReviewNavigation(sessionId, "edit", edits.map((edit) => edit.id));
   const [busyAll, setBusyAll] = useState(false);
   const cancellation = useReviewCancellation();
 
@@ -232,7 +233,7 @@ function SessionPendingEditsReview({ sessionId }: { sessionId?: string }) {
 
   if (!expanded) {
     return (
-      <div className="pe-dock">
+      <div ref={reviewRef} className="pe-dock">
         <span className="pe-dock-marker" aria-hidden="true">●</span>
         <span>
           {edits.length} proposed edit{edits.length > 1 ? "s" : ""}
@@ -250,7 +251,7 @@ function SessionPendingEditsReview({ sessionId }: { sessionId?: string }) {
   }
 
   return (
-    <div className="pe-wrap">
+    <div ref={reviewRef} className="pe-wrap">
       <div className="pe-head">
         <span>
           {edits.length} proposed edit{edits.length > 1 ? "s" : ""} — review before applying

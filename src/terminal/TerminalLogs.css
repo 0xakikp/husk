@@ -1,0 +1,51 @@
+.terminal-log-highlights {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 65%;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+  padding: 7px 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--text) 3%, var(--bg));
+}
+.terminal-log-highlights-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.terminal-log-highlights-heading strong { font-size: 10px; font-weight: 600; }
+.terminal-log-highlights-heading .terminal-logs-close { margin-left: auto; }
+.terminal-log-highlights p { margin: 4px 0; color: var(--text-muted); font-size: 10px; }
+.terminal-log-highlights [role="alert"] { color: var(--error, #fb7185); }
+.terminal-log-highlights ol { padding-left: 18px; margin: 6px 0; }
+.terminal-log-highlights li { padding-bottom: 5px; }
+.terminal-log-evidence-links { display: inline-flex; gap: 3px; flex-wrap: wrap; margin-left: 5px; }
+.terminal-log-evidence-link {
+  padding: 1px 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.terminal-log-evidence-link:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+.terminal-log-evidence {
+  max-height: 160px;
+  overflow: auto;
+  margin-top: 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.terminal-log-evidence-row { display: flex; gap: 8px; padding: 2px 6px; font-size: 10px; }
+.terminal-log-evidence-row > span { color: var(--text-muted); flex-shrink: 0; min-width: 28px; }
+.terminal-log-evidence-row code { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; font: inherit; }
+.terminal-log-evidence-row.selected { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 2px 0 var(--accent); }
+.terminal-logs-action:disabled { opacity: 0.5; cursor: default; }
+.terminal-logs-header, .terminal-logs-filters { flex-shrink: 0; }

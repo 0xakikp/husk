@@ -14,16 +14,24 @@ import {
 } from "../components/HuskContextMenu";
 
 import type { editor as MonacoEditor } from "monaco-editor";
+import { ScreenAiPopover, type ScreenAiSelection } from "../ai/ScreenAiPopover";
+import { usePrefs } from "../settings/preferences";
+
+let peekSequence = 0;
 
 interface EditorContextMenuProps {
   editor: MonacoEditor.IStandaloneCodeEditor | null;
 }
 
 export function EditorContextMenu({ editor }: EditorContextMenuProps) {
+  const prefs = usePrefs();
+  const [peek, setPeek] = useState<ScreenAiSelection | null>(null);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
     hasSelection: boolean;
+    text: string;
+    source: string;
   } | null>(null);
 
   const handleContextMenu = useCallback(
@@ -31,13 +39,16 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
       // Only show if right-clicking inside the editor host area
       const target = e.target as HTMLElement;
       if (!target.closest(".editor-host") && !target.closest(".monaco-editor")) return;
+      if (!editor?.getDomNode()?.contains(target)) return;
 
       e.preventDefault();
       const hasSelection = editor
         ? !editor.getSelection()?.isEmpty()
         : false;
 
-      setMenu({ x: e.clientX, y: e.clientY, hasSelection });
+      const selection = editor.getSelection();
+      const model = editor.getModel();
+      setMenu({ x: e.clientX, y: e.clientY, hasSelection, text: selection && model ? model.getValueInRange(selection) : "", source: model ? `${model.uri.path} · L${selection?.startLineNumber ?? 1}` : "Editor selection" });
     },
     [editor]
   );
@@ -64,7 +75,7 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
     };
   }, [handleContextMenu, handleClose]);
 
-  if (!menu) return null;
+  useEffect(() => { setPeek(null); }, [editor]);
 
   const handleCopy = () => {
     editor?.trigger("editor", "editor.action.clipboardCopyAction", null);
@@ -104,6 +115,9 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
   };
 
   return (
+    <>
+    {peek && <ScreenAiPopover key={peek.id} selection={peek} onClose={(restoreFocus = true) => { setPeek(null); if (restoreFocus) editor?.focus(); }} />}
+    {menu &&
     <div
       className={cn(huskContextMenuContentClass, "fixed z-[200] min-w-[180px]")}
       style={{ left: menu.x, top: menu.y }}
@@ -111,6 +125,7 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
     >
       {menu.hasSelection && (
         <>
+          {prefs.aiEnabled && <button type="button" className={huskContextMenuItemClass} onClick={() => { setPeek({ id: ++peekSequence, kind: "peek", text: menu.text, source: menu.source, x: menu.x, y: menu.y }); handleClose(); }}><HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={1.5} />Explain here</button>}
           <button
             type="button"
             onClick={handleAskAI}
@@ -175,5 +190,7 @@ export function EditorContextMenu({ editor }: EditorContextMenuProps) {
         Select All
       </button>
     </div>
+    }
+    </>
   );
 }

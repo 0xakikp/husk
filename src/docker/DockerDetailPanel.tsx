@@ -25,9 +25,8 @@ import {
   type DockerImageDetail,
   type DockerContainerStats,
 } from "./client";
-import { runInActiveTerminal } from "../ai/terminalContext";
+import { stageLocalToolCommandWithNotice } from "../tools-hub/stageLocalToolCommand";
 import { shq } from "../lib/shellQuote";
-import { toast } from "../toast";
 import { cn } from "@/lib/utils";
 
 export type DockerResourceSelection =
@@ -86,11 +85,7 @@ function ContainerDetailPanel({
   }, [selection.id]);
 
   const sendToTerminal = (cmd: string) => {
-    if (runInActiveTerminal(cmd)) {
-      toast({ title: `Sent to terminal: ${cmd}`, variant: "info" });
-    } else {
-      toast({ title: "No active terminal", variant: "error" });
-    }
+    void stageLocalToolCommandWithNotice(cmd);
   };
 
   const name = detail?.name || selection.name || selection.id;
@@ -166,17 +161,17 @@ function ContainerDetailPanel({
         />
         <ActionButton
           icon={ArrowRight01Icon}
-          label="Logs"
+          label="Stage logs"
           onClick={() => sendToTerminal(`docker logs --tail 500 -f ${shq(name)}`)}
         />
         <ActionButton
           icon={File01Icon}
-          label="Inspect"
+          label="Stage inspect"
           onClick={() => sendToTerminal(`docker inspect ${shq(name)}`)}
         />
         <ActionButton
           icon={BotIcon}
-          label="Shell"
+          label="Stage shell"
           onClick={() => sendToTerminal(`docker exec -it ${shq(name)} sh`)}
         />
       </div>

@@ -6,6 +6,7 @@ import { CLI_SUBSCRIPTION_MODE, PROVIDERS, getProvider, type Provider } from "./
 import { MODELS } from "./models";
 import { updateConfig, useConfig, getKey, subscribeKeys } from "./store";
 import { codexCliModels, type CodexCliModel } from "./codexCli";
+import { codexModelOptions } from "./codexModels";
 import {
   CLI_PROVIDER_IDS,
   EMPTY_CLI_AVAILABILITY,
@@ -117,6 +118,7 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
       <button
         type="button"
         onClick={() => {
+          if (!open) void codexCliModels(true).then(setCodexModels);
           setOpen((v) => !v);
           setLimitsOpen(false);
         }}
@@ -169,10 +171,7 @@ export function ModelSwitcher({ busy }: { busy?: boolean }) {
           ) : (
             usable.map((p) => {
               const models = p.cli === "codex"
-                ? [
-                    { id: p.defaultModel, label: "Codex default" },
-                    ...codexModels.filter((model) => model.id !== p.defaultModel),
-                  ]
+                ? codexModelOptions(codexModels, cfg.providerId === p.id ? cfg.model : undefined)
                 : MODELS.filter((model) => model.provider.id === p.id);
               return (
                 <div key={p.id} className="py-0.5">

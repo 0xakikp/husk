@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "../toast";
 import { listPorts, stopPortProcess, type PortListener } from "./api";
+import { PanelHeader } from "../shell/PanelHeader";
 
 function listenerUrl(listener: PortListener): string {
   // The utility is for development listeners. `localhost` is the least
@@ -89,16 +90,14 @@ export function PortsView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-8 shrink-0 items-center gap-1 border-b border-border/40 px-2">
-        <button type="button" onClick={onBack} title="Back to plugins" className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground">
+      <PanelHeader icon={ComputerTerminal02Icon} title="Ports" context={`Local · ${listeners.length} listening`} actions={<>
+        <button type="button" onClick={onBack} aria-label="Back to tools" title="Back to tools" className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground">
           <HugeiconsIcon icon={ArrowLeft01Icon} size={13} strokeWidth={2} />
         </button>
-        <span className="truncate text-xs font-semibold text-primary">Ports</span>
-        <span className="ml-1 text-[9px] text-muted-foreground">{listeners.length} listening</span>
-        <button type="button" onClick={() => void refresh()} title="Refresh ports" className={cn("ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground", loading && "animate-spin")}>
+        <button type="button" disabled={loading} onClick={() => void refresh()} aria-label="Refresh ports" title="Refresh ports" className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground", loading && "animate-spin")}>
           <HugeiconsIcon icon={RefreshIcon} size={12} strokeWidth={2} />
         </button>
-      </header>
+      </>} />
 
       <div className="shrink-0 border-b border-border/30 p-2">
         <input
@@ -141,7 +140,7 @@ export function PortsView({
                     <div className="flex flex-wrap items-center gap-1 border-t border-border/35 px-2 py-1.5">
                       <button type="button" onClick={() => onOpenBrowser(listenerUrl(listener))} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] text-primary transition-colors hover:bg-primary/10"><HugeiconsIcon icon={LinkSquare01Icon} size={11} />open</button>
                       <button type="button" onClick={() => void copyUrl(listener)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><HugeiconsIcon icon={Copy01Icon} size={11} />copy URL</button>
-                      <button type="button" onClick={() => onTypeCommand(`curl -I ${listenerUrl(listener)}`)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><HugeiconsIcon icon={ComputerTerminal02Icon} size={11} />curl</button>
+                      <button type="button" title={`Stage without running: curl -I ${listenerUrl(listener)}`} onClick={() => onTypeCommand(`curl -I ${listenerUrl(listener)}`)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><HugeiconsIcon icon={ComputerTerminal02Icon} size={11} />stage curl</button>
                       <button type="button" onClick={() => setConfirmStop(listener)} className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200"><HugeiconsIcon icon={Cancel01Icon} size={11} />stop</button>
                     </div>
                   ) : null}

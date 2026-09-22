@@ -1,0 +1,46 @@
+/* One opt-in panel and form skin. Docked/sheet/dialog placement stays with the feature. */
+.compact-panel, .sidebar-sheet-panel.compact-panel { box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); }
+.sidebar-sheet-panel.compact-panel { border: 0; border-radius: 0; box-shadow: none; }
+.compact-form { display: flex; flex-direction: column; min-width: 0; gap: 12px; font-size: 12px; line-height: 1.5; color: var(--foreground); }
+.compact-field { display: flex; flex-direction: column; min-width: 0; gap: 6px; }
+.compact-label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 11px; font-weight: 500; line-height: 1.4; color: var(--muted-foreground); }
+.compact-label.compact-field { align-items: stretch; }
+.compact-control { display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; height: 32px; margin: 0; padding: 5px 9px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--muted) 55%, var(--background)); color: var(--foreground); font-family: inherit; font-size: 12px; font-weight: 400; line-height: 20px; outline: none; box-shadow: none; }
+.compact-control::placeholder { color: var(--muted-foreground); opacity: .75; }
+.compact-control:focus-visible, .compact-button:focus-visible { border-color: var(--ring, var(--primary)); outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring, var(--primary)) 20%, transparent); }
+.compact-control[aria-invalid="true"] { border-color: var(--destructive); }
+.compact-control[aria-invalid="true"]:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--destructive) 20%, transparent); }
+.compact-control:disabled, .compact-button:disabled, fieldset:disabled .compact-control { opacity: .5; cursor: not-allowed; }
+.compact-textarea { height: auto; min-height: 64px; resize: vertical; field-sizing: fixed; line-height: 1.6; }
+.compact-native-select { display: block; position: relative; min-width: 0; width: 100%; }
+.compact-native-select > svg { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--muted-foreground); pointer-events: none; }
+.compact-select { appearance: none; padding-right: 30px; cursor: pointer; }
+.compact-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-align: left; }
+.compact-select-trigger > svg { width: 13px; height: 13px; }
+.compact-select-content { z-index: 120; border: 1px solid var(--border); border-radius: 6px; background: var(--popover); color: var(--popover-foreground); padding: 3px; }
+.compact-select-item { min-height: 28px; padding: 4px 26px 4px 8px; border-radius: 4px; font-size: 12px; line-height: 20px; }
+.compact-button { height: 28px; min-height: 28px; max-width: 100%; gap: 5px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--foreground); font-family: inherit; font-size: 11px; font-weight: 500; line-height: 18px; cursor: pointer; box-shadow: none; }
+.compact-button:hover:not(:disabled) { background: var(--muted); }
+.compact-button[data-compact-size="small"] { height: 24px; min-height: 24px; padding: 2px 6px; font-size: 10px; }
+.compact-button.compact-icon-button { width: 24px; padding: 3px; flex-shrink: 0; }
+.compact-button svg { width: 13px; height: 13px; }
+.compact-button[data-compact-variant="primary"] { background: color-mix(in srgb, var(--primary) 12%, var(--background)); border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); color: var(--foreground); }
+.compact-button[data-compact-variant="primary"]:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 20%, var(--background)); }
+.compact-button[data-compact-variant="ghost"] { border-color: transparent; color: var(--muted-foreground); }
+.compact-button[data-compact-variant="ghost"]:hover:not(:disabled) { color: var(--foreground); }
+.compact-button[data-compact-variant="danger"] { background: color-mix(in srgb, var(--destructive) 8%, transparent); border-color: color-mix(in srgb, var(--destructive) 25%, var(--border)); color: var(--destructive); }
+.compact-button[data-compact-variant="danger"]:hover:not(:disabled) { background: color-mix(in srgb, var(--destructive) 15%, transparent); }
+.compact-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 2px; padding-top: 12px; border-top: 1px solid var(--border); }
+.compact-action-start { margin-right: auto; }
+.compact-actions-main { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; max-width: 100%; margin-left: auto; }
+.compact-help, .compact-error { margin: 0; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; color: var(--muted-foreground); }
+.compact-error { color: var(--destructive); }
+.compact-section { min-width: 0; margin: 0; padding: 0; border: 0; }
+.compact-section > legend { margin: 0 0 6px; padding: 0; color: var(--muted-foreground); font-size: 11px; font-weight: 500; line-height: 1.4; }
+.compact-check { display: flex; align-items: flex-start; gap: 7px; color: var(--foreground); font-size: 11px; line-height: 1.5; cursor: pointer; }
+.compact-check input:is([type="checkbox"],[type="radio"]) { width: 13px; height: 13px; flex: 0 0 13px; margin: 2px 0 0; accent-color: var(--primary); }
+.compact-check input:focus-visible { outline: 1px solid var(--ring, var(--primary)); outline-offset: 2px; }
+.compact-dialog { box-shadow: var(--elev-2); }
+.compact-title { margin: 0; font: inherit; color: inherit; }
+.compact-body { padding: 12px; min-height: 0; overflow-y: auto; font-size: 12px; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) { .compact-button, .compact-control { transition: none; } }

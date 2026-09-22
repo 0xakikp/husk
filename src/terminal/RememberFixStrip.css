@@ -1,0 +1,40 @@
+.remember-fix { flex-shrink: 0; min-width: 0; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in srgb, var(--background) 94%, transparent); font-family: var(--font-mono, monospace); color: var(--foreground); font-size: 11px; }
+.remember-fix--collapsed { align-self: flex-start; max-width: 100%; }
+.remember-fix button { border-radius: 3px; padding: 3px 5px; cursor: pointer; color: var(--muted-foreground); }
+.remember-fix button:hover:not(:disabled) { color: var(--foreground); background: var(--muted); }
+.remember-fix button:disabled { cursor: default; opacity: .45; }
+.remember-fix button:focus-visible, .remember-fix input:focus-visible, .remember-fix textarea:focus-visible, .remember-fix summary:focus-visible { outline: 1px solid var(--primary); outline-offset: 1px; }
+.remember-fix__strip { display: flex; align-items: center; min-width: 0; gap: 5px; padding: 1px 5px; min-height: 25px; flex-wrap: wrap; }
+.remember-fix__strip button:first-child { color: var(--foreground); }
+.remember-fix__strip button:first-child > span { color: var(--muted-foreground); }
+.remember-fix__hint { flex: 1; color: var(--muted-foreground); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remember-fix__library-title { min-width: 0; padding: 3px 5px; font-size: 11px; font-weight: 500; }
+.remember-fix__dismiss { margin-left: auto; flex-shrink: 0; min-width: 22px; min-height: 22px; }
+.remember-fix__body { max-height: min(400px, 42vh); overflow: auto; padding: 8px; border-top: 1px solid var(--border); }
+.remember-fix__notice, .remember-fix__meta { margin: 4px 0 7px; line-height: 1.5; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.remember-fix__meta { font-size: 10px; }
+.remember-fix__storage { margin: 5px 0 8px; color: var(--muted-foreground); font-size: 10px; line-height: 1.5; }
+.remember-fix__storage summary { cursor: pointer; width: fit-content; }
+.remember-fix__storage p { margin: 5px 0; overflow-wrap: anywhere; }
+.remember-fix__field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.remember-fix__field span { color: var(--muted-foreground); }
+.remember-fix__field input, .remember-fix__field textarea { width: 100%; min-width: 0; background: var(--background); color: var(--foreground); border: 1px solid var(--border); border-radius: 4px; padding: 5px; font: inherit; }
+.remember-fix__field textarea { resize: vertical; }
+.remember-fix__check { display: flex; gap: 6px; align-items: flex-start; margin: 8px 0; line-height: 1.5; }
+.remember-fix input[type=checkbox] { accent-color: var(--primary); flex-shrink: 0; margin-top: 3px; }
+.remember-fix__steps, .remember-fix__saved-commands { list-style: none; padding: 0; margin: 7px 0; }
+.remember-fix__steps li { padding: 4px 0; }
+.remember-fix__steps label { display: flex; align-items: flex-start; gap: 6px; }
+.remember-fix__steps li > span { display: block; margin-left: 21px; }
+.remember-fix code { font: inherit; overflow-wrap: anywhere; white-space: pre-wrap; }
+.remember-fix__saved-commands li { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.remember-fix__saved-commands button { flex-shrink: 0; font-size: 10px; }
+.remember-fix__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 9px 0 3px; }
+.remember-fix__actions button { border: 1px solid var(--border); }
+.remember-fix__warning { margin: 7px 0; color: #fbbf24; line-height: 1.5; overflow-wrap: anywhere; }
+.remember-fix__error-source { color: var(--muted-foreground); font-size: 10px; margin: 8px 0; }
+.remember-fix__error-source summary { cursor: pointer; }
+.remember-fix__error-source pre { max-height: 120px; overflow: auto; margin: 6px 0; padding: 5px; border: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.remember-fix__entry { padding: 8px 0; border-top: 1px solid var(--border); }
+.remember-fix__entry strong { font-weight: 500; }
+.remember-fix__summary { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; margin: 6px 0; }

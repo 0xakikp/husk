@@ -111,6 +111,7 @@ fn validate_workflow_state(value: &str) -> Result<(), String> {
     if items.len() > 500 {
         return Err("workflow state contains more than 500 workflows".into());
     }
+    let mut ids = std::collections::HashSet::new();
     for item in items {
         let item = item.as_object().ok_or("each workflow must be an object")?;
         let id = item.get("id").and_then(Value::as_str).unwrap_or_default();
@@ -122,6 +123,9 @@ fn validate_workflow_state(value: &str) -> Result<(), String> {
         if id.is_empty() || id.len() > 120 || name.trim().is_empty() || name.len() > 160 {
             return Err("workflow id or name is invalid".into());
         }
+        if !ids.insert(id) {
+            return Err("workflow ids must be unique".into());
+        }
         if steps.is_empty() || steps.len() > 100 {
             return Err("a workflow must contain between 1 and 100 steps".into());
         }
@@ -132,6 +136,102 @@ fn validate_workflow_state(value: &str) -> Result<(), String> {
             return Err(
                 "workflow steps must be non-empty strings no longer than 8,000 bytes".into(),
             );
+        }
+        if item
+            .get("description")
+            .is_some_and(|value| value.as_str().is_none_or(|text| text.len() > 2_000))
+        {
+            return Err("workflow description must be text up to 2,000 bytes".into());
+        }
+        if item
+            .get("stopOnError")
+            .is_some_and(|value| !value.is_boolean())
+        {
+            return Err("workflow stopOnError must be a boolean".into());
+        }
+        if let Some(titles) = item.get("stepTitles") {
+            let titles = titles
+                .as_array()
+                .ok_or("workflow stepTitles must be an array")?;
+            if titles.len() != steps.len()
+                || titles
+                    .iter()
+                    .any(|title| title.as_str().is_none_or(|text| text.len() > 160))
+            {
+                return Err(
+                    "workflow step titles must match the steps and be at most 160 bytes".into(),
+                );
+            }
+        }
+        if let Some(inputs) = item.get("inputs") {
+            let inputs = inputs
+                .as_array()
+                .ok_or("workflow inputs must be an array")?;
+            if inputs.len() > 32 {
+                return Err("workflow supports at most 32 inputs".into());
+            }
+            let mut names = std::collections::HashSet::new();
+            for input in inputs {
+                let input = input
+                    .as_object()
+                    .ok_or("workflow input must be an object")?;
+                let name = input
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let label = input
+                    .get("label")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let kind = input
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if name.is_empty()
+                    || name.len() > 64
+                    || !name.bytes().enumerate().all(|(i, c)| {
+                        c == b'_' || c.is_ascii_alphabetic() || (i > 0 && c.is_ascii_digit())
+                    })
+                    || matches!(name, "__proto__" | "constructor" | "prototype")
+                    || !names.insert(name)
+                {
+                    return Err("workflow input name is invalid or duplicated".into());
+                }
+                if label.trim().is_empty()
+                    || label.len() > 160
+                    || !matches!(kind, "text" | "number" | "path" | "secret")
+                    || input
+                        .get("required")
+                        .is_none_or(|value| !value.is_boolean())
+                {
+                    return Err("workflow input label, type, or required flag is invalid".into());
+                }
+                if let Some(default) = input.get("defaultValue") {
+                    if kind == "secret" {
+                        return Err("secret workflow inputs cannot have saved defaults".into());
+                    }
+                    let default = default
+                        .as_str()
+                        .ok_or("workflow input default must be text")?;
+                    if default.len() > 2_000
+                        || default
+                            .chars()
+                            .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
+                    {
+                        return Err(
+                            "workflow input default must be a single line up to 2,000 bytes".into(),
+                        );
+                    }
+                    if kind == "number"
+                        && !default.is_empty()
+                        && default
+                            .parse::<f64>()
+                            .map_or(true, |value| !value.is_finite())
+                    {
+                        return Err("workflow number default must be finite".into());
+                    }
+                }
+            }
         }
     }
     if let Some(dismissed) = root.get("dismissed").and_then(Value::as_array) {
@@ -349,5 +449,35 @@ mod tests {
                 .is_err()
         );
         assert!(validate_workflow_state(r#"{"items":"not-an-array"}"#).is_err());
+    }
+
+    #[test]
+    fn workflow_state_preserves_typed_inputs_and_step_titles() {
+        let value = serde_json::json!({"items":[{"id":"wf_1","name":"History","steps":["git log -n {{count}}"],"stepTitles":["Recent commits"],"inputs":[{"name":"count","label":"Number of commits","type":"number","required":true,"defaultValue":"5"}]}]});
+        assert!(validate_workflow_state(&value.to_string()).is_ok());
+    }
+
+    #[test]
+    fn workflow_state_rejects_unsafe_or_inconsistent_input_metadata() {
+        let good = serde_json::json!({"items":[{"id":"wf_1","name":"History","steps":["git log -n {{count}}"],"stepTitles":["Recent commits"],"inputs":[{"name":"count","label":"Number of commits","type":"number","required":true,"defaultValue":"5"}]}]});
+        for (field, invalid) in [
+            ("type", serde_json::json!("secret")),
+            ("defaultValue", serde_json::json!("NaN")),
+            ("name", serde_json::json!("__proto__")),
+            ("required", serde_json::json!("yes")),
+        ] {
+            let mut value = good.clone();
+            value["items"][0]["inputs"][0][field] = invalid;
+            assert!(validate_workflow_state(&value.to_string()).is_err());
+        }
+        let mut value = good.clone();
+        value["items"][0]["stepTitles"] = serde_json::json!([]);
+        assert!(validate_workflow_state(&value.to_string()).is_err());
+        let mut value = good.clone();
+        value["items"]
+            .as_array_mut()
+            .unwrap()
+            .push(good["items"][0].clone());
+        assert!(validate_workflow_state(&value.to_string()).is_err());
     }
 }

@@ -4,6 +4,7 @@ import { getPendingMcpActions, removePendingMcpAction, subscribePendingMcpAction
 import { getPrefs } from "../settings/preferences";
 import { toast } from "../toast";
 import { useSessionReviewQueue, useReviewCancellation } from "./reviewQueue";
+import { useReviewNavigation } from "./reviewNavigation";
 
 function ActionCard({ action }: { action: PendingMcpAction }) {
   const [busy, setBusy] = useState(false);
@@ -27,7 +28,7 @@ function ActionCard({ action }: { action: PendingMcpAction }) {
     }
   };
   return (
-    <div className="pe-card">
+    <div className="pe-card" tabIndex={-1} data-review-item={action.id} data-review-kind="integration" data-review-session={action.sessionId}>
       <div className="pe-card-head">
         <span className="pe-path" title={action.label}>{action.label}</span>
         <span className="pe-stat">integration action</span>
@@ -48,10 +49,10 @@ export function PendingMcpActionsReview({ sessionId }: { sessionId?: string }) {
 
 function SessionPendingMcpActionsReview({ sessionId }: { sessionId?: string }) {
   const actions = useSessionReviewQueue(getPendingMcpActions, subscribePendingMcpActions, sessionId);
-  const [expanded, setExpanded] = useState(false);
+  const { reviewRef, expanded, setExpanded } = useReviewNavigation(sessionId, "integration", actions.map((action) => action.id));
   if (!actions.length) return null;
   if (!expanded) {
-    return <div className="pe-dock"><span className="pe-dock-marker" aria-hidden="true">●</span><span>{actions.length} integration action{actions.length === 1 ? "" : "s"}</span><span className="pe-dock-note">approval required</span><span className="pe-spacer" /><button type="button" className="pe-btn pe-btn-apply" onClick={() => setExpanded(true)}>review</button><button type="button" className="pe-btn" onClick={() => actions.forEach((action) => removePendingMcpAction(action.id))}>discard all</button></div>;
+    return <div ref={reviewRef} className="pe-dock"><span className="pe-dock-marker" aria-hidden="true">●</span><span>{actions.length} integration action{actions.length === 1 ? "" : "s"}</span><span className="pe-dock-note">approval required</span><span className="pe-spacer" /><button type="button" className="pe-btn pe-btn-apply" onClick={() => setExpanded(true)}>review</button><button type="button" className="pe-btn" onClick={() => actions.forEach((action) => removePendingMcpAction(action.id))}>discard all</button></div>;
   }
-  return <div className="pe-wrap"><div className="pe-head"><span>{actions.length} integration action{actions.length === 1 ? "" : "s"} — approval required</span><span className="pe-spacer" /><button type="button" className="pe-btn" onClick={() => setExpanded(false)}>collapse</button><button type="button" className="pe-btn" onClick={() => { actions.forEach((action) => removePendingMcpAction(action.id)); setExpanded(false); }}>discard all</button></div>{actions.map((action) => <ActionCard key={action.id} action={action} />)}</div>;
+  return <div ref={reviewRef} className="pe-wrap"><div className="pe-head"><span>{actions.length} integration action{actions.length === 1 ? "" : "s"} — approval required</span><span className="pe-spacer" /><button type="button" className="pe-btn" onClick={() => setExpanded(false)}>collapse</button><button type="button" className="pe-btn" onClick={() => { actions.forEach((action) => removePendingMcpAction(action.id)); setExpanded(false); }}>discard all</button></div>{actions.map((action) => <ActionCard key={action.id} action={action} />)}</div>;
 }

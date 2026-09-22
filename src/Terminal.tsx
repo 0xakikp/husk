@@ -1,11 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   getPromptPosition,
   isCommandRunning,
+  getActiveTerminalDraft,
   type CommandRun,
 } from "./ai/terminalContext";
-import { getShellHistory } from "./shellHistory";
+import { getShellHistory, type HistoryRow } from "./shellHistory";
+import { usePrefs } from "./settings/preferences";
+import { captureTerminalTarget } from "./ai/terminalTarget";
+import type { ScreenAiSelection } from "./ai/ScreenAiPopover";
+import { captureScreenCommandTarget, stageScreenCommand, type ScreenCommandTarget } from "./terminal/stageScreenCommand";
+import { TerminalSelectionActions, type TerminalSelectionSnapshot } from "./terminal/TerminalSelectionActions";
+import { openSavedFixes } from "./terminal/savedFixesView";
 import { TerminalHistoryPanel } from "./TerminalHistory";
 import { useAutocomplete } from "./terminal/useAutocomplete";
 import { AutocompleteBar } from "./terminal/AutocompleteBar";
@@ -27,7 +34,11 @@ import { createAiNote } from "./notes/aiCapture";
 import { showVaultCaptureToast } from "./notes/captureToast";
 import { formatTerminalRun, formatTerminalSelection } from "./notes/terminalCapture";
 import { toast } from "./toast";
+import { requestWorkflowCapture } from "./workflows/captureRequest";
 import "@xterm/xterm/css/xterm.css";
+
+const ScreenAiPopover = lazy(() => import("./ai/ScreenAiPopover").then((module) => ({ default: module.ScreenAiPopover })));
+let screenSelectionSequence = 0;
 
 /** A single xterm.js terminal backed by a Rust PTY session.
  *  Terminal lifecycle is managed by the registry; this component only
@@ -79,13 +90,20 @@ export function TerminalView({
   const searchOpenRef = useRef(false);
   const historyOpenRef = useRef(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
+  const [historyRows, setHistoryRows] = useState<HistoryRow[]>([]);
+  const historyTargetRef = useRef<ScreenCommandTarget | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
     selectedText: string;
+    exactSelectedText: string;
     recentRun: CommandRun | null;
+    draft: string;
   } | null>(null);
+  const prefs = usePrefs();
+  const [screenSelection, setScreenSelection] = useState<{ selection: ScreenAiSelection; target: ScreenCommandTarget | null } | null>(null);
+  const screenOpenRef = useRef(false);
   const [noteCaptureTarget, setNoteCaptureTarget] = useState<AiNoteCaptureTarget | null>(null);
   const [restoreNoticeOpen, setRestoreNoticeOpen] = useState(restored);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -172,7 +190,7 @@ export function TerminalView({
           // An HTML overlay owns input while it is open. Returning false here
           // prevents xterm from receiving keystrokes during the small window
           // before React has committed the state update and moved DOM focus.
-          if (historyOpenRef.current || searchOpenRef.current) return false;
+          if (historyOpenRef.current || searchOpenRef.current || screenOpenRef.current) return false;
 
           const isHistoryArrow = e.key === "ArrowUp" || e.key === "ArrowDown";
           if (autoStateRef.current.visible && isHistoryArrow) {
@@ -232,6 +250,11 @@ export function TerminalView({
     }
   }, [leafId, active, onFocus, onCwd, onCommandComplete, sessionReady]);
 
+  useEffect(() => {
+    if (!active || !prefs.aiEnabled) { setScreenSelection(null); screenOpenRef.current = false; }
+    if (!active) { setHistoryOpen(false); historyOpenRef.current = false; }
+  }, [active, prefs.aiEnabled]);
+
   // ── Autocomplete ──────────────────────────────────────────────────────────
   const {
     state: autoState,
@@ -269,30 +292,25 @@ export function TerminalView({
 
   // ── History ───────────────────────────────────────────────────────────────
   const selectHistory = (command: string) => {
-    // Type the command at the prompt WITHOUT executing it (user must press Enter)
-    const typer = handleRef.current?.typeText;
-    if (typer) {
-      typer(command);
-    } else {
-      // Fallback: write with newline stripped (won't auto-execute)
-      handleRef.current?.write(command.replace(/\n$/, ""));
-    }
-    historyOpenRef.current = false;
-    setHistoryOpen(false);
-    handleRef.current?.focus();
+    const target = historyTargetRef.current;
+    void stageScreenCommand(leafId, target, command).then(() => {
+      historyOpenRef.current = false;
+      setHistoryOpen(false);
+    }).catch((cause) => toast({ title: "Could not stage history command", message: cause instanceof Error ? cause.message : "Review the terminal first.", variant: "warning" }));
   };
 
   const openHistory = () => {
-    // Clear terminal screen to wipe any fzf/shell UI before showing our panel
-    handleRef.current?.clear();
+    historyTargetRef.current = captureScreenCommandTarget(leafId);
+    // Keep the buffer and prompt marker intact. Clearing xterm does not clear
+    // readline input and would make subsequent empty-prompt checks unreliable.
     // Set the ref before React renders the picker. Otherwise a fast next
     // keystroke can still reach xterm and appear behind the history popup.
     historyOpenRef.current = true;
     setHistoryOpen(true);
     setHistoryLoading(true);
     void getShellHistory()
-      .then((rows) => setHistoryEntries(rows.map((r) => r.command)))
-      .catch(() => setHistoryEntries([]))
+      .then((rows) => { setHistoryEntries(rows.map((r) => r.command)); setHistoryRows(rows); })
+      .catch(() => { setHistoryEntries([]); setHistoryRows([]); })
       .finally(() => setHistoryLoading(false));
   };
 
@@ -313,8 +331,8 @@ export function TerminalView({
       .catch(() => {});
   };
 
-  const saveTerminalSelection = () => {
-    const selectedText = menu?.selectedText.trim() || "";
+  const saveTerminalSelection = (text?: string) => {
+    const selectedText = (text ?? menu?.selectedText)?.trim() || "";
     if (!selectedText) return;
     const capture = formatTerminalSelection(selectedText);
     setMenu(null);
@@ -363,6 +381,32 @@ export function TerminalView({
         message: error instanceof Error ? error.message : String(error),
         variant: "error",
       }));
+  };
+
+  const openScreenAction = (kind: ScreenAiSelection["kind"], snapshot?: TerminalSelectionSnapshot) => {
+    if (!menu && !snapshot) return;
+    const text = snapshot?.text ?? (kind === "peek" ? menu!.selectedText : menu!.selectedText || menu!.draft);
+    if (!text.trim()) return;
+    const target = captureTerminalTarget();
+    if (target.ptyId == null || target.ptyId !== handleRef.current?.getPtyId()) {
+      toast({ title: "Focus this terminal first", message: "Then select the text and try again.", variant: "info" });
+      setMenu(null); return;
+    }
+    screenOpenRef.current = true;
+    const stagedTarget = captureScreenCommandTarget(leafId);
+    setScreenSelection({ selection: {
+      id: ++screenSelectionSequence, kind, text,
+      source: stagedTarget ? `${stagedTarget.isRemote ? stagedTarget.host || "SSH" : "Terminal"} · ${stagedTarget.cwd}` : "Unverified terminal scope",
+      reviewScope: stagedTarget ? { cwd: stagedTarget.cwd, host: stagedTarget.host, isRemote: stagedTarget.isRemote } : undefined,
+      x: snapshot?.x ?? menu!.x, y: snapshot?.y ?? menu!.y,
+    }, target: stagedTarget });
+    setMenu(null);
+  };
+
+  const closeScreenAction = (restoreFocus = true) => {
+    screenOpenRef.current = false;
+    setScreenSelection(null);
+    if (restoreFocus) handleRef.current?.focus();
   };
 
   // ── Click-to-position cursor ──────────────────────────────────────────────
@@ -512,16 +556,19 @@ export function TerminalView({
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    const selectedText = handleRef.current?.getSelection()?.trim() || "";
-    const MENU_W = 168;
-    const MENU_H = selectedText ? 340 : 220;
+    const exactSelectedText = handleRef.current?.getSelection() || "";
+    const selectedText = exactSelectedText.trim();
+    const MENU_W = 220;
+    const MENU_H = selectedText ? 400 : 250;
     const x = Math.min(e.clientX, window.innerWidth - MENU_W - 8);
     const y = Math.min(e.clientY, window.innerHeight - MENU_H - 8);
     setMenu({
       x: Math.max(8, x),
       y: Math.max(8, y),
       selectedText,
+      exactSelectedText,
       recentRun: handleRef.current?.getLastCommandRun() ?? null,
+      draft: getActiveTerminalDraft(),
     });
   };
 
@@ -544,6 +591,16 @@ export function TerminalView({
       onContextMenu={handleContextMenu}
     >
       <div ref={containerRef} className="terminal-host" />
+      <TerminalSelectionActions
+        terminal={sessionReady ? handleRef.current?.getTerm() ?? null : null}
+        enabled={active && !menu && !screenSelection && !historyOpen && !searchOpen && !noteCaptureTarget}
+        aiEnabled={prefs.aiEnabled}
+        onAction={(action, snapshot) => {
+          if (action === "save") saveTerminalSelection(snapshot.text);
+          else if (action === "workflow") requestWorkflowCapture(snapshot.text, "terminal-selection");
+          else openScreenAction(action, snapshot);
+        }}
+      />
       {restoreNoticeOpen && (
         <div className="terminal-restore-note" role="status">
           <span className="terminal-restore-dot" aria-hidden="true">●</span>
@@ -603,6 +660,8 @@ export function TerminalView({
       {historyOpen ? (
         <TerminalHistoryPanel
           entries={historyEntries}
+          rows={historyRows}
+          terminalId={leafId}
           loading={historyLoading}
           onSelect={selectHistory}
           onClose={() => {
@@ -622,7 +681,11 @@ export function TerminalView({
               setMenu(null);
             }}
           />
-          <div className="ectx-menu" style={{ top: menu.y, left: menu.x }} role="menu">
+          <div className="ectx-menu" style={{ top: menu.y, left: menu.x, minWidth: 220, maxHeight: `calc(100dvh - ${menu.y + 8}px)`, overflowY: "auto" }} role="menu">
+            {prefs.aiEnabled && menu.selectedText && <button type="button" className="ectx-item" onClick={() => openScreenAction("peek")}>Explain here</button>}
+            {prefs.aiEnabled && (menu.selectedText || menu.draft) && <button type="button" className="ectx-item" disabled={/[\r\n]/.test(menu.selectedText || menu.draft)} title="Propose a change to one command; nothing runs automatically" onClick={() => openScreenAction("tweak")}>Modify command with AI…</button>}
+            {prefs.aiEnabled && (menu.selectedText || menu.draft) && <button type="button" className="ectx-item" disabled={/[\r\n]/.test(menu.selectedText || menu.draft)} title="Text-only review; nothing runs or is sent until requested" onClick={() => openScreenAction("review")}>Review before running…</button>}
+            {menu.selectedText && <button type="button" className="ectx-item" title="Review this exact selection; nothing runs" onClick={() => { requestWorkflowCapture(menu.exactSelectedText, "terminal-selection"); setMenu(null); }}>Add to workflow…</button>}
             <button type="button" className="ectx-item" onClick={menuCopy}>
               Copy
             </button>
@@ -641,11 +704,14 @@ export function TerminalView({
             <button type="button" className="ectx-item" onClick={() => { setMenu(null); openHistory(); }}>
               History…
             </button>
+            <button type="button" className="ectx-item" onClick={() => { setMenu(null); openSavedFixes(leafId); }}>
+              Saved fixes…
+            </button>
             {menu.selectedText ? (
               <>
                 <div className="ectx-separator" role="separator" />
                 <div className="ectx-label">VAULT</div>
-                <button type="button" className="ectx-item is-vault" onClick={saveTerminalSelection}>
+                <button type="button" className="ectx-item is-vault" onClick={() => saveTerminalSelection()}>
                   Save selection to Vault
                 </button>
                 <button type="button" className="ectx-item is-vault" onClick={appendTerminalSelection}>
@@ -687,6 +753,12 @@ export function TerminalView({
           onClose={() => setNoteCaptureTarget(null)}
         />
       ) : null}
+      {screenSelection && <Suspense fallback={null}><ScreenAiPopover
+        key={screenSelection.selection.id}
+        selection={screenSelection.selection}
+        onClose={closeScreenAction}
+        onStage={(command) => stageScreenCommand(leafId, screenSelection.target, command)}
+      /></Suspense>}
     </div>
   );
 }

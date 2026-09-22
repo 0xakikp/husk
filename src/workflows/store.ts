@@ -1,87 +1,48 @@
 import { invoke } from "@tauri-apps/api/core";
-
-export type Workflow = {
-  id: string;
-  name: string;
-  steps: string[];
-  description?: string;
-  stopOnError?: boolean;
-};
-
+import { useSyncExternalStore } from "react";
+import { validateWorkflowList, type Workflow } from "./schema";
+export type { Workflow, WorkflowInput } from "./schema";
 const LS_KEY = "huskv2.runbooks";
 let cache: Workflow[] | null = null;
-
-function normalizeWorkflows(value: unknown): Workflow[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item): Workflow[] => {
-    if (!item || typeof item !== "object") return [];
-    const candidate = item as Partial<Workflow>;
-    const steps = Array.isArray(candidate.steps)
-      ? candidate.steps.filter((step): step is string => typeof step === "string" && step.trim().length > 0).slice(0, 100)
-      : [];
-    if (typeof candidate.id !== "string" || typeof candidate.name !== "string" || !candidate.name.trim() || !steps.length) return [];
-    return [{
-      id: candidate.id.slice(0, 120),
-      name: candidate.name.trim().slice(0, 160),
-      steps: steps.map((step) => step.slice(0, 8_000)),
-      description: typeof candidate.description === "string" ? candidate.description.slice(0, 2_000) : undefined,
-      stopOnError: candidate.stopOnError !== false,
-    }];
-  }).slice(0, 500);
-}
-
+let revision = 0;
+let loadError: string | null = null;
+let saveQueue: Promise<void> = Promise.resolve();
+const subscribers = new Set<() => void>();
+function publish(list: Workflow[]) { cache = list; revision++; subscribers.forEach((fn) => fn()); }
 function legacyWorkflows(): Workflow[] {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    return raw ? normalizeWorkflows(JSON.parse(raw)) : [];
-  } catch {
-    return [];
-  }
+  try { const raw = localStorage.getItem(LS_KEY); return raw ? validateWorkflowList(JSON.parse(raw)) : []; }
+  catch (error) { loadError = "Could not read saved workflows. Original data was kept; repair or restore it before saving new workflows."; console.warn("[workflows] could not read legacy workflows:", error); return []; }
 }
-
-export function loadWorkflows(): Workflow[] {
-  cache ??= legacyWorkflows();
-  return cache;
+export function getWorkflowLoadError(): string | null { return loadError; }
+export function loadWorkflows(): Workflow[] { cache ??= legacyWorkflows(); return cache; }
+export function useWorkflows(): Workflow[] {
+  return useSyncExternalStore((fn) => { subscribers.add(fn); return () => { subscribers.delete(fn); }; }, loadWorkflows, loadWorkflows);
 }
-
-export function saveWorkflows(list: Workflow[]): void {
-  cache = normalizeWorkflows(list);
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(cache));
-  } catch {
-    // storage unavailable — keep in memory only
-  }
-  void invoke("workflow_state_save", {
-    valueJson: JSON.stringify({ items: cache, dismissed: [] }),
-  }).catch((error) => console.warn("[workflows] durable save failed:", error));
+/** Publish only after durable native save; reject stale concurrent editors. */
+export function saveWorkflows(list: Workflow[]): Promise<void> {
+  if (loadError) return Promise.reject(new Error(loadError));
+  const next = validateWorkflowList(list);
+  const expected = revision;
+  const saving = saveQueue.then(async () => {
+    if (expected !== revision) throw new Error("Workflows changed while saving. Review your changes and retry.");
+    await invoke("workflow_state_save", { valueJson: JSON.stringify({ items: next, dismissed: [] }) });
+    publish(next);
+    try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch { /* Native SQLite is authoritative. */ }
+  });
+  saveQueue = saving.catch(() => {});
+  return saving;
 }
-
-/** Hydrate before React mounts. On the first native-enabled launch, migrate the
- * existing browser copy into ~/.husk/state.sqlite without deleting the fallback. */
 export async function initialiseWorkflowStore(): Promise<void> {
   const legacy = legacyWorkflows();
   try {
     const raw = await invoke<string | null>("workflow_state_load");
-    if (raw) {
-      const parsed = JSON.parse(raw) as { items?: unknown };
-      cache = normalizeWorkflows(parsed.items);
-    } else {
-      cache = legacy;
-      await invoke("workflow_state_save", {
-        valueJson: JSON.stringify({ items: cache, dismissed: [] }),
-      });
+    if (raw) { const list = validateWorkflowList((JSON.parse(raw) as { items: unknown }).items); loadError = null; publish(list); }
+    else {
+      if (loadError) throw new Error(loadError);
+      await invoke("workflow_state_save", { valueJson: JSON.stringify({ items: legacy, dismissed: [] }) });
+      publish(legacy);
     }
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(cache));
-    } catch {
-      // SQLite remains authoritative for the next launch.
-    }
-  } catch (error) {
-    cache = legacy;
-    console.warn("[workflows] using browser fallback:", error);
-  }
+    try { localStorage.setItem(LS_KEY, JSON.stringify(loadWorkflows())); } catch { /* Native copy remains authoritative. */ }
+  } catch (error) { loadError = "Durable workflow state could not be loaded. Showing the browser fallback read-only; restart after checking storage access."; publish(legacy); console.warn("[workflows] using browser fallback:", error); }
 }
-
-export function newWorkflowId(): string {
-  return `wf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-}
+export function newWorkflowId(): string { return "wf_" + crypto.randomUUID(); }

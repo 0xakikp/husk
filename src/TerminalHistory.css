@@ -1,0 +1,22 @@
+.term-hist-modes { display: flex; align-items: center; gap: 5px; margin: 0 3px 7px; font-size: 10px; }
+.term-hist-modes button, .term-hist-recall-actions button { border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px; color: var(--muted-foreground); cursor: pointer; }
+.term-hist-modes button[aria-pressed="true"] { color: var(--foreground); background: var(--muted); }
+.term-hist-modes button:hover, .term-hist-recall-actions button:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.term-hist-modes > span { margin-left: auto; color: var(--muted-foreground); }
+.term-hist-recall { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 3px 6px; font-size: 11px; }
+.term-hist-recall > p { margin: 0 0 7px; color: var(--muted-foreground); line-height: 1.45; }
+.term-hist-recall-review { border: 1px solid var(--border); border-radius: 5px; }
+.term-hist-recall-review summary { cursor: pointer; padding: 5px 7px; color: var(--foreground); }
+.term-hist-recall-note { padding: 0 7px; margin: 5px 0; color: var(--muted-foreground); line-height: 1.4; }
+.term-hist-recall-candidates { max-height: min(190px, 24vh); overflow-y: auto; border-top: 1px solid var(--border); }
+.term-hist-recall-candidates label { display: flex; align-items: start; gap: 6px; padding: 5px 7px; cursor: pointer; }
+.term-hist-recall-candidates label + label { border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+.term-hist-recall-candidates input { margin-top: 3px; flex-shrink: 0; accent-color: var(--primary); }
+.term-hist-recall-candidates label > span, .term-hist-recall-result > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.term-hist-recall code, .term-hist-recall-result code { font-family: inherit; font-size: 11px; white-space: pre-wrap; }
+.term-hist-recall small, .term-hist-recall-result small { display: block; color: var(--muted-foreground); font-size: 9px; line-height: 1.4; margin-top: 2px; }
+.term-hist-recall-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 7px; font-size: 10px; }
+.term-hist-recall-actions > span { color: var(--muted-foreground); }
+.term-hist-recall-actions button:disabled { cursor: default; opacity: .45; }
+.term-hist-recall-result { display: flex; justify-content: space-between; align-items: center; }
+.term-hist-recall-stage { flex-shrink: 0; color: var(--muted-foreground); font-size: 10px; }

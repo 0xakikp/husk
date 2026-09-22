@@ -108,6 +108,11 @@ const SECRET_PATTERNS: { re: RegExp; reason: string }[] = [
     re: /\b(?:api[_-]?key|secret|token|password|passwd)\b\s*[:=]\s*["']?[^\s"']{8,}/i,
     reason: "assigned secret",
   },
+  {
+    re: /\b[A-Z0-9_]*(?:SECRET(?:_ACCESS_KEY)?|API_KEY|ACCESS_TOKEN|AUTH_TOKEN|PASSWORD|PASSWD)[A-Z0-9_]*\s*=\s*["']?[^\s"']{8,}/i,
+    reason: "assigned secret",
+  },
+  { re: /--(?:password|passwd|token|api-key|secret)\s+(?:["'])?[^\s"']{8,}/i, reason: "credential argument" },
   /* JWT-shaped blobs */
   { re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/, reason: "JWT" },
 ];

@@ -51,8 +51,11 @@ import { parseBridgeOsc, dispatchBridge } from "../bridge";
 import type { Terminal as XTermType } from "@xterm/xterm";
 import type { SearchAddon as SearchAddonType } from "@xterm/addon-search";
 import type { FitAddon as FitAddonType } from "@xterm/addon-fit";
-import { absolutePromptPosition, readEditablePrompt } from "./promptDraft";
+import { absolutePromptPosition, inspectPromptReadiness, readEditablePrompt, type PromptReadiness } from "./promptDraft";
 import { parseRemoteShellTarget } from "./remoteShell";
+import { ComparisonScopeTracker, captureComparisonOutput, clearRunComparisons, dismissRunComparison, recordComparisonRun } from "./runComparison";
+import { clearFixRuns, recordCompletedFixRun } from "./fixMemory";
+import type { IMarker } from "@xterm/xterm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -77,6 +80,8 @@ export type TerminalHandle = {
   resize: () => void;
   getTerm: () => XTermType | null;
   getPtyId: () => number | null;
+  getPromptReadiness: () => PromptReadiness;
+  getStagingScope: () => { token: string; ptyId: number; cwd: string; isRemote: boolean; host: string | null } | null;
   getScreenElement: () => HTMLElement | null;
 };
 
@@ -115,6 +120,7 @@ type Session = {
   focused: boolean;
   active: boolean;
   cwd: string;
+  comparisonScope: ComparisonScopeTracker;
   initialCwd: string | undefined;
   callbacks: TerminalCallbacks;
   unlisteners: UnlistenFn[];
@@ -141,6 +147,7 @@ type Session = {
   promptPosition: { row: number; col: number } | null;
   /** Absolute buffer row where the running command's output began (OSC 133 C). */
   cmdStartRow: number | null;
+  comparisonStart: { marker: IMarker; ptyId: number; cwd: string; remoteHost: string | null } | null;
   /** Command lifecycle is retained per PTY so hidden terminal tabs can still
    * report their own completion state without corrupting the active terminal. */
   currentCommand: string;
@@ -213,6 +220,11 @@ function fitAttachedSession(session: Session): void {
 
 const sessions = new Map<number, Session>();
 let activeLeafId: number | null = null;
+
+/** Read-only identity for actions that must bind to a verified terminal target. */
+export function getActiveTerminalLeafId(): number | null {
+  return activeLeafId;
+}
 /* Output listeners deliberately live beside sessions rather than in React.
    A terminal's PTY survives tab switches, and a Logs drawer must be able to
    subscribe to the same stream without affecting xterm's rendering or input. */
@@ -345,6 +357,7 @@ export async function createSession(
     focused: false,
     active: false,
     cwd: "",
+    comparisonScope: new ComparisonScopeTracker(),
     initialCwd,
     callbacks: {},
     unlisteners: [],
@@ -369,6 +382,7 @@ export async function createSession(
     lastCompletedRun: null,
     promptPosition: null,
     cmdStartRow: null,
+    comparisonStart: null,
     currentCommand: "",
     commandStartedAt: 0,
     liveOutputTail: "",
@@ -379,7 +393,11 @@ export async function createSession(
   term.parser.registerOscHandler(7, (data) => {
     const cwd = parseOsc7Cwd(data);
     if (cwd) {
+      const previousCwd = session.cwd;
       session.cwd = cwd;
+      const hostChanged = session.comparisonScope.observeCwd(data, session.isRemoteShell);
+      if (hostChanged) clearRunComparisons(session.leafId);
+      if (hostChanged || previousCwd !== cwd) clearFixRuns(session.leafId);
       if (session.active) setActiveTerminalCwd(cwd);
       /* Workspace root follows the terminal so timeline/explorer/root never
          drift — local shells only, a remote path is not a local folder. */
@@ -405,6 +423,25 @@ export async function createSession(
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
       const exitCode = Number.isNaN(code) ? null : code;
       if (session.active) setActiveTerminalExit(exitCode);
+      const comparisonStart = session.comparisonStart;
+      session.comparisonStart = null;
+      if (comparisonStart) {
+        const command = session.currentCommand;
+        // A navigation command, remote transition, or unknown host must never
+        // mix two identities. Interactive SSH transcripts are not one run.
+        if (term.buffer.active.type === "normal" && comparisonStart.ptyId === session.ptyId && comparisonStart.cwd === session.cwd
+          && comparisonStart.remoteHost === session.comparisonScope.target(session.isRemoteShell)
+          && !parseRemoteShellTarget(command)) {
+          const captured = captureComparisonOutput(term.buffer.active, comparisonStart.marker.isDisposed ? null : comparisonStart.marker.line);
+          const run = {
+            leafId: session.leafId, ptyId: comparisonStart.ptyId, cwd: comparisonStart.cwd,
+            remoteHost: comparisonStart.remoteHost, command, ...captured, exitCode, at: Date.now(),
+          };
+          recordComparisonRun(run);
+          recordCompletedFixRun(run);
+        }
+        comparisonStart.marker.dispose();
+      }
       /* Harvest just this command's output, using the row marked at C. Bounded on
          both axes: a build can emit tens of thousands of rows, and this runs on
          every prompt. */
@@ -508,6 +545,11 @@ export async function createSession(
         }
         session.cmdStartRow = null;
       }
+      if (parseRemoteShellTarget(session.currentCommand)) {
+        session.comparisonScope.leaveRemote();
+        clearRunComparisons(session.leafId);
+        clearFixRuns(session.leafId);
+      }
       if (session.active) clearCurrentCommand();
       session.currentCommand = "";
       session.commandStartedAt = 0;
@@ -521,6 +563,17 @@ export async function createSession(
     if (data.startsWith("C")) {
       const b = term.buffer.active;
       session.cmdStartRow = b.baseY + b.cursorY;
+      session.comparisonStart?.marker.dispose();
+      session.comparisonStart = null;
+      dismissRunComparison(session.leafId);
+      const comparisonTarget = session.comparisonScope.target(session.isRemoteShell);
+      if (b.type === "normal" && session.ptyId != null && session.cwd && comparisonTarget !== undefined && !parseRemoteShellTarget(session.currentCommand)) {
+        const marker = term.registerMarker(0);
+        if (marker) session.comparisonStart = {
+          marker, ptyId: session.ptyId, cwd: session.cwd,
+          remoteHost: comparisonTarget,
+        };
+      }
       session.liveOutputTail = "";
       if (!session.commandStartedAt) session.commandStartedAt = Date.now();
       startTask(session.leafId, {
@@ -550,6 +603,9 @@ export async function createSession(
     // only reliable signal is the local command that started it.
     const remoteTarget = parseRemoteShellTarget(cmd);
     if (remoteTarget) {
+      session.comparisonScope.enterRemote();
+      clearRunComparisons(session.leafId);
+      clearFixRuns(session.leafId);
       session.isRemoteShell = true;
       session.remoteTarget = remoteTarget;
       if (session.active) setActiveRemoteTerminal({ isRemote: true, host: remoteTarget });
@@ -561,6 +617,10 @@ export async function createSession(
     const cmd = parseBridgeOsc(data);
     if (!cmd) return true;
     if (cmd.kind === "remote") {
+      if (cmd.isRemote) session.comparisonScope.enterRemote();
+      else session.comparisonScope.leaveRemote();
+      clearRunComparisons(session.leafId);
+      clearFixRuns(session.leafId);
       session.isRemoteShell = cmd.isRemote;
       if (!cmd.isRemote) session.remoteTarget = null;
       if (session.active) setActiveRemoteTerminal({ isRemote: cmd.isRemote, ...(session.remoteTarget ? { host: session.remoteTarget } : {}) });
@@ -584,19 +644,12 @@ export async function createSession(
       return false;
     }
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
-      // In SSH sessions, let the remote shell handle Ctrl+R (fzf / reverse-i-search).
-      if (session.isRemoteShell) {
-        console.log("[HUSK] Ctrl+R passed through to remote shell");
-        return true;
-      }
-      console.log("[HUSK] Ctrl+R intercepted, opening Husk history panel");
+      // Only a verified local shell uses Husk's shortcut. Preserve native
+      // reverse search for remote/unknown scopes even if the UI flag reset.
+      if (session.comparisonScope.target(session.isRemoteShell) !== null) return true;
       e.preventDefault();
       e.stopPropagation();
-      // Cancel any running process (Ctrl+C) and fzf menu (Ctrl+G) without
-      // clearing the screen — we want the terminal content to stay visible.
-      if (session.ptyId != null) {
-        void invoke("pty_write", { id: session.ptyId, data: "\x03\x07" });
-      }
+      // Browsing history must not cancel jobs, clear a draft, or write to PTY.
       session.historyOpen = true;
       if (session.active) session.callbacks.onHistoryOpen?.();
       return false;
@@ -1004,6 +1057,25 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
     resize: () => fitAttachedSession(session),
     getTerm: () => session.term,
     getPtyId: () => session.ptyId,
+    getStagingScope: () => {
+      if (session.disposed || session.ptyOpening || session.ptyId == null || !session.cwd) return null;
+      const observedHost = session.comparisonScope.target(session.isRemoteShell);
+      // OSC133 can reset the active-shell UI flag even inside integrated SSH.
+      // An uncertain/mismatched scope is not permission to treat it as local.
+      if (observedHost === undefined || (observedHost !== null) !== session.isRemoteShell
+        || (observedHost !== null && !session.remoteTarget)) return null;
+      return {
+        token: `${session.workflowSessionId}:${session.ptyId}:${session.comparisonScope.getGeneration()}`,
+        ptyId: session.ptyId, cwd: session.cwd, isRemote: observedHost !== null,
+        host: observedHost !== null ? session.remoteTarget : null,
+      };
+    },
+    getPromptReadiness: () => {
+      if (session.disposed || session.ptyOpening || session.ptyId == null || session.currentCommand || session.commandStartedAt || session.cmdStartRow != null) {
+        return { ready: false, reason: "The terminal is busy or its shell prompt is not ready. Return to a fresh prompt first." };
+      }
+      return inspectPromptReadiness(session.term.buffer.active, session.promptPosition);
+    },
     getScreenElement: () => session.screenEl,
   };
 }
@@ -1034,11 +1106,14 @@ export function disposeSession(leafId: number): void {
   }
 
   session.prefsUnsub?.();
+  session.comparisonStart?.marker.dispose();
   session.term.dispose();
   sessions.delete(leafId);
   outputListeners.delete(leafId);
   logsOpeners.delete(leafId);
   clearFailure(leafId);
+  clearRunComparisons(leafId);
+  clearFixRuns(leafId);
 
   if (activeLeafId === leafId) activeLeafId = null;
 }

@@ -181,7 +181,7 @@ export function DialogHost({
         {lazyPanel(<GithubIssuesDialog onClose={() => setGithubOpen(false)} />, "GitHub Issues")}
       </DialogLayer>
       <DialogLayer open={toolsOpen}>
-        {lazyPanel(<ToolsHubDialog onClose={() => setToolsOpen(false)} />, "Plugins")}
+        {lazyPanel(<ToolsHubDialog onClose={() => setToolsOpen(false)} />, "CLI tools")}
       </DialogLayer>
       <DialogLayer open={diffOpen}>
         {diffOpen && lazyPanel(

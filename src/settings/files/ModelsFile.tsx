@@ -3,6 +3,7 @@ import { MODELS } from "../../ai/models";
 import { CLI_SUBSCRIPTION_MODE, PROVIDERS, type Provider } from "../../ai/providers";
 import { loadConfig, updateConfig, useConfig, useKey, useKeyError, setKey, providerBaseURL } from "../../ai/store";
 import { codexCliModels, type CodexCliModel } from "../../ai/codexCli";
+import { codexModelOptions } from "../../ai/codexModels";
 import { cliAvailable, cliCommand, cliDisplayName, cliLoginHelp } from "../../ai/cliProvider";
 import {
   ConfigEditor,
@@ -348,7 +349,10 @@ export function ModelsFile() {
     : null;
 
   useEffect(() => {
-    void codexCliModels().then(setCodexModels);
+    const refresh = () => { void codexCliModels(true).then(setCodexModels); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
   }, []);
 
   const modelOptions = [
@@ -357,10 +361,7 @@ export function ModelsFile() {
       label: `${model.label} · ${model.provider.label}`,
       providerId: model.provider.id,
     })),
-    // Keep a stable escape hatch when Codex has not created its local cache
-    // yet, and let the CLI choose the account's default model.
-    { value: "codex", label: "Codex default · Codex (my subscription)", providerId: "codex" },
-    ...codexModels.map((model) => ({
+    ...codexModelOptions(codexModels, config.providerId === "codex" ? config.model : undefined).map((model) => ({
       value: model.id,
       label: `${model.label} · Codex (my subscription)`,
       providerId: "codex",

@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 import { PanelHeader, type PanelIcon } from "../shell/PanelHeader";
+import { CompactButton } from "./compact-form";
 import { SHEET_HOST_ID, sheetHost, useIsSidebarSheet } from "./sheetHost";
 
 /**
@@ -22,6 +23,7 @@ export function Modal({
   headerActions,
   icon,
   context,
+  compact = false,
 }: {
   title: ReactNode;
   onClose?: () => void;
@@ -33,6 +35,8 @@ export function Modal({
   headerActions?: ReactNode;
   icon?: PanelIcon;
   context?: ReactNode;
+  /** Shared compact form shell, opt-in so unrelated dialogs retain their layout. */
+  compact?: boolean;
 }) {
   const isSheet = useIsSidebarSheet();
   // Safety net: Radix's modal Dialog sets `pointer-events: none` on <body>
@@ -102,9 +106,13 @@ export function Modal({
               : "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-80px)] w-[460px] max-w-[calc(100vw-40px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-[0_24px_70px_rgba(0,0,0,0.7)] duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
             // A sheet is the panel, so a caller's max-width/rounding would fight it.
             !asSheet && className,
+            compact && "compact-panel compact-dialog",
           )}
         >
-          <div
+          {compact && icon ? <div {...(asSheet ? {} : { "data-drag-handle": true })} className={asSheet ? undefined : "cursor-move"}>
+            <PanelHeader icon={icon} title={<DialogPrimitive.Title className="compact-title truncate">{title}</DialogPrimitive.Title>}
+              actions={<DialogPrimitive.Close asChild><CompactButton icon variant="ghost" aria-label="Close">×</CompactButton></DialogPrimitive.Close>} />
+          </div> : <div
             {...(asSheet ? {} : { "data-drag-handle": true })}
             className={cn(
               "flex shrink-0 items-center justify-between border-b border-border",
@@ -127,13 +135,13 @@ export function Modal({
             >
               <span className="text-lg leading-none">×</span>
             </DialogPrimitive.Close>
-          </div>
+          </div>}
           <div
             className={cn(
               "no-scrollbar overflow-y-auto",
               // flex-1/min-h-0 so the body scrolls inside the panel rather than
               // pushing past it; p-6 is too generous for a 220px column.
-              asSheet ? "min-h-0 flex-1 p-3" : "p-6",
+              compact ? "compact-body min-h-0 flex-1" : asSheet ? "min-h-0 flex-1 p-3" : "p-6",
             )}
           >
             {children}

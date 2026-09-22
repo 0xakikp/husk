@@ -48,6 +48,7 @@ import { TerminalPilot } from "./TerminalPilot";
 import { captureTerminalTarget, isCurrentTerminalTarget, type TerminalTarget } from "../ai/terminalTarget";
 import { AppliedEditsActivity, PendingEditsReview } from "../ai/PendingEditsReview";
 import { PendingMcpActionsReview } from "../ai/PendingMcpActionsReview";
+import { NeedsReviewIndicator } from "../ai/NeedsReviewIndicator";
 import {
   getAppliedEdits,
   getPendingEdits,
@@ -89,6 +90,7 @@ import { buildBuiltinTools, mergeTools } from "../ai/builtinTools";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "../toast";
 import { getTerminalRunDecision, getWorkspaceRunDecision } from "./commandRun";
+import { WorkflowCaptureButton } from "../workflows/WorkflowCaptureButton";
 import { shq } from "../lib/shellQuote";
 import { useWorkspaceRoot } from "../workspace/store";
 import {
@@ -740,14 +742,15 @@ export function TerminalAiComposer({
   const [tick, setTick] = useState(0);
   const [height, setHeight] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [pendingRun, setPendingRun] = useState<{ command: string; productionTarget: string | null; target: TerminalTarget } | null>(null);
+  const [pendingRun, setPendingRun] = useState<{ sessionId: string; command: string; productionTarget: string | null; target: TerminalTarget } | null>(null);
   const [pendingWorkspaceRun, setPendingWorkspaceRun] = useState<{
+    sessionId: string;
     command: string;
     workspacePath: string;
     terminalCwd: string;
     target: TerminalTarget;
   } | null>(null);
-  const [pendingRemoteRun, setPendingRemoteRun] = useState<{ command: string; host: string; target: TerminalTarget } | null>(null);
+  const [pendingRemoteRun, setPendingRemoteRun] = useState<{ sessionId: string; command: string; host: string; target: TerminalTarget } | null>(null);
   const [remotePathDraft, setRemotePathDraft] = useState<string | null>(null);
   const [remotePathLoading, setRemotePathLoading] = useState(false);
   const [pilotRequest, setPilotRequest] = useState<{ id: number; task: string } | null>(null);
@@ -2564,7 +2567,7 @@ export function TerminalAiComposer({
         return "blocked";
       }
       if (!remoteWorkspace && !options?.supervisedRemote) {
-        setPendingRemoteRun({ command: cmd, host: activeRemote.host, target: captureTerminalTarget() });
+        setPendingRemoteRun({ sessionId, command: cmd, host: activeRemote.host, target: captureTerminalTarget() });
         return "workspace-mismatch";
       }
       return writeCommandToActiveTerminal(cmd, `${activeRemote.host} (SSH)`, cmd) ? "sent" : "blocked";
@@ -2581,6 +2584,7 @@ export function TerminalAiComposer({
         return "blocked";
       }
       setPendingWorkspaceRun({
+        sessionId,
         command: cmd,
         workspacePath: target.workspacePath,
         terminalCwd: target.terminalCwd,
@@ -2601,11 +2605,11 @@ export function TerminalAiComposer({
        names the target — even when the command itself looks "safe". */
     const protectedHits = protectedTargets();
     if (protectedHits.length > 0 && isEnvDestructive(cmd)) {
-      setPendingRun({ command: cmd, productionTarget: protectedHits[0], target: captureTerminalTarget() });
+      setPendingRun({ sessionId, command: cmd, productionTarget: protectedHits[0], target: captureTerminalTarget() });
       return;
     }
     if (isDangerousCommand(cmd)) {
-      setPendingRun({ command: cmd, productionTarget: null, target: captureTerminalTarget() });
+      setPendingRun({ sessionId, command: cmd, productionTarget: null, target: captureTerminalTarget() });
       return;
     }
     sendCommandToTerminal(cmd);
@@ -3253,6 +3257,11 @@ export function TerminalAiComposer({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <NeedsReviewIndicator sessionId={sessionId} composerRef={panelRef} terminalItems={[
+            ...(pendingRun ? [{ ...pendingRun, id: "run" as const }] : []),
+            ...(pendingWorkspaceRun ? [{ ...pendingWorkspaceRun, id: "workspace-run" as const }] : []),
+            ...(pendingRemoteRun ? [{ ...pendingRemoteRun, id: "remote-run" as const }] : []),
+          ]} />
           {variant === "full" && onShowSessionList && (
             <button
               type="button"
@@ -3604,8 +3613,8 @@ export function TerminalAiComposer({
         )}
       </div>
 
-      {pendingRemoteRun && (
-        <div className="composer-pending-run is-workspace-mismatch" role="alert">
+      {pendingRemoteRun?.sessionId === sessionId && (
+        <div className="composer-pending-run is-workspace-mismatch" role="alert" tabIndex={-1} data-review-item="remote-run" data-review-kind="terminal" data-review-session={sessionId}>
           <div className="composer-pending-run-copy flex flex-col gap-1">
             <span className="text-[10px] font-medium text-amber-400">Run this on SSH host {pendingRemoteRun.host}?</span>
             <code className="text-[10px] text-foreground/80" title={pendingRemoteRun.command}>{pendingRemoteRun.command}</code>
@@ -3620,8 +3629,8 @@ export function TerminalAiComposer({
         </div>
       )}
 
-      {pendingWorkspaceRun && (
-        <div className="composer-pending-run is-workspace-mismatch" role="alert">
+      {pendingWorkspaceRun?.sessionId === sessionId && (
+        <div className="composer-pending-run is-workspace-mismatch" role="alert" tabIndex={-1} data-review-item="workspace-run" data-review-kind="terminal" data-review-session={sessionId}>
           <div className="composer-pending-run-copy flex flex-col gap-1">
             <span className="text-[10px] font-medium text-amber-400">
               This chat and terminal are in different folders
@@ -3648,8 +3657,8 @@ export function TerminalAiComposer({
         </div>
       )}
 
-      {pendingRun && (
-        <div className="composer-pending-run">
+      {pendingRun?.sessionId === sessionId && (
+        <div className="composer-pending-run" tabIndex={-1} data-review-item="run" data-review-kind="terminal" data-review-session={sessionId}>
           <div className="composer-pending-run-copy flex flex-col gap-0.5">
             {pendingRun.productionTarget ? (
               <>
@@ -4143,6 +4152,7 @@ function CodeActions({
         <HugeiconsIcon icon={copiedIdx === idx ? TickDouble01Icon : Copy01Icon} size={10} strokeWidth={1.75} />
         {copiedIdx === idx ? "Copied" : "Copy"}
       </button>
+      <WorkflowCaptureButton language={block.lang} code={block.code} />
       {run.runnable ? (
         <button
           type="button"

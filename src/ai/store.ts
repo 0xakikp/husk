@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { PROVIDERS } from "./providers";
 import { MODELS } from "./models";
+import { resolveCodexSubscriptionModel } from "./codexModels";
 import { secretsSet, secretsDelete, secretsGetAll } from "../secrets";
 import { persistNativeConfigSection } from "../settings/nativeConfig";
 
@@ -38,8 +39,10 @@ function knownModel(id: string | undefined, providerId: string): string {
   // Codex models are discovered from the signed-in CLI at runtime, so they are
   // deliberately absent from the static registry. Preserve the saved slug and
   // let the CLI validate it; otherwise a refresh would silently replace a
-  // user's selected Codex model with the generic default.
-  if (["codex", "local"].includes(providerId) && id) return id;
+  // user's selected Codex model with the generic default. Only explicitly
+  // retired subscription IDs receive their documented replacement.
+  if (providerId === "codex" && id) return resolveCodexSubscriptionModel(id);
+  if (providerId === "local" && id) return id;
   if (id && MODELS.some((m) => m.id === id && m.provider.id === providerId)) return id;
   return PROVIDERS.find((p) => p.id === providerId)?.defaultModel ?? DEFAULT.model;
 }

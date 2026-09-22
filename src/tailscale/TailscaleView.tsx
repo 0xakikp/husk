@@ -13,10 +13,11 @@ import {
   GlobeIcon,
   Clock01Icon,
 } from "@hugeicons/core-free-icons";
-import { listDevices, generateSshCommand, type TailscaleDevice } from "./api";
+import { listDevices, type TailscaleDevice } from "./api";
 import { TailscaleSettingsDialog } from "./TailscaleSettingsDialog";
 import { cn } from "@/lib/utils";
 import { toast } from "@/toast";
+import { PanelHeader } from "../shell/PanelHeader";
 
 function DeviceRow({
   device,
@@ -87,7 +88,7 @@ export function TailscaleView({
   onConnect,
 }: {
   inline?: boolean;
-  /** Present when this built-in panel was opened from Plugins. */
+  /** Present when this built-in panel was opened from Tools. */
   onBack?: () => void;
   onConnect?: (device: TailscaleDevice) => void;
 }) {
@@ -115,15 +116,17 @@ export function TailscaleView({
     load();
   }, []);
 
-  const handleConnect = async (device: TailscaleDevice) => {
+  const handleConnect = (device: TailscaleDevice) => {
     if (!device.ssh_enabled) {
       toast({ title: "SSH not enabled for this device", variant: "warning" });
       return;
     }
-    const sshUser = device.user || "root";
-    const result = await generateSshCommand({ device_ip: device.ipv4, user: sshUser });
-    if (result.success) {
-      onConnect?.(device);
+    try {
+      if (!onConnect) throw new Error("Open Tailscale from the Tools sidebar to stage this command.");
+      // Capture the terminal in the click's turn, before any asynchronous work.
+      onConnect(device);
+    } catch (reason) {
+      toast({ title: "Could not prepare SSH command", message: String(reason), variant: "error" });
     }
   };
 
@@ -138,55 +141,16 @@ export function TailscaleView({
 
   return (
     <div className={cn("flex h-full flex-col", inline ? "p-2" : "p-4")}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {onBack ? (
-            <button
-              type="button"
-              onClick={onBack}
-              title="Back to plugins"
-              aria-label="Back to plugins"
-              className="inline-flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <HugeiconsIcon icon={ArrowLeft01Icon} size={14} strokeWidth={1.75} />
-            </button>
-          ) : null}
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
-            <HugeiconsIcon icon={CloudIcon} size={16} strokeWidth={1.5} className="text-primary" />
-          </div>
-          <div className="flex flex-col">
-            <span className="sidebar-rail-title">Tailscale</span>
-            <span className="text-[10px] text-muted-foreground">
-              {onlineCount}/{devices.length} devices online
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-            title="Refresh"
-          >
-            <HugeiconsIcon
-              icon={RefreshIcon}
-              size={14}
-              strokeWidth={1.75}
-              className={loading ? "animate-spin" : ""}
-            />
-          </button>
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Settings"
-          >
-            <HugeiconsIcon icon={Settings01Icon} size={14} strokeWidth={1.75} />
-          </button>
-        </div>
-      </div>
+      <PanelHeader icon={CloudIcon} title="Tailscale" context={onlineCount + "/" + devices.length + " online · API"} actions={<>
+        {onBack && <button type="button" onClick={onBack} aria-label="Back to tools" title="Back to tools" className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"><HugeiconsIcon icon={ArrowLeft01Icon} size={13} /></button>}
+        <button type="button" onClick={load} disabled={loading} aria-label="Refresh Tailscale" title="Refresh" className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><HugeiconsIcon icon={RefreshIcon} size={13} className={loading ? "animate-spin" : ""} /></button>
+        <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Tailscale settings" title="Settings" className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"><HugeiconsIcon icon={Settings01Icon} size={13} /></button>
+      </>} />
+
+      <details className="my-2 text-[10px] leading-relaxed text-muted-foreground">
+        <summary className="cursor-pointer rounded outline-none focus-visible:ring-1 focus-visible:ring-ring">Configured Tailscale API</summary>
+        <p className="mt-1">Devices come from the tailnet and API credentials in Tailscale settings, not the active terminal’s Tailscale CLI. SSH commands are staged for your review.</p>
+      </details>
 
       {selectedDevice ? (
         <DeviceDetailPanel
@@ -310,7 +274,7 @@ function DeviceDetailPanel({
         className="flex items-center justify-center gap-2 rounded-md bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <HugeiconsIcon icon={BotIcon} size={13} strokeWidth={1.75} />
-        Connect via SSH
+        Stage SSH command
       </button>
 
       {!device.ssh_enabled && (

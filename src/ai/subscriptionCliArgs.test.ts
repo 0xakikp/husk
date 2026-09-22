@@ -8,6 +8,16 @@ function valuesAfter(args: string[], flag: string): string[] {
 }
 
 describe("subscription CLI isolation", () => {
+  it("replaces retired subscription selections at launch without changing the prompt or safety flags", () => {
+    const args = buildCodexCliArgs("Explain only this selected text", "gpt-5.4-mini");
+    expect(valuesAfter(args, "--model")).toEqual(["gpt-5.6-luna"]);
+    expect(valuesAfter(args, "--sandbox")).toEqual(["read-only"]);
+    expect(args[args.length - 1]).toContain("Explain only this selected text");
+    expect(valuesAfter(buildCodexCliArgs("hello", "gpt-5.4"), "--model")).toEqual(["gpt-5.6-terra"]);
+    expect(valuesAfter(buildCodexCliArgs("hello", "codex"), "--model")).toEqual([]);
+    expect(valuesAfter(buildCodexCliArgs("hello", "future-model"), "--model")).toEqual(["future-model"]);
+  });
+
   it("starts Codex without local, connected, web, or subagent tools", () => {
     const args = buildCodexCliArgs("hello", "gpt-5.4-mini");
     const disabled = valuesAfter(args, "--disable");
