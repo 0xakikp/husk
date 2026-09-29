@@ -126,7 +126,9 @@ describe.each([{ shell: "/bin/zsh", file: "zshrc.zsh", args: ["-f"] }, { shell: 
 
 it("keeps fish's new metadata capture after the user prompt and before prompt-ready", () => {
   const source = readFileSync(new URL("../../src-tauri/src/scripts/init.fish", import.meta.url), "utf8");
-  const prompt = source.match(/function fish_prompt\n([\s\S]+?)\nend/)?.[1] ?? "";
-  expect(prompt.indexOf("__husk_report_kubeconfig")).toBeGreaterThan(prompt.indexOf("        __husk_user_prompt\n"));
-  expect(prompt.indexOf("__husk_report_kubeconfig")).toBeLessThan(prompt.indexOf("printf '\\e]133;B"));
+  for (const checkout of [source, source.replace(/\r?\n/g, "\r\n")]) {
+    const prompt = checkout.replace(/\r\n/g, "\n").match(/function fish_prompt\n([\s\S]+?)\nend/)?.[1] ?? "";
+    expect(prompt.indexOf("__husk_report_kubeconfig")).toBeGreaterThan(prompt.indexOf("        __husk_user_prompt\n"));
+    expect(prompt.indexOf("__husk_report_kubeconfig")).toBeLessThan(prompt.indexOf("printf '\\e]133;B"));
+  }
 });
