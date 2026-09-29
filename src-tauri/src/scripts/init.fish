@@ -27,6 +27,29 @@ function __husk_restore_status
     return $argv[1]
 end
 
+# Only this exported variable is queried. Quoting preserves fish's exported
+# value joining (including path variables). No environment or file reads.
+function __husk_report_kubeconfig
+    if test -n "$SSH_CONNECTION$SSH_CLIENT$SSH_TTY"
+        printf '\e]779;husk;kubeconfig;1;unavailable\e\\'
+        return
+    end
+    if not set -q -x KUBECONFIG; or test -z "$KUBECONFIG"
+        if set -q -x HOME; and string match -q '/*' -- "$HOME"; and test (string length -- "$HOME") -le 8178
+            set -l __husk_default "$HOME/.kube/config"
+            printf '\e]779;husk;kubeconfig;1;unset;%s\e\\' (string escape --style=url -- "$__husk_default")
+        else
+            printf '\e]779;husk;kubeconfig;1;unavailable\e\\'
+        end
+        return
+    end
+    if test (string length -- "$KUBECONFIG") -gt 8192
+        printf '\e]779;husk;kubeconfig;1;unavailable\e\\'
+        return
+    end
+    printf '\e]779;husk;kubeconfig;1;value;%s\e\\' (string escape --style=url -- "$KUBECONFIG")
+end
+
 if functions -q fish_prompt
     functions -c fish_prompt __husk_user_prompt
 end
@@ -42,6 +65,8 @@ function fish_prompt
     else
         printf '%s > ' (prompt_pwd)
     end
+    # User prompt hooks may change exports; capture only once they are done.
+    __husk_report_kubeconfig
     printf '\e]133;B\e\\'
 end
 

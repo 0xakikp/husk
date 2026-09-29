@@ -33,52 +33,13 @@ import type { ActiveKind } from "./types";
 const EditorArea = lazy(() => import("../editor/EditorArea").then((m) => ({ default: m.EditorArea })));
 const SettingsPage = lazy(() => import("../settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const DockerDetailPanel = lazy(() => import("../docker/DockerDetailPanel").then((m) => ({ default: m.DockerDetailPanel })));
-const PodDetailPanel = lazy(() => import("../kubernetes/PodDetailPanel").then((m) => ({ default: m.PodDetailPanel })));
-const ServiceDetailPanel = lazy(() => import("../kubernetes/ServiceDetailPanel").then((m) => ({ default: m.ServiceDetailPanel })));
-const DeploymentDetailPanel = lazy(() => import("../kubernetes/DeploymentDetailPanel").then((m) => ({ default: m.DeploymentDetailPanel })));
-const IngressDetailPanel = lazy(() => import("../kubernetes/IngressDetailPanel").then((m) => ({ default: m.IngressDetailPanel })));
-const ConfigMapDetailPanel = lazy(() => import("../kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.ConfigMapDetailPanel })));
-const SecretDetailPanel = lazy(() => import("../kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.SecretDetailPanel })));
-const PvcDetailPanel = lazy(() => import("../kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.PvcDetailPanel })));
-const QuotaDetailPanel = lazy(() => import("../kubernetes/ConfigAndStoragePanels").then((m) => ({ default: m.QuotaDetailPanel })));
-const JobDetailPanel = lazy(() => import("../kubernetes/JobDetailPanel").then((m) => ({ default: m.JobDetailPanel })));
+const K8sResourceDetailPanel = lazy(() => import("../kubernetes/K8sResourceDetailPanel"));
 const GitGraphPanel = lazy(() => import("../git/GitGraphPanel").then((m) => ({ default: m.GitGraphPanel })));
 const IssuesPanel = lazy(() => import("../git/IssuesPanel").then((m) => ({ default: m.IssuesPanel })));
 const SftpView = lazy(() => import("../remotes/SftpView").then((m) => ({ default: m.SftpView })));
 const AiTabPanel = lazy(() => import("../ai/AiTabPanel").then((m) => ({ default: m.AiTabPanel })));
 const BrowserPanel = lazy(() => import("../browser/BrowserPanel").then((m) => ({ default: m.BrowserPanel })));
 const TerminalAiComposer = lazy(() => import("../terminal/TerminalAiComposer").then((m) => ({ default: m.TerminalAiComposer })));
-
-function K8sResourceDetailPanel({
-  selection,
-  onClose,
-}: {
-  selection: K8sResourceSelection;
-  onClose: () => void;
-}) {
-  switch (selection.kind) {
-    case "pod":
-      return <PodDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "service":
-      return <ServiceDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "deployment":
-      return <DeploymentDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "ingress":
-      return <IngressDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "configmap":
-      return <ConfigMapDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "secret":
-      return <SecretDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "pvc":
-      return <PvcDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "quota":
-      return <QuotaDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    case "job":
-      return <JobDetailPanel namespace={selection.namespace} name={selection.name} onClose={onClose} />;
-    default:
-      return null;
-  }
-}
 
 export function WorkspacePanels({
   term,
@@ -158,6 +119,7 @@ export function WorkspacePanels({
     ? lazyPanel(
         <K8sResourceDetailPanel
           selection={selectedK8sResource}
+          onNavigate={setSelectedK8sResource}
           onClose={() => setSelectedK8sResource(null)}
         />,
         "Kubernetes",
@@ -457,7 +419,7 @@ export function WorkspacePanels({
               aria-hidden={term.activeId !== tab.id || activeKind !== "sftp"}
             >
               <ErrorBoundary>
-                {lazyPanel(<SftpView host={tab.sftpHost!} onClose={closeSftp} />, "SFTP")}
+                {lazyPanel(<SftpView key={tab.sftpHost!} host={tab.sftpHost!} active={term.activeId === tab.id && activeKind === "sftp" && !!tab.sftpOpen} onClose={closeSftp} />, "SFTP")}
               </ErrorBoundary>
             </div>
           ) : null

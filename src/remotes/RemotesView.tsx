@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { runInActiveTerminal } from "../ai/terminalContext";
+import { runInActiveTerminal, readActiveTerminalCommand, getActiveRemoteTerminal } from "../ai/terminalContext";
 import { toast } from "../toast";
 import { shq } from "../lib/shellQuote";
 import { Modal } from "../components/Modal";
@@ -23,7 +23,7 @@ import {
   Delete02Icon,
   RepeatIcon,
 } from "@hugeicons/core-free-icons";
-import { setActiveSshHost } from "../remote/store";
+import { encodeSftpTarget, parseSshFileTarget, sftpTargetFromConnection, type SftpTarget } from "./sftpTarget";
 import { useConnectedHosts } from "../remote/connectionStore";
 import {
   useConnections,
@@ -133,10 +133,24 @@ export function RemotesView({
     }
   };
 
-  const openSftp = (host: string) => {
+  const openSftp = (host: string | SftpTarget) => {
     if (!onSftp) return;
-    setActiveSshHost(host);
-    onSftp(host);
+    // SFTP must not silently retarget the separate Files/SSH backend.
+    onSftp(typeof host === "string" ? host : encodeSftpTarget(host));
+  };
+
+  const openSavedSftp = (connection: SshConnection) => {
+    try { openSftp(sftpTargetFromConnection(connection)); }
+    catch (error) { toast({ title: "Check this SSH connection", message: String(error), variant: "error" }); }
+  };
+
+  const browseActiveSsh = () => {
+    const target = getActiveRemoteTerminal().isRemote ? parseSshFileTarget(readActiveTerminalCommand()) : null;
+    if (!target) {
+      toast({ title: "SSH connection could not be identified safely", message: "Use a saved connection. Custom SSH options, wrappers, nested sessions and non-SSH shells are not inferred.", variant: "info" });
+      return;
+    }
+    openSftp(target);
   };
 
   const editConnection = (id: string) => {
@@ -221,6 +235,7 @@ export function RemotesView({
   return (
     <>
       <Modal title="Remotes" icon={DatabaseIcon} context={`${savedConnections.length} saved`} onClose={onClose} inline={inline} headerActions={headerActions}>
+        {onSftp && <button type="button" onClick={browseActiveSsh} className="mb-3 w-full rounded border border-border px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground">Browse active SSH files…</button>}
         <HuskContextMenu>
           <HuskContextMenuTrigger asChild>
             <div className="min-h-full">
@@ -248,7 +263,7 @@ export function RemotesView({
                   </HuskContextMenuTrigger>
                   <HuskContextMenuContent title={conn.name}>
                     <HuskContextMenuItem icon={PlayIcon} onSelect={() => connectSaved(conn)}>Connect in active terminal</HuskContextMenuItem>
-                    {onSftp ? <HuskContextMenuItem icon={FolderUploadIcon} onSelect={() => openSftp(conn.host)}>Open SFTP</HuskContextMenuItem> : null}
+                    {onSftp ? <HuskContextMenuItem icon={FolderUploadIcon} onSelect={() => openSavedSftp(conn)}>Open SFTP</HuskContextMenuItem> : null}
                     <HuskContextMenuItem icon={Settings02Icon} onSelect={() => editConnection(conn.id)}>Edit connection…</HuskContextMenuItem>
                     <HuskContextMenuSeparator />
                     <HuskContextMenuItem icon={Copy01Icon} onSelect={() => void copyConnectionText(sshCommandForConnection(conn), "SSH command")}>Copy SSH command</HuskContextMenuItem>
@@ -334,7 +349,7 @@ export function RemotesView({
                       {onSftp && (
                         <button
                           type="button"
-                          onClick={() => openSftp(conn.host)}
+                          onClick={() => openSavedSftp(conn)}
                           className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                           title="Open SFTP"
                         >
@@ -362,7 +377,7 @@ export function RemotesView({
                 </HuskContextMenuTrigger>
                 <HuskContextMenuContent title={conn.name}>
                   <HuskContextMenuItem icon={PlayIcon} onSelect={() => connectSaved(conn)}>Connect in active terminal</HuskContextMenuItem>
-                  {onSftp ? <HuskContextMenuItem icon={FolderUploadIcon} onSelect={() => openSftp(conn.host)}>Open SFTP</HuskContextMenuItem> : null}
+                  {onSftp ? <HuskContextMenuItem icon={FolderUploadIcon} onSelect={() => openSavedSftp(conn)}>Open SFTP</HuskContextMenuItem> : null}
                   <HuskContextMenuItem icon={Settings02Icon} onSelect={() => editConnection(conn.id)}>Edit connection…</HuskContextMenuItem>
                   <HuskContextMenuItem icon={RepeatIcon} onSelect={() => duplicateSavedConnection(conn)}>Duplicate</HuskContextMenuItem>
                   <HuskContextMenuItem icon={Tag01Icon} onSelect={() => setShowPfDialog(conn.id)}>Port forwards…</HuskContextMenuItem>

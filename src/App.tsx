@@ -37,7 +37,7 @@ import { useLauncherItems, type LauncherCtx } from "./command-palette/useLaunche
 import { getNotesDirectory, pinNote, unpinNote } from "./notes/store";
 import { isVaultPathWithin, replaceVaultPath } from "./notes/vaultPaths";
 import { isExplorerPathWithin, replaceExplorerPath } from "./explorer/pathOperations";
-import { useContext as k8sUseContext } from "./kubernetes/client";
+import { useK8sNavigation } from "./kubernetes/useK8sNavigation";
 import { requestWorkflowRun } from "./workflows/runRequest";
 import { WorkflowWorkspace } from "./workflows/WorkflowWorkspace";
 import { useWorkflowCaptureRequest } from "./workflows/captureRequest";
@@ -154,10 +154,10 @@ function App() {
   /** Show a sidebar view unconditionally (never toggles it closed). */
   const showSidebarView = useCallback(
     (view: SidebarViewId) => {
-      if (!explorerOpen) setExplorerOpen(true);
-      if (view !== sidebarView) persistSidebarView(view);
+      setExplorerOpen(true);
+      persistSidebarView(view);
     },
-    [explorerOpen, sidebarView, persistSidebarView],
+    [persistSidebarView],
   );
 
   /* Suggestions/Timeline drafts share the Workflows rail. Revealing that editor
@@ -211,7 +211,6 @@ function App() {
 
   const explainLastError = () => setExplainCtx({ command: "", output: readActiveTerminal(), exitCode: getActiveTerminalExit() });
   const [dockerOpen, setDockerOpen] = useState(false);
-  const [k8sOpen, setK8sOpen] = useState(false);
   const [githubOpen, setGithubOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
@@ -227,17 +226,17 @@ function App() {
      rather than stacking a second panel on top of it — which is what the two
      independent overlays used to do. The setters keep their original signatures,
      so every caller (sidebar views, dialogs) is unchanged. */
-  const [selectedK8sResource, setK8sSelection] = useState<K8sResourceSelection | null>(null);
+  const { selectedResource: selectedK8sResource, lastResource: lastK8sResource, selectResource: setK8sSelection, browseRequest: k8sBrowseRequest, browseContext: browseK8sContext, cancelBrowseRequest: cancelK8sBrowseRequest } = useK8sNavigation();
   const [selectedDockerResource, setDockerSelection] = useState<DockerResourceSelection | null>(null);
 
   const setSelectedK8sResource = useCallback((sel: K8sResourceSelection | null) => {
     setK8sSelection(sel);
     if (sel) setDockerSelection(null);
-  }, []);
+  }, [setK8sSelection]);
   const setSelectedDockerResource = useCallback((sel: DockerResourceSelection | null) => {
     setDockerSelection(sel);
     if (sel) setK8sSelection(null);
-  }, []);
+  }, [setK8sSelection]);
 
   const prefs = usePrefs();
   useClipboardListener();
@@ -678,7 +677,7 @@ function App() {
           ]
         : []),
       { id: "docker", label: "Open Docker", run: () => setDockerOpen(true) },
-      { id: "k8s", label: "Open Kubernetes", run: () => setK8sOpen(true) },
+      { id: "k8s", label: "Open Kubernetes", run: () => showSidebarView("kubernetes") },
       { id: "remotes", label: "Open Remotes / SSH", run: () => { cycleSidebarView("remotes"); } },
       { id: "github", label: "Open GitHub", run: () => setGithubOpen(true) },
       { id: "diff", label: "Open diff viewer", run: () => { setDiffPaths(null); setDiffOpen(true); } },
@@ -711,7 +710,7 @@ function App() {
       { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind(n.sftpOpen ? "sftp" : "term"); } } },
       { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind(p.sftpOpen ? "sftp" : "term"); } } },
     ],
-    [prefs.aiEnabled, prefs.theme, term, totpAccountCount],
+    [prefs.aiEnabled, prefs.theme, term, totpAccountCount, showSidebarView, cycleSidebarView],
   );
 
   // ── Terminal tab universal shortcuts ──
@@ -1067,14 +1066,13 @@ function App() {
         if (text) typeInActiveTerminal(text);
       },
       openDocker: () => setDockerOpen(true),
-      openK8s: () => setK8sOpen(true),
+      openK8s: () => showSidebarView("kubernetes"),
       switchK8sContext: (name) => {
-        void k8sUseContext(name)
-          .then(() => toast({ title: `Switched to ${name}`, variant: "success", duration: 2000 }))
+        void browseK8sContext(name)
+          .then((accepted) => { if (accepted) showSidebarView("kubernetes"); })
           .catch((e: unknown) =>
-            toast({ title: "kubectl error", message: e instanceof Error ? e.message : String(e), variant: "error" }),
+            toast({ title: "Could not open Kubernetes context", message: e instanceof Error ? e.message : String(e), variant: "error" }),
           );
-        setK8sOpen(true);
       },
       runWorkflow: (wf: Workflow) => {
         requestWorkflowRun(wf);
@@ -1095,7 +1093,7 @@ function App() {
       setQuery: (v) => setPaletteInput(v),
       openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
     }),
-    [showSidebarView, openFile, openFiles, openAi],
+    [showSidebarView, openFile, openFiles, openAi, browseK8sContext],
   );
 
   const launcherItems = useLauncherItems(paletteOpen, paletteInput, commands, launcherCtx);
@@ -1243,6 +1241,10 @@ function App() {
             openTotp={() => setTotpOpen(true)}
             openBrowser={openBrowser}
             setSelectedK8sResource={setSelectedK8sResource}
+            selectedK8sResource={selectedK8sResource}
+            lastK8sResource={lastK8sResource}
+            k8sBrowseRequest={k8sBrowseRequest}
+            onK8sBrowseSelectionChange={cancelK8sBrowseRequest}
             setSelectedDockerResource={setSelectedDockerResource}
             persistSidebarView={persistSidebarView}
             cycleSidebarView={cycleSidebarView}
@@ -1353,8 +1355,6 @@ function App() {
           setExplainCtx={setExplainCtx}
           dockerOpen={dockerOpen}
           setDockerOpen={setDockerOpen}
-          k8sOpen={k8sOpen}
-          setK8sOpen={setK8sOpen}
           githubOpen={githubOpen}
           setGithubOpen={setGithubOpen}
           toolsOpen={toolsOpen}
@@ -1380,7 +1380,6 @@ function App() {
           openFiles={openFiles}
           active={active}
           settingsOpen={settingsOpen}
-          onInspectK8sResource={setSelectedK8sResource}
           selectTerm={selectTerm}
           selectFile={selectFile}
           openSettings={openSettings}

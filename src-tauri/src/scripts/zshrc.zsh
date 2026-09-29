@@ -273,6 +273,25 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     done
   }
 
+  # Report only exported KUBECONFIG paths, never a general environment dump.
+  # This private, bounded OSC is consumed by Husk, not terminal output/history.
+  __husk_report_kubeconfig() {
+    local __husk_value="${KUBECONFIG-}" __husk_home="${HOME-}"
+    if [[ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-}" ]]; then
+      printf '\e]779;husk;kubeconfig;1;unavailable\e\\'
+    elif [[ ${(t)KUBECONFIG-} != *export* || -z "$__husk_value" ]]; then
+      if [[ ${(t)HOME-} == *export* && "$__husk_home" == /* && ${#__husk_home} -le 8178 ]]; then
+        printf '\e]779;husk;kubeconfig;1;unset;%s\e\\' "$(_husk_urlencode "${__husk_home%/}/.kube/config")"
+      else
+        printf '\e]779;husk;kubeconfig;1;unavailable\e\\'
+      fi
+    elif (( ${#__husk_value} > 8192 )); then
+      printf '\e]779;husk;kubeconfig;1;unavailable\e\\'
+    else
+      printf '\e]779;husk;kubeconfig;1;value;%s\e\\' "$(_husk_urlencode "$__husk_value")"
+    fi
+  }
+
   _husk_precmd() {
     local _husk_ret=$?
     printf '\e]133;D;%s\e\\' "$_husk_ret"
@@ -280,6 +299,7 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     # Re-emit remote status on every prompt so the host always has current state
     # (e.g. after ssh'ing out of or back into a machine).
     _husk_detect_remote >/dev/null
+    __husk_report_kubeconfig
     # Re-inject prompt-end marker in case a framework rebuilt PS1 (p10k, starship).
     # B MUST be appended AFTER PS1 so the cursor is at the input position when
     # the OSC handler fires — prepending captures (0,0) before prompt rendering.

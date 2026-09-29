@@ -83,14 +83,33 @@ if [ -z "$__HUSK_HOOKS_LOADED" ]; then
   fi
 
   _husk_urlencode() {
-    local LC_ALL=C s="$1" i c
+    local LC_ALL=C s="$1" i c byte
     for (( i=0; i<${#s}; i++ )); do
       c="${s:i:1}"
       case "$c" in
         [a-zA-Z0-9/._~-]) printf '%s' "$c" ;;
-        *) printf '%%%02X' "'$c" ;;
+        # Bash 3 reports high UTF-8 bytes as signed values. Mask to one byte so
+        # both cwd and kubeconfig OSCs remain valid percent-encoded UTF-8.
+        *) printf -v byte '%d' "'$c"; printf '%%%02X' "$((byte & 255))" ;;
       esac
     done
+  }
+
+  # The -x attribute distinguishes exported values from shell-only variables.
+  # Never enumerate the environment or read kubeconfig file contents.
+  __husk_report_kubeconfig() {
+    local __husk_previous=$?
+    local __husk_value="${KUBECONFIG-}" __husk_home="${HOME-}"
+    if [ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-}" ] || [ "${#__husk_value}" -gt 8192 ]; then
+      printf '\e]779;husk;kubeconfig;1;unavailable\e\\'
+    elif [[ -n "$__husk_value" && "$(declare -p KUBECONFIG 2>/dev/null)" =~ ^declare\ -[^[:space:]]*x[^[:space:]]*\ KUBECONFIG= ]]; then
+      printf '\e]779;husk;kubeconfig;1;value;%s\e\\' "$(_husk_urlencode "$__husk_value")"
+    elif [[ "$__husk_home" == /* && ${#__husk_home} -le 8178 && "$(declare -p HOME 2>/dev/null)" =~ ^declare\ -[^[:space:]]*x[^[:space:]]*\ HOME= ]]; then
+      printf '\e]779;husk;kubeconfig;1;unset;%s\e\\' "$(_husk_urlencode "${__husk_home%/}/.kube/config")"
+    else
+      printf '\e]779;husk;kubeconfig;1;unavailable\e\\'
+    fi
+    return "$__husk_previous"
   }
 
   _husk_precmd() {
@@ -132,7 +151,8 @@ if [ -z "$__HUSK_HOOKS_LOADED" ]; then
 
   case ":${PROMPT_COMMAND:-}:" in
     *":_husk_precmd:"*) ;;
-    *) PROMPT_COMMAND="_husk_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+    # Keep existing hook order, then capture after direnv/user prompt hooks.
+    *) PROMPT_COMMAND="_husk_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND};__husk_report_kubeconfig" ;;
   esac
 
   # Pre-exec marker + command capture via PS0 (bash 4.4+).

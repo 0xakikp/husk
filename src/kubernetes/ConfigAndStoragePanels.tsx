@@ -1,15 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   describeConfigMap,
   describeSecret,
+  getSecretYaml,
   describePersistentVolumeClaim,
   describeResourceQuota,
-  type K8sConfigMap,
-  type K8sSecret,
-  type K8sPersistentVolumeClaim,
-  type K8sResourceQuota,
 } from "./client";
-import { DetailPanelShell, DetailTabs, Section, KVGrid, YamlView, ResourceList } from "./K8sDetailCommon";
+import { DetailPanelShell, DetailTabs, Section, KVGrid, YamlView, ResourceList, ConceptHelp, FindingCard } from "./K8sDetailCommon";
+import { useK8sDetail } from "./useK8sDetail";
+import { useK8sInspector } from "./K8sInspectorContext";
 
 export function ConfigMapDetailPanel({
   namespace,
@@ -20,29 +19,8 @@ export function ConfigMapDetailPanel({
   name: string;
   onClose: () => void;
 }) {
-  const [data, setData] = useState<{ configMap: K8sConfigMap; data: Record<string, string>; yaml: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useK8sDetail(namespace, name, describeConfigMap);
   const [tab, setTab] = useState("overview");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    describeConfigMap(namespace, name)
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [namespace, name]);
 
   return (
     <DetailPanelShell title={name} subtitle={`${namespace} · ConfigMap`} onClose={onClose}>
@@ -70,8 +48,8 @@ export function ConfigMapDetailPanel({
         ) : tab === "yaml" ? (
           <YamlView yaml={data.yaml} />
         ) : (
-          <div className="flex flex-col gap-4">
-            <Section title="Info">
+          <div className="k8s-stack">
+            <Section title="Info" className="k8s-card">
               <KVGrid
                 rows={[
                   { label: "Namespace", value: data.configMap.namespace },
@@ -80,7 +58,7 @@ export function ConfigMapDetailPanel({
                 ]}
               />
             </Section>
-            <Section title="Data">
+            <Section title="Data" className="k8s-card">
               <ResourceList
                 items={Object.entries(data.data).map(([k, v]) => ({
                   label: k,
@@ -105,29 +83,9 @@ export function SecretDetailPanel({
   name: string;
   onClose: () => void;
 }) {
-  const [data, setData] = useState<{ secret: K8sSecret; keys: string[]; yaml: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useK8sDetail(namespace, name, describeSecret);
   const [tab, setTab] = useState("overview");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    describeSecret(namespace, name)
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [namespace, name]);
+  const { readScope } = useK8sInspector();
 
   return (
     <DetailPanelShell title={name} subtitle={`${namespace} · Secret`} onClose={onClose}>
@@ -153,10 +111,10 @@ export function SecretDetailPanel({
         ) : !data ? (
           <p className="text-[12px] text-muted-foreground">No data</p>
         ) : tab === "yaml" ? (
-          <YamlView yaml={data.yaml} />
+          <SecretYaml key={JSON.stringify([readScope, namespace, name])} namespace={namespace} name={name} redacted={data.yaml} />
         ) : (
-          <div className="flex flex-col gap-4">
-            <Section title="Info">
+          <div className="k8s-overview">
+            <Section title="Info" className="k8s-card">
               <KVGrid
                 rows={[
                   { label: "Namespace", value: data.secret.namespace },
@@ -166,7 +124,7 @@ export function SecretDetailPanel({
                 ]}
               />
             </Section>
-            <Section title="Keys (names only, values hidden)">
+            <Section title="Keys (names only, values hidden)" className="k8s-card">
               <ResourceList items={data.keys.map((k) => ({ label: k }))} empty="No keys" />
             </Section>
           </div>
@@ -185,29 +143,8 @@ export function PvcDetailPanel({
   name: string;
   onClose: () => void;
 }) {
-  const [data, setData] = useState<{ pvc: K8sPersistentVolumeClaim; yaml: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useK8sDetail(namespace, name, describePersistentVolumeClaim);
   const [tab, setTab] = useState("overview");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    describePersistentVolumeClaim(namespace, name)
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [namespace, name]);
 
   return (
     <DetailPanelShell title={name} subtitle={`${namespace} · PVC`} onClose={onClose}>
@@ -235,8 +172,10 @@ export function PvcDetailPanel({
         ) : tab === "yaml" ? (
           <YamlView yaml={data.yaml} />
         ) : (
-          <div className="flex flex-col gap-4">
-            <Section title="Info">
+          <div className="k8s-stack">
+            {data.pvc.status !== "Bound" && <FindingCard title="Volume claim is not bound" evidence={`Claim phase: ${data.pvc.status}. Storage class: ${data.pvc.storageClass || "not specified"}.`} meaning="The claim does not currently have a bound volume. Some storage classes wait for a Pod to be scheduled before binding." next="Review the claim configuration, storage class and consuming Pod events." onEvidence={() => setTab("yaml")} concept="pvc" />}
+            <Section title="Info" className="k8s-card">
+              <ConceptHelp concept="pvc" value={data.pvc.status} />
               <KVGrid
                 rows={[
                   { label: "Namespace", value: data.pvc.namespace },
@@ -265,29 +204,8 @@ export function QuotaDetailPanel({
   name: string;
   onClose: () => void;
 }) {
-  const [data, setData] = useState<{ quota: K8sResourceQuota; hard: Record<string, string>; used: Record<string, string>; yaml: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useK8sDetail(namespace, name, describeResourceQuota);
   const [tab, setTab] = useState("overview");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    describeResourceQuota(namespace, name)
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [namespace, name]);
 
   return (
     <DetailPanelShell title={name} subtitle={`${namespace} · ResourceQuota`} onClose={onClose}>
@@ -315,8 +233,8 @@ export function QuotaDetailPanel({
         ) : tab === "yaml" ? (
           <YamlView yaml={data.yaml} />
         ) : (
-          <div className="flex flex-col gap-4">
-            <Section title="Info">
+          <div className="k8s-stack">
+            <Section title="Info" className="k8s-card">
               <KVGrid
                 rows={[
                   { label: "Namespace", value: data.quota.namespace },
@@ -325,15 +243,15 @@ export function QuotaDetailPanel({
                 ]}
               />
             </Section>
-            <Section title="Hard vs Used">
+            <Section title="Hard vs Used" className="k8s-card">
               <div className="flex flex-col gap-1">
                 {Object.keys(data.hard).length === 0 ? (
-                  <span className="text-[11px] text-muted-foreground">No limits configured</span>
+                  <span className="text-[12px] text-muted-foreground">No limits configured</span>
                 ) : (
                   Object.entries(data.hard).map(([k, v]) => (
-                    <div key={k} className="flex items-center justify-between rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5">
-                      <span className="text-[11px] text-foreground">{k}</span>
-                      <span className="text-[11px] text-muted-foreground">
+                    <div key={k} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5">
+                      <span className="k8s-wrap text-[12px] text-foreground">{k}</span>
+                      <span className="k8s-wrap text-[12px] text-muted-foreground">
                         {data.used[k] || "0"} / {v}
                       </span>
                     </div>
@@ -349,3 +267,45 @@ export function QuotaDetailPanel({
 }
 
 export default { ConfigMapDetailPanel, SecretDetailPanel, PvcDetailPanel, QuotaDetailPanel };
+
+
+/** Raw Secret values are fetched only after an explicit reveal and never retained across tabs. */
+function SecretYaml({ namespace, name, redacted }: { namespace: string; name: string; redacted: string }) {
+  const { readScope } = useK8sInspector();
+  const [raw, setRaw] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const request = useRef(0);
+  useEffect(() => () => { request.current += 1; }, []);
+
+  const hide = () => {
+    request.current += 1;
+    setRaw(null);
+    setLoading(false);
+    setFailed(false);
+  };
+  const reveal = async () => {
+    const current = ++request.current;
+    setLoading(true);
+    setFailed(false);
+    try {
+      const yaml = await getSecretYaml(namespace, name, readScope);
+      if (current === request.current) setRaw(yaml);
+    } catch {
+      if (current === request.current) setFailed(true);
+    } finally {
+      if (current === request.current) setLoading(false);
+    }
+  };
+
+  return <div className="flex flex-col gap-2">
+    <p className="text-[12px] text-muted-foreground">Values and annotations are redacted by default. Raw YAML can contain credentials; base64 is not encryption. Nothing is sent to AI.</p>
+    <button type="button" className="self-start rounded border border-border px-2 py-1 text-[12px] hover:bg-muted" onClick={raw !== null || loading ? hide : () => { void reveal(); }}>
+      {loading ? "Cancel reveal" : raw !== null ? "Hide sensitive YAML" : "Reveal sensitive YAML"}
+    </button>
+    {raw !== null && <p className="text-[12px] text-amber-400" role="status">Sensitive YAML visible. It is hidden when you leave this tab or inspector.</p>}
+    {loading && <p className="text-[12px] text-muted-foreground" role="status">Loading sensitive YAML…</p>}
+    {failed && <p className="text-[12px] text-rose-400" role="alert">Unable to reveal Secret YAML. Check cluster access and permissions, then retry.</p>}
+    <YamlView yaml={raw ?? redacted} />
+  </div>;
+}

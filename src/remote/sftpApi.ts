@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { SftpTarget } from "../remotes/sftpTarget";
 
 export interface SftpEntry {
   name: string;
@@ -8,8 +9,9 @@ export interface SftpEntry {
   modified?: number;
 }
 
-export const sftpConnect = (host: string) =>
-  invoke<boolean>("sftp_connect", { host });
+export type SftpConnectionResult = { status: "connected" | "verify-host"; hostname: string; port: number; username: string; fingerprint: string };
+export const sftpConnect = (host: string, target: SftpTarget, credentials: { password?: string; passphrase?: string } = {}, expectedFingerprint?: string) =>
+  invoke<SftpConnectionResult>("sftp_connect", { host, target, credentials, expectedFingerprint });
 
 export const sftpListDir = (host: string, path: string) =>
   invoke<SftpEntry[]>("sftp_list_dir", { host, path });
@@ -20,7 +22,8 @@ export const sftpDownload = (
   localPath: string,
   transferId: string,
   resume = true,
-) => invoke<void>("sftp_download", { host, remotePath, localPath, transferId, resume });
+  allowOverwrite = false,
+) => invoke<void>("sftp_download", { host, remotePath, localPath, transferId, resume, allowOverwrite });
 
 /** Recursively downloads a remote folder into the chosen local parent folder. */
 export const sftpDownloadDir = (
@@ -29,7 +32,8 @@ export const sftpDownloadDir = (
   localParent: string,
   transferId: string,
   resume = true,
-) => invoke<void>("sftp_download_dir", { host, remotePath, localParent, transferId, resume });
+  allowOverwrite = false,
+) => invoke<void>("sftp_download_dir", { host, remotePath, localParent, transferId, resume, allowOverwrite });
 
 export const sftpUpload = (
   host: string,
@@ -37,7 +41,8 @@ export const sftpUpload = (
   remotePath: string,
   transferId: string,
   resume = true,
-) => invoke<void>("sftp_upload", { host, localPath, remotePath, transferId, resume });
+  allowOverwrite = false,
+) => invoke<void>("sftp_upload", { host, localPath, remotePath, transferId, resume, allowOverwrite });
 
 /** Recursively uploads a chosen local folder into the current remote folder. */
 export const sftpUploadDir = (
@@ -47,14 +52,15 @@ export const sftpUploadDir = (
   transferId: string,
   resume = true,
   conflictMode: "merge" | "replace" = "merge",
-) => invoke<void>("sftp_upload_dir", { host, localPath, remoteParent, transferId, resume, conflictMode });
+  allowOverwrite = false,
+) => invoke<void>("sftp_upload_dir", { host, localPath, remoteParent, transferId, resume, conflictMode, allowOverwrite });
 
 export const sftpCancelTransfer = (transferId: string) =>
   invoke<boolean>("sftp_transfer_cancel", { transferId });
 
 /** Copies a remote file or folder, including a folder's contents. */
-export const sftpCopy = (host: string, from: string, to: string) =>
-  invoke<void>("sftp_copy", { host, from, to });
+export const sftpCopy = (host: string, from: string, to: string, allowOverwrite = false) =>
+  invoke<void>("sftp_copy", { host, from, to, allowOverwrite });
 
 /** Removes a remote file or folder and all of that folder's contents. */
 export const sftpDeleteRecursive = (host: string, path: string) =>
@@ -63,8 +69,8 @@ export const sftpDeleteRecursive = (host: string, path: string) =>
 export const sftpMkdir = (host: string, path: string) =>
   invoke<void>("sftp_mkdir", { host, path });
 
-export const sftpRename = (host: string, from: string, to: string) =>
-  invoke<void>("sftp_rename", { host, from, to });
+export const sftpRename = (host: string, from: string, to: string, allowOverwrite = false) =>
+  invoke<void>("sftp_rename", { host, from, to, allowOverwrite });
 
 export const sftpDelete = (host: string, path: string, isDir?: boolean) =>
   invoke<void>(isDir ? "sftp_rmdir" : "sftp_delete", { host, path });

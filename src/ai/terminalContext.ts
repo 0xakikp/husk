@@ -18,6 +18,16 @@ export function getActiveTerminalPtyId(): number | null {
   return activePtyId;
 }
 
+// Resolve from the active session at click time, not the last global preexec
+// event (which may belong to a different terminal after changing tabs).
+let activeCommandReader: (() => string) | null = null;
+export function setActiveTerminalCommandReader(reader: (() => string) | null): void {
+  activeCommandReader = reader;
+}
+export function readActiveTerminalCommand(): string {
+  return activePtyId === null ? "" : activeCommandReader?.() ?? "";
+}
+
 export function setActiveTerminalReader(fn: (() => string) | null): void {
   reader = fn;
 }

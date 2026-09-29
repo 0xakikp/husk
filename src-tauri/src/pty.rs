@@ -186,5 +186,45 @@ pub fn pty_capture(
 
     // Convert bytes to string, best-effort
     let text = String::from_utf8_lossy(&output).to_string();
-    Ok(text)
+    Ok(strip_kubeconfig_metadata(&text))
+}
+
+/// Bridge captures are a separate reader from xterm. Private prompt metadata
+/// must not become copied file contents, captured output or AI context there.
+fn strip_kubeconfig_metadata(mut text: &str) -> String {
+    let mut public = String::with_capacity(text.len());
+    loop {
+        let next = ["\u{1b}]779;", "\u{9d}779;"]
+            .into_iter()
+            .filter_map(|prefix| text.find(prefix).map(|start| (start, prefix.len())))
+            .min_by_key(|(start, _)| *start);
+        let Some((start, prefix_len)) = next else {
+            public.push_str(text);
+            return public;
+        };
+        public.push_str(&text[..start]);
+        let private = &text[start + prefix_len..];
+        let end = ["\u{7}", "\u{9c}", "\u{1b}\\"]
+            .into_iter()
+            .filter_map(|marker| private.find(marker).map(|end| (end, marker.len())))
+            .min_by_key(|(end, _)| *end);
+        // Incomplete metadata is private too; never return its unterminated tail.
+        let Some((end, marker_len)) = end else { return public; };
+        text = &private[end + marker_len..];
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_kubeconfig_metadata;
+
+    #[test]
+    fn captures_exclude_private_kubeconfig_osc() {
+        assert_eq!(
+            strip_kubeconfig_metadata("before\u{1b}]779;husk;kubeconfig;1;value;/private/config\u{1b}\\after\u{1b}]133;B\u{1b}\\"),
+            "beforeafter\u{1b}]133;B\u{1b}\\"
+        );
+        assert_eq!(strip_kubeconfig_metadata("a\u{9d}779;private\u{9c}b\u{1b}]779;private\u{7}c"), "abc");
+        assert_eq!(strip_kubeconfig_metadata("visible\u{1b}]779;unfinished/private"), "visible");
+    }
 }

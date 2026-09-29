@@ -562,7 +562,7 @@ export function useLauncherItems(
         id: `k8s:${k.name}`,
         kind: "k8s",
         label: k.name,
-        hint: k.current ? "current" : undefined,
+        hint: k.current ? "App default · current" : "App default",
         group: "Kubernetes",
         run: () => ctx.switchK8sContext(k.name),
         secondary: { label: "open", run: () => ctx.openK8s() },

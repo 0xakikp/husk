@@ -1,10 +1,8 @@
-import { useEffect, useState } from "react";
-import {
-  describeJob,
-  type K8sJob,
-  type K8sPod,
-} from "./client";
-import { DetailPanelShell, DetailTabs, Section, KVGrid, YamlView, ResourceList } from "./K8sDetailCommon";
+import { useState } from "react";
+import { describeJob } from "./client";
+import { DetailPanelShell, DetailTabs, Section, KVGrid, Labels, YamlView, ResourceList, ConceptHelp } from "./K8sDetailCommon";
+import { useK8sDetail } from "./useK8sDetail";
+import { useK8sInspector } from "./K8sInspectorContext";
 
 export function JobDetailPanel({
   namespace,
@@ -15,29 +13,9 @@ export function JobDetailPanel({
   name: string;
   onClose: () => void;
 }) {
-  const [data, setData] = useState<{ job: K8sJob & { selector: Record<string, string> }; pods: K8sPod[]; yaml: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useK8sDetail(namespace, name, describeJob);
+  const { navigate } = useK8sInspector();
   const [tab, setTab] = useState("overview");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    describeJob(namespace, name)
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [namespace, name]);
 
   return (
     <DetailPanelShell title={name} subtitle={`${namespace} · Job`} onClose={onClose}>
@@ -66,15 +44,15 @@ export function JobDetailPanel({
         ) : tab === "yaml" ? (
           <YamlView yaml={data.yaml} />
         ) : tab === "pods" ? (
-          <Section title="Pods">
+          <Section title="Pods" className="k8s-card">
             <ResourceList
-              items={data.pods.map((p) => ({ label: p.name, sub: `${p.status} · ${p.ready}` }))}
+              items={data.pods.map((p) => ({ label: p.name, sub: `${p.status} · ${p.ready}`, onClick: () => navigate("pod", p.name, p.namespace) }))}
               empty="No pods found"
             />
           </Section>
         ) : (
-          <div className="flex flex-col gap-4">
-            <Section title="Info">
+          <div className="k8s-overview">
+            <Section title="Info" className="k8s-card">
               <KVGrid
                 rows={[
                   { label: "Namespace", value: data.job.namespace },
@@ -84,18 +62,9 @@ export function JobDetailPanel({
                 ]}
               />
             </Section>
-            <Section title="Selector">
-              <div className="flex flex-wrap gap-1">
-                {Object.entries(data.job.selector).length === 0 ? (
-                  <span className="text-[11px] text-muted-foreground">No selector</span>
-                ) : (
-                  Object.entries(data.job.selector).map(([k, v]) => (
-                    <span key={k} className="rounded-md border border-border/40 bg-muted/20 px-1.5 py-0.5 text-[10px] text-foreground">
-                      {k}: {v}
-                    </span>
-                  ))
-                )}
-              </div>
+            <Section title="Selector" className="k8s-card">
+              <ConceptHelp concept="selectors" />
+              {Object.keys(data.job.selector).length > 0 ? <Labels labels={data.job.selector} /> : <span className="text-[12px] text-muted-foreground">No selector</span>}
             </Section>
           </div>
         )}

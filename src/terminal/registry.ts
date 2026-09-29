@@ -17,6 +17,7 @@ import {
   setActiveTerminalExit,
   setTerminalTyping,
   setCurrentCommand,
+  setActiveTerminalCommandReader,
   clearCurrentCommand,
   recordCommandRun,
   publishTerminalCommandRun,
@@ -56,6 +57,7 @@ import { parseRemoteShellTarget } from "./remoteShell";
 import { ComparisonScopeTracker, captureComparisonOutput, clearRunComparisons, dismissRunComparison, recordComparisonRun } from "./runComparison";
 import { clearFixRuns, recordCompletedFixRun } from "./fixMemory";
 import type { IMarker } from "@xterm/xterm";
+import { KUBECONFIG_OSC, KubeconfigOutputFilter, TerminalKubeconfigCapture, type TerminalKubeconfigSnapshot } from "./kubeconfigCapture";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -121,6 +123,8 @@ type Session = {
   active: boolean;
   cwd: string;
   comparisonScope: ComparisonScopeTracker;
+  kubeconfigCapture: TerminalKubeconfigCapture;
+  kubeconfigOutputFilter: KubeconfigOutputFilter;
   initialCwd: string | undefined;
   callbacks: TerminalCallbacks;
   unlisteners: UnlistenFn[];
@@ -193,6 +197,14 @@ function queuePtyResize(session: Session, cols: number, rows: number): void {
   flushPtyResize(session);
 }
 
+function writeSessionInput(session: Session, data: string): void {
+  if (session.ptyId == null) return;
+  // Invalidate before crossing IPC, not only once the next command OSC arrives.
+  // This closes a selection race with app-run commands, pasted newlines or exit.
+  if (/[\r\n\x03\x04]/.test(data)) session.kubeconfigCapture.invalidate();
+  void invoke("pty_write", { id: session.ptyId, data });
+}
+
 /** Fit one attached xterm and preserve whether the user was following the
  * bottom. All fit entry points go through here so the visual grid and PTY do
  * not spend hundreds of milliseconds at different sizes. */
@@ -224,6 +236,22 @@ let activeLeafId: number | null = null;
 /** Read-only identity for actions that must bind to a verified terminal target. */
 export function getActiveTerminalLeafId(): number | null {
   return activeLeafId;
+}
+
+/** Explicit, read-only capture of the selected local terminal. Nothing here
+ * runs a command, changes the shell, reads credentials, or follows tab changes. */
+export function getActiveTerminalKubeconfigSnapshot(): TerminalKubeconfigSnapshot {
+  const session = activeLeafId === null ? undefined : sessions.get(activeLeafId);
+  if (!session || session.disposed || session.ptyOpening) return { available: false, reason: "Select an open local terminal first." };
+  return session.kubeconfigCapture.snapshot({
+    leafId: session.leafId,
+    ptyId: session.ptyId,
+    cwd: session.cwd,
+    generation: session.comparisonScope.getGeneration(),
+    remoteHost: session.comparisonScope.target(session.isRemoteShell),
+    active: session.active,
+    ready: getSessionHandle(session.leafId)?.getPromptReadiness() ?? { ready: false, reason: "Return to an empty shell prompt first." },
+  });
 }
 /* Output listeners deliberately live beside sessions rather than in React.
    A terminal's PTY survives tab switches, and a Logs drawer must be able to
@@ -358,6 +386,8 @@ export async function createSession(
     active: false,
     cwd: "",
     comparisonScope: new ComparisonScopeTracker(),
+    kubeconfigCapture: new TerminalKubeconfigCapture(),
+    kubeconfigOutputFilter: new KubeconfigOutputFilter(),
     initialCwd,
     callbacks: {},
     unlisteners: [],
@@ -415,11 +445,13 @@ export async function createSession(
       const buf = term.buffer.active;
       const pos = absolutePromptPosition(buf);
       session.promptPosition = pos;
+      session.kubeconfigCapture.completePrompt();
       if (session.active) setPromptPosition(pos);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.
     if (data.startsWith("D")) {
+      session.kubeconfigCapture.invalidate();
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
       const exitCode = Number.isNaN(code) ? null : code;
       if (session.active) setActiveTerminalExit(exitCode);
@@ -561,6 +593,7 @@ export async function createSession(
       if (session.active) setActiveRemoteTerminal({ isRemote: false });
     }
     if (data.startsWith("C")) {
+      session.kubeconfigCapture.invalidate();
       const b = term.buffer.active;
       session.cmdStartRow = b.baseY + b.cursorY;
       session.comparisonStart?.marker.dispose();
@@ -588,6 +621,7 @@ export async function createSession(
 
   term.parser.registerOscHandler(778, (data) => {
     if (!data.startsWith("husk;cmd;")) return true;
+    session.kubeconfigCapture.invalidate();
     const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";").trim();
     session.currentCommand = cmd;
     session.commandStartedAt = Date.now();
@@ -610,6 +644,11 @@ export async function createSession(
       session.remoteTarget = remoteTarget;
       if (session.active) setActiveRemoteTerminal({ isRemote: true, host: remoteTarget });
     }
+    return true;
+  });
+
+  term.parser.registerOscHandler(KUBECONFIG_OSC, (data) => {
+    session.kubeconfigCapture.observe(data, session.comparisonScope.getGeneration(), session.cwd);
     return true;
   });
 
@@ -662,7 +701,7 @@ export async function createSession(
     if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
       e.preventDefault();
       void readText().then((t) => {
-        if (t && session.ptyId != null) void invoke("pty_write", { id: session.ptyId, data: t });
+        if (t) writeSessionInput(session, t);
       });
       return false;
     }
@@ -715,13 +754,14 @@ export async function createSession(
         // Write to terminal immediately — xterm.js handles ANSI sequences
         // and progress bars correctly when fed in real-time
         term.write(text);
-        emitTerminalOutput(leafId, text);
+        const publicText = session.kubeconfigOutputFilter.consume(text);
+        if (publicText) emitTerminalOutput(leafId, publicText);
 
         /* Dev servers commonly keep the foreground command running forever,
            so waiting for OSC 133 D would never surface their local URL. Keep a
            small per-PTY sample and only recognise explicit local endpoints. */
         if (!session.isRemoteShell) {
-          session.liveOutputTail = `${session.liveOutputTail}${text}`.slice(-8_192);
+          session.liveOutputTail = `${session.liveOutputTail}${publicText}`.slice(-8_192);
           const command = session.currentCommand || (session.active ? getCurrentCommand() : "");
           recordPorts(session.leafId, {
             command,
@@ -732,7 +772,7 @@ export async function createSession(
         // Scan for husk commands in the incoming text (not buffered)
         // This is best-effort: husk commands typically emit on their own line
         let match: RegExpMatchArray | null;
-        const scanText = text;
+        const scanText = publicText;
         while ((match = scanText.match(HUSK_CMD_RE)) !== null) {
           const [, verb, rest] = match;
           const payload = `husk;${verb};${rest.trim()}`;
@@ -747,6 +787,7 @@ export async function createSession(
     );
     session.unlisteners.push(
       await listen(`pty://exit/${id}`, () => {
+        session.kubeconfigCapture.invalidate();
         term.write("\r\n\x1b[2m[process exited]\x1b[0m\r\n");
         emitTerminalOutput(leafId, "\n[process exited]\n");
       }),
@@ -757,7 +798,7 @@ export async function createSession(
     term.onData((data: string) => {
       const out = interceptTerminalInput(data);
       if (out === null) return;
-      void invoke("pty_write", { id, data: out });
+      writeSessionInput(session, out);
       /* Typing at the prompt again means the user has moved on — the failure
          strip collapses to its tiny indicator instead of holding a row. */
       collapseFailure(leafId);
@@ -936,6 +977,7 @@ export function setSessionActive(leafId: number, active: boolean): void {
   session.active = active;
 
   if (active) {
+    setActiveTerminalCommandReader(() => session.active && !session.disposed ? session.currentCommand : "");
     setActiveRemoteTerminal({ isRemote: session.isRemoteShell, ...(session.remoteTarget ? { host: session.remoteTarget } : {}) });
     setPromptPosition(session.promptPosition);
     setActiveTerminalPtyId(session.ptyId);
@@ -961,13 +1003,13 @@ export function setSessionActive(leafId: number, active: boolean): void {
          own in-progress input intact. */
       if (readPromptDraft(session)) return false;
       if (session.ptyId == null) return false;
-      void invoke("pty_write", { id: session.ptyId, data: `${cmd}\r` });
+      writeSessionInput(session, `${cmd}\r`);
       session.term.focus();
       return true;
     });
 
     setActiveTerminalTyper((text: string) => {
-      if (session.ptyId != null) void invoke("pty_write", { id: session.ptyId, data: text });
+      writeSessionInput(session, text);
       session.term.focus();
     });
 
@@ -989,7 +1031,7 @@ export function setSessionActive(leafId: number, active: boolean): void {
     });
 
     setAiPtyWriterInput((data: string) => {
-      if (session.ptyId != null) void invoke("pty_write", { id: session.ptyId, data });
+      writeSessionInput(session, data);
     });
 
     setFocusTerminalFn(() => session.term.focus());
@@ -1011,14 +1053,14 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
 
   return {
     write: (data: string) => {
-      if (session.ptyId != null) void invoke("pty_write", { id: session.ptyId, data });
+      writeSessionInput(session, data);
     },
     typeText: (text: string) => {
       // Type text character by character without sending newline (user must press Enter)
       if (session.ptyId != null) {
         // Strip any trailing newline/carriage return to prevent auto-execution
         const cleaned = text.replace(/[\r\n]+$/, "");
-        void invoke("pty_write", { id: session.ptyId, data: cleaned });
+        writeSessionInput(session, cleaned);
       }
     },
     focus: () => session.term.focus(),

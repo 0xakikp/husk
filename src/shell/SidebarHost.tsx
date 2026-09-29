@@ -8,6 +8,7 @@ import { lazyPanel } from "./lazy";
 import { SHEET_HOST_ID, SidebarSheetContext } from "../components/sheetHost";
 import type { Prefs } from "../settings/preferences";
 import type { K8sResourceSelection } from "../kubernetes/KubernetesView";
+import type { K8sBrowseRequest } from "../kubernetes/useK8sNavigation";
 import type { DockerResourceSelection } from "../docker/DockerDetailPanel";
 
 const SourceControlPanel = lazy(() => import("../git/SourceControlPanel").then((m) => ({ default: m.SourceControlPanel })));
@@ -49,6 +50,10 @@ export function SidebarHost({
   openTotp,
   openBrowser,
   setSelectedK8sResource,
+  selectedK8sResource = null,
+  lastK8sResource = null,
+  k8sBrowseRequest = null,
+  onK8sBrowseSelectionChange,
   setSelectedDockerResource,
   persistSidebarView,
   cycleSidebarView,
@@ -71,6 +76,10 @@ export function SidebarHost({
   openTotp: () => void;
   openBrowser: (url: string) => void;
   setSelectedK8sResource: (sel: K8sResourceSelection | null) => void;
+  selectedK8sResource?: K8sResourceSelection | null;
+  lastK8sResource?: K8sResourceSelection | null;
+  k8sBrowseRequest?: K8sBrowseRequest | null;
+  onK8sBrowseSelectionChange?: () => void;
   setSelectedDockerResource: (sel: DockerResourceSelection | null) => void;
   persistSidebarView: (view: SidebarViewId) => void;
   cycleSidebarView: (view: SidebarViewId) => void;
@@ -80,16 +89,13 @@ export function SidebarHost({
   sidebarMaxWidth: number;
   typeInActiveTerminal: (text: string) => boolean;
 }) {
-  /* Grows as you visit views and never shrinks, so returning to one is instant.
-     Seeded with the current view so the first render mounts exactly one. */
-  const [visited, setVisited] = useState<Set<SidebarViewId>>(() => new Set([sidebarView]));
+  /* Retain only views that have actually been opened. In particular, restoring
+     a closed sidebar must not start tools in its remembered view. */
+  const [visited, setVisited] = useState<Set<SidebarViewId>>(() => new Set(explorerOpen ? [sidebarView] : []));
   useEffect(() => {
+    if (!explorerOpen) return;
     setVisited((prev) => (prev.has(sidebarView) ? prev : new Set(prev).add(sidebarView)));
-  }, [sidebarView]);
-
-  /* Must come after the hooks above: an early return before them would change
-     the hook order between renders. */
-  if (!explorerOpen) return null;
+  }, [explorerOpen, sidebarView]);
 
   return (
     <>
@@ -108,6 +114,7 @@ export function SidebarHost({
           prefs.panelShadows && "panel-shadow",
         )}
         style={{
+          display: explorerOpen ? undefined : "none",
           width: explorerWidth,
           minWidth: sidebarMinWidth,
           maxWidth: sidebarMaxWidth,
@@ -118,7 +125,7 @@ export function SidebarHost({
             opens renders as a panel sheet rather than a centred dialog. */}
         <SidebarSheetContext.Provider value={true}>
         {/* Every visited view stays mounted and is hidden with display:none when
-            another is selected.
+            another is selected or the entire sidebar is collapsed.
 
             This was a single ternary, so only the active view existed — clicking
             Notes did not hide Kubernetes, it destroyed it. Coming back re-ran
@@ -147,11 +154,11 @@ export function SidebarHost({
               ) : id === "remotes" ? (
                 lazyPanel(<RemotesView inline onSftp={(h) => openSftp(h)} />, "Remotes")
               ) : id === "workflows" ? (
-                lazyPanel(<RunbooksDialog inline active={sidebarView === "workflows"} />, "Workflows")
+                lazyPanel(<RunbooksDialog inline active={explorerOpen && sidebarView === "workflows"} />, "Workflows")
               ) : id === "tools-hub" ? (
                 lazyPanel(
                   <ToolsHubView
-                    active={sidebarView === "tools-hub"}
+                    active={explorerOpen && sidebarView === "tools-hub"}
                     onSelectView={(v) => persistSidebarView(v)}
                     onTypeCommand={(cmd) => { void stageLocalToolCommandWithNotice(cmd); }}
                     onOpenTotp={openTotp}
@@ -164,7 +171,11 @@ export function SidebarHost({
                   <KubernetesView
                     inline
                     onBack={() => persistSidebarView("tools-hub")}
-                    onInspectResource={(sel) => setSelectedK8sResource(sel)}
+                    onInspectResource={setSelectedK8sResource}
+                    selectedResource={selectedK8sResource}
+                    lastResource={lastK8sResource}
+                    browseRequest={k8sBrowseRequest}
+                    onBrowseSelectionChange={onK8sBrowseSelectionChange}
                   />,
                   "Kubernetes",
                 )
@@ -175,7 +186,7 @@ export function SidebarHost({
                     onBack={() => persistSidebarView("tools-hub")}
                     /* The only view with a timer. Kept mounted it would poll
                        `docker ps` every 5s while you were reading Notes. */
-                    active={sidebarView === "docker"}
+                    active={explorerOpen && sidebarView === "docker"}
                     onInspectResource={(sel) => setSelectedDockerResource(sel)}
                   />,
                   "Docker",
@@ -207,7 +218,7 @@ export function SidebarHost({
         />
       </div>
       {/* Sidebar resize handle */}
-      <div
+      {explorerOpen && <div
         className={cn(
           /* The visible divider stays slim; the pseudo-element supplies a
              forgiving hit target so resizing does not require finding 1px. */
@@ -246,7 +257,7 @@ export function SidebarHost({
           window.addEventListener("mousemove", onMove);
           window.addEventListener("mouseup", onUp);
         }}
-      />
+      />}
     </>
   );
 }

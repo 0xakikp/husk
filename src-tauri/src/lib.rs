@@ -3,6 +3,7 @@ mod browser;
 mod config;
 mod fs;
 mod jobs;
+mod kubeconfig;
 mod mcp;
 mod port_forward;
 mod ports;
@@ -199,6 +200,8 @@ pub fn run() {
             mcp::mcp_recv,
             mcp::mcp_kill,
             shell::shell_run_command,
+            kubeconfig::kubernetes_resolve_config,
+            kubeconfig::kubernetes_run_command,
             shell::detect_binaries,
             ports::ports_list,
             ports::ports_stop,

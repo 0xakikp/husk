@@ -373,7 +373,7 @@ fn terminate_and_reap(child: &mut Child) -> io::Result<()> {
     child.wait().map(|_| ())
 }
 
-fn run_captured(mut command: Command, timeout: Duration) -> Result<ShellOutput, String> {
+pub(crate) fn run_captured(mut command: Command, timeout: Duration) -> Result<ShellOutput, String> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

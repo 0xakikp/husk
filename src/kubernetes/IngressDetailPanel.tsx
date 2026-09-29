@@ -1,9 +1,7 @@
-import { useEffect, useState } from "react";
-import {
-  describeIngress,
-  type K8sIngress,
-} from "./client";
-import { DetailPanelShell, DetailTabs, Section, KVGrid, YamlView } from "./K8sDetailCommon";
+import { useState } from "react";
+import { describeIngress } from "./client";
+import { DetailPanelShell, DetailTabs, Section, KVGrid, YamlView, RelationshipLinks } from "./K8sDetailCommon";
+import { useK8sDetail } from "./useK8sDetail";
 
 export function IngressDetailPanel({
   namespace,
@@ -14,29 +12,8 @@ export function IngressDetailPanel({
   name: string;
   onClose: () => void;
 }) {
-  const [data, setData] = useState<{ ingress: K8sIngress; yaml: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useK8sDetail(namespace, name, describeIngress);
   const [tab, setTab] = useState("overview");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    describeIngress(namespace, name)
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [namespace, name]);
 
   return (
     <DetailPanelShell title={name} subtitle={`${namespace} · Ingress`} onClose={onClose}>
@@ -64,8 +41,8 @@ export function IngressDetailPanel({
         ) : tab === "yaml" ? (
           <YamlView yaml={data.yaml} />
         ) : (
-          <div className="flex flex-col gap-4">
-            <Section title="Ingress Info">
+          <div className="k8s-stack">
+            <Section title="Ingress Info" className="k8s-card">
               <KVGrid
                 rows={[
                   { label: "Namespace", value: data.ingress.namespace },
@@ -76,20 +53,22 @@ export function IngressDetailPanel({
               />
             </Section>
             <Section title="Rules">
-              <div className="flex flex-col gap-2">
+              <div className="k8s-overview">
                 {data.ingress.rules.map((r, i) => (
-                  <div key={i} className="rounded-md border border-border/40 bg-muted/20 p-2.5">
-                    <div className="text-[11.5px] font-semibold text-foreground">{r.host || "*"}</div>
-                    <div className="flex flex-col gap-0.5">
+                  <div key={i} className="k8s-card k8s-stack">
+                    <div className="k8s-wrap text-[12px] font-semibold text-foreground">{r.host || "*"}</div>
+                    <div className="k8s-stack">
                       {r.paths.map((p, j) => (
-                        <div key={j} className="text-[11px] text-foreground">
-                          {p.path || "/"} → {p.service}:{p.port}
+                        <div key={j} className="k8s-wrap flex flex-col gap-1 text-[12px] text-foreground">
+                          <span>{p.path || "/"} → port {p.port}</span>
+                          <RelationshipLinks items={[{ kind: "service", name: p.service, namespace }]} />
                         </div>
                       ))}
                     </div>
                   </div>
                 ))}
               </div>
+              {data.ingress.rules.length === 0 && <p className="text-[12px] text-muted-foreground">No rules configured</p>}
             </Section>
           </div>
         )}

@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { shq, tokenizeCommand } from "../lib/shellQuote";
+import type { K8sConfigSource, K8sReadScope } from "./configSource";
+import { CONTROLLER_COLUMNS, parseControllerMetadata, type PodOwnership } from "./podOwnership";
 
 export type K8sPod = {
   namespace: string;
@@ -8,6 +10,7 @@ export type K8sPod = {
   status: string;
   restarts: string;
   age: string;
+  ownership?: PodOwnership;
 };
 
 export type K8sContainer = {
@@ -19,12 +22,24 @@ export type K8sContainer = {
   reason?: string;
   message?: string;
   startedAt?: string;
+  finishedAt?: string;
+  exitCode?: number;
+  signal?: number;
+  lastTermination?: {
+    reason?: string;
+    message?: string;
+    exitCode?: number;
+    signal?: number;
+    startedAt?: string;
+    finishedAt?: string;
+  };
   livenessProbe?: string;
   readinessProbe?: string;
   startupProbe?: string;
 };
 
 export type K8sPodDetail = {
+  uid?: string;
   namespace: string;
   name: string;
   createdAt: string;
@@ -37,11 +52,13 @@ export type K8sPodDetail = {
   serviceAccount: string;
   restartPolicy: string;
   phase: string;
-  conditions: { type: string; status: string }[];
+  conditions: { type: string; status: string; reason?: string; message?: string; lastTransitionTime?: string }[];
   ownerReferences: { kind: string; name: string }[];
   containers: K8sContainer[];
+  initContainers?: K8sContainer[];
   volumes: string[];
   events: K8sEvent[];
+  eventsError?: string;
   resources: K8sContainerResources[];
   nodeInfo?: K8sNodeInfo;
   usage?: K8sPodUsage;
@@ -73,6 +90,7 @@ export type K8sNodeInfo = {
   architecture: string;
   topCpu: string;
   topMem: string;
+  metricsError?: string;
   capacity: { cpu: string; memory: string; pods: string };
   allocatable: { cpu: string; memory: string; pods: string };
 };
@@ -83,6 +101,9 @@ export type K8sEvent = {
   reason: string;
   object: string;
   message: string;
+  firstSeen?: string;
+  lastTimestamp?: string;
+  count?: number;
 };
 
 export type K8sService = {
@@ -192,6 +213,51 @@ export type K8sResourceQuota = {
   limits: string;
 };
 
+export type K8sEndpointSlice = {
+  name: string;
+  addressType: string;
+  ports: { name?: string; port: number | null; protocol?: string }[];
+  endpoints: {
+    addresses: string[];
+    ready: boolean | null;
+    targetRef?: { kind: string; name: string; namespace?: string };
+  }[];
+};
+
+export type K8sWorkloadDetail = {
+  workload: {
+    kind: "replicaset" | "statefulset" | "daemonset";
+    name: string;
+    namespace: string;
+    desired: number;
+    current: number;
+    ready: number;
+    available: number;
+    updated: number;
+    selector: Record<string, string>;
+    selectorText: string;
+    ownerReferences: { kind: string; name: string }[];
+    conditions: { type: string; status: string; reason?: string; message?: string }[];
+    strategy: string;
+    serviceName: string;
+    age: string;
+  };
+  pods: K8sPod[];
+  podsError?: string;
+  yaml: string;
+};
+
+export type K8sServiceDetail = {
+  service: K8sService;
+  endpoints: string[];
+  endpointSlices: K8sEndpointSlice[];
+  endpointSlicesError?: string;
+  pods: K8sPod[];
+  podsError?: string;
+  selectorText: string;
+  yaml: string;
+};
+
 type ShellOutput = {
   stdout: string;
   stderr: string;
@@ -200,22 +266,74 @@ type ShellOutput = {
   truncated: boolean;
 };
 
-async function shell(cmd: string, timeoutSecs = 15): Promise<string> {
+async function shell(cmd: string, timeoutSecs = 15, config?: K8sConfigSource): Promise<string> {
   const tokens = tokenizeCommand(cmd);
   const [program, ...args] = tokens;
   if (!program) throw new Error("empty command");
-  const out = await invoke<ShellOutput>("shell_run_command", {
+  const out = config ? await invoke<ShellOutput>("kubernetes_run_command", {
+    args,
+    kubeconfigPaths: config.paths,
+    cwd: config.cwd,
+    timeoutSecs,
+  }) : await invoke<ShellOutput>("shell_run_command", {
     program,
     args,
     cwd: null,
     timeout_secs: timeoutSecs,
   });
+  if (out.timed_out) throw new Error(`kubectl timed out after ${timeoutSecs}s. Check cluster connectivity and try again.`);
   if (out.exit_code !== 0) throw new Error(out.stderr || `exit ${out.exit_code ?? "?"}`);
+  if (out.truncated) throw new Error("kubectl output exceeded the local size limit. Narrow the namespace or selection and try again.");
   return out.stdout;
+}
+
+/** Bind each read to the inspector's context, never the mutable kubectl default. */
+function clusterRead(scope?: K8sReadScope) {
+  const context = typeof scope === "object" ? scope.context : scope;
+  const config = typeof scope === "object" ? scope.config : undefined;
+  return (cmd: string, timeoutSecs = 15) => shell(
+    `${cmd}${context ? ` --context=${shq(context)}` : ""} --request-timeout=${timeoutSecs}s`,
+    timeoutSecs,
+    config,
+  );
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function nsFlag(namespace: string) {
   return namespace === "_all" ? "--all-namespaces" : `-n ${shq(namespace)}`;
+}
+
+type LabelSelector = {
+  matchLabels?: Record<string, string>;
+  matchExpressions?: { key: string; operator: string; values?: string[] }[];
+};
+
+/** Preserve Kubernetes selector semantics, including set-based expressions. */
+export function selectorToString(selector?: LabelSelector): string {
+  const terms = Object.entries(selector?.matchLabels || {}).map(([key, value]) => `${key}=${value}`);
+  for (const expression of selector?.matchExpressions || []) {
+    const { key, operator, values = [] } = expression;
+    if (operator === "In" || operator === "NotIn") {
+      if (!values.length) throw new Error(`Invalid ${operator} selector for ${key}: no values.`);
+      terms.push(`${key} ${operator === "In" ? "in" : "notin"} (${values.join(",")})`);
+    } else if (operator === "Exists") terms.push(key);
+    else if (operator === "DoesNotExist") terms.push(`!${key}`);
+    else throw new Error(`Unsupported label selector operator: ${operator}`);
+  }
+  return terms.join(",");
+}
+
+async function podsForSelector(namespace: string, selectorText: string, context?: K8sReadScope): Promise<{ pods: K8sPod[]; podsError?: string }> {
+  if (!selectorText) return { pods: [], podsError: "No label selector is available; associated Pods were not queried." };
+  try {
+    const output = await clusterRead(context)(`kubectl get pods ${nsFlag(namespace)} -l ${shq(selectorText)} --no-headers`, 10);
+    return { pods: output.trim().split("\n").filter(Boolean).map((line) => parsePodLine(namespace, line)) };
+  } catch (error) {
+    return { pods: [], podsError: errorText(error) };
+  }
 }
 
 /**
@@ -259,6 +377,10 @@ function parseContainerStatuses(containerSpec: any[], statuses: any[]): K8sConta
       reason: state.reason,
       message: state.message,
       startedAt: state.startedAt,
+      finishedAt: state.finishedAt,
+      exitCode: state.exitCode,
+      signal: state.signal,
+      lastTermination: cs.lastState?.terminated,
       livenessProbe: probeDesc(c.livenessProbe),
       readinessProbe: probeDesc(c.readinessProbe),
       startupProbe: probeDesc(c.startupProbe),
@@ -289,15 +411,18 @@ function parseResources(containerSpec: any[]): K8sContainerResources[] {
 /* ── Read-through cache for list calls ───────────────────────────────────────
    Every kubectl invocation is a process spawn plus an API round trip, so
    re-running one because the user flipped a tab and came back is pure latency.
-   A stale entry is served immediately and refreshed in the background; only a
-   cold miss waits. Concurrent misses for one key share a single call. */
+   Fresh entries are reused briefly. Expired entries wait for revalidation so
+   stale evidence and failed refreshes are never presented as current results.
+   Concurrent misses for one key share a single call. */
 
 type K8sCacheEntry = { at: number; data: unknown };
 const k8sCache = new Map<string, K8sCacheEntry>();
 const k8sInflight = new Map<string, Promise<unknown>>();
+let k8sCacheGeneration = 0;
 
 /** Called after any mutation (context switch, delete, scale) that invalidates reads. */
 export function invalidateK8sCache() {
+  k8sCacheGeneration += 1;
   k8sCache.clear();
   k8sInflight.clear();
 }
@@ -306,28 +431,27 @@ export async function k8sCached<T>(key: string, ttlMs: number, load: () => Promi
   const refresh = (): Promise<T> => {
     const existing = k8sInflight.get(key) as Promise<T> | undefined;
     if (existing) return existing;
+    const generation = k8sCacheGeneration;
     const p = load()
       .then((data) => {
-        k8sCache.set(key, { at: Date.now(), data });
+        if (generation === k8sCacheGeneration) k8sCache.set(key, { at: Date.now(), data });
         return data;
       })
       .finally(() => {
-        k8sInflight.delete(key);
+        if (k8sInflight.get(key) === p) k8sInflight.delete(key);
       });
     k8sInflight.set(key, p);
     return p;
   };
 
   const hit = k8sCache.get(key) as { at: number; data: T } | undefined;
-  if (hit) {
-    if (Date.now() - hit.at >= ttlMs) void refresh().catch(() => {});
-    return hit.data;
-  }
+  if (hit && Date.now() - hit.at < ttlMs) return hit.data;
   return refresh();
 }
 
-export async function listNamespaces(): Promise<string[]> {
-  const out = await shell("kubectl get namespaces --no-headers -o custom-columns=NAME:.metadata.name", 10).catch(() => "");
+export async function listNamespaces(context?: K8sReadScope): Promise<string[]> {
+  const shell = clusterRead(context);
+  const out = await shell("kubectl get namespaces --no-headers -o custom-columns=NAME:.metadata.name", 10);
   return out.trim().split("\n").filter(Boolean);
 }
 
@@ -340,12 +464,12 @@ export async function checkKubectl(): Promise<boolean> {
   }
 }
 
-export async function currentContext(): Promise<string> {
-  return (await shell("kubectl config current-context").catch(() => "")).trim();
+export async function currentContext(config?: K8sConfigSource): Promise<string> {
+  return (await shell("kubectl config current-context", 15, config).catch(() => "")).trim();
 }
 
-export async function listContexts(): Promise<string[]> {
-  const s = await shell("kubectl config get-contexts -o name").catch(() => "");
+export async function listContexts(config?: K8sConfigSource): Promise<string[]> {
+  const s = await shell("kubectl config get-contexts -o name", 15, config);
   return s.trim().split("\n").filter(Boolean);
 }
 
@@ -373,25 +497,71 @@ function parsePodLine(namespace: string, line: string): K8sPod {
   };
 }
 
-export async function listPods(namespace: string): Promise<K8sPod[]> {
+export async function listPods(namespace: string, context?: K8sReadScope): Promise<K8sPod[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get pods ${nsFlag(namespace)} --no-headers`, 8);
-  return s
+  const pods = s
     .trim()
     .split("\n")
     .filter(Boolean)
     .map((line) => parsePodLine(namespace, line));
+  if (!pods.length) return pods;
+
+  // One compact metadata read for the entire list; never spawn one read per Pod.
+  // Optional ownership evidence must not hide an otherwise readable Pod list.
+  try {
+    const metadata = parseControllerMetadata(await shell(`kubectl get pods ${nsFlag(namespace)} --no-headers -o ${shq(CONTROLLER_COLUMNS)}`, 8));
+    let replicaSets: ReturnType<typeof parseControllerMetadata> | undefined;
+    let replicaSetsError: string | undefined;
+    const needsReplicaSets = pods.some(pod => metadata.get(`${pod.namespace}/${pod.name}`)?.controller?.kind === "ReplicaSet");
+    if (needsReplicaSets) {
+      try {
+        replicaSets = parseControllerMetadata(await shell(`kubectl get replicasets.apps ${nsFlag(namespace)} --no-headers -o ${shq(CONTROLLER_COLUMNS)}`, 8));
+      } catch (error) { replicaSetsError = errorText(error); }
+    }
+    return pods.map(pod => {
+      const record = metadata.get(`${pod.namespace}/${pod.name}`);
+      let ownership: PodOwnership;
+      if (!record) ownership = { status: "unavailable", error: "This Pod was absent from the controller metadata snapshot. Refresh to check again." };
+      else if (!record.controller) ownership = { status: "none" };
+      else {
+        const owner = record.controller;
+        ownership = { status: "controlled", kind: owner.kind, name: owner.name };
+        if (owner.kind === "ReplicaSet") {
+          const replicaSet = replicaSets?.get(`${pod.namespace}/${owner.name}`);
+          // Name alone is insufficient: a deleted ReplicaSet may have been
+          // recreated with another UID. Never infer Deployment from a name.
+          if (replicaSet?.uid === owner.uid && replicaSet.controller?.kind === "Deployment") {
+            ownership = { status: "controlled", kind: "Deployment", name: replicaSet.controller.name, via: owner.name };
+          } else if (replicaSetsError) ownership.note = `Deployment lookup unavailable: ${replicaSetsError}`;
+          else if (!replicaSet || replicaSet.uid !== owner.uid) ownership.note = "The referenced ReplicaSet could not be verified in this snapshot.";
+        }
+      }
+      return { ...pod, ownership };
+    });
+  } catch (error) {
+    return pods.map(pod => ({ ...pod, ownership: { status: "unavailable", error: errorText(error) } }));
+  }
 }
 
-export async function describePod(namespace: string, name: string): Promise<K8sPodDetail> {
-  const [json, yaml, events] = await Promise.all([
+export async function describePod(namespace: string, name: string, context?: K8sReadScope): Promise<K8sPodDetail> {
+  const shell = clusterRead(context);
+  const [json, yaml] = await Promise.all([
     shell(`kubectl get pod -n ${shq(namespace)} ${shq(name)} -o json`, 15),
     shell(`kubectl get pod -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
-    getPodEvents(namespace, name),
   ]);
   const p = JSON.parse(json);
   const metadata = p.metadata || {};
   const spec = p.spec || {};
   const status = p.status || {};
+  let events: K8sEvent[] = [];
+  let eventsError: string | undefined;
+  try {
+    if (!metadata.uid) throw new Error("Pod UID unavailable; events cannot be tied to this Pod instance.");
+    events = await readPodEvents(namespace, name, metadata.uid, context);
+  } catch (error) {
+    eventsError = errorText(error);
+  }
   const ownerReferences = (metadata.ownerReferences || []).map((r: any) => ({
     kind: r.kind,
     name: r.name,
@@ -399,8 +569,12 @@ export async function describePod(namespace: string, name: string): Promise<K8sP
   const conditions = (status.conditions || []).map((c: any) => ({
     type: c.type,
     status: c.status,
+    reason: c.reason,
+    message: c.message,
+    lastTransitionTime: c.lastTransitionTime,
   }));
   return {
+    uid: metadata.uid,
     namespace: metadata.namespace || namespace,
     name: metadata.name || name,
     createdAt: metadata.creationTimestamp || "",
@@ -416,59 +590,76 @@ export async function describePod(namespace: string, name: string): Promise<K8sP
     conditions,
     ownerReferences,
     containers: parseContainerStatuses(spec.containers || [], status.containerStatuses || []),
+    initContainers: parseContainerStatuses(spec.initContainers || [], status.initContainerStatuses || []),
     volumes: (spec.volumes || []).map((v: any) => v.name),
     events,
-    resources: parseResources(spec.containers || []),
+    eventsError,
+    resources: parseResources([...(spec.initContainers || []), ...(spec.containers || [])]),
     yaml,
   };
 }
 
-export async function getPodEvents(namespace: string, name: string): Promise<K8sEvent[]> {
-  const out = await shell(
-    `kubectl get events -n ${shq(namespace)} --field-selector involvedObject.name=${shq(name)} --no-headers -o custom-columns=LAST:.lastTimestamp,TYPE:.type,REASON:.reason,OBJ:.involvedObject.kind,MSG:.message`,
-    15,
-  );
-  return out
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split(/\s+/);
-      return {
-        lastSeen: parts[0] || "",
-        type: parts[1] || "",
-        reason: parts[2] || "",
-        object: parts[3] || "",
-        message: parts.slice(4).join(" ") || "",
-      };
-    });
+export async function getPodEvents(namespace: string, name: string, context?: K8sReadScope): Promise<K8sEvent[]> {
+  const json = await clusterRead(context)(`kubectl get pod -n ${shq(namespace)} ${shq(name)} -o json`, 10);
+  const uid = JSON.parse(json).metadata?.uid;
+  if (!uid) throw new Error("Pod UID unavailable; events cannot be tied to this Pod instance.");
+  return readPodEvents(namespace, name, uid, context);
 }
 
-export async function getPodLogs(namespace: string, name: string, container?: string, tail = 200): Promise<string> {
+async function readPodEvents(namespace: string, name: string, uid: string, context?: K8sReadScope): Promise<K8sEvent[]> {
+  const shell = clusterRead(context);
+  const out = await shell(
+    `kubectl get events -n ${shq(namespace)} --field-selector ${shq(`involvedObject.uid=${uid},involvedObject.kind=Pod`)} -o json`,
+    15,
+  );
+  return (JSON.parse(out).items || [])
+    .filter((event: any) => event.involvedObject?.uid === uid)
+    .map((event: any) => {
+      const lastTimestamp = event.series?.lastObservedTime || event.lastTimestamp || event.eventTime || event.metadata?.creationTimestamp || "";
+      return {
+        lastSeen: lastTimestamp,
+        lastTimestamp,
+        firstSeen: event.firstTimestamp || event.eventTime || event.metadata?.creationTimestamp || "",
+        count: event.series?.count ?? event.count ?? 1,
+        type: event.type || "",
+        reason: event.reason || "",
+        object: `${event.involvedObject?.kind || "Pod"}/${event.involvedObject?.name || name}`,
+        message: event.message || "",
+      };
+    }).sort((a: K8sEvent, b: K8sEvent) => a.lastSeen.localeCompare(b.lastSeen));
+}
+
+export async function getPodLogs(namespace: string, name: string, container?: string, tail = 200, options: { previous?: boolean; timestamps?: boolean; context?: K8sReadScope } = {}): Promise<string> {
+  const shell = clusterRead(options.context);
   const containerFlag = container ? ` -c ${shq(container)}` : "";
+  const boundedTail = Number.isFinite(tail) ? Math.max(1, Math.min(5000, Math.floor(tail))) : 200;
   return shell(
-    `kubectl logs -n ${shq(namespace)} ${shq(name)}${containerFlag} --tail=${tail}`,
+    `kubectl logs -n ${shq(namespace)} ${shq(name)}${containerFlag} --tail=${boundedTail}${options.previous ? " --previous=true" : ""}${options.timestamps ? " --timestamps=true" : ""}`,
     20,
   );
 }
 
-export async function getPodUsage(namespace: string, name: string): Promise<K8sPodUsage | null> {
+export async function getPodUsage(namespace: string, name: string, context?: K8sReadScope): Promise<K8sPodUsage | null> {
+  const shell = clusterRead(context);
   const out = await shell(
     `kubectl top pod -n ${shq(namespace)} ${shq(name)} --no-headers`,
     10,
-  ).catch(() => "");
+  );
   if (!out.trim()) return null;
   const parts = out.trim().split(/\s+/);
   return { cpu: parts[1] || "-", memory: parts[2] || "-" };
 }
 
-export async function getNodeInfo(name: string): Promise<K8sNodeInfo> {
+export async function getNodeInfo(name: string, context?: K8sReadScope): Promise<K8sNodeInfo> {
+  const shell = clusterRead(context);
+  let metricsError: string | undefined;
   const [json, statusOut] = await Promise.all([
     shell(`kubectl get node ${shq(name)} -o json`, 15),
-    shell(`kubectl top node ${shq(name)} --no-headers`, 10).catch(() => ""),
+    shell(`kubectl top node ${shq(name)} --no-headers`, 10).catch((error) => { metricsError = errorText(error); return ""; }),
   ]);
   const n = JSON.parse(json);
-  const status = n.status?.conditions?.find((c: any) => c.type === "Ready")?.status === "True" ? "Ready" : "NotReady";
+  const ready = n.status?.conditions?.find((c: any) => c.type === "Ready")?.status;
+  const status = ready === "True" ? "Ready" : ready === "False" ? "NotReady" : "Unknown";
   const addresses = (n.status?.addresses || []) as { type: string; address: string }[];
   const internalIp = addresses.find((a) => a.type === "InternalIP")?.address || "";
   const externalIp = addresses.find((a) => a.type === "ExternalIP")?.address || "";
@@ -490,6 +681,7 @@ export async function getNodeInfo(name: string): Promise<K8sNodeInfo> {
     architecture: n.status?.nodeInfo?.architecture || "",
     topCpu,
     topMem,
+    metricsError,
     capacity: {
       cpu: n.status?.capacity?.cpu || "",
       memory: n.status?.capacity?.memory || "",
@@ -503,13 +695,14 @@ export async function getNodeInfo(name: string): Promise<K8sNodeInfo> {
   };
 }
 
-export async function getServicesForPod(namespace: string, podLabels: Record<string, string>): Promise<K8sService[]> {
+export async function getServicesForPod(namespace: string, podLabels: Record<string, string>, context?: K8sReadScope): Promise<K8sService[]> {
+  const shell = clusterRead(context);
   const json = await shell(`kubectl get services -n ${shq(namespace)} -o json`, 15);
   const services = JSON.parse(json).items || [];
   return services
     .filter((svc: any) => {
       const selector = svc.spec?.selector || {};
-      return Object.entries(selector).every(([k, v]) => podLabels[k] === v);
+      return Object.keys(selector).length > 0 && Object.entries(selector).every(([k, v]) => podLabels[k] === v);
     })
     .map((svc: any) => ({
       name: svc.metadata?.name || "",
@@ -523,7 +716,8 @@ export async function getServicesForPod(namespace: string, podLabels: Record<str
     }));
 }
 
-export async function listServices(namespace: string): Promise<K8sService[]> {
+export async function listServices(namespace: string, context?: K8sReadScope): Promise<K8sService[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get services ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -544,15 +738,35 @@ export async function listServices(namespace: string): Promise<K8sService[]> {
     });
 }
 
-export async function describeService(namespace: string, name: string): Promise<{ service: K8sService; endpoints: string[]; yaml: string }> {
-  const [json, epOut, yaml] = await Promise.all([
+export async function describeService(namespace: string, name: string, context?: K8sReadScope): Promise<K8sServiceDetail> {
+  const shell = clusterRead(context);
+  const [json, yaml] = await Promise.all([
     shell(`kubectl get service -n ${shq(namespace)} ${shq(name)} -o json`, 15),
-    shell(`kubectl get endpoints -n ${shq(namespace)} ${shq(name)} -o json`, 10).catch(() => "{}"),
     shell(`kubectl get service -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
   ]);
   const svc = JSON.parse(json);
-  const ep = JSON.parse(epOut);
-  const endpoints = (ep.subsets || []).flatMap((sub: any) => (sub.addresses || []).map((a: any) => `${a.ip}:${(sub.ports || []).map((p: any) => p.port).join(",")}`));
+  const selectorText = selectorToString({ matchLabels: svc.spec?.selector });
+  let endpointSlices: K8sEndpointSlice[] = [];
+  let endpointSlicesError: string | undefined;
+  const [association] = await Promise.all([
+    selectorText ? podsForSelector(namespace, selectorText, context) : Promise.resolve({ pods: [] as K8sPod[] }),
+    shell(`kubectl get endpointslices.discovery.k8s.io -n ${shq(namespace)} -l ${shq(`kubernetes.io/service-name=${name}`)} -o json`, 10)
+      .then((output) => {
+        endpointSlices = (JSON.parse(output).items || []).map((slice: any) => ({
+          name: slice.metadata?.name || "",
+          addressType: slice.addressType || "",
+          ports: (slice.ports || []).map((port: any) => ({ name: port.name, port: port.port ?? null, protocol: port.protocol })),
+          endpoints: (slice.endpoints || []).map((endpoint: any) => ({
+            addresses: endpoint.addresses || [],
+            ready: endpoint.conditions?.ready ?? null,
+            targetRef: endpoint.targetRef ? { kind: endpoint.targetRef.kind, name: endpoint.targetRef.name, namespace: endpoint.targetRef.namespace } : undefined,
+          })),
+        }));
+      }).catch((error) => { endpointSlicesError = errorText(error); }),
+  ]);
+  const endpoints = endpointSlices.flatMap((slice) => slice.endpoints
+    .filter((endpoint) => endpoint.ready !== false)
+    .flatMap((endpoint) => endpoint.addresses.map((address) => `${address}:${slice.ports.map((port) => port.port ?? "?").join(",")}`)));
   return {
     service: {
       name: svc.metadata?.name || name,
@@ -565,11 +779,16 @@ export async function describeService(namespace: string, name: string): Promise<
       age: svc.metadata?.creationTimestamp ? podAgeFromDate(svc.metadata.creationTimestamp) : "",
     },
     endpoints,
+    endpointSlices,
+    endpointSlicesError,
+    ...association,
+    selectorText,
     yaml,
   };
 }
 
-export async function listIngresses(namespace: string): Promise<K8sIngress[]> {
+export async function listIngresses(namespace: string, context?: K8sReadScope): Promise<K8sIngress[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get ingress ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -588,7 +807,8 @@ export async function listIngresses(namespace: string): Promise<K8sIngress[]> {
     });
 }
 
-export async function describeIngress(namespace: string, name: string): Promise<{ ingress: K8sIngress; yaml: string }> {
+export async function describeIngress(namespace: string, name: string, context?: K8sReadScope): Promise<{ ingress: K8sIngress; yaml: string }> {
+  const shell = clusterRead(context);
   const [json, yaml] = await Promise.all([
     shell(`kubectl get ingress -n ${shq(namespace)} ${shq(name)} -o json`, 15),
     shell(`kubectl get ingress -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
@@ -615,7 +835,8 @@ export async function describeIngress(namespace: string, name: string): Promise<
   };
 }
 
-export async function listDeployments(namespace: string): Promise<K8sDeployment[]> {
+export async function listDeployments(namespace: string, context?: K8sReadScope): Promise<K8sDeployment[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get deployments ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -630,27 +851,48 @@ export async function listDeployments(namespace: string): Promise<K8sDeployment[
         upToDate: p[3] ?? "",
         available: p[4] ?? "",
         age: p[5] ?? "",
-        desired: parseInt(p[6] || "0", 10) || 0,
-        current: parseInt(p[7] || "0", 10) || 0,
+        desired: parseInt((p[2] || "0/0").split("/")[1], 10) || 0,
+        current: parseInt(p[3] || "0", 10) || 0,
         strategy: "",
         selector: {},
       };
     });
 }
 
-export async function describeDeployment(namespace: string, name: string): Promise<{ deployment: K8sDeployment & { strategy: string; selector: Record<string, string> }; pods: K8sPod[]; yaml: string }> {
-  const [json, podOut, yaml] = await Promise.all([
+export async function describeDeployment(namespace: string, name: string, context?: K8sReadScope): Promise<{
+  deployment: K8sDeployment & { selectorText: string };
+  pods: K8sPod[];
+  podsError?: string;
+  replicaSets: K8sReplicaSet[];
+  replicaSetsError?: string;
+  yaml: string;
+}> {
+  const shell = clusterRead(context);
+  const [json, yaml] = await Promise.all([
     shell(`kubectl get deployment -n ${shq(namespace)} ${shq(name)} -o json`, 15),
-    shell(`kubectl get pods ${nsFlag(namespace)} -l app=${shq(name)} --no-headers`, 10).catch(() => ""),
     shell(`kubectl get deployment -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
   ]);
   const d = JSON.parse(json);
   const selector = d.spec?.selector?.matchLabels || {};
-  const pods = podOut
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => parsePodLine(namespace, line));
+  const selectorText = selectorToString(d.spec?.selector);
+  let replicaSets: K8sReplicaSet[] = [];
+  let replicaSetsError: string | undefined;
+  const [association] = await Promise.all([
+    podsForSelector(namespace, selectorText, context),
+    (async () => {
+      try {
+        if (!selectorText || !d.metadata?.uid) throw new Error("Deployment selector or UID unavailable; ReplicaSet ownership cannot be verified.");
+        const output = await shell(`kubectl get replicasets -n ${shq(namespace)} -l ${shq(selectorText)} -o json`, 10);
+        replicaSets = (JSON.parse(output).items || [])
+          .filter((rs: any) => (rs.metadata?.ownerReferences || []).some((owner: any) => owner.uid === d.metadata.uid && owner.kind === "Deployment"))
+          .map((rs: any) => ({
+            name: rs.metadata?.name || "", namespace: rs.metadata?.namespace || namespace,
+            desired: rs.spec?.replicas ?? 0, current: rs.status?.replicas ?? 0, ready: rs.status?.readyReplicas ?? 0,
+            owner: name, age: rs.metadata?.creationTimestamp ? podAgeFromDate(rs.metadata.creationTimestamp) : "",
+          }));
+      } catch (error) { replicaSetsError = errorText(error); }
+    })(),
+  ]);
   return {
     deployment: {
       name: d.metadata?.name || name,
@@ -663,13 +905,17 @@ export async function describeDeployment(namespace: string, name: string): Promi
       current: d.status?.replicas || 0,
       strategy: d.spec?.strategy?.type || "RollingUpdate",
       selector,
+      selectorText,
     },
-    pods,
+    ...association,
+    replicaSets,
+    replicaSetsError,
     yaml,
   };
 }
 
-export async function listReplicaSets(namespace: string): Promise<K8sReplicaSet[]> {
+export async function listReplicaSets(namespace: string, context?: K8sReadScope): Promise<K8sReplicaSet[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get replicasets ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -681,7 +927,8 @@ export async function listReplicaSets(namespace: string): Promise<K8sReplicaSet[
     });
 }
 
-export async function listStatefulSets(namespace: string): Promise<K8sStatefulSet[]> {
+export async function listStatefulSets(namespace: string, context?: K8sReadScope): Promise<K8sStatefulSet[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get statefulsets ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -689,11 +936,12 @@ export async function listStatefulSets(namespace: string): Promise<K8sStatefulSe
     .filter(Boolean)
     .map((line) => {
       const p = nsCols(namespace, line);
-      return { namespace: p[0] ?? "", name: p[1] ?? "", ready: p[2] ?? "", age: p[3] ?? "", replicas: parseInt(p[4] || "0", 10), serviceName: "" };
+      return { namespace: p[0] ?? "", name: p[1] ?? "", ready: p[2] ?? "", age: p[3] ?? "", replicas: parseInt((p[2] || "0/0").split("/")[1], 10) || 0, serviceName: "" };
     });
 }
 
-export async function listDaemonSets(namespace: string): Promise<K8sDaemonSet[]> {
+export async function listDaemonSets(namespace: string, context?: K8sReadScope): Promise<K8sDaemonSet[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get daemonsets ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -705,7 +953,38 @@ export async function listDaemonSets(namespace: string): Promise<K8sDaemonSet[]>
     });
 }
 
-export async function listJobs(namespace: string): Promise<K8sJob[]> {
+export async function describeWorkload(kind: "replicaset" | "statefulset" | "daemonset", namespace: string, name: string, context?: K8sReadScope): Promise<K8sWorkloadDetail> {
+  const shell = clusterRead(context);
+  const [json, yaml] = await Promise.all([
+    shell(`kubectl get ${kind} -n ${shq(namespace)} ${shq(name)} -o json`, 15),
+    shell(`kubectl get ${kind} -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
+  ]);
+  const resource = JSON.parse(json);
+  const spec = resource.spec || {};
+  const status = resource.status || {};
+  const daemon = kind === "daemonset";
+  const selectorText = selectorToString(spec.selector);
+  return {
+    workload: {
+      kind, name: resource.metadata?.name || name, namespace: resource.metadata?.namespace || namespace,
+      desired: daemon ? (status.desiredNumberScheduled ?? 0) : (spec.replicas ?? 0),
+      current: daemon ? (status.currentNumberScheduled ?? 0) : (status.replicas ?? 0),
+      ready: daemon ? (status.numberReady ?? 0) : (status.readyReplicas ?? 0),
+      available: daemon ? (status.numberAvailable ?? 0) : (status.availableReplicas ?? status.readyReplicas ?? 0),
+      updated: daemon ? (status.updatedNumberScheduled ?? 0) : (status.updatedReplicas ?? status.replicas ?? 0),
+      selector: spec.selector?.matchLabels || {}, selectorText,
+      ownerReferences: (resource.metadata?.ownerReferences || []).map((owner: any) => ({ kind: owner.kind, name: owner.name })),
+      conditions: (status.conditions || []).map((condition: any) => ({ type: condition.type, status: condition.status, reason: condition.reason, message: condition.message })),
+      strategy: spec.updateStrategy?.type || "", serviceName: spec.serviceName || "",
+      age: resource.metadata?.creationTimestamp ? podAgeFromDate(resource.metadata.creationTimestamp) : "",
+    },
+    ...await podsForSelector(namespace, selectorText, context),
+    yaml,
+  };
+}
+
+export async function listJobs(namespace: string, context?: K8sReadScope): Promise<K8sJob[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get jobs ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -717,23 +996,15 @@ export async function listJobs(namespace: string): Promise<K8sJob[]> {
     });
 }
 
-export async function describeJob(namespace: string, name: string): Promise<{ job: K8sJob & { selector: Record<string, string> }; pods: K8sPod[]; yaml: string }> {
-  const [json, podOut, yaml] = await Promise.all([
+export async function describeJob(namespace: string, name: string, context?: K8sReadScope): Promise<{ job: K8sJob & { selector: Record<string, string> }; pods: K8sPod[]; podsError?: string; yaml: string }> {
+  const shell = clusterRead(context);
+  const [json, yaml] = await Promise.all([
     shell(`kubectl get job -n ${shq(namespace)} ${shq(name)} -o json`, 15),
-    // No shell pipe here: shell() tokenises into program + args, so "| grep x"
-    // reached kubectl as literal arguments, always errored, and the catch
-    // silently produced an empty pod list. Filter client-side instead.
-    shell(`kubectl get pods ${nsFlag(namespace)} --no-headers`, 10).catch(() => ""),
     shell(`kubectl get job -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
   ]);
   const j = JSON.parse(json);
   const selector = j.spec?.selector?.matchLabels || {};
-  const pods = podOut
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => parsePodLine(namespace, line))
-    .filter((pod) => pod.name.includes(name));
+  const association = await podsForSelector(namespace, selectorToString(j.spec?.selector), context);
   return {
     job: {
       name: j.metadata?.name || name,
@@ -741,15 +1012,17 @@ export async function describeJob(namespace: string, name: string): Promise<{ jo
       completions: `${j.status?.succeeded || 0}/${j.spec?.completions || "?"}`,
       duration: "",
       age: j.metadata?.creationTimestamp ? podAgeFromDate(j.metadata.creationTimestamp) : "",
-      status: j.status?.succeeded === j.spec?.completions ? "Complete" : "Running",
+      status: (j.status?.conditions || []).some((condition: any) => condition.type === "Failed" && condition.status === "True") ? "Failed"
+        : (j.status?.conditions || []).some((condition: any) => condition.type === "Complete" && condition.status === "True") ? "Complete" : "Running",
       selector,
     },
-    pods,
+    ...association,
     yaml,
   };
 }
 
-export async function listConfigMaps(namespace: string): Promise<K8sConfigMap[]> {
+export async function listConfigMaps(namespace: string, context?: K8sReadScope): Promise<K8sConfigMap[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get configmaps ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -761,7 +1034,8 @@ export async function listConfigMaps(namespace: string): Promise<K8sConfigMap[]>
     });
 }
 
-export async function describeConfigMap(namespace: string, name: string): Promise<{ configMap: K8sConfigMap; data: Record<string, string>; yaml: string }> {
+export async function describeConfigMap(namespace: string, name: string, context?: K8sReadScope): Promise<{ configMap: K8sConfigMap; data: Record<string, string>; yaml: string }> {
+  const shell = clusterRead(context);
   const [json, yaml] = await Promise.all([
     shell(`kubectl get configmap -n ${shq(namespace)} ${shq(name)} -o json`, 15),
     shell(`kubectl get configmap -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
@@ -780,7 +1054,8 @@ export async function describeConfigMap(namespace: string, name: string): Promis
   };
 }
 
-export async function listSecrets(namespace: string): Promise<K8sSecret[]> {
+export async function listSecrets(namespace: string, context?: K8sReadScope): Promise<K8sSecret[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get secrets ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -792,13 +1067,20 @@ export async function listSecrets(namespace: string): Promise<K8sSecret[]> {
     });
 }
 
-export async function describeSecret(namespace: string, name: string): Promise<{ secret: K8sSecret; keys: string[]; yaml: string }> {
-  const [json, yaml] = await Promise.all([
-    shell(`kubectl get secret -n ${shq(namespace)} ${shq(name)} -o json`, 15),
-    shell(`kubectl get secret -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
-  ]);
+export async function describeSecret(namespace: string, name: string, context?: K8sReadScope): Promise<{ secret: K8sSecret; keys: string[]; yaml: string }> {
+  const shell = clusterRead(context);
+  const json = await shell(`kubectl get secret -n ${shq(namespace)} ${shq(name)} -o json`, 15);
   const s = JSON.parse(json);
-  const keys = Object.keys(s.data || {});
+  const keys = [...new Set([...Object.keys(s.data || {}), ...Object.keys(s.stringData || {})])];
+  // Build an allowlisted projection rather than redacting known keys in-place:
+  // last-applied annotations and arbitrary fields can contain a second copy of values.
+  // JSON is a YAML subset and avoids needing to parse/re-emit raw Secret YAML.
+  const yaml = "# Redacted Secret. Values, annotations and other metadata are hidden.\n" + JSON.stringify({
+    apiVersion: s.apiVersion || "v1", kind: "Secret",
+    metadata: { name: s.metadata?.name || name, namespace: s.metadata?.namespace || namespace },
+    type: s.type || "Opaque",
+    data: Object.fromEntries(keys.map((key) => [key, "[REDACTED]"])),
+  }, null, 2);
   return {
     secret: {
       name: s.metadata?.name || name,
@@ -812,7 +1094,13 @@ export async function describeSecret(namespace: string, name: string): Promise<{
   };
 }
 
-export async function listPersistentVolumeClaims(namespace: string): Promise<K8sPersistentVolumeClaim[]> {
+/** Fetch raw values only after explicit reveal in the Secret inspector. Never cached. */
+export async function getSecretYaml(namespace: string, name: string, context?: K8sReadScope): Promise<string> {
+  return clusterRead(context)(`kubectl get secret -n ${shq(namespace)} ${shq(name)} -o yaml`, 15);
+}
+
+export async function listPersistentVolumeClaims(namespace: string, context?: K8sReadScope): Promise<K8sPersistentVolumeClaim[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get pvc ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -824,7 +1112,8 @@ export async function listPersistentVolumeClaims(namespace: string): Promise<K8s
     });
 }
 
-export async function describePersistentVolumeClaim(namespace: string, name: string): Promise<{ pvc: K8sPersistentVolumeClaim; yaml: string }> {
+export async function describePersistentVolumeClaim(namespace: string, name: string, context?: K8sReadScope): Promise<{ pvc: K8sPersistentVolumeClaim; yaml: string }> {
+  const shell = clusterRead(context);
   const [json, yaml] = await Promise.all([
     shell(`kubectl get pvc -n ${shq(namespace)} ${shq(name)} -o json`, 15),
     shell(`kubectl get pvc -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
@@ -845,7 +1134,8 @@ export async function describePersistentVolumeClaim(namespace: string, name: str
   };
 }
 
-export async function listResourceQuotas(namespace: string): Promise<K8sResourceQuota[]> {
+export async function listResourceQuotas(namespace: string, context?: K8sReadScope): Promise<K8sResourceQuota[]> {
+  const shell = clusterRead(context);
   const s = await shell(`kubectl get resourcequota ${nsFlag(namespace)} --no-headers`, 10);
   return s
     .trim()
@@ -857,7 +1147,8 @@ export async function listResourceQuotas(namespace: string): Promise<K8sResource
     });
 }
 
-export async function describeResourceQuota(namespace: string, name: string): Promise<{ quota: K8sResourceQuota; hard: Record<string, string>; used: Record<string, string>; yaml: string }> {
+export async function describeResourceQuota(namespace: string, name: string, context?: K8sReadScope): Promise<{ quota: K8sResourceQuota; hard: Record<string, string>; used: Record<string, string>; yaml: string }> {
+  const shell = clusterRead(context);
   const [json, yaml] = await Promise.all([
     shell(`kubectl get resourcequota -n ${shq(namespace)} ${shq(name)} -o json`, 15),
     shell(`kubectl get resourcequota -n ${shq(namespace)} ${shq(name)} -o yaml`, 15),
@@ -888,6 +1179,8 @@ function podAgeFromDate(iso: string): string {
   return `${minutes}m`;
 }
 
-export async function getResourceYaml(namespace: string, kind: string, name: string): Promise<string> {
-  return shell(`kubectl get ${kind} -n ${shq(namespace)} ${shq(name)} -o yaml`, 15);
+export async function getResourceYaml(namespace: string, kind: string, name: string, context?: K8sReadScope): Promise<string> {
+  if (/^secrets?(?:\.v1)?$/i.test(kind)) return (await describeSecret(namespace, name, context)).yaml;
+  if (!/^[a-z][a-z0-9.-]*$/i.test(kind)) throw new Error("Invalid resource kind.");
+  return clusterRead(context)(`kubectl get ${shq(kind)} -n ${shq(namespace)} ${shq(name)} -o yaml`, 15);
 }

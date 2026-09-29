@@ -7,13 +7,11 @@ import { lazyPanel } from "./lazy";
 import type { Command } from "../command-palette/CommandPalette";
 import type { OpenFile } from "../editor/EditorArea";
 import type { TerminalTabsApi } from "../useTerminalTabs";
-import type { K8sResourceSelection } from "../kubernetes/KubernetesView";
 import type { ActiveTab } from "./types";
 
 const TotpDialog = lazy(() => import("../totp/TotpDialog").then((m) => ({ default: m.TotpDialog })));
 const JobsDialog = lazy(() => import("../jobs/JobsDialog").then((m) => ({ default: m.JobsDialog })));
 const DockerView = lazy(() => import("../docker/DockerView").then((m) => ({ default: m.DockerView })));
-const KubernetesView = lazy(() => import("../kubernetes/KubernetesView").then((m) => ({ default: m.KubernetesView })));
 const GithubIssuesDialog = lazy(() => import("../github-issues/GithubIssuesDialog").then((m) => ({ default: m.GithubIssuesDialog })));
 const ToolsHubDialog = lazy(() => import("../tools-hub/ToolsHubDialog").then((m) => ({ default: m.ToolsHubDialog })));
 const DiffDialog = lazy(() => import("../diff/DiffDialog").then((m) => ({ default: m.DiffDialog })));
@@ -55,8 +53,6 @@ export function DialogHost({
   setExplainCtx,
   dockerOpen,
   setDockerOpen,
-  k8sOpen,
-  setK8sOpen,
   githubOpen,
   setGithubOpen,
   toolsOpen,
@@ -82,7 +78,6 @@ export function DialogHost({
   openFiles,
   active,
   settingsOpen,
-  onInspectK8sResource,
   selectTerm,
   selectFile,
   openSettings,
@@ -108,8 +103,6 @@ export function DialogHost({
   setExplainCtx: Setter<ExplainCtx | null>;
   dockerOpen: boolean;
   setDockerOpen: Setter<boolean>;
-  k8sOpen: boolean;
-  setK8sOpen: Setter<boolean>;
   githubOpen: boolean;
   setGithubOpen: Setter<boolean>;
   toolsOpen: boolean;
@@ -135,7 +128,6 @@ export function DialogHost({
   openFiles: OpenFile[];
   active: ActiveTab;
   settingsOpen: boolean;
-  onInspectK8sResource: (sel: K8sResourceSelection | null) => void;
   selectTerm: (id: number) => void;
   selectFile: (path: string) => void;
   openSettings: () => void;
@@ -173,9 +165,6 @@ export function DialogHost({
       </DialogLayer>
       <DialogLayer open={dockerOpen}>
         {lazyPanel(<DockerView onClose={() => setDockerOpen(false)} />, "Docker")}
-      </DialogLayer>
-      <DialogLayer open={k8sOpen}>
-        {lazyPanel(<KubernetesView onClose={() => setK8sOpen(false)} onInspectResource={(sel) => onInspectK8sResource(sel)} />, "Kubernetes")}
       </DialogLayer>
       <DialogLayer open={githubOpen}>
         {lazyPanel(<GithubIssuesDialog onClose={() => setGithubOpen(false)} />, "GitHub Issues")}

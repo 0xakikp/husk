@@ -1,18 +1,15 @@
-//! SFTP file transfer using russh + russh-sftp (pure-Rust SSH).
-//! Replaces ssh2/libssh2 which doesn't support modern OpenSSH key exchange algorithms.
-//!
-//! Security: host keys are verified using trust-on-first-use (TOFU). The first
-//! connection to a host stores its fingerprint; subsequent connections reject
-//! the host if the fingerprint changes. Passphrase-protected keys are supported.
+//! SFTP file transfer using russh + russh-sftp.
+//! Connections and host verification are independent from terminal SSH sessions.
+//! Unknown server keys require explicit confirmation before any authentication.
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SeekFrom};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
 use russh::client;
@@ -22,23 +19,17 @@ use russh::Disconnect;
 use russh_sftp::{client::SftpSession, protocol::OpenFlags};
 use tauri::{AppHandle, Emitter, State};
 
-/// SSH client handler (required by russh, minimal implementation).
-pub struct SshClient {
-    known_hosts: Arc<Mutex<HashMap<String, String>>>,
-    app_data_dir: Option<PathBuf>,
-    host: String,
-}
+#[path = "sftp_connection.rs"]
+mod connection_config;
+pub use connection_config::{SftpConnectResult, SftpCredentials, SftpTarget};
+use connection_config::{AuthType, ResolvedTarget, VerifiedHosts, parse_verified_hosts, resolve_target, validate_session_key, verified_key};
 
-impl SshClient {
-    async fn save_known_hosts(&self, hosts: &HashMap<String, String>) {
-        if let Some(dir) = &self.app_data_dir {
-            let path = dir.join("known_hosts.json");
-            if let Ok(json) = serde_json::to_string_pretty(hosts) {
-                let _ = tokio::fs::create_dir_all(dir).await;
-                let _ = tokio::fs::write(&path, json).await;
-            }
-        }
-    }
+/// The callback never trusts an unknown key. It records evidence for the UI and
+/// rejects the first handshake before a username, password, or key is offered.
+pub struct SshClient {
+    stored: Option<String>,
+    confirmation: Option<String>,
+    observed: Arc<Mutex<Option<String>>>,
 }
 
 impl client::Handler for SshClient {
@@ -48,316 +39,274 @@ impl client::Handler for SshClient {
         &mut self,
         server_public_key: &ssh_key::PublicKey,
     ) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
-        let host = self.host.clone();
-        let known_hosts = self.known_hosts.clone();
-        let app_data_dir = self.app_data_dir.clone();
-        let fingerprint = server_public_key
-            .fingerprint(Default::default())
-            .to_string();
+        let observed = self.observed.clone();
+        let stored = self.stored.clone();
+        let confirmation = self.confirmation.clone();
+        let fingerprint = server_public_key.fingerprint(Default::default()).to_string();
         async move {
-            let mut hosts = known_hosts.lock().await;
-            if let Some(known) = hosts.get(&host) {
-                return Ok(known == &fingerprint);
-            }
-            // First connect: store the fingerprint and persist it.
-            hosts.insert(host.clone(), fingerprint);
-            let client = SshClient {
-                known_hosts: known_hosts.clone(),
-                app_data_dir: app_data_dir.clone(),
-                host: host.clone(),
-            };
-            client.save_known_hosts(&*hosts).await;
-            Ok(true)
+            *observed.lock().await = Some(fingerprint.clone());
+            Ok(verified_key(stored.as_deref(), confirmation.as_deref(), &fingerprint).unwrap_or(false))
         }
     }
 }
 
-/// Connection info for caching.
 struct Connection {
-    #[allow(dead_code)]
     session: client::Handle<SshClient>,
     sftp: SftpSession,
+    target: ResolvedTarget,
+    result: SftpConnectResult,
 }
 
-/// Shared SFTP session manager using russh.
+struct PendingHostVerification {
+    target: ResolvedTarget,
+    fingerprint: String,
+}
+
+/// Verified fingerprints use a new versioned store. Legacy automatic-TOFU
+/// records are deliberately not read as proof that a human verified the host.
 #[derive(Clone)]
 pub struct SftpManager {
     connections: Arc<Mutex<HashMap<String, Connection>>>,
     known_hosts: Arc<Mutex<HashMap<String, String>>>,
+    trust_error: Option<String>,
+    pending_connections: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    pending_verifications: Arc<Mutex<HashMap<String, PendingHostVerification>>>,
     transfer_cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     app_data_dir: Option<PathBuf>,
 }
 
 impl SftpManager {
-    pub fn new() -> Self {
-        Self {
-            connections: Arc::new(Mutex::new(HashMap::new())),
-            known_hosts: Arc::new(Mutex::new(HashMap::new())),
-            transfer_cancellations: Arc::new(Mutex::new(HashMap::new())),
-            app_data_dir: None,
-        }
-    }
+    pub fn new() -> Self { Self::with_app_data_dir(None) }
 
     pub fn with_app_data_dir(app_data_dir: Option<PathBuf>) -> Self {
-        let known_hosts = Self::load_known_hosts(&app_data_dir);
+        let loaded = Self::load_known_hosts(&app_data_dir);
+        let trust_error = loaded.as_ref().err().cloned();
         Self {
             connections: Arc::new(Mutex::new(HashMap::new())),
-            known_hosts: Arc::new(Mutex::new(known_hosts)),
+            known_hosts: Arc::new(Mutex::new(loaded.unwrap_or_default())),
+            trust_error,
+            pending_connections: Arc::new(Mutex::new(HashMap::new())),
+            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
             transfer_cancellations: Arc::new(Mutex::new(HashMap::new())),
             app_data_dir,
         }
     }
 
-    fn load_known_hosts(app_data_dir: &Option<PathBuf>) -> HashMap<String, String> {
-        if let Some(dir) = app_data_dir {
-            let path = dir.join("known_hosts.json");
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
-                    return map;
-                }
-            }
-        }
-        HashMap::new()
-    }
-
-    async fn save_known_hosts(&self) {
-        if let Some(dir) = &self.app_data_dir {
-            let path = dir.join("known_hosts.json");
-            let hosts = self.known_hosts.lock().await;
-            if let Ok(json) = serde_json::to_string_pretty(&*hosts) {
-                let _ = tokio::fs::create_dir_all(dir).await;
-                let _ = tokio::fs::write(&path, json).await;
-            }
+    fn load_known_hosts(app_data_dir: &Option<PathBuf>) -> Result<HashMap<String, String>, String> {
+        let Some(dir) = app_data_dir else { return Ok(HashMap::new()); };
+        let path = dir.join("sftp_verified_hosts.json");
+        match std::fs::read_to_string(path) {
+            Ok(content) if content.len() <= 1024 * 1024 => parse_verified_hosts(&content),
+            Ok(_) => Err("The verified SFTP host-key store is too large; repair it before connecting".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
+            Err(_) => Err("Could not read the verified SFTP host-key store; no new keys will be trusted".into()),
         }
     }
 
-    /// Resolve SSH host via `ssh -G` and ~/.ssh/config.
-    fn resolve_host(host: &str) -> (String, u16, String, Vec<String>) {
-        let mut hostname: Option<String> = None;
-        let mut port: Option<u16> = None;
-        let mut user: Option<String> = None;
-        let mut identity_files: Vec<String> = Vec::new();
-
-        // Try ssh -G first
-        if let Ok(out) = std::process::Command::new("ssh")
-            .args(["-G", host])
-            .output()
-        {
-            if out.status.success() {
-                for line in String::from_utf8_lossy(&out.stdout).lines() {
-                    let lower = line.to_lowercase();
-                    if lower.starts_with("hostname ") {
-                        if let Some(h) = line.split_whitespace().nth(1) {
-                            if h != host {
-                                hostname = Some(h.to_string());
-                            }
-                        }
-                    } else if lower.starts_with("port ") {
-                        if let Some(p) = line.split_whitespace().nth(1) {
-                            port = p.parse().ok();
-                        }
-                    } else if lower.starts_with("user ") {
-                        if let Some(u) = line.split_whitespace().nth(1) {
-                            user = Some(u.to_string());
-                        }
-                    } else if lower.starts_with("identityfile ") {
-                        if let Some(f) = line.split_whitespace().nth(1) {
-                            identity_files.push(f.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback: parse ~/.ssh/config manually
-        if hostname.is_none() || port.is_none() {
-            let home = dirs::home_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let config_path = format!("{}/.ssh/config", home);
-            let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-
-            let mut current_hosts: Vec<String> = Vec::new();
-            let mut host_map: HashMap<String, (String, u16, String)> = HashMap::new();
-
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    continue;
-                }
-                if trimmed.to_lowercase().starts_with("host ") {
-                    current_hosts = trimmed
-                        .split_whitespace()
-                        .skip(1)
-                        .map(|s| s.to_string())
-                        .collect();
-                } else if !current_hosts.is_empty() {
-                    let lower = trimmed.to_lowercase();
-                    if lower.starts_with("hostname ") {
-                        if let Some(h) = trimmed.split_whitespace().nth(1) {
-                            for ch in &current_hosts {
-                                if !ch.contains('*') {
-                                    host_map
-                                        .entry(ch.clone())
-                                        .and_modify(|e| e.0 = h.to_string())
-                                        .or_insert((
-                                            h.to_string(),
-                                            22,
-                                            user.clone().unwrap_or_default(),
-                                        ));
-                                }
-                            }
-                        }
-                    } else if lower.starts_with("port ") {
-                        if let Some(p) = trimmed.split_whitespace().nth(1) {
-                            if let Ok(port_num) = p.parse::<u16>() {
-                                for ch in &current_hosts {
-                                    if !ch.contains('*') {
-                                        host_map
-                                            .entry(ch.clone())
-                                            .and_modify(|e| e.1 = port_num)
-                                            .or_insert((
-                                                host.to_string(),
-                                                port_num,
-                                                user.clone().unwrap_or_default(),
-                                            ));
-                                    }
-                                }
-                            }
-                        }
-                    } else if lower.starts_with("user ") {
-                        if let Some(u) = trimmed.split_whitespace().nth(1) {
-                            for ch in &current_hosts {
-                                if !ch.contains('*') {
-                                    host_map
-                                        .entry(ch.clone())
-                                        .and_modify(|e| e.2 = u.to_string())
-                                        .or_insert((host.to_string(), 22, u.to_string()));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some((h, p, u)) = host_map.get(host) {
-                hostname = Some(h.clone());
-                port = Some(*p);
-                if user.is_none() {
-                    user = Some(u.clone());
-                }
-            }
-        }
-
-        let hostname = hostname.unwrap_or_else(|| host.to_string());
-        let port = port.unwrap_or(22);
-        let user =
-            user.unwrap_or_else(|| whoami::username().unwrap_or_else(|_| "root".to_string()));
-
-        if identity_files.is_empty() {
-            identity_files.push("~/.ssh/id_rsa".to_string());
-            identity_files.push("~/.ssh/id_ed25519".to_string());
-        }
-
-        (hostname, port, user, identity_files)
+    async fn save_known_hosts(&self, hosts: &HashMap<String, String>) -> Result<(), String> {
+        let Some(dir) = &self.app_data_dir else { return Ok(()); };
+        tokio::fs::create_dir_all(dir).await.map_err(|_| "Could not create the SFTP trust directory")?;
+        static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+        let nonce = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let temp = dir.join(format!(".sftp-verified-{}-{timestamp}-{nonce}.tmp", std::process::id()));
+        let path = dir.join("sftp_verified_hosts.json");
+        let json = serde_json::to_vec(&VerifiedHosts { version: 1, hosts: hosts.clone() })
+            .map_err(|_| "Could not encode verified SFTP host keys")?;
+        let result = async {
+            let mut options = tokio::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            options.mode(0o600);
+            let mut file = options.open(&temp).await.map_err(|_| "Could not write verified SFTP host keys")?;
+            file.write_all(&json).await.map_err(|_| "Could not write verified SFTP host keys")?;
+            file.sync_all().await.map_err(|_| "Could not save verified SFTP host keys")?;
+            drop(file);
+            tokio::fs::rename(&temp, path).await.map_err(|_| "Could not replace verified SFTP host keys")
+        }.await;
+        if result.is_err() { let _ = tokio::fs::remove_file(temp).await; }
+        result.map_err(str::to_string)
     }
 
-    /// Connect or return cached connection.
-    pub async fn connect(&self, host: &str, passphrase: Option<String>) -> Result<(), String> {
-        let mut conns = self.connections.lock().await;
-        if conns.contains_key(host) {
-            return Ok(());
+    async fn begin_connection(&self, host: &str, confirming: bool) -> (Arc<AtomicBool>, Option<PendingHostVerification>) {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let mut pending = self.pending_connections.lock().await;
+        if let Some(previous) = pending.insert(host.to_string(), cancelled.clone()) {
+            previous.store(true, Ordering::SeqCst);
         }
+        // Both a fresh attempt and a confirmation consume any old challenge.
+        // Keep the generation lock until consumption so another attempt cannot
+        // borrow a verification recorded for an intervening connection.
+        let verification = self.pending_verifications.lock().await.remove(host);
+        (cancelled, if confirming { verification } else { None })
+    }
 
-        let (actual_host, port, username, identity_files) = Self::resolve_host(host);
+    fn ensure_current(cancelled: &AtomicBool) -> Result<(), String> {
+        if cancelled.load(Ordering::SeqCst) { Err("SFTP connection was cancelled".into()) } else { Ok(()) }
+    }
 
-        let config = client::Config::default();
-        let config = Arc::new(config);
-
-        let addr: SocketAddr = format!("{}:{}", actual_host, port)
-            .parse()
-            .map_err(|e| format!("Invalid address: {}", e))?;
-
-        let client = SshClient {
-            known_hosts: self.known_hosts.clone(),
-            app_data_dir: self.app_data_dir.clone(),
-            host: host.to_string(),
-        };
-
-        let mut session = client::connect(config, addr, client)
-            .await
-            .map_err(|e| format!("SSH connect failed: {}", e))?;
-
-        // Try public key authentication first
-        let mut authenticated = false;
-        for key_path in identity_files {
-            let expanded = shellexpand::tilde(&key_path).to_string();
-            if std::path::Path::new(&expanded).exists() {
-                let secret_key = load_secret_key(&expanded, passphrase.as_deref())
-                    .map_err(|e| format!("Failed to load key {}: {}", expanded, e))?;
-                let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(secret_key), None);
-                match session
-                    .authenticate_publickey(&username, key_with_hash)
-                    .await
-                {
-                    Ok(AuthResult::Success) => {
-                        authenticated = true;
-                        break;
-                    }
-                    Ok(_) => continue,
-                    Err(e) => {
-                        eprintln!("Auth error for {}: {}", expanded, e);
-                        continue;
-                    }
-                }
-            }
+    fn check_confirmation(
+        target: &ResolvedTarget, confirmation: Option<&str>, verification: Option<&PendingHostVerification>,
+    ) -> Result<(), String> {
+        let Some(confirmation) = confirmation else { return Ok(()); };
+        let verification = verification.ok_or("No pending SFTP host verification. Connect again to review this server's identity")?;
+        if &verification.target != target || verification.fingerprint != confirmation {
+            return Err("The SFTP target or fingerprint changed while awaiting verification. Connect again and verify the new target before authenticating".into());
         }
-
-        if !authenticated {
-            return Err(
-                "SSH authentication failed. Ensure your key is in ssh-agent, or add IdentityFile to ~/.ssh/config"
-                    .to_string(),
-            );
-        }
-
-        // Open SFTP channel
-        let channel = session
-            .channel_open_session()
-            .await
-            .map_err(|e| format!("Channel open failed: {}", e))?;
-
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|e| format!("SFTP subsystem failed: {}", e))?;
-
-        let sftp = SftpSession::new(channel.into_stream())
-            .await
-            .map_err(|e| format!("SFTP session failed: {}", e))?;
-
-        conns.insert(host.to_string(), Connection { session, sftp });
         Ok(())
     }
 
-    /// Disconnect and remove a host.
-    pub async fn disconnect(&self, host: &str) {
-        let mut conns = self.connections.lock().await;
-        if let Some(conn) = conns.remove(host) {
-            let _ = conn.sftp.close().await;
-            let _ = conn
-                .session
-                .disconnect(Disconnect::ByApplication, "Closed", "English")
-                .await;
+    async fn record_verification(
+        &self, host: &str, target: ResolvedTarget, fingerprint: String, cancelled: &Arc<AtomicBool>,
+    ) -> Result<(), String> {
+        let pending = self.pending_connections.lock().await;
+        Self::ensure_current(cancelled)?;
+        if !pending.get(host).is_some_and(|current| Arc::ptr_eq(current, cancelled)) {
+            return Err("SFTP connection was cancelled".into());
+        }
+        self.pending_verifications.lock().await.insert(host.to_string(), PendingHostVerification { target, fingerprint });
+        Ok(())
+    }
+
+    async fn finish_connection(&self, host: &str, cancelled: &Arc<AtomicBool>, keep_verification: bool) {
+        let mut pending = self.pending_connections.lock().await;
+        if pending.get(host).is_some_and(|current| Arc::ptr_eq(current, cancelled)) {
+            pending.remove(host);
+            if !keep_verification { self.pending_verifications.lock().await.remove(host); }
         }
     }
 
-    /// Remove stored host key(s) for a host.
-    pub async fn forget_host_keys(&self, host: &str) {
-        {
-            let mut hosts = self.known_hosts.lock().await;
-            hosts.remove(host);
+    pub async fn connect(
+        &self, host: &str, target: Option<SftpTarget>, credentials: Option<SftpCredentials>,
+        expected_fingerprint: Option<String>,
+    ) -> Result<SftpConnectResult, String> {
+        validate_session_key(host)?;
+        if let Some(error) = &self.trust_error { return Err(error.clone()); }
+        if expected_fingerprint.as_ref().is_some_and(|value| value.len() > 200 || !value.starts_with("SHA256:") || value.chars().any(char::is_control)) {
+            return Err("Invalid server fingerprint confirmation".into());
         }
-        self.save_known_hosts().await;
+        // Reserve the cancellation generation before local config resolution.
+        let (cancelled, verification) = self.begin_connection(host, expected_fingerprint.is_some()).await;
+        let explicit = target.unwrap_or_else(|| SftpTarget {
+            host: host.to_string(), user: None, port: None, identity_file: None, auth_type: None, jump_host: None,
+        });
+        let result = async {
+            let target = tokio::task::spawn_blocking(move || resolve_target(explicit)).await
+                .map_err(|_| "Could not resolve the SFTP target")??;
+            Self::ensure_current(&cancelled)?;
+            Self::check_confirmation(&target, expected_fingerprint.as_deref(), verification.as_ref())?;
+            {
+                let mut connections = self.connections.lock().await;
+                if let Some(existing) = connections.get(host) {
+                    if existing.target != target { return Err("This SFTP session belongs to a different target. Disconnect before changing the target".into()); }
+                    if !existing.session.is_closed() {
+                        if expected_fingerprint.as_ref().is_some_and(|value| value != &existing.result.fingerprint) {
+                            return Err("The confirmed fingerprint does not match the connected server".into());
+                        }
+                        return Ok(existing.result.clone());
+                    }
+                }
+                connections.remove(host);
+            }
+            self.connect_resolved(host, target, credentials.unwrap_or_default(), expected_fingerprint, &cancelled).await
+        }.await;
+        self.finish_connection(host, &cancelled, result.as_ref().is_ok_and(|result| result.status == "verify-host")).await;
+        result
+    }
+
+    async fn connect_resolved(
+        &self, host: &str, target: ResolvedTarget, credentials: SftpCredentials,
+        confirmation: Option<String>, cancelled: &Arc<AtomicBool>,
+    ) -> Result<SftpConnectResult, String> {
+        let endpoint = target.endpoint();
+        let stored = self.known_hosts.lock().await.get(&endpoint).cloned();
+        let observed = Arc::new(Mutex::new(None));
+        let handler = SshClient { stored: stored.clone(), confirmation: confirmation.clone(), observed: observed.clone() };
+        let config = Arc::new(client::Config {
+            keepalive_interval: Some(Duration::from_secs(30)), keepalive_max: 3,
+            ..Default::default()
+        });
+        Self::ensure_current(cancelled)?;
+        // Passing (hostname, port), rather than SocketAddr::parse, supports DNS
+        // and IPv6 without treating an SSH alias as an address or shell command.
+        let connected = tokio::time::timeout(Duration::from_secs(15),
+            client::connect(config, (target.hostname.as_str(), target.port), handler)).await
+            .map_err(|_| "SFTP connection timed out before authentication")?;
+        Self::ensure_current(cancelled)?;
+        let fingerprint = observed.lock().await.clone().ok_or_else(|| match &connected {
+            Err(error) => format!("SSH connection failed before host-key verification: {error}"),
+            Ok(_) => "SSH server did not provide a host key".to_string(),
+        })?;
+        let verified = verified_key(stored.as_deref(), confirmation.as_deref(), &fingerprint)?;
+        if !verified {
+            // The Handler returned false: no authenticated session exists.
+            if let Ok(session) = connected { let _ = session.disconnect(Disconnect::ByApplication, "Verify host fingerprint", "English").await; }
+            self.record_verification(host, target.clone(), fingerprint.clone(), cancelled).await?;
+            return Ok(SftpConnectResult::new("verify-host", &target, fingerprint));
+        }
+        let mut session = connected.map_err(|error| format!("SSH connection failed: {error}"))?;
+        let authenticated = async {
+            Self::ensure_current(cancelled)?;
+            if stored.is_none() {
+                let mut hosts = self.known_hosts.lock().await;
+                // Another connection might have verified this endpoint while
+                // our handshake was in flight; never overwrite a different key.
+                verified_key(hosts.get(&endpoint).map(String::as_str), confirmation.as_deref(), &fingerprint)?;
+                let mut next = hosts.clone();
+                next.insert(endpoint.clone(), fingerprint.clone());
+                self.save_known_hosts(&next).await?;
+                *hosts = next;
+            }
+            Self::ensure_current(cancelled)?;
+            tokio::time::timeout(Duration::from_secs(45), authenticate(&mut session, &target, &credentials, cancelled)).await
+                .map_err(|_| "SFTP authentication timed out")??;
+            Self::ensure_current(cancelled)?;
+            let sftp = tokio::time::timeout(Duration::from_secs(15), async {
+                let channel = session.channel_open_session().await.map_err(|error| format!("SFTP channel failed: {error}"))?;
+                channel.request_subsystem(true, "sftp").await.map_err(|error| format!("This SSH server did not accept SFTP: {error}"))?;
+                SftpSession::new(channel.into_stream()).await.map_err(|error| format!("SFTP subsystem failed: {error}"))
+            }).await.map_err(|_| "SFTP subsystem startup timed out")??;
+            Self::ensure_current(cancelled)?;
+            Ok::<_, String>(sftp)
+        }.await;
+        let sftp = match authenticated {
+            Ok(sftp) => sftp,
+            Err(error) => { let _ = session.disconnect(Disconnect::ByApplication, "Connection cancelled or unavailable", "English").await; return Err(error); }
+        };
+        let result = SftpConnectResult::new("connected", &target, fingerprint);
+        // Serialize installation with disconnect. A late result can never put a
+        // cancelled session back after its UI has closed or changed host.
+        let pending = self.pending_connections.lock().await;
+        if Self::ensure_current(cancelled).is_err() || !pending.get(host).is_some_and(|current| Arc::ptr_eq(current, cancelled)) {
+            drop(pending);
+            let _ = sftp.close().await;
+            let _ = session.disconnect(Disconnect::ByApplication, "Connection cancelled", "English").await;
+            return Err("SFTP connection was cancelled".into());
+        }
+        self.connections.lock().await.insert(host.to_string(), Connection { session, sftp, target, result: result.clone() });
+        Ok(result)
+    }
+
+    pub async fn disconnect(&self, host: &str) {
+        let connection = {
+            let mut pending = self.pending_connections.lock().await;
+            if let Some(attempt) = pending.remove(host) { attempt.store(true, Ordering::SeqCst); }
+            self.pending_verifications.lock().await.remove(host);
+            self.connections.lock().await.remove(host)
+        };
+        if let Some(connection) = connection {
+            let _ = connection.sftp.close().await;
+            let _ = connection.session.disconnect(Disconnect::ByApplication, "Closed", "English").await;
+        }
+    }
+
+    /// Explicit trust removal never accepts a replacement fingerprint. Future
+    /// connections to this exact canonical endpoint require fresh verification.
+    pub async fn forget_host_keys(&self, endpoint: &str) {
+        let mut hosts = self.known_hosts.lock().await;
+        let mut next = hosts.clone();
+        next.remove(endpoint);
+        if self.save_known_hosts(&next).await.is_ok() { *hosts = next; }
     }
 
     /// A transfer id belongs to one queued transfer. Reusing it after a pause
@@ -392,6 +341,187 @@ impl Default for SftpManager {
     }
 }
 
+async fn authenticate(
+    session: &mut client::Handle<SshClient>, target: &ResolvedTarget,
+    credentials: &SftpCredentials, cancelled: &AtomicBool,
+) -> Result<(), String> {
+    SftpManager::ensure_current(cancelled)?;
+    if credentials.password.as_ref().is_some_and(|value| value.len() > 16384)
+        || credentials.passphrase.as_ref().is_some_and(|value| value.len() > 16384) {
+        return Err("SFTP credentials exceed the supported length".into());
+    }
+    if target.auth_type == Some(AuthType::Password) {
+        let password = credentials.password.as_ref().filter(|value| !value.is_empty())
+            .ok_or("Enter the SSH password to connect. Husk does not store it")?;
+        return match session.authenticate_password(&target.username, password).await {
+            Ok(AuthResult::Success) => Ok(()),
+            _ => Err("SSH password authentication was not accepted. Keyboard-interactive/MFA is not supported in SFTP".into()),
+        };
+    }
+    let hash = session.best_supported_rsa_hash().await
+        .map_err(|_| "Could not negotiate SSH public-key authentication")?
+        .unwrap_or(Some(ssh_key::HashAlg::Sha256));
+    let mut agent_error = None;
+    if target.auth_type != Some(AuthType::Key) && target.agent_socket.as_deref() != Some("none") {
+        match authenticate_agent(session, target, hash, cancelled).await {
+            Ok(true) => return Ok(()),
+            Ok(false) => agent_error = Some("The SSH agent had no accepted identities"),
+            Err(_) => agent_error = Some("The app could not use its SSH agent"),
+        }
+    }
+    if target.auth_type == Some(AuthType::Agent) {
+        return Err(format!("{}. Select a different authentication method explicitly; Husk did not try private-key files", agent_error.unwrap_or("The SSH agent is disabled by this configuration")));
+    }
+    let mut key_load_failed = false;
+    let mut attempted = false;
+    for key_path in &target.identity_files {
+        SftpManager::ensure_current(cancelled)?;
+        if !tokio::fs::metadata(key_path).await.is_ok_and(|metadata| metadata.is_file()) { continue; }
+        let path = key_path.clone();
+        let passphrase = credentials.passphrase.clone();
+        let key = tokio::task::spawn_blocking(move || load_secret_key(&path, passphrase.as_deref())).await;
+        SftpManager::ensure_current(cancelled)?;
+        let Ok(Ok(key)) = key else { key_load_failed = true; continue; };
+        attempted = true;
+        if matches!(session.authenticate_publickey(&target.username, PrivateKeyWithHashAlg::new(Arc::new(key), hash)).await, Ok(AuthResult::Success)) { return Ok(()); }
+    }
+    if key_load_failed { return Err("A private key could not be loaded. Check the key file and enter its passphrase, or choose another authentication method".into()); }
+    if attempted { return Err("SSH public-key authentication was not accepted. Verify the username and authorized key on the server".into()); }
+    Err(format!("{}. No readable private key was available. Choose a key file or password; terminal-only agents and interactive/MFA logins are not reused", agent_error.unwrap_or("No private key was found")))
+}
+
+async fn authenticate_agent(
+    session: &mut client::Handle<SshClient>, target: &ResolvedTarget,
+    hash: Option<ssh_key::HashAlg>, cancelled: &AtomicBool,
+) -> Result<bool, String> {
+    use russh::keys::agent::{AgentIdentity, client::AgentClient};
+    #[cfg(unix)]
+    let connected = match target.agent_socket.as_deref() {
+        None | Some("SSH_AUTH_SOCK") => AgentClient::connect_env().await,
+        Some(path) => AgentClient::connect_uds(path).await,
+    };
+    #[cfg(windows)]
+    let connected = AgentClient::connect_named_pipe(match target.agent_socket.as_deref() {
+        None | Some("SSH_AUTH_SOCK") => r"\\.\pipe\openssh-ssh-agent",
+        Some(path) => path,
+    }).await;
+    #[cfg(not(any(unix, windows)))]
+    return Err("SSH agent authentication is unavailable on this platform".into());
+    #[cfg(any(unix, windows))]
+    {
+        let mut agent = connected.map_err(|_| "SSH agent unavailable to the app")?;
+        let identities = agent.request_identities().await.map_err(|_| "Could not list SSH agent identities")?;
+        for identity in identities.into_iter().take(8) {
+            SftpManager::ensure_current(cancelled)?;
+            let result = match identity {
+                AgentIdentity::PublicKey { key, .. } => session.authenticate_publickey_with(&target.username, key, hash, &mut agent).await,
+                AgentIdentity::Certificate { certificate, .. } => session.authenticate_certificate_with(&target.username, certificate, hash, &mut agent).await,
+            };
+            if matches!(result, Ok(AuthResult::Success)) { return Ok(true); }
+        }
+        Ok(false)
+    }
+}
+
+#[cfg(test)]
+mod connection_lifecycle_tests {
+    use super::*;
+    fn fixture_target() -> ResolvedTarget {
+        ResolvedTarget {
+            hostname: "prod.example.test".into(), port: 22, username: "deploy".into(),
+            identity_files: vec!["/fixture/key".into()], auth_type: Some(AuthType::Key), agent_socket: None,
+        }
+    }
+    #[test]
+    fn disconnect_revokes_pending_connection_before_it_can_install() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let manager = SftpManager::new();
+            let (pending, _) = manager.begin_connection("fixture-session", false).await;
+            manager.disconnect("fixture-session").await;
+            assert!(SftpManager::ensure_current(&pending).is_err());
+            assert!(!manager.pending_connections.lock().await.contains_key("fixture-session"));
+        });
+    }
+    #[test]
+    fn newer_attempt_revokes_only_the_older_attempt_for_its_session() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let manager = SftpManager::new();
+            let (older, _) = manager.begin_connection("one", false).await;
+            let (unrelated, _) = manager.begin_connection("two", false).await;
+            let (newer, _) = manager.begin_connection("one", false).await;
+            assert!(SftpManager::ensure_current(&older).is_err());
+            assert!(SftpManager::ensure_current(&newer).is_ok());
+            assert!(SftpManager::ensure_current(&unrelated).is_ok());
+        });
+    }
+    #[test]
+    fn confirmation_requires_the_exact_reviewed_target_not_just_a_reused_key() {
+        let target = fixture_target();
+        let verification = PendingHostVerification { target: target.clone(), fingerprint: "SHA256:fixture".into() };
+        assert!(SftpManager::check_confirmation(&target, Some("SHA256:fixture"), None).is_err());
+        assert!(SftpManager::check_confirmation(&target, Some("SHA256:fixture"), Some(&verification)).is_ok());
+        assert!(SftpManager::check_confirmation(&target, Some("SHA256:other"), Some(&verification)).is_err());
+        let mut changes = Vec::new();
+        let mut changed = target.clone(); changed.hostname = "other.example.test".into(); changes.push(changed);
+        let mut changed = target.clone(); changed.port = 2222; changes.push(changed);
+        let mut changed = target.clone(); changed.username = "root".into(); changes.push(changed);
+        let mut changed = target.clone(); changed.identity_files = vec!["/fixture/other-key".into()]; changes.push(changed);
+        let mut changed = target.clone(); changed.auth_type = Some(AuthType::Agent); changes.push(changed);
+        let mut changed = target.clone(); changed.agent_socket = Some("/fixture/agent".into()); changes.push(changed);
+        for changed in changes {
+            assert!(SftpManager::check_confirmation(&changed, Some("SHA256:fixture"), Some(&verification)).is_err(), "{changed:?}");
+        }
+    }
+    #[test]
+    fn completed_challenge_is_retained_then_consumed_once_by_confirmation() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let manager = SftpManager::new(); let target = fixture_target();
+            let (first, _) = manager.begin_connection("one", false).await;
+            manager.record_verification("one", target.clone(), "SHA256:fixture".into(), &first).await.unwrap();
+            manager.finish_connection("one", &first, true).await;
+            assert!(!manager.pending_connections.lock().await.contains_key("one"));
+            assert!(manager.pending_verifications.lock().await.contains_key("one"));
+            let (confirming, verification) = manager.begin_connection("one", true).await;
+            assert!(SftpManager::check_confirmation(&target, Some("SHA256:fixture"), verification.as_ref()).is_ok());
+            assert!(!manager.pending_verifications.lock().await.contains_key("one"));
+            manager.finish_connection("one", &confirming, false).await;
+            let (_, repeated) = manager.begin_connection("one", true).await;
+            assert!(SftpManager::check_confirmation(&target, Some("SHA256:fixture"), repeated.as_ref()).is_err());
+        });
+    }
+    #[test]
+    fn fresh_attempt_and_disconnect_revoke_previous_verifications() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let manager = SftpManager::new(); let target = fixture_target();
+            let (first, _) = manager.begin_connection("one", false).await;
+            manager.record_verification("one", target.clone(), "SHA256:fixture".into(), &first).await.unwrap();
+            manager.finish_connection("one", &first, true).await;
+            let (second, old_verification) = manager.begin_connection("one", false).await;
+            assert!(old_verification.is_none());
+            assert!(!manager.pending_verifications.lock().await.contains_key("one"));
+            manager.record_verification("one", target.clone(), "SHA256:fixture".into(), &second).await.unwrap();
+            manager.finish_connection("one", &second, true).await;
+            manager.disconnect("one").await;
+            assert!(!manager.pending_verifications.lock().await.contains_key("one"));
+            assert!(manager.record_verification("one", target, "SHA256:fixture".into(), &second).await.is_err());
+        });
+    }
+    #[test]
+    fn stale_generation_cannot_restore_or_clear_a_newer_challenge() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let manager = SftpManager::new(); let target = fixture_target();
+            let (older, _) = manager.begin_connection("one", false).await;
+            let (newer, _) = manager.begin_connection("one", false).await;
+            assert!(manager.record_verification("one", target.clone(), "SHA256:older".into(), &older).await.is_err());
+            manager.record_verification("one", target, "SHA256:newer".into(), &newer).await.unwrap();
+            manager.finish_connection("one", &older, false).await;
+            assert_eq!(manager.pending_verifications.lock().await.get("one").unwrap().fingerprint, "SHA256:newer");
+            manager.finish_connection("one", &newer, false).await;
+            assert!(!manager.pending_verifications.lock().await.contains_key("one"));
+        });
+    }
+}
+
 /// Entry in a directory listing.
 #[derive(serde::Serialize)]
 pub struct SftpEntry {
@@ -411,19 +541,143 @@ fn remote_join(parent: &str, child: &str) -> String {
 }
 
 fn remote_basename(path: &str) -> Result<&str, String> {
+    validate_remote_target(path)?;
     path.trim_end_matches('/')
         .rsplit('/')
         .find(|part| !part.is_empty())
         .ok_or_else(|| "The remote path has no file name".to_string())
 }
 
-async fn copy_remote_file(sftp: &mut SftpSession, from: &str, to: &str) -> Result<(), String> {
+fn validate_remote_target(path: &str) -> Result<(), String> {
+    if path.contains("//") { return Err("Repeated path separators are not allowed".into()); }
+    // Listings start at the authenticated user's home ("."). Permit a leading
+    // ./ for its children, never the home itself or traversal inside a path.
+    let path = path.strip_prefix("./").unwrap_or(path);
+    let parts: Vec<_> = path.split('/').filter(|part| !part.is_empty()).collect();
+    if path.contains('\0') || path.contains("//") || parts.is_empty() || parts.iter().any(|part| *part == "." || *part == "..") {
+        return Err("Choose a specific path; root, dot and parent-directory targets are not allowed".to_string());
+    }
+    Ok(())
+}
+
+fn validate_local_target(path: &Path) -> Result<(), String> {
+    let value = path.to_string_lossy();
+    if path.file_name().is_none() || value.contains('\0') || value.split(std::path::MAIN_SEPARATOR).any(|part| part == "." || part == "..") {
+        return Err("Choose a specific local path without dot or parent-directory components".to_string());
+    }
+    Ok(())
+}
+
+fn validate_child_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
+        return Err("Unsafe entry name in directory listing".to_string());
+    }
+    Ok(())
+}
+
+fn validate_transfer_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 128 || !id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_') {
+        return Err("Invalid transfer identifier".to_string());
+    }
+    Ok(())
+}
+
+fn transfer_nonce() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!("{}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos(), NEXT.fetch_add(1, Ordering::Relaxed))
+}
+
+fn optional_remote_metadata(result: Result<russh_sftp::protocol::FileAttributes, russh_sftp::client::error::Error>) -> Result<Option<russh_sftp::protocol::FileAttributes>, String> {
+    match result {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(russh_sftp::client::error::Error::Status(status)) if status.status_code == russh_sftp::protocol::StatusCode::NoSuchFile => Ok(None),
+        Err(error) => Err(format!("SFTP destination check failed: {error}")),
+    }
+}
+
+async fn remote_metadata(sftp: &SftpSession, path: &str) -> Result<Option<russh_sftp::protocol::FileAttributes>, String> {
+    optional_remote_metadata(sftp.symlink_metadata(path).await)
+}
+
+async fn local_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, String> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("Local destination check failed: {error}")),
+    }
+}
+
+fn check_file_destination(exists: bool, regular_file: bool, allow_overwrite: bool) -> Result<(), String> {
+    if exists && !regular_file {
+        return Err("The destination is not a regular file. Files cannot replace folders or symbolic links.".to_string());
+    }
+    if exists && !allow_overwrite {
+        return Err("Destination already exists. Confirm replacement or choose another name.".to_string());
+    }
+    Ok(())
+}
+
+async fn check_remote_file_destination(sftp: &SftpSession, path: &str, allow_overwrite: bool) -> Result<(), String> {
+    validate_remote_target(path)?;
+    let metadata = remote_metadata(sftp, path).await?;
+    check_file_destination(metadata.is_some(), metadata.as_ref().map(|meta| meta.file_type().is_file()).unwrap_or(false), allow_overwrite)
+}
+
+async fn check_local_file_destination(path: &Path, allow_overwrite: bool) -> Result<(), String> {
+    validate_local_target(path)?;
+    let metadata = local_metadata(path).await?;
+    check_file_destination(metadata.is_some(), metadata.as_ref().map(|meta| meta.is_file()).unwrap_or(false), allow_overwrite)
+}
+
+async fn finalize_local_file(staging: &Path, destination: &Path, allow_overwrite: bool) -> Result<(), String> {
+    check_local_file_destination(destination, allow_overwrite).await?;
+    if allow_overwrite {
+        // Never unlink the original before replacement. On platforms that do
+        // not support replacement rename, fail with both files intact.
+        tokio::fs::rename(staging, destination).await.map_err(|error| format!("Local file finalize failed; original preserved: {error}"))?;
+    } else {
+        // Same-directory hard link is an atomic no-clobber commit, unlike
+        // an exists-check followed by a replacement-capable rename.
+        tokio::fs::hard_link(staging, destination).await.map_err(|error| format!("Local no-overwrite finalize failed: {error}"))?;
+        tokio::fs::remove_file(staging).await.map_err(|error| format!("Transfer completed; staging file remains: {error}"))?;
+    }
+    Ok(())
+}
+
+// SFTP v3 rename is no-clobber. For explicitly approved replacement, retain
+// the original under a unique sibling name until finalization has succeeded.
+async fn finalize_remote_file(sftp: &mut SftpSession, staging: &str, destination: &str, allow_overwrite: bool) -> Result<(), String> {
+    validate_remote_target(destination)?;
+    let metadata = remote_metadata(sftp, destination).await?;
+    check_file_destination(metadata.is_some(), metadata.as_ref().map(|meta| meta.file_type().is_file()).unwrap_or(false), allow_overwrite)?;
+    let backup = if metadata.is_some() {
+        let backup = format!("{destination}.husk-backup-{}", transfer_nonce());
+        sftp.rename(destination, &backup).await.map_err(|error| format!("SFTP preserve original failed: {error}"))?;
+        Some(backup)
+    } else { None };
+    if let Err(error) = sftp.rename(staging, destination).await {
+        if let Some(backup) = &backup {
+            if let Err(restore_error) = sftp.rename(backup, destination).await {
+                return Err(format!("SFTP finalize failed: {error}. Original retained at {backup}; restore failed: {restore_error}"));
+            }
+        }
+        return Err(format!("SFTP finalize failed; original preserved: {error}"));
+    }
+    if let Some(backup) = backup {
+        sftp.remove_file(&backup).await.map_err(|error| format!("Transfer completed, but original backup remains at {backup}: {error}"))?;
+    }
+    Ok(())
+}
+
+async fn copy_remote_file(sftp: &mut SftpSession, from: &str, to: &str, allow_overwrite: bool) -> Result<(), String> {
+    check_remote_file_destination(sftp, to, allow_overwrite).await?;
+    let staging = remote_staging_path(to, &transfer_nonce());
     let mut source = sftp
         .open(from)
         .await
         .map_err(|e| format!("SFTP open failed: {}", e))?;
     let mut destination = sftp
-        .create(to)
+        .open_with_flags(&staging, OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE)
         .await
         .map_err(|e| format!("SFTP create failed: {}", e))?;
 
@@ -441,31 +695,38 @@ async fn copy_remote_file(sftp: &mut SftpSession, from: &str, to: &str) -> Resul
             .await
             .map_err(|e| format!("SFTP write failed: {}", e))?;
     }
-    Ok(())
+    destination.sync_all().await.map_err(|error| format!("SFTP sync failed: {error}"))?;
+    drop(destination);
+    finalize_remote_file(sftp, &staging, to, allow_overwrite).await
 }
 
-async fn copy_remote_path(sftp: &mut SftpSession, from: &str, to: &str) -> Result<(), String> {
+async fn copy_remote_path(sftp: &mut SftpSession, from: &str, to: &str, allow_overwrite: bool) -> Result<(), String> {
+    validate_remote_target(from)?;
+    validate_remote_target(to)?;
     if from == to {
         return Err("Choose a different destination to copy this item".to_string());
     }
 
     let source_meta = sftp
-        .metadata(from)
+        .symlink_metadata(from)
         .await
         .map_err(|e| format!("SFTP stat failed: {}", e))?;
 
-    if !source_meta.file_type().is_dir() {
-        return copy_remote_file(sftp, from, to).await;
+    if source_meta.file_type().is_file() {
+        return copy_remote_file(sftp, from, to, allow_overwrite).await;
+    }
+    if !source_meta.file_type().is_dir() { return Err("Only regular files and folders can be copied".to_string()); }
+
+    let source_root = sftp.canonicalize(from).await.map_err(|error| format!("Source path check failed: {error}"))?;
+    let parent = to.rsplit_once('/').map(|(parent, _)| if parent.is_empty() { "/" } else { parent }).unwrap_or(".");
+    let target_parent = sftp.canonicalize(parent).await.map_err(|error| format!("Destination path check failed: {error}"))?;
+    let destination_root = remote_join(&target_parent, remote_basename(to)?);
+    if source_root == "/" || source_root == destination_root || destination_root.starts_with(&format!("{}/", source_root)) || source_root.starts_with(&format!("{}/", destination_root)) {
+        return Err("Source and destination folders cannot overlap".to_string());
     }
 
-    let source_root = from.trim_end_matches('/');
-    if source_root.is_empty() || to.starts_with(&format!("{}/", source_root)) {
-        return Err("A folder cannot be copied inside itself".to_string());
-    }
-
-    sftp.create_dir(to)
-        .await
-        .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
+    if remote_metadata(sftp, to).await?.is_some() && !allow_overwrite { return Err("Destination folder already exists. Confirm merge or choose another name.".to_string()); }
+    ensure_remote_directory(sftp, to).await?;
 
     let mut pending = vec![(from.to_string(), to.to_string())];
     while let Some((source_dir, destination_dir)) = pending.pop() {
@@ -479,15 +740,16 @@ async fn copy_remote_path(sftp: &mut SftpSession, from: &str, to: &str) -> Resul
             if name == "." || name == ".." {
                 continue;
             }
+            validate_child_name(&name)?;
             let source_child = remote_join(&source_dir, &name);
             let destination_child = remote_join(&destination_dir, &name);
             if entry.metadata().file_type().is_dir() {
-                sftp.create_dir(&destination_child)
-                    .await
-                    .map_err(|e| format!("SFTP mkdir failed: {}", e))?;
+                ensure_remote_directory(sftp, &destination_child).await?;
                 pending.push((source_child, destination_child));
+            } else if entry.metadata().file_type().is_file() {
+                copy_remote_file(sftp, &source_child, &destination_child, allow_overwrite).await?;
             } else {
-                copy_remote_file(sftp, &source_child, &destination_child).await?;
+                return Err("Copying symbolic links and special files is not supported".to_string());
             }
         }
     }
@@ -495,8 +757,9 @@ async fn copy_remote_path(sftp: &mut SftpSession, from: &str, to: &str) -> Resul
 }
 
 async fn delete_remote_tree(sftp: &mut SftpSession, path: &str) -> Result<(), String> {
+    validate_remote_target(path)?;
     let meta = sftp
-        .metadata(path)
+        .symlink_metadata(path)
         .await
         .map_err(|e| format!("SFTP stat failed: {}", e))?;
     if !meta.file_type().is_dir() {
@@ -527,6 +790,7 @@ async fn delete_remote_tree(sftp: &mut SftpSession, path: &str) -> Result<(), St
             if name == "." || name == ".." {
                 continue;
             }
+            validate_child_name(&name)?;
             let child = remote_join(&directory, &name);
             if entry.metadata().file_type().is_dir() {
                 pending.push((child, false));
@@ -541,6 +805,8 @@ async fn delete_remote_tree(sftp: &mut SftpSession, path: &str) -> Result<(), St
 }
 
 fn local_staging_path(local_path: &Path, transfer_id: &str) -> Result<PathBuf, String> {
+    validate_local_target(local_path)?;
+    validate_transfer_id(transfer_id)?;
     let name = local_path
         .file_name()
         .and_then(|name| name.to_str())
@@ -559,6 +825,21 @@ fn ensure_not_cancelled(cancelled: &AtomicBool) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+async fn verify_resume_prefix<A: tokio::io::AsyncRead + Unpin, B: tokio::io::AsyncRead + Unpin>(source: &mut A, staging: &mut B, length: u64, cancelled: &AtomicBool) -> Result<(), String> {
+    let mut remaining = length;
+    let mut source_buffer = vec![0; 65536];
+    let mut staging_buffer = vec![0; 65536];
+    while remaining > 0 {
+        ensure_not_cancelled(cancelled)?;
+        let count = remaining.min(65536) as usize;
+        source.read_exact(&mut source_buffer[..count]).await.map_err(|error| format!("Resume source check failed: {error}"))?;
+        staging.read_exact(&mut staging_buffer[..count]).await.map_err(|error| format!("Resume staging check failed: {error}"))?;
+        if source_buffer[..count] != staging_buffer[..count] { return Err("The source changed since this transfer paused. Start a new transfer; the destination has not been replaced.".to_string()); }
+        remaining -= count as u64;
+    }
+    Ok(())
 }
 
 fn emit_transfer_progress(
@@ -597,73 +878,40 @@ async fn download_remote_file(
     transfer_id: &str,
     cancelled: &AtomicBool,
     resume: bool,
+    allow_overwrite: bool,
 ) -> Result<(), String> {
     ensure_not_cancelled(cancelled)?;
+    validate_transfer_id(transfer_id)?;
+    validate_remote_target(remote_path)?;
+    check_local_file_destination(local_path, allow_overwrite).await?;
     let meta = sftp
-        .metadata(remote_path)
+        .symlink_metadata(remote_path)
         .await
         .map_err(|e| format!("SFTP stat failed: {}", e))?;
+    if !meta.file_type().is_file() { return Err("Only regular files can be downloaded as files".to_string()); }
     let total_size = meta.len();
     let staging_path = local_staging_path(local_path, transfer_id)?;
-    let staging_exists = tokio::fs::try_exists(&staging_path)
-        .await
-        .map_err(|e| format!("Local staging file check failed: {}", e))?;
-
-    // A directory retry re-walks its contents. Files that completed before the
-    // interruption have already been finalized, so do not download them again.
-    if resume && !staging_exists {
-        if let Ok(existing) = tokio::fs::metadata(local_path).await {
-            if existing.len() == total_size {
-                emit_transfer_progress(
-                    app,
-                    host,
-                    transfer_id,
-                    "download",
-                    remote_path,
-                    total_size,
-                    total_size,
-                );
-                return Ok(());
-            }
-        }
-    }
-
-    let mut copied = if resume && staging_exists {
-        tokio::fs::metadata(&staging_path)
-            .await
-            .map(|metadata| metadata.len())
-            .unwrap_or(0)
-    } else {
-        0
-    };
-    if copied > total_size {
-        copied = 0;
-    }
+    let staging_metadata = local_metadata(&staging_path).await?;
+    if staging_metadata.as_ref().map(|metadata| !metadata.is_file()).unwrap_or(false) { return Err("The staging path is not a regular file".to_string()); }
+    if staging_metadata.is_some() && !resume { return Err("A staging file already exists. Explicitly resume this transfer or start a new one.".to_string()); }
+    let mut copied = staging_metadata.as_ref().map(|metadata| metadata.len()).unwrap_or(0);
+    if copied > total_size { return Err("Source is smaller than the staged transfer. Start a new transfer.".to_string()); }
 
     let mut remote = sftp
         .open(remote_path)
         .await
         .map_err(|e| format!("SFTP open failed: {}", e))?;
-    if copied > 0 {
-        remote
-            .seek(SeekFrom::Start(copied))
-            .await
-            .map_err(|e| format!("SFTP seek failed: {}", e))?;
-    }
     let mut local_options = tokio::fs::OpenOptions::new();
-    local_options.create(true).write(true).read(true);
-    if copied == 0 {
-        local_options.truncate(true);
-    }
+    local_options.write(true).read(true);
+    if staging_metadata.is_none() { local_options.create_new(true); }
+    #[cfg(unix)]
+    local_options.custom_flags(libc::O_NOFOLLOW);
     let mut local = local_options
         .open(&staging_path)
         .await
         .map_err(|e| format!("Local file create failed: {}", e))?;
     if copied > 0 {
-        local
-            .seek(SeekFrom::Start(copied))
-            .await
-            .map_err(|e| format!("Local seek failed: {}", e))?;
+        verify_resume_prefix(&mut remote, &mut local, copied, cancelled).await?;
     }
 
     let mut buf = vec![0u8; 65536];
@@ -697,18 +945,7 @@ async fn download_remote_file(
         .await
         .map_err(|e| format!("Local file sync failed: {}", e))?;
     drop(local);
-    if tokio::fs::try_exists(local_path)
-        .await
-        .map_err(|e| format!("Local file check failed: {}", e))?
-    {
-        tokio::fs::remove_file(local_path)
-            .await
-            .map_err(|e| format!("Local file replace failed: {}", e))?;
-    }
-    tokio::fs::rename(&staging_path, local_path)
-        .await
-        .map_err(|e| format!("Local file finalize failed: {}", e))?;
-    Ok(())
+    finalize_local_file(&staging_path, local_path, allow_overwrite).await
 }
 
 async fn upload_local_file(
@@ -720,68 +957,40 @@ async fn upload_local_file(
     transfer_id: &str,
     cancelled: &AtomicBool,
     resume: bool,
+    allow_overwrite: bool,
 ) -> Result<(), String> {
     ensure_not_cancelled(cancelled)?;
-    let total_size = tokio::fs::metadata(local_path)
+    validate_transfer_id(transfer_id)?;
+    validate_local_target(local_path)?;
+    check_remote_file_destination(sftp, remote_path, allow_overwrite).await?;
+    let source_metadata = tokio::fs::symlink_metadata(local_path)
         .await
-        .map(|metadata| metadata.len())
-        .unwrap_or(0);
+        .map_err(|error| format!("Local source check failed: {error}"))?;
+    if !source_metadata.is_file() { return Err("Only regular files can be uploaded as files".to_string()); }
+    let total_size = source_metadata.len();
     let staging_path = remote_staging_path(remote_path, transfer_id);
-    let staging_size = sftp
-        .metadata(&staging_path)
-        .await
-        .ok()
-        .map(|metadata| metadata.len());
-
-    // As with downloads, a resumed directory walk skips children that had
-    // already been atomically finalized before the interruption.
-    if resume && staging_size.is_none() {
-        if let Ok(existing) = sftp.metadata(remote_path).await {
-            if existing.len() == total_size {
-                emit_transfer_progress(
-                    app,
-                    host,
-                    transfer_id,
-                    "upload",
-                    remote_path,
-                    total_size,
-                    total_size,
-                );
-                return Ok(());
-            }
-        }
-    }
-
-    let mut copied = if resume { staging_size.unwrap_or(0) } else { 0 };
-    if copied > total_size {
-        copied = 0;
-    }
+    let staging_metadata = remote_metadata(sftp, &staging_path).await?;
+    if staging_metadata.as_ref().map(|metadata| !metadata.file_type().is_file()).unwrap_or(false) { return Err("The staging path is not a regular file".to_string()); }
+    if staging_metadata.is_some() && !resume { return Err("A staging file already exists. Explicitly resume this transfer or start a new one.".to_string()); }
+    let mut copied = staging_metadata.as_ref().map(|metadata| metadata.len()).unwrap_or(0);
+    if copied > total_size { return Err("Source is smaller than the staged transfer. Start a new transfer.".to_string()); }
     let mut local = tokio::fs::File::open(local_path)
         .await
         .map_err(|e| format!("Local file open failed: {}", e))?;
-    if copied > 0 {
-        local
-            .seek(SeekFrom::Start(copied))
-            .await
-            .map_err(|e| format!("Local seek failed: {}", e))?;
-    }
-    let mut remote = if copied > 0 {
+    let mut remote = if staging_metadata.is_some() {
         sftp.open_with_flags(
             &staging_path,
-            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::READ,
+            OpenFlags::WRITE | OpenFlags::READ,
         )
         .await
         .map_err(|e| format!("SFTP open failed: {}", e))?
     } else {
-        sftp.create(&staging_path)
+        sftp.open_with_flags(&staging_path, OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE | OpenFlags::READ)
             .await
             .map_err(|e| format!("SFTP create failed: {}", e))?
     };
     if copied > 0 {
-        remote
-            .seek(SeekFrom::Start(copied))
-            .await
-            .map_err(|e| format!("SFTP seek failed: {}", e))?;
+        verify_resume_prefix(&mut local, &mut remote, copied, cancelled).await?;
     }
 
     let mut buf = vec![0u8; 65536];
@@ -815,49 +1024,41 @@ async fn upload_local_file(
         .await
         .map_err(|e| format!("SFTP sync failed: {}", e))?;
     drop(remote);
-    if let Ok(existing) = sftp.metadata(remote_path).await {
-        if existing.file_type().is_dir() {
-            delete_remote_tree(sftp, remote_path).await?;
-        } else {
-            sftp.remove_file(remote_path)
-                .await
-                .map_err(|e| format!("SFTP replace failed: {}", e))?;
-        }
-    }
-    sftp.rename(&staging_path, remote_path)
-        .await
-        .map_err(|e| format!("SFTP finalize failed: {}", e))?;
-    Ok(())
+    finalize_remote_file(sftp, &staging_path, remote_path, allow_overwrite).await
 }
 
-/// Make `path` a directory. A local upload is the authority for its own path,
-/// so a remote file at that path is replaced. Existing remote directories are
-/// deliberately preserved for a merge upload.
+/// Merge only directories. A file/symlink is never implicitly removed to make
+/// room for a directory, including during an explicitly approved file merge.
 async fn ensure_remote_directory(sftp: &mut SftpSession, path: &str) -> Result<(), String> {
-    match sftp.metadata(path).await {
-        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
-        Ok(_) => {
-            sftp.remove_file(path)
-                .await
-                .map_err(|e| format!("SFTP replace file with folder failed: {}", e))?;
-            sftp.create_dir(path)
-                .await
-                .map_err(|e| format!("SFTP mkdir failed: {}", e))
-        }
-        Err(_) => sftp
+    validate_remote_target(path)?;
+    match remote_metadata(sftp, path).await? {
+        Some(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Some(_) => Err("A directory cannot replace an existing file or symbolic link".to_string()),
+        None => sftp
             .create_dir(path)
             .await
             .map_err(|e| format!("SFTP mkdir failed: {}", e)),
     }
 }
 
+async fn ensure_local_directory(path: &Path) -> Result<(), String> {
+    validate_local_target(path)?;
+    match local_metadata(path).await? {
+        Some(metadata) if metadata.is_dir() => Ok(()),
+        Some(_) => Err("A directory cannot replace an existing file or symbolic link".to_string()),
+        None => tokio::fs::create_dir(path).await.map_err(|error| format!("Local folder create failed: {error}")),
+    }
+}
+
 #[tauri::command]
 pub async fn sftp_connect(
     host: String,
-    passphrase: Option<String>,
+    target: Option<SftpTarget>,
+    credentials: Option<SftpCredentials>,
+    expected_fingerprint: Option<String>,
     manager: State<'_, SftpManager>,
-) -> Result<bool, String> {
-    manager.connect(&host, passphrase).await.map(|_| true)
+) -> Result<SftpConnectResult, String> {
+    manager.connect(&host, target, credentials, expected_fingerprint).await
 }
 
 #[tauri::command]
@@ -942,10 +1143,12 @@ pub async fn sftp_download(
     local_path: String,
     transfer_id: String,
     resume: bool,
+    allow_overwrite: Option<bool>,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    validate_transfer_id(&transfer_id)?;
     let cancelled = manager.begin_transfer(&transfer_id).await;
-    let result = {
+    let result = async {
         let mut conns = manager.connections.lock().await;
         let conn = conns
             .get_mut(&host)
@@ -959,9 +1162,10 @@ pub async fn sftp_download(
             &transfer_id,
             &cancelled,
             resume,
+            allow_overwrite.unwrap_or(false),
         )
         .await
-    };
+    }.await;
     manager.finish_transfer(&transfer_id).await;
     result
 }
@@ -974,24 +1178,23 @@ pub async fn sftp_download_dir(
     local_parent: String,
     transfer_id: String,
     resume: bool,
+    allow_overwrite: Option<bool>,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    validate_transfer_id(&transfer_id)?;
+    let allow_overwrite = allow_overwrite.unwrap_or(false);
     let destination = PathBuf::from(local_parent).join(remote_basename(&remote_path)?);
+    validate_local_target(&destination)?;
     let cancelled = manager.begin_transfer(&transfer_id).await;
     let result = async {
         let mut conns = manager.connections.lock().await;
         let conn = conns
             .get_mut(&host)
             .ok_or_else(|| "Not connected".to_string())?;
-        if resume {
-            tokio::fs::create_dir_all(&destination)
-                .await
-                .map_err(|e| format!("Local folder create failed: {}", e))?;
-        } else {
-            tokio::fs::create_dir(&destination)
-                .await
-                .map_err(|e| format!("Local folder create failed: {}", e))?;
+        if local_metadata(&destination).await?.is_some() && !resume && !allow_overwrite {
+            return Err("Destination folder already exists. Confirm merge or choose another name.".to_string());
         }
+        ensure_local_directory(&destination).await?;
 
         let mut pending = vec![(remote_path, destination)];
         while let Some((remote_dir, local_dir)) = pending.pop() {
@@ -1007,12 +1210,11 @@ pub async fn sftp_download_dir(
                 if name == "." || name == ".." {
                     continue;
                 }
+                validate_child_name(&name)?;
                 let remote_child = remote_join(&remote_dir, &name);
                 let local_child = local_dir.join(&name);
                 if entry.metadata().file_type().is_dir() {
-                    tokio::fs::create_dir_all(&local_child)
-                        .await
-                        .map_err(|e| format!("Local folder create failed: {}", e))?;
+                    ensure_local_directory(&local_child).await?;
                     pending.push((remote_child, local_child));
                 } else {
                     download_remote_file(
@@ -1024,6 +1226,7 @@ pub async fn sftp_download_dir(
                         &transfer_id,
                         &cancelled,
                         resume,
+                        allow_overwrite,
                     )
                     .await?;
                 }
@@ -1044,10 +1247,12 @@ pub async fn sftp_upload(
     remote_path: String,
     transfer_id: String,
     resume: bool,
+    allow_overwrite: Option<bool>,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    validate_transfer_id(&transfer_id)?;
     let cancelled = manager.begin_transfer(&transfer_id).await;
-    let result = {
+    let result = async {
         let mut conns = manager.connections.lock().await;
         let conn = conns
             .get_mut(&host)
@@ -1061,9 +1266,10 @@ pub async fn sftp_upload(
             &transfer_id,
             &cancelled,
             resume,
+            allow_overwrite.unwrap_or(false),
         )
         .await
-    };
+    }.await;
     manager.finish_transfer(&transfer_id).await;
     result
 }
@@ -1077,18 +1283,25 @@ pub async fn sftp_upload_dir(
     transfer_id: String,
     resume: bool,
     conflict_mode: String,
+    allow_overwrite: Option<bool>,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    validate_transfer_id(&transfer_id)?;
+    let allow_overwrite = allow_overwrite.unwrap_or(false);
     if conflict_mode != "merge" && conflict_mode != "replace" {
         return Err("Unsupported folder conflict mode".to_string());
     }
+    if conflict_mode == "replace" && !allow_overwrite { return Err("Replacing a folder requires explicit replacement approval".to_string()); }
     let local_root = PathBuf::from(&local_path);
+    validate_local_target(&local_root)?;
+    if !tokio::fs::symlink_metadata(&local_root).await.map_err(|error| format!("Local folder check failed: {error}"))?.is_dir() { return Err("Choose a regular local directory".to_string()); }
     let name = local_root
         .file_name()
         .and_then(|part| part.to_str())
         .filter(|part| !part.is_empty())
         .ok_or_else(|| "The local folder has no name".to_string())?;
     let remote_root = remote_join(&remote_parent, name);
+    validate_remote_target(&remote_root)?;
     let cancelled = manager.begin_transfer(&transfer_id).await;
     let result = async {
         let mut conns = manager.connections.lock().await;
@@ -1098,8 +1311,11 @@ pub async fn sftp_upload_dir(
         // A replacement applies only to the initial attempt. Retrying or
         // resuming must retain staged partial data, so it merges the remaining
         // local tree into whatever the first attempt already created.
-        if !resume && conflict_mode == "replace" && conn.sftp.metadata(&remote_root).await.is_ok() {
-            delete_remote_tree(&mut conn.sftp, &remote_root).await?;
+        if !resume && conflict_mode == "replace" {
+            if let Some(metadata) = remote_metadata(&conn.sftp, &remote_root).await? {
+                if !metadata.file_type().is_dir() { return Err("Folder replacement cannot remove a file or symbolic link".to_string()); }
+                delete_remote_tree(&mut conn.sftp, &remote_root).await?;
+            }
         }
         ensure_remote_directory(&mut conn.sftp, &remote_root).await?;
 
@@ -1117,6 +1333,7 @@ pub async fn sftp_upload_dir(
                 ensure_not_cancelled(&cancelled)?;
                 let path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
+                validate_child_name(&name)?;
                 let remote_child = remote_join(&remote_dir, &name);
                 let file_type = entry
                     .file_type()
@@ -1135,8 +1352,11 @@ pub async fn sftp_upload_dir(
                         &transfer_id,
                         &cancelled,
                         resume,
+                        allow_overwrite,
                     )
                     .await?;
+                } else {
+                    return Err("Uploading symbolic links and special files is not supported".to_string());
                 }
             }
         }
@@ -1152,13 +1372,14 @@ pub async fn sftp_copy(
     host: String,
     from: String,
     to: String,
+    allow_overwrite: Option<bool>,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
     let mut conns = manager.connections.lock().await;
     let conn = conns
         .get_mut(&host)
         .ok_or_else(|| "Not connected".to_string())?;
-    copy_remote_path(&mut conn.sftp, &from, &to).await
+    copy_remote_path(&mut conn.sftp, &from, &to, allow_overwrite.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -1180,6 +1401,7 @@ pub async fn sftp_mkdir(
     path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    validate_remote_target(&path)?;
     let mut conns = manager.connections.lock().await;
     let conn = conns
         .get_mut(&host)
@@ -1195,12 +1417,21 @@ pub async fn sftp_rename(
     host: String,
     from: String,
     to: String,
+    allow_overwrite: Option<bool>,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    validate_remote_target(&from)?;
+    validate_remote_target(&to)?;
+    if from.trim_end_matches('/') == to.trim_end_matches('/') { return Err("Choose a different destination".to_string()); }
     let mut conns = manager.connections.lock().await;
     let conn = conns
         .get_mut(&host)
         .ok_or_else(|| "Not connected".to_string())?;
+    let source = remote_metadata(&conn.sftp, &from).await?.ok_or_else(|| "Source does not exist".to_string())?;
+    if source.file_type().is_file() {
+        return finalize_remote_file(&mut conn.sftp, &from, &to, allow_overwrite.unwrap_or(false)).await;
+    }
+    if remote_metadata(&conn.sftp, &to).await?.is_some() { return Err("Destination already exists. Folder and symbolic-link renames require a new destination.".to_string()); }
     conn.sftp
         .rename(&from, &to)
         .await
@@ -1213,6 +1444,7 @@ pub async fn sftp_delete(
     path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    validate_remote_target(&path)?;
     let mut conns = manager.connections.lock().await;
     let conn = conns
         .get_mut(&host)
@@ -1229,6 +1461,7 @@ pub async fn sftp_rmdir(
     path: String,
     manager: State<'_, SftpManager>,
 ) -> Result<(), String> {
+    validate_remote_target(&path)?;
     let mut conns = manager.connections.lock().await;
     let conn = conns
         .get_mut(&host)
@@ -1273,7 +1506,7 @@ pub async fn sftp_stat(
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_not_cancelled, local_staging_path, remote_staging_path};
+    use super::{check_file_destination, ensure_not_cancelled, finalize_local_file, local_staging_path, optional_remote_metadata, remote_staging_path, transfer_nonce, validate_child_name, validate_local_target, validate_remote_target, verify_resume_prefix};
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1296,5 +1529,82 @@ mod tests {
             ensure_not_cancelled(&cancelled),
             Err("Transfer cancelled".to_string())
         );
+    }
+
+    #[test]
+    fn refuses_broad_and_traversing_transfer_targets() {
+        for target in ["", "/", "//", ".", "./", "./../file", ".//file", "..", "/srv/.", "/srv/..", "/srv/../data", "/srv//data", "/srv/\0bad"] {
+            assert!(validate_remote_target(target).is_err(), "{target:?}");
+        }
+        for target in ["/srv/report.txt", "report.txt", "./report.txt", "./folder/file.txt", "/srv/space name/"] { assert!(validate_remote_target(target).is_ok()); }
+        for target in ["/", ".", "..", "/tmp/.", "/tmp/../file"] { assert!(validate_local_target(Path::new(target)).is_err(), "{target}"); }
+        for child in ["", ".", "..", "../escape", "nested/file", "nested\\file", "a\0b"] { assert!(validate_child_name(child).is_err()); }
+        assert!(validate_child_name("normal file.txt").is_ok());
+        assert!(local_staging_path(Path::new("/tmp/file"), "../escape").is_err());
+    }
+
+    #[test]
+    fn only_explicit_regular_file_replacement_is_allowed() {
+        assert!(check_file_destination(false, false, false).is_ok());
+        assert!(check_file_destination(true, true, false).is_err());
+        assert!(check_file_destination(true, true, true).is_ok());
+        assert!(check_file_destination(true, false, false).is_err());
+        assert!(check_file_destination(true, false, true).is_err());
+    }
+
+    #[test]
+    fn denied_stat_is_never_treated_as_an_absent_destination() {
+        use russh_sftp::{client::error::Error, protocol::{Status, StatusCode}};
+        let error = |code| Err(Error::Status(Status { id: 1, status_code: code, error_message: "fixture".into(), language_tag: "en".into() }));
+        assert!(optional_remote_metadata(error(StatusCode::NoSuchFile)).unwrap().is_none());
+        for code in [StatusCode::PermissionDenied, StatusCode::Failure, StatusCode::ConnectionLost, StatusCode::OpUnsupported] {
+            assert!(optional_remote_metadata(error(code)).is_err());
+        }
+        assert!(optional_remote_metadata(Err(Error::Timeout)).is_err());
+    }
+
+    #[tokio::test]
+    async fn resumed_bytes_must_match_source_instead_of_only_matching_length() {
+        let cancelled = AtomicBool::new(false);
+        let mut source = &b"same-prefix-more-data"[..];
+        let mut staged = &b"same-prefix"[..];
+        assert!(verify_resume_prefix(&mut source, &mut staged, 11, &cancelled).await.is_ok());
+        let mut source = &b"new-data"[..];
+        let mut staged = &b"old-data"[..];
+        assert!(verify_resume_prefix(&mut source, &mut staged, 8, &cancelled).await.unwrap_err().contains("source changed"));
+        let mut source = &b"short"[..];
+        let mut staged = &b"short-plus"[..];
+        assert!(verify_resume_prefix(&mut source, &mut staged, 10, &cancelled).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn local_finalization_never_clobbers_without_explicit_approval() {
+        let fixture = std::env::temp_dir().join(format!("husk-sftp-finalize-{}", transfer_nonce()));
+        tokio::fs::create_dir(&fixture).await.unwrap();
+        let staging = fixture.join("transfer.part");
+        let destination = fixture.join("target.txt");
+        tokio::fs::write(&staging, "replacement").await.unwrap();
+        tokio::fs::write(&destination, "original").await.unwrap();
+        assert!(finalize_local_file(&staging, &destination, false).await.is_err());
+        assert_eq!(tokio::fs::read_to_string(&destination).await.unwrap(), "original");
+        assert_eq!(tokio::fs::read_to_string(&staging).await.unwrap(), "replacement");
+        let fresh = fixture.join("fresh.txt");
+        finalize_local_file(&staging, &fresh, false).await.unwrap();
+        assert_eq!(tokio::fs::read_to_string(&fresh).await.unwrap(), "replacement");
+        assert!(!staging.exists());
+        let directory = fixture.join("directory");
+        tokio::fs::create_dir(&directory).await.unwrap();
+        tokio::fs::write(&staging, "new").await.unwrap();
+        assert!(finalize_local_file(&staging, &directory, true).await.is_err());
+        assert!(directory.is_dir());
+        #[cfg(unix)] {
+            let link = fixture.join("link");
+            std::os::unix::fs::symlink(&destination, &link).unwrap();
+            assert!(finalize_local_file(&staging, &link, true).await.is_err());
+            assert_eq!(tokio::fs::read_to_string(&destination).await.unwrap(), "original");
+            finalize_local_file(&staging, &destination, true).await.unwrap();
+            assert_eq!(tokio::fs::read_to_string(&destination).await.unwrap(), "new");
+        }
+        tokio::fs::remove_dir_all(&fixture).await.unwrap();
     }
 }

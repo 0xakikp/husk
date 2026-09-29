@@ -12,9 +12,9 @@ import {
 /**
  * Durable client-side queue for native SFTP work.
  *
- * The paths and transfer state are safe to persist locally; credentials remain
- * in the operating-system keychain. A transfer marked running when the app
- * closes is deliberately restored as paused — resuming a write is an explicit
+ * Only paths, public target metadata and transfer state are persisted locally;
+ * this queue never accepts credentials. Queued/running transfers from a previous
+ * app session are restored as paused — resuming a write is an explicit
  * user action, not a surprise network operation at launch.
  */
 const STORAGE_KEY = "huskv2.sftp.transferQueue";
@@ -37,6 +37,8 @@ export type SftpTransfer = {
   remotePath: string;
   /** Stored with a folder upload so queue retries preserve the original intent. */
   folderConflictStrategy?: SftpFolderConflictStrategy;
+  /** Set only after an explicit destination/replacement confirmation. */
+  allowOverwrite?: boolean;
   label: string;
   state: SftpTransferState;
   progress: number;
@@ -49,7 +51,7 @@ export type SftpTransfer = {
   updatedAt: number;
 };
 
-type NewTransfer = Pick<SftpTransfer, "host" | "direction" | "kind" | "localPath" | "remotePath" | "label" | "folderConflictStrategy">;
+type NewTransfer = Pick<SftpTransfer, "host" | "direction" | "kind" | "localPath" | "remotePath" | "label" | "folderConflictStrategy" | "allowOverwrite">;
 
 type NativeProgress = {
   id: string;
@@ -83,8 +85,8 @@ function load(): SftpTransfer[] {
     const now = Date.now();
     return parsed.filter(isTransfer).map((task) => {
       const attempts = typeof task.attempts === "number" ? Math.max(0, task.attempts) : task.state === "queued" ? 0 : 1;
-      return task.state === "running"
-        ? { ...task, attempts, state: "paused", error: "Husk was closed while this transfer was running.", updatedAt: now }
+      return task.state === "running" || task.state === "queued"
+        ? { ...task, attempts, state: "paused", error: "Restored transfer. Connect and explicitly resume when ready.", updatedAt: now }
         : { ...task, attempts };
     });
   } catch {
@@ -95,8 +97,9 @@ function load(): SftpTransfer[] {
 let transfers = load();
 const subscribers = new Set<() => void>();
 const processingHosts = new Set<string>();
-const activeHosts = new Set<string>();
-const hostListeners = new Map<string, UnlistenFn>();
+type ActiveConnection = { sessionKey: string; unlisten?: UnlistenFn };
+const activeHosts = new Map<string, ActiveConnection>();
+const runningSessions = new Map<string, string>();
 const transferSnapshots = new Map<string, SftpTransfer[]>();
 const EMPTY_TRANSFERS: SftpTransfer[] = [];
 
@@ -142,34 +145,37 @@ function transferError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function run(task: SftpTransfer): Promise<void> {
+async function run(task: SftpTransfer, sessionKey: string): Promise<void> {
   const resume = task.attempts > 1;
+  const allowOverwrite = task.allowOverwrite === true;
   if (task.direction === "download") {
     if (task.kind === "folder") {
-      await sftpDownloadDir(task.host, task.remotePath, task.localPath, task.id, resume);
+      await sftpDownloadDir(sessionKey, task.remotePath, task.localPath, task.id, resume, allowOverwrite);
     } else {
-      await sftpDownload(task.host, task.remotePath, task.localPath, task.id, resume);
+      await sftpDownload(sessionKey, task.remotePath, task.localPath, task.id, resume, allowOverwrite);
     }
   } else if (task.kind === "folder") {
-    await sftpUploadDir(task.host, task.localPath, task.remotePath, task.id, resume, task.folderConflictStrategy ?? "merge");
+    await sftpUploadDir(sessionKey, task.localPath, task.remotePath, task.id, resume, task.folderConflictStrategy ?? "merge", allowOverwrite);
   } else {
-    await sftpUpload(task.host, task.localPath, task.remotePath, task.id, resume);
+    await sftpUpload(sessionKey, task.localPath, task.remotePath, task.id, resume, allowOverwrite);
   }
 }
 
 async function process(host: string): Promise<void> {
   if (processingHosts.has(host) || !activeHosts.has(host)) return;
+  const connection = activeHosts.get(host)!;
   processingHosts.add(host);
   try {
-    while (activeHosts.has(host)) {
+    while (activeHosts.get(host) === connection) {
       const next = transfers.find((task) => task.host === host && task.state === "queued");
       if (!next) break;
       const running = replace(next.id, { state: "running", error: undefined, attempts: next.attempts + 1 });
       if (!running) continue;
+      runningSessions.set(running.id, connection.sessionKey);
       try {
-        await run(running);
+        await run(running, connection.sessionKey);
         const current = transfers.find((task) => task.id === next.id);
-        if (current?.state === "running") {
+        if (current?.state === "running" && activeHosts.get(host) === connection) {
           replace(next.id, { state: "completed", progress: 100, error: undefined });
           window.dispatchEvent(new CustomEvent("husk-sftp-transfer-complete", { detail: { host } }));
         }
@@ -177,8 +183,10 @@ async function process(host: string): Promise<void> {
         const current = transfers.find((task) => task.id === next.id);
         // The cancel action changes the state immediately so the controls feel
         // responsive; retain the native partial data for a later resume.
-        if (current?.state === "paused") continue;
+        if (current?.state !== "running" || activeHosts.get(host) !== connection) continue;
         replace(next.id, { state: "failed", error: transferError(error) });
+      } finally {
+        runningSessions.delete(running.id);
       }
     }
   } finally {
@@ -193,34 +201,49 @@ async function process(host: string): Promise<void> {
   }
 }
 
-function ensureProgressListener(host: string): void {
-  if (hostListeners.has(host)) return;
-  void listen<NativeProgress>(`sftp://progress/${host}`, (event) => {
+function ensureProgressListener(host: string, connection: ActiveConnection): void {
+  void listen<NativeProgress>(`sftp://progress/${connection.sessionKey}`, (event) => {
+    if (activeHosts.get(host) !== connection) return;
     const progress = event.payload;
     const task = transfers.find((item) => item.id === progress.id);
-    if (!task || task.state !== "running") return;
+    if (!task || task.host !== host || task.state !== "running" || runningSessions.get(task.id) !== connection.sessionKey) return;
     replace(progress.id, {
       progress: Math.min(100, Math.max(0, progress.progress || 0)),
       copied: progress.copied,
       total: progress.total,
     });
   }).then((unlisten) => {
-    if (activeHosts.has(host)) hostListeners.set(host, unlisten);
+    if (activeHosts.get(host) === connection) connection.unlisten = unlisten;
     else unlisten();
   }).catch(() => {
     // The queue still functions; completion and failure are handled by invoke.
   });
 }
 
-export function activateSftpTransferQueue(host: string): () => void {
-  activeHosts.add(host);
-  ensureProgressListener(host);
+function pauseHost(host: string, error: string): void {
+  for (const task of transfers.filter(task => task.host === host && (task.state === "running" || task.state === "queued"))) {
+    const wasRunning = task.state === "running";
+    replace(task.id, { state: "paused", error });
+    if (wasRunning) void sftpCancelTransfer(task.id).catch(() => {});
+  }
+}
+
+export function activateSftpTransferQueue(host: string, sessionKey = host): () => void {
+  const previous = activeHosts.get(host);
+  if (previous) {
+    pauseHost(host, "The connection changed. Explicitly resume when ready.");
+    previous.unlisten?.();
+  }
+  const connection: ActiveConnection = { sessionKey };
+  activeHosts.set(host, connection);
+  ensureProgressListener(host, connection);
   void process(host);
   return () => {
+    // An older panel must not deactivate a newer, explicitly connected session.
+    if (activeHosts.get(host) !== connection) return;
     activeHosts.delete(host);
-    const unlisten = hostListeners.get(host);
-    hostListeners.delete(host);
-    unlisten?.();
+    pauseHost(host, "Connection closed. Connect and explicitly resume when ready.");
+    connection.unlisten?.();
   };
 }
 
@@ -229,7 +252,8 @@ export function enqueueSftpTransfer(input: NewTransfer): SftpTransfer {
   const task: SftpTransfer = {
     ...input,
     id: makeId(),
-    state: "queued",
+    state: activeHosts.has(input.host) ? "queued" : "paused",
+    error: activeHosts.has(input.host) ? undefined : "Connect before explicitly starting this transfer.",
     progress: 0,
     attempts: 0,
     createdAt: now,
@@ -242,17 +266,27 @@ export function enqueueSftpTransfer(input: NewTransfer): SftpTransfer {
 }
 
 export function pauseSftpTransfer(id: string): void {
+  const previous = transfers.find(task => task.id === id);
+  if (!previous || previous.state === "completed") return;
   const task = replace(id, { state: "paused", error: "Paused by you." });
-  if (task?.state === "paused") void sftpCancelTransfer(id).catch(() => {});
+  if (task && previous.state === "running") void sftpCancelTransfer(id).catch(() => {});
 }
 
-export function resumeSftpTransfer(id: string): void {
-  const task = replace(id, { state: "queued", error: undefined });
+export function resumeSftpTransfer(id: string, allowOverwrite = false): void {
+  const previous = transfers.find(task => task.id === id);
+  if (!previous || (previous.state !== "paused" && previous.state !== "failed")) return;
+  if (!activeHosts.has(previous.host)) {
+    replace(id, { state: "paused", error: "Connect before explicitly resuming this transfer." });
+    return;
+  }
+  // Re-confirm replacement each time, including restored queues. Never restore
+  // the old whole-directory replacement mode through a retry.
+  const task = replace(id, { state: "queued", error: undefined, allowOverwrite, folderConflictStrategy: "merge" });
   if (task) void process(task.host);
 }
 
-export function retrySftpTransfer(id: string): void {
-  resumeSftpTransfer(id);
+export function retrySftpTransfer(id: string, allowOverwrite = false): void {
+  resumeSftpTransfer(id, allowOverwrite);
 }
 
 export function removeSftpTransfer(id: string): void {
