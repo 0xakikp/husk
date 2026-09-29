@@ -562,7 +562,7 @@ fn validate_remote_target(path: &str) -> Result<(), String> {
 
 fn validate_local_target(path: &Path) -> Result<(), String> {
     let value = path.to_string_lossy();
-    if path.file_name().is_none() || value.contains('\0') || value.split(std::path::MAIN_SEPARATOR).any(|part| part == "." || part == "..") {
+    if path.file_name().is_none() || value.contains('\0') || value.split(['/', '\\']).any(|part| part == "." || part == "..") {
         return Err("Choose a specific local path without dot or parent-directory components".to_string());
     }
     Ok(())

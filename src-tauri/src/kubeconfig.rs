@@ -369,7 +369,7 @@ mod tests {
         let source = fixture.resolve(request(ConfigKind::App), None).unwrap();
         assert_eq!(
             source.paths,
-            vec![fixture.0.join(".kube/config").to_str().unwrap()]
+            vec![fixture.0.join(".kube").join("config").to_str().unwrap()]
         );
         assert_eq!(source.missing_paths, source.paths);
         assert!(source.uses_default);

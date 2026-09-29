@@ -393,7 +393,7 @@ mod tests {
     #[test] fn resolves_dns_and_config_alias_without_network() {
         let result = resolve(target("production"), "Host production\n HostName Prod.Example.com\n User deploy\n Port 2222\n IdentityFile ~/.ssh/prod").unwrap();
         assert_eq!(result.hostname, "prod.example.com"); assert_eq!(result.username, "deploy"); assert_eq!(result.port, 2222);
-        assert_eq!(result.identity_files, ["/fixtures/home/.ssh/prod"]);
+        assert_eq!(result.identity_files, [Path::new("/fixtures/home").join(".ssh/prod").to_string_lossy().into_owned()]);
         assert_eq!(result.endpoint(), "[prod.example.com]:2222");
     }
     #[test] fn profile_overrides_config_and_preserves_auth() {
@@ -420,7 +420,7 @@ mod tests {
         let result = resolve(target("prod-db"), "Host prod-* !prod-db\n User api\nHost *\n User fallback").unwrap(); assert_eq!(result.username, "fallback");
     }
     #[test] fn safely_parses_quotes_comments_and_equals() {
-        let result = resolve(target("alias"), "Host alias\n HostName=example.com\n User deploy # comment\n IdentityFile \"~/.ssh/a key\"").unwrap(); assert_eq!(result.identity_files, ["/fixtures/home/.ssh/a key"]);
+        let result = resolve(target("alias"), "Host alias\n HostName=example.com\n User deploy # comment\n IdentityFile \"~/.ssh/a key\"").unwrap(); assert_eq!(result.identity_files, [Path::new("/fixtures/home").join(".ssh/a key").to_string_lossy().into_owned()]);
         let result = resolve(target("alias"), "HostName = example.com\nUser = deploy").unwrap(); assert_eq!(result.hostname, "example.com"); assert_eq!(result.username, "deploy");
         assert!(resolve(target("host"), "IdentityFile \"unterminated").is_err());
         for config in ["Host", "Include", "HostName", "HostName host extra", "ProxyJump", "IdentityFile a b"] {
@@ -454,7 +454,7 @@ mod tests {
             else { Ok(vec!["Host prod\nUser system-user\nPort 2222\nIdentityFile /fixture/system/key".into()]) }
         }).unwrap();
         assert_eq!(result.username, "chosen"); assert_eq!(result.port, 2222);
-        assert_eq!(result.identity_files, ["/fixture/user/.ssh/user-key", "/fixture/system/key"]);
+        assert_eq!(result.identity_files, [Path::new("/fixture/user").join(".ssh/user-key").to_string_lossy().into_owned(), "/fixture/system/key".to_string()]);
         assert_eq!(observed, [PathBuf::from("/fixture/user/.ssh"), PathBuf::from("/fixture/system/ssh")]);
     }
     #[test] fn include_file_limit_is_shared_across_user_and_system_config() {
