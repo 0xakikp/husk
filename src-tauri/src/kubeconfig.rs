@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::shell::{run_captured, validate_program, ShellOutput};
+use crate::shell::{login_search_path, run_captured, LoginSearchPath, ShellOutput};
 
 const MAX_CONFIG_PATHS: usize = 64;
 const MAX_PATH_BYTES: usize = 32_768;
@@ -284,6 +284,56 @@ fn pinned_executable(program: &Path, lookup_cwd: &Path) -> Result<PathBuf, Strin
     Ok(absolute)
 }
 
+/// App PATH keeps precedence; shell-only directories extend it for credential
+/// helpers (aws, gke-gcloud-auth-plugin, kubelogin, ...). Anchor relative entries
+/// to their discovery directory, never the selected kubeconfig's working dir.
+fn kubernetes_search_path(
+    inherited: Option<&OsStr>,
+    lookup_cwd: &Path,
+    login: Option<&LoginSearchPath>,
+) -> Result<OsString, String> {
+    let mut directories = Vec::new();
+    for (path, cwd) in inherited
+        .map(|p| (p, lookup_cwd))
+        .into_iter()
+        .chain(login.map(|p| (p.path.as_os_str(), p.cwd.as_path())))
+    {
+        for entry in std::env::split_paths(path) {
+            // Do not add implicit current-directory executable lookup.
+            if entry.as_os_str().is_empty() || entry == Path::new(".") {
+                continue;
+            }
+            let absolute = pinned_executable(&entry, cwd)?;
+            if !directories.contains(&absolute) {
+                if directories.len() == 256 {
+                    return Err(
+                        "The Kubernetes executable search path exceeds 256 directories".into(),
+                    );
+                }
+                directories.push(absolute);
+            }
+        }
+    }
+    std::env::join_paths(directories)
+        .map_err(|_| "Could not construct the Kubernetes executable search path".into())
+}
+
+fn kubectl_on_path(path: &OsStr) -> Result<PathBuf, String> {
+    let name = if cfg!(windows) {
+        "kubectl.exe"
+    } else {
+        "kubectl"
+    };
+    std::env::split_paths(path).filter(|dir| dir.is_absolute()).map(|dir| dir.join(name)).find(|candidate| {
+        let Ok(metadata) = std::fs::metadata(candidate) else { return false; };
+        if !metadata.is_file() { return false; }
+        #[cfg(unix)]
+        { use std::os::unix::fs::PermissionsExt; metadata.permissions().mode() & 0o111 != 0 }
+        #[cfg(not(unix))]
+        { true }
+    }).ok_or_else(|| "kubectl was not found in Husk's app or login-shell PATH. Install kubectl or check your shell startup PATH.".into())
+}
+
 /// All inspector reads use the exact resolved source, regardless of subsequent
 /// terminal tab/environment changes. Other inherited environment (e.g. cloud
 /// auth) remains the app's; terminal credentials are deliberately not imported.
@@ -303,8 +353,17 @@ pub async fn kubernetes_run_command(
         let _ = pinned_command(Path::new("kubectl"), &args, &paths, Path::new(&cwd))?;
         let lookup_cwd = std::env::current_dir()
             .map_err(|error| format!("Husk's working directory is unavailable: {error}"))?;
-        let program = pinned_executable(&validate_program("kubectl")?, &lookup_cwd)?;
-        let command = pinned_command(&program, &args, &paths, Path::new(&cwd))?;
+        let login = login_search_path(&lookup_cwd);
+        let search_path = kubernetes_search_path(
+            std::env::var_os("PATH").as_deref(),
+            &lookup_cwd,
+            login.as_ref(),
+        )?;
+        let program = kubectl_on_path(&search_path)?;
+        let mut command = pinned_command(&program, &args, &paths, Path::new(&cwd))?;
+        // Child-only override: don't mutate Husk's process environment, copy
+        // terminal credentials, or rewrite kubeconfig authentication entries.
+        command.env("PATH", search_path);
         let timeout = Duration::from_secs(timeout_secs.unwrap_or(20).clamp(1, 300));
         run_captured(command, timeout)
     })
@@ -659,5 +718,136 @@ mod tests {
         );
         assert_eq!(std::env::current_dir().unwrap(), original_cwd);
         assert_eq!(std::env::var_os("PATH"), original_path);
+    }
+
+    #[test]
+    fn helper_path_extends_app_lookup_without_retargeting_relative_directories() {
+        let fixture = Fixture::new();
+        let app = fixture.0.join("app");
+        let login_dir = fixture.0.join("shell");
+        let shared = fixture.0.join("shared bin");
+        let inherited = std::env::join_paths([
+            shared.as_path(),
+            Path::new("bin"),
+            Path::new(""),
+            Path::new("."),
+        ])
+        .unwrap();
+        let login = LoginSearchPath {
+            cwd: login_dir.clone(),
+            path: std::env::join_paths([shared.as_path(), Path::new("tools")]).unwrap(),
+        };
+        let path = kubernetes_search_path(Some(&inherited), &app, Some(&login)).unwrap();
+        assert_eq!(
+            std::env::split_paths(&path).collect::<Vec<_>>(),
+            vec![shared, app.join("bin"), login_dir.join("tools")]
+        );
+        assert!(std::env::split_paths(&path).all(|p| p.is_absolute()));
+        // An unavailable login shell still allows binaries in the app PATH.
+        assert_eq!(
+            std::env::split_paths(&kubernetes_search_path(Some(&inherited), &app, None).unwrap())
+                .count(),
+            2
+        );
+        assert!(kubectl_on_path(&kubernetes_search_path(None, &app, None).unwrap()).is_err());
+        assert!(kubectl_on_path(OsStr::new(".")).is_err());
+        let too_many =
+            std::env::join_paths((0..257).map(|i| app.join(format!("bin-{i}")))).unwrap();
+        assert!(kubernetes_search_path(Some(&too_many), &app, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kubectl_child_can_find_a_shell_only_auth_helper_without_importing_credentials() {
+        use std::os::unix::fs::PermissionsExt;
+        let fixture = Fixture::new();
+        let app_bin = fixture.0.join("app-bin");
+        let helper_bin = fixture.0.join("shell tools");
+        let target_cwd = fixture.0.join("terminal");
+        for dir in [&app_bin, &helper_bin, &target_cwd] {
+            std::fs::create_dir(dir).unwrap();
+        }
+        let kubectl = app_bin.join("kubectl");
+        let aws = helper_bin.join("aws");
+        // Entirely fake executables. No actual cloud CLI, config or endpoint.
+        std::fs::write(&kubectl, "#!/bin/sh\nexec aws fixture-token\n").unwrap();
+        std::fs::write(
+            &aws,
+            "#!/bin/sh\nprintf '%s:%s' \"$1\" \"${AWS_PROFILE-unset}\"\n",
+        )
+        .unwrap();
+        for file in [&kubectl, &aws] {
+            std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let inherited = std::env::join_paths([&app_bin]).unwrap();
+        let before = Command::new(&kubectl)
+            .env_clear()
+            .env("PATH", &inherited)
+            .output()
+            .unwrap();
+        assert!(!before.status.success());
+        let login = LoginSearchPath {
+            cwd: fixture.0.clone(),
+            path: std::env::join_paths([&helper_bin]).unwrap(),
+        };
+        let original_path = std::env::var_os("PATH");
+        let original_config = std::env::var_os("KUBECONFIG");
+        let path = kubernetes_search_path(Some(&inherited), &fixture.0, Some(&login)).unwrap();
+        let program = kubectl_on_path(&path).unwrap();
+        assert_eq!(program, kubectl);
+        let config = fixture.file("config.yaml");
+        let mut command = pinned_command(&program, &[], &[config], &target_cwd).unwrap();
+        command.env("PATH", &path);
+        let overridden_keys = command
+            .get_envs()
+            .map(|(key, _)| key.to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            overridden_keys,
+            [OsString::from("KUBECONFIG"), OsString::from("PATH")]
+        );
+        command
+            .env_clear()
+            .env("PATH", &path)
+            .env("AWS_PROFILE", "fixture-app-profile");
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            "fixture-token:fixture-app-profile"
+        );
+        assert_eq!(std::env::var_os("PATH"), original_path);
+        assert_eq!(std::env::var_os("KUBECONFIG"), original_config);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kubectl_lookup_skips_nonexecutables_and_keeps_app_precedence() {
+        use std::os::unix::fs::PermissionsExt;
+        let fixture = Fixture::new();
+        let first = fixture.0.join("first");
+        let second = fixture.0.join("second");
+        for dir in [&first, &second] {
+            std::fs::create_dir(dir).unwrap();
+            std::fs::write(dir.join("kubectl"), "fixture only").unwrap();
+        }
+        std::fs::set_permissions(
+            first.join("kubectl"),
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        std::fs::set_permissions(
+            second.join("kubectl"),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        let path = std::env::join_paths([&first, &second]).unwrap();
+        assert_eq!(kubectl_on_path(&path).unwrap(), second.join("kubectl"));
+        std::fs::set_permissions(
+            first.join("kubectl"),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        assert_eq!(kubectl_on_path(&path).unwrap(), first.join("kubectl"));
     }
 }

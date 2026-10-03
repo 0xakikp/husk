@@ -63,6 +63,29 @@ describe("the selected context's namespace", () => {
 });
 
 describe("explicit namespace permission checks", () => {
+  it("explains missing AWS credentials executable without reporting RBAC denial", async () => {
+    const stderr = "E0929 memcache.go:265] couldn't get API list: getting credentials: exec: executable aws not found\n".repeat(4);
+    mockInvoke.mockResolvedValue({ ...ok("no"), stderr, exit_code: 1 });
+    expect(await checkNamespaceAccess("team-a", ["pods"], scope)).toEqual([{
+      resource: "pods", allowed: null, error: "AWS CLI unavailable to Husk",
+      errorHint: expect.stringContaining("permissions were not checked"), diagnostics: stderr.trim(),
+    }]);
+  });
+
+  it("classifies missing helper errors from a rejected command too", async () => {
+    mockInvoke.mockRejectedValue("getting credentials: exec: executable gke-gcloud-auth-plugin not found");
+    expect(await checkNamespaceAccess("team-a", ["pods"], scope)).toEqual([expect.objectContaining({
+      allowed: null, error: "Authentication helper “gke-gcloud-auth-plugin” unavailable to Husk",
+      errorHint: expect.stringContaining("permissions were not checked"),
+    })]);
+  });
+
+  it("does not confuse an expired AWS session with a missing executable", async () => {
+    const stderr = "getting credentials: exec: executable aws failed with exit code 255: The SSO session has expired";
+    mockInvoke.mockResolvedValue({ ...ok(""), stderr, exit_code: 1 });
+    expect(await checkNamespaceAccess("team-a", ["pods"], scope)).toEqual([{ resource: "pods", allowed: null, error: stderr }]);
+  });
+
   it("checks the exact list permission in the chosen namespace with all source identity intact", async () => {
     mockInvoke.mockResolvedValue(ok("yes\n"));
     expect(await checkNamespaceAccess("team-a", ["pods", "deployments.apps", "secrets"], scope)).toEqual([

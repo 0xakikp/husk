@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { shq, tokenizeCommand } from "../lib/shellQuote";
 import type { K8sConfigSource, K8sReadScope } from "./configSource";
 import { CONTROLLER_COLUMNS, parseControllerMetadata, type PodOwnership } from "./podOwnership";
+import { kubernetesCommandError, missingCredentialHelper } from "./commandErrors";
 
 export type K8sPod = {
   namespace: string;
@@ -270,19 +271,23 @@ async function shell(cmd: string, timeoutSecs = 15, config?: K8sConfigSource): P
   const tokens = tokenizeCommand(cmd);
   const [program, ...args] = tokens;
   if (!program) throw new Error("empty command");
-  const out = config ? await invoke<ShellOutput>("kubernetes_run_command", {
+  const out = await (config ? invoke<ShellOutput>("kubernetes_run_command", {
     args,
     kubeconfigPaths: config.paths,
     cwd: config.cwd,
     timeoutSecs,
-  }) : await invoke<ShellOutput>("shell_run_command", {
+  }) : invoke<ShellOutput>("shell_run_command", {
     program,
     args,
     cwd: null,
     timeout_secs: timeoutSecs,
+  })).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (missingCredentialHelper(message)) throw new Error(kubernetesCommandError(message));
+    throw error;
   });
   if (out.timed_out) throw new Error(`kubectl timed out after ${timeoutSecs}s. Check cluster connectivity and try again.`);
-  if (out.exit_code !== 0) throw new Error(out.stderr || `exit ${out.exit_code ?? "?"}`);
+  if (out.exit_code !== 0) throw new Error(kubernetesCommandError(out.stderr || `exit ${out.exit_code ?? "?"}`));
   if (out.truncated) throw new Error("kubectl output exceeded the local size limit. Narrow the namespace or selection and try again.");
   return out.stdout;
 }

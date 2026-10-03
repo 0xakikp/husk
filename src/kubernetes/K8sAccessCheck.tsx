@@ -1,6 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import type { K8sReadScope } from "./configSource";
 import { checkNamespaceAccess, type NamespaceAccessResult } from "./namespaceAccess";
+import { boundedK8sDiagnostic } from "./commandErrors";
+
+function AccessError({ result }: { result: NamespaceAccessResult }) {
+  const message = result.error || "";
+  const raw = result.diagnostics || (message.length > 240 || message.includes("\n") ? message : "");
+  const firstLine = message.split(/\r?\n/, 1)[0];
+  const summary = firstLine.length > 240 ? `${firstLine.slice(0, 240)}…` : firstLine;
+  return <dd className="k8s-access-error">
+    <p>{summary}</p>
+    {result.errorHint && <p>{result.errorHint}</p>}
+    {raw && <details className="k8s-access-diagnostics">
+      <summary>Technical details</summary>
+      <pre>{boundedK8sDiagnostic(raw)}</pre>
+    </details>}
+  </dd>;
+}
 
 export function K8sAccessCheck({ namespace, resources, scope }: { namespace: string; resources: readonly string[]; scope: K8sReadScope }) {
   const identity = JSON.stringify([scope, namespace, resources]);
@@ -29,7 +45,7 @@ export function K8sAccessCheck({ namespace, resources, scope }: { namespace: str
       <dl>{visible.results.map(result => <div key={result.resource}>
         <dt>list {result.resource}{result.resource === "namespaces" && " (cluster-wide)"}</dt>
         <dd data-access={result.allowed === null ? "unknown" : result.allowed ? "allowed" : "denied"}>{result.allowed === null ? "Unavailable" : result.allowed ? "Allowed" : "Not allowed"}</dd>
-        {result.error && <dd className="k8s-access-error">{result.error}</dd>}
+        {result.error && <AccessError result={result} />}
       </div>)}</dl>
       <p className="k8s-meta">Checks list permissions only—not resource existence, health or access to details/logs. No permissions are changed.</p>
       {visible.results.some(result => result.resource === "namespaces" && result.allowed === false) && <p className="k8s-meta">Namespace discovery is optional. Use Enter manually when cluster-wide namespace listing is denied.</p>}

@@ -61,6 +61,10 @@
 .k8s-access-results dd[data-access="allowed"] { color: var(--k8s-success); }
 .k8s-access-results dd[data-access="denied"], .k8s-access-results dd[data-access="unknown"] { color: var(--k8s-warning); }
 .k8s-access-results .k8s-access-error { grid-column: 1 / -1; color: var(--k8s-muted); }
+.k8s-access-error { min-width: 0; display: grid; gap: 6px; overflow-wrap: anywhere; }
+.k8s-access-diagnostics > summary { cursor: pointer; min-height: 24px; line-height: 24px; }
+.k8s-access-diagnostics > summary:focus-visible { outline: 1px solid var(--ring); outline-offset: 2px; }
+.k8s-access-diagnostics > pre { max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.5; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--k8s-panel); }
 .k8s-body { min-width: 0; padding: 12px; container: k8s-content / inline-size; scrollbar-width: thin; }
 .k8s-surface :is(.k8s-body, .k8s-code, .k8s-tabs) { scrollbar-color: color-mix(in srgb, var(--muted-foreground) 40%, transparent) transparent; }
 .k8s-surface :is(.k8s-body, .k8s-code, .k8s-tabs)::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted-foreground) 40%, transparent); }

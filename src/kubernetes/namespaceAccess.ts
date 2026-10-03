@@ -1,11 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { K8sReadScope } from "./configSource";
+import { boundedK8sDiagnostic, missingCredentialHelper } from "./commandErrors";
 
 export type NamespaceAccessResult = {
   resource: string;
   /** null means the permission check itself failed, not that access was denied. */
   allowed: boolean | null;
   error?: string;
+  errorHint?: string;
+  diagnostics?: string;
 };
 
 /** Only the read permissions used by Husk's built-in Kubernetes views. */
@@ -61,6 +64,15 @@ function incompleteOutput(output: CommandOutput): string | undefined {
   return undefined;
 }
 
+function unavailable(resource: string, error: string): NamespaceAccessResult {
+  const missing = missingCredentialHelper(error);
+  return missing ? {
+    resource, allowed: null, error: missing.title,
+    errorHint: `Authentication could not start; permissions were not checked. ${missing.guidance}`,
+    diagnostics: boundedK8sDiagnostic(error),
+  } : { resource, allowed: null, error };
+}
+
 /** Reads only namespace metadata from the selected local kubeconfig context. */
 export async function getContextNamespace(scope: K8sReadScope): Promise<string> {
   const output = await run(["config", "view", "--minify", "--output=jsonpath={.contexts[0].context.namespace}"], scope);
@@ -105,14 +117,13 @@ export async function checkNamespaceAccess(
         if (incomplete) results[index] = { resource, allowed: null, error: incomplete };
         else if (!diagnostic && answer === "yes" && output.exit_code === 0) results[index] = { resource, allowed: true };
         else if (!diagnostic && answer === "no" && (output.exit_code === 1 || output.exit_code === 0)) results[index] = { resource, allowed: false };
-        else results[index] = {
-          resource, allowed: null,
+        else results[index] = unavailable(resource,
           // kubectl flattens a denied reason and an authorizer evaluation error
           // into the same `no - ...` format. Conservatively keep that unknown.
-          error: diagnostic || (answer.startsWith("no - ") ? answer : `Could not confirm this permission (kubectl exit ${output.exit_code ?? "unknown"}).`),
-        };
+          diagnostic || (answer.startsWith("no - ") ? answer : `Could not confirm this permission (kubectl exit ${output.exit_code ?? "unknown"}).`),
+        );
       } catch (error) {
-        results[index] = { resource, allowed: null, error: error instanceof Error ? error.message : String(error) };
+        results[index] = unavailable(resource, error instanceof Error ? error.message : String(error));
       }
     }
   }

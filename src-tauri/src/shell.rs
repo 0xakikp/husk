@@ -3,9 +3,11 @@
 //! capture its output, with a timeout and output cap.
 //!
 //! Security: commands are executed directly via std::process::Command with an
-//! explicit program and argument array. No shell is invoked, so shell
-//! metacharacters in arguments are treated as literal data.
+//! explicit program and argument array, so metacharacters in command arguments
+//! are literal data. Executable discovery may load the user's shell startup
+//! configuration using a separate, bounded lookup probe.
 
+use std::ffi::OsString;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -116,6 +118,96 @@ fn uses_interactive_config(shell: &Path) -> bool {
         shell.file_name().and_then(|name| name.to_str()),
         Some("bash" | "zsh" | "fish" | "ksh" | "mksh")
     )
+}
+
+/// Only executable lookup metadata is imported from shell startup. Never read
+/// `env`, credentials, profiles, or kubeconfig values into the app environment.
+#[derive(Clone)]
+pub(crate) struct LoginSearchPath {
+    pub cwd: PathBuf,
+    pub path: OsString,
+}
+
+fn parse_login_search_path(output: &str) -> Option<LoginSearchPath> {
+    let (_, framed) = output.rsplit_once("\u{1e}husk-path-v1\0")?;
+    let (payload, _) = framed.split_once("\0\u{1f}")?;
+    if payload.len() > 32_768 || payload.contains('\u{fffd}') {
+        return None;
+    }
+    let (cwd, path) = payload.split_once('\0')?;
+    if cwd.chars().any(char::is_control) || path.chars().any(char::is_control) {
+        return None;
+    }
+    let cwd = PathBuf::from(cwd);
+    if !cwd.is_absolute() {
+        return None;
+    }
+    Some(LoginSearchPath {
+        cwd,
+        path: OsString::from(path),
+    })
+}
+
+fn login_search_path_script(shell: &Path) -> &'static str {
+    // fish's PATH is a list; join it instead of assuming POSIX scalar expansion.
+    // Frame the result to distinguish lookup metadata from shell rc banners.
+    if shell.file_name().and_then(|s| s.to_str()) == Some("fish") {
+        "printf '\\036husk-path-v1\\000%s\\000%s\\000\\037' \"$PWD\" (string join ':' -- $PATH)"
+    } else {
+        "printf '\\036husk-path-v1\\000%s\\000%s\\000\\037' \"$PWD\" \"$PATH\""
+    }
+}
+
+/// A bounded, PATH-only shell probe. Session caching avoids repeatedly loading
+/// user startup scripts during polling, including when startup fails. Restart
+/// Husk to discover a changed shell PATH. The selected terminal is never used.
+pub(crate) fn login_search_path(lookup_cwd: &Path) -> Option<LoginSearchPath> {
+    #[cfg(not(unix))]
+    {
+        let _ = lookup_cwd;
+        None
+    }
+    #[cfg(unix)]
+    {
+        use std::sync::{Mutex, OnceLock};
+        struct Cached {
+            shell: PathBuf,
+            cwd: PathBuf,
+            value: Option<LoginSearchPath>,
+        }
+        static CACHE: OnceLock<Mutex<Option<Cached>>> = OnceLock::new();
+        let shell = user_login_shell();
+        let mut cache = CACHE.get_or_init(|| Mutex::new(None)).lock().ok()?;
+        if let Some(cached) = cache.as_ref() {
+            if cached.shell == shell && cached.cwd == lookup_cwd {
+                return cached.value.clone();
+            }
+        }
+        let mut command = Command::new(&shell);
+        command
+            .current_dir(lookup_cwd)
+            .arg(if uses_interactive_config(&shell) {
+                "-lic"
+            } else {
+                "-lc"
+            })
+            .arg(login_search_path_script(&shell));
+        let value = run_captured(command, Duration::from_secs(3))
+            .ok()
+            .and_then(|output| {
+                if output.exit_code != Some(0) || output.timed_out || output.truncated {
+                    None
+                } else {
+                    parse_login_search_path(&output.stdout)
+                }
+            });
+        *cache = Some(Cached {
+            shell,
+            cwd: lookup_cwd.to_path_buf(),
+            value: value.clone(),
+        });
+        value
+    }
 }
 
 /// Run `command -v` in the user's actual login shell. Interactive config is
@@ -504,6 +596,79 @@ pub fn detect_binaries(bins: Vec<String>) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn login_path_parser_uses_framed_metadata_not_startup_chatter() {
+        let cwd = std::env::current_dir().unwrap();
+        let frame = format!(
+            "\u{1e}husk-path-v1\0{}\0/fixture/bin:/fixture with spaces/bin\0\u{1f}",
+            cwd.display()
+        );
+        let parsed =
+            parse_login_search_path(&format!("shell banner\n{frame}\nstartup complete")).unwrap();
+        assert_eq!(parsed.cwd, cwd);
+        assert_eq!(
+            parsed.path,
+            OsString::from("/fixture/bin:/fixture with spaces/bin")
+        );
+        let empty = format!("\u{1e}husk-path-v1\0{}\0\0\u{1f}", cwd.display());
+        assert!(parse_login_search_path(&empty).unwrap().path.is_empty());
+    }
+
+    #[test]
+    fn login_path_parser_rejects_incomplete_ambiguous_or_unbounded_metadata() {
+        let cwd = std::env::current_dir().unwrap();
+        for payload in [
+            "unframed output".to_string(),
+            "\u{1e}husk-path-v1\0relative\0/bin\0\u{1f}".to_string(),
+            format!("\u{1e}husk-path-v1\0{}\0/bin", cwd.display()),
+            format!(
+                "\u{1e}husk-path-v1\0{}\0/bin\n:/tools\0\u{1f}",
+                cwd.display()
+            ),
+            format!("\u{1e}husk-path-v1\0{}\0/bin\0extra\0\u{1f}", cwd.display()),
+            format!(
+                "\u{1e}husk-path-v1\0{}\0/bin/\u{fffd}\0\u{1f}",
+                cwd.display()
+            ),
+            format!(
+                "\u{1e}husk-path-v1\0{}\0{}\0\u{1f}",
+                cwd.display(),
+                "x".repeat(32_769)
+            ),
+        ] {
+            assert!(parse_login_search_path(&payload).is_none());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn login_path_probe_emits_only_path_and_cwd() {
+        // Non-login fixture shell with an empty environment: never source user
+        // startup, run installed cloud CLIs or inspect real credentials.
+        let cwd = std::env::temp_dir().canonicalize().unwrap();
+        let mut command = Command::new("/bin/sh");
+        command
+            .env_clear()
+            .env("PATH", "/fixture/bin:/fixture tools/bin")
+            .env("AWS_PROFILE", "fixture-profile-do-not-import")
+            .env("KUBECONFIG", "/fixture/config-do-not-import")
+            .current_dir(&cwd)
+            .arg("-c")
+            .arg(login_search_path_script(Path::new("sh")));
+        let output = run_captured(command, Duration::from_secs(3)).unwrap();
+        assert_eq!(output.exit_code, Some(0));
+        assert!(!output.timed_out && !output.truncated);
+        let parsed = parse_login_search_path(&output.stdout).unwrap();
+        assert_eq!(parsed.cwd, cwd);
+        assert_eq!(
+            parsed.path,
+            OsString::from("/fixture/bin:/fixture tools/bin")
+        );
+        assert!(!output.stdout.contains("do-not-import"));
+        assert!(login_search_path_script(Path::new("/usr/local/bin/fish"))
+            .contains("string join ':' -- $PATH"));
+    }
 
     fn fixture(mode: &str) -> Command {
         let mut command = Command::new(std::env::current_exe().unwrap());

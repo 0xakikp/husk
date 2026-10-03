@@ -40,6 +40,35 @@ it("checks only on explicit request, pins its scope, and distinguishes denial fr
   expect(host.querySelector('[aria-label="Access check results"]')).toBeNull();
 });
 
+it("keeps noisy helper diagnostics collapsed below the concise cause and next step", async () => {
+  vi.mocked(checkNamespaceAccess).mockResolvedValue([{
+    resource: "pods", allowed: null, error: "AWS CLI unavailable to Husk",
+    errorHint: "Authentication could not start; permissions were not checked. Check your login-shell PATH.",
+    diagnostics: "E0929 memcache.go:265] getting credentials: exec: executable aws not found\n".repeat(300),
+  }]);
+  await renderCheck(); await click("Check access");
+  expect(host.querySelector('[data-access="unknown"]')?.textContent).toBe("Unavailable");
+  expect(host.querySelector('[data-access="denied"]')).toBeNull();
+  expect(host.querySelector(".k8s-access-error > p")?.textContent).toBe("AWS CLI unavailable to Husk");
+  expect(host.textContent).toContain("permissions were not checked");
+  const details = host.querySelector<HTMLDetailsElement>("details")!;
+  expect(details.open).toBe(false);
+  expect(details.querySelector("summary")?.textContent).toBe("Technical details");
+  expect(details.querySelector("pre")?.textContent).toContain("memcache.go");
+  expect(details.querySelector("pre")!.textContent!.length).toBeLessThan(8250);
+  expect(details.querySelector("pre")?.textContent).toContain("Diagnostic truncated");
+});
+
+it("also folds long generic failures without renaming them as a missing helper", async () => {
+  vi.mocked(checkNamespaceAccess).mockResolvedValue([{
+    resource: "pods", allowed: null, error: "Unauthorized\nRepeated authentication diagnostic".repeat(10),
+  }]);
+  await renderCheck(); await click("Check access");
+  expect(host.querySelector(".k8s-access-error > p")?.textContent).toBe("Unauthorized");
+  expect(host.querySelector<HTMLDetailsElement>("details")!.open).toBe(false);
+  expect(host.textContent).not.toContain("AWS CLI unavailable");
+});
+
 it.each(["namespace", "context", "file", "category"])("does not display delayed access results after changing %s", async change => {
   let finish!: (results: NamespaceAccessResult[]) => void;
   vi.mocked(checkNamespaceAccess).mockReturnValue(new Promise(resolve => { finish = resolve; }));

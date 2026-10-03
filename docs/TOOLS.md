@@ -25,6 +25,20 @@ environment variables (such as AWS_PROFILE) or credentials. Authentication retai
 the app's environment. Terminal tab changes never switch the selected source:
 choose **Capture again** and confirm to update it.
 
+**Authentication helpers:** on Unix, Kubernetes commands keep the app's executable
+search path first and extend it with directories from a bounded login-shell PATH
+probe. This lets GUI-launched Husk find helpers such as `aws`, `kubelogin` and
+`gke-gcloud-auth-plugin`. Only the Kubernetes child process receives that PATH;
+Husk does not import shell credentials, AWS profiles or kubeconfig variables.
+Discovery loads user shell startup scripts once per app session for the app's shell
+and discovery directory; both success and failure are cached to avoid repeated
+startup side effects during polling. Restart Husk after changing shell PATH setup.
+Missing helpers produce an actionable message; access checks remain **Unavailable**
+with permissions explicitly not checked, and raw diagnostics stay under
+**Technical details**. Husk does not install helpers or initiate a login flow.
+An AWS profile exported only inside a terminal is still separate from the app's
+authentication environment and any profile explicitly configured in the kubeconfig.
+
 The context picker scopes
 reads with explicit `--context`; it does **not** change the interactive terminal's
 current context. Changing the browser source or context closes the current inspector.

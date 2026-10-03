@@ -21,6 +21,22 @@ beforeEach(() => {
 });
 
 describe("context-bound Kubernetes reads", () => {
+  it("returns one actionable AWS helper error for list and inspector reads", async () => {
+    mockInvoke.mockResolvedValue({ ...ok(""), exit_code: 1, stderr: "E0929 memcache.go:265] getting credentials: exec: executable aws not found\n".repeat(4) });
+    for (const read of [() => client.listPods("team", "prod"), () => client.describePod("team", "web", "prod")]) {
+      await expect(read()).rejects.toThrow("AWS CLI unavailable to Husk");
+      await expect(read()).rejects.not.toThrow("memcache.go");
+    }
+  });
+
+  it("makes a rejected missing-executable error readable and leaves expired credentials intact", async () => {
+    mockInvoke.mockRejectedValue("getting credentials: exec: executable aws not found");
+    await expect(client.listPods("team", "prod")).rejects.toThrow("AWS CLI unavailable to Husk");
+    const stderr = "getting credentials: exec: executable aws failed with exit code 255: SSO token expired";
+    mockInvoke.mockResolvedValue({ ...ok(""), exit_code: 1, stderr });
+    await expect(client.listPods("team", "prod")).rejects.toThrow(stderr);
+  });
+
   it("pins every read and nested association to its explicit context", async () => {
     route((args) => args.includes("json") ? json({ metadata: { uid: "uid", name: "fixture" }, spec: { selector: { matchLabels: { app: "web" } } }, items: [] }) : ok(""));
     const context = "prod's cluster";
