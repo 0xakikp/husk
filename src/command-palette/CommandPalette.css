@@ -1,0 +1,287 @@
+/* Restore the colourful palette surface without changing other dialogs or
+   their density. Behaviour (review, target checks, search) stays independent. */
+.launcher-palette {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(88vh - 12px);
+  min-height: 0;
+  max-width: min(520px, calc(100vw - 24px));
+  border-color: color-mix(in srgb, var(--border) 75%, transparent);
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 32%);
+}
+
+.launcher-palette,
+.launcher-palette * {
+  /* Husk omits Tailwind preflight. Include padding in the row/control sizes. */
+  box-sizing: border-box;
+}
+
+.launcher-palette[data-state="open"] {
+  animation: hyprland-scale-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.launcher-palette [data-slot="command"] {
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+.launcher-palette [data-slot="command-list"] {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.launcher-palette [data-slot="command-input-wrapper"],
+.launcher-palette .launcher-filters,
+.launcher-palette .launcher-footer {
+  flex-shrink: 0;
+}
+
+.launcher-palette [data-slot="command-input-wrapper"] {
+  padding: 12px 12px 6px;
+}
+
+.launcher-palette .command-capsule {
+  height: 44px;
+  border-radius: 999px;
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--foreground) 4%, transparent);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.launcher-palette .command-capsule:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  box-shadow:
+    0 0 24px -4px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.launcher-palette .command-capsule > span:first-child {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.launcher-palette .command-capsule:focus-within > span:first-child {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  transform: scale(1.05);
+}
+
+.launcher-palette [data-slot="command-input"] {
+  font-size: 14px;
+}
+
+.launcher-palette [data-slot="command-input"]::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
+.launcher-palette [cmdk-group-heading] {
+  margin-bottom: 2px;
+  padding-block: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.launcher-palette [cmdk-item] {
+  min-height: 32px;
+  padding-block: 5px;
+  /* Override the global cmdk square-row reset for this launcher only. */
+  border-radius: 6px !important;
+  transition: background-color 0.12s ease;
+}
+
+.launcher-palette [cmdk-item][data-selected="true"] {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.launcher-palette .cmdk-match {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+.launcher-palette .launcher-kind-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  transition: transform 0.12s ease;
+}
+
+.launcher-palette [cmdk-item][data-selected="true"] .launcher-kind-icon {
+  transform: scale(1.05);
+}
+
+.launcher-palette [data-slot="command-shortcut"],
+.launcher-palette .command-capsule > kbd {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  border-color: color-mix(in srgb, var(--foreground) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  letter-spacing: 0.02em;
+}
+
+.launcher-palette [data-slot="command-shortcut"] {
+  max-width: 34%;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher-palette [cmdk-item][data-selected="true"] [data-slot="command-shortcut"] {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+.launcher-palette .launcher-item-hint {
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.launcher-palette .launcher-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 108px;
+  overflow-y: auto;
+  padding: 3px 12px 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  scrollbar-width: none;
+}
+
+.launcher-palette .launcher-filters[hidden] {
+  display: none;
+}
+
+.launcher-palette .launcher-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.launcher-palette .launcher-filters button {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.launcher-palette .launcher-filters button:hover {
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  color: var(--foreground);
+}
+
+.launcher-palette .launcher-filters button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.launcher-palette .launcher-show-more {
+  padding-left: 36px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.launcher-palette .launcher-footer {
+  border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  padding: 6px 12px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.launcher-palette .launcher-sources-toggle {
+  border-radius: 4px;
+  font: inherit;
+}
+
+.launcher-palette .launcher-sources-toggle:hover,
+.launcher-palette .launcher-sources-toggle[aria-expanded="true"] {
+  color: var(--accent);
+}
+
+.launcher-palette .launcher-detail {
+  max-height: 72px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  margin-bottom: 5px;
+  font-size: 11px;
+}
+
+.launcher-palette .launcher-confirm-button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.launcher-palette .launcher-confirmation {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.launcher-palette .launcher-confirm-description {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+}
+
+.launcher-palette .launcher-error {
+  max-height: 80px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  flex-shrink: 0;
+}
+
+.launcher-palette .launcher-confirm-primary {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.launcher-palette button:disabled {
+  opacity: 0.5;
+}
+
+/* The dark-theme pastels need stronger contrast on Husk's light surface. */
+:root[data-theme="light"] .launcher-palette .launcher-kind-icon,
+:root[data-theme="light"] .launcher-palette .launcher-scope-pill {
+  filter: saturate(1.2) brightness(0.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launcher-palette[data-state] {
+    animation: none;
+  }
+
+  .launcher-palette *,
+  .launcher-palette *::before,
+  .launcher-palette *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .launcher-palette .command-capsule:focus-within > span:first-child,
+  .launcher-palette [cmdk-item][data-selected="true"] .launcher-kind-icon {
+    transform: none;
+  }
+}

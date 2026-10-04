@@ -49,7 +49,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { recordCommandUse, getFrecencyScore, getCommandHistory } from "./history";
 import { cn } from "@/lib/utils";
-import { parseQuery } from "./query";
+import { parseQuery, scopeQuery } from "./query";
+import "./CommandPalette.css";
 
 export { matchScopeTokens, parseQuery } from "./query";
 
@@ -71,6 +72,19 @@ export type LauncherKind =
   | "wallpaper"
   | "ai";
 
+export type CommandConfirmation = {
+  title: string;
+  description: string;
+  confirmLabel?: string;
+};
+
+export type CommandAction = {
+  label: string;
+  hint?: string;
+  confirmation?: CommandConfirmation;
+  run: () => void | Promise<void>;
+};
+
 export type Command = {
   id: string;
   label: string;
@@ -79,19 +93,26 @@ export type Command = {
   kind?: LauncherKind;
   /** Extra text merged into the match value. */
   keywords?: string;
+  /** Full path, destination, or other context shown for the selected result. */
+  detail?: string;
+  /** Human-readable Enter action, also used in the actions menu. */
+  primaryLabel?: string;
+  confirmation?: CommandConfirmation;
   /** Secondary action, triggered with Cmd/Ctrl+Enter. */
-  secondary?: { label: string; run: () => void };
+  secondary?: CommandAction;
   /** Extra verbs listed in the ⌘. action menu, after run() and secondary. */
-  actions?: { label: string; hint?: string; run: () => void }[];
+  actions?: CommandAction[];
   /** Rendered even when cmdk's fuzzy filter would score it 0 — for rows whose
    *  label never matches the query but must stay reachable. */
   alwaysShow?: boolean;
+  /** Preserve a search provider's relevance order instead of fuzzy-ranking again. */
+  searchScore?: number;
   /** Runs without dismissing the palette — for rows that rewrite the query. */
   keepOpen?: boolean;
   /** Non-interactive status row: implies alwaysShow, and is skipped by keyboard
    *  navigation since cmdk's getValidItems excludes aria-disabled items. */
   status?: boolean;
-  run: () => void;
+  run: () => void | Promise<void>;
 };
 
 const GROUP_ORDER = [
@@ -105,6 +126,9 @@ const GROUP_ORDER = [
   "Docker",
   "Kubernetes",
   "Remotes",
+  "Chats",
+  "Wallpaper",
+  "2FA",
   "AI",
   "General",
   "View",
@@ -122,23 +146,10 @@ const GROUP_ORDER = [
 /** Rows shown per source before the rest is folded behind its scope token. */
 const GROUP_CAP = 8;
 
-/** Groups that correspond to exactly one scope, so "type x: for all" is true.
-   "AI"/"Tools"/"General" hold assorted commands, so they get no token hint. */
-const GROUP_SCOPE_TOKEN: Record<string, string> = {
-  Notes: "notes",
-  Files: "files",
-  Code: "code",
-  Clipboard: "clip",
-  Bookmarks: "bookmarks",
-  Workflows: "workflows",
-  Jobs: "jobs",
-  Docker: "docker",
-  Kubernetes: "k8s",
-  Remotes: "remotes",
-};
-
-const SCOPE_LEGEND =
-  "scope with n: notes · f: files · code: code · g: grep · c: clip · b: bookmarks · w: workflows · d: docker · k: k8s · r: remotes · j: jobs · > cmd";
+const FILTER_KINDS: LauncherKind[] = [
+  "command", "note", "file", "grep", "code", "clipboard", "bookmark", "workflow",
+  "job", "container", "k8s", "remote", "session", "wallpaper", "totp",
+];
 
 const ICON_MAP: Record<string, typeof Search01Icon> = {
   explorer: SidebarLeftIcon,
@@ -227,10 +238,8 @@ function ScopePill({ kind, onClear }: { kind: LauncherKind; onClear: () => void 
         e.stopPropagation();
         onClear();
       }}
-      className={cn(
-        "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors hover:opacity-90",
-        meta.className,
-      )}
+      aria-label={`Clear ${meta.label} filter`}
+      className={cn("launcher-scope-pill flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium", meta.className)}
     >
       <span>{meta.label}</span>
       <span className="opacity-50">×</span>
@@ -418,24 +427,43 @@ export function CommandPalette({
   }, [inputValue]);
   const [selectedValue, setSelectedValue] = useState("");
   const [actionTarget, setActionTarget] = useState<Command | null>(null);
+  const [confirmation, setConfirmation] = useState<{ command: Command; action: CommandAction } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const preActionInputRef = useRef("");
   const historyIndexRef = useRef(-1);
   const historyRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    return () => {
-      document.body.style.pointerEvents = "";
-    };
-  }, []);
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  const modifier = isMac ? "⌘" : "Ctrl+";
+  const historyShortcut = isMac ? "⌥↑" : "Alt+↑";
+  const filterShortcut = isMac ? "⌥S" : "Alt+S";
 
   // Reset input each time the palette opens
   useEffect(() => {
     if (open) {
       setRawInput("");
       historyIndexRef.current = -1;
+      setActionTarget(null);
+      setConfirmation(null);
+      setError(null);
+      setFiltersVisible(false);
+      setExpandedGroups(new Set());
     }
   }, [open]);
+
+  useEffect(() => {
+    if (confirmation && !running) cancelRef.current?.focus();
+  }, [confirmation, running]);
+
+  useEffect(() => {
+    setExpandedGroups(new Set());
+  }, [rawInput]);
 
   /* Claim focus in a LAYOUT effect, which runs before passive effects — and
      Radix's focus scope autofocuses from a passive effect (useEffect). Winning
@@ -487,351 +515,370 @@ export function CommandPalette({
 
   const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
 
+  // Filter before capping, and disable cmdk's second filtering/sorting pass.
+  // alwaysShow is also used by sources that already ranked content matches.
   const enriched = useMemo(() => {
     const q = query.trim();
-    const list = commands
+    return commands
       .filter((c) => !scopedKind || (c.kind ?? "command") === scopedKind)
-      .map((c) => {
-        const rank = q ? rankMatch(`${c.label}\t${c.id}\t${c.keywords ?? ""}`, rawInput) : 0;
-        return {
-          ...c,
-          group: c.group || getGroup(c.id, c.label),
-          frecency: getFrecencyScore(c.id),
-          rank,
-        };
-      });
-    if (!q) {
-      list.sort((a, b) => b.frecency - a.frecency);
-    } else {
-      list.sort((a, b) => {
-        if (a.rank !== b.rank) return b.rank - a.rank;
-        return b.frecency - a.frecency;
-      });
-    }
-    return list;
-  }, [commands, query, scopedKind, rawInput]);
+      .map((c) => ({
+        ...c,
+        group: c.group || getGroup(c.id, c.label),
+        frecency: getFrecencyScore(c.id),
+        rank: q ? (Number.isFinite(c.searchScore) ? c.searchScore!
+          : rankMatch(c.label + "\t" + c.id + "\t" + (c.keywords ?? ""), rawInput)) : 0,
+      }))
+      .filter((c) => !q || c.rank > 0 || c.alwaysShow || c.status)
+      .sort((a, b) => b.rank - a.rank || b.frecency - a.frecency);
+  }, [commands, query, scopedKind, rawInput, open]);
 
-  const groups = useMemo(() => {
-    const map = new Map<string, typeof enriched>();
-    for (const cmd of enriched) {
-      const list = map.get(cmd.group) || [];
-      list.push(cmd);
-      map.set(cmd.group, list);
-    }
-    return map;
-  }, [enriched]);
-
-  /* Results are grouped by source and rendered in GROUP_ORDER, so a source with
-     hundreds of hits doesn't out-rank the others — it pushes them below the fold.
-     Searching "config" matches ~200 workspace files, and Files sits above
-     Clipboard, so a clipboard hit ends up hundreds of rows down. Each group shows
-     its best few unscoped and advertises the token that reveals the rest; a scope
-     means "I want this source", so caps are lifted there. */
   const sortedGroups = useMemo(() => {
-    return GROUP_ORDER.filter((g) => groups.has(g)).map((g) => {
-      const all = groups.get(g)!;
-      if (scopedKind || all.length <= GROUP_CAP) return { name: g, items: all, hidden: 0 };
-      return { name: g, items: all.slice(0, GROUP_CAP), hidden: all.length - GROUP_CAP };
+    const available = new Map(enriched.map((command) => [command.id, command]));
+    const recent = !scopedKind && !query.trim()
+      ? getCommandHistory()
+        .map((id) => available.get(id))
+        .filter((command): command is typeof enriched[number] => !!command && !command.status && !command.keepOpen)
+        .slice(0, 5)
+      : [];
+    const recentIds = new Set(recent.map((command) => command.id));
+    const groups = new Map<string, typeof enriched>();
+    for (const command of enriched) {
+      if (recentIds.has(command.id)) continue;
+      const group = groups.get(command.group) ?? [];
+      group.push(command);
+      groups.set(command.group, group);
+    }
+    // Unknown producer groups must remain reachable, too.
+    const names = [
+      ...GROUP_ORDER.filter((name) => groups.has(name)),
+      ...[...groups.keys()].filter((name) => !GROUP_ORDER.includes(name)),
+    ];
+    const result = names.map((name) => {
+      const all = groups.get(name)!;
+      const results = all.filter((command) => !command.status);
+      const capped = !scopedKind && !expandedGroups.has(name) && results.length > GROUP_CAP;
+      const visibleIds = new Set(results.slice(0, GROUP_CAP).map((command) => command.id));
+      const items = capped ? all.filter((command) => command.status || visibleIds.has(command.id)) : all;
+      const kinds = new Set(results.map((command) => command.kind ?? "command"));
+      const onlyKind = kinds.size === 1 ? [...kinds][0] : null;
+      return { name, items, hidden: capped ? results.length - GROUP_CAP : 0, kind: onlyKind };
     });
-  }, [groups, scopedKind]);
+    return recent.length
+      ? [{ name: "Recent", items: recent, hidden: 0, kind: null }, ...result]
+      : result;
+  }, [enriched, scopedKind, query, expandedGroups]);
 
-  /* Only gate on "the user typed something". cmdk's Empty renders itself only
-     when its own filtered count is 0, so testing sortedGroups here was wrong:
-     Husk renders every in-scope item and lets cmdk filter, meaning sortedGroups
-     stays non-empty even when nothing matches — and the palette showed a blank
-     box instead of a message. */
-  const hasQuery = rawInput.trim().length > 0;
+  const resolveSelected = (): Command | null => commands.find((command) => command.id === selectedValue) ?? null;
+  const primaryAction = (command: Command): CommandAction => ({
+    label: command.primaryLabel ?? ((command.kind ?? "command") === "command" ? "Run" : "Open"),
+    hint: "↵",
+    confirmation: command.confirmation,
+    run: command.run,
+  });
+  const actionsFor = (command: Command): CommandAction[] => [
+    primaryAction(command),
+    ...(command.secondary ? [{ ...command.secondary, hint: modifier + "↵" }] : []),
+    ...(command.actions ?? []),
+  ];
+  const visibleActions = actionTarget
+    ? actionsFor(actionTarget).map((action, index) => ({ ...action, index }))
+      .filter((action) => !rawInput.trim() || rankText(action.label + " " + (action.hint ?? ""), rawInput.trim()) > 0)
+    : [];
+  const selectedCommand = actionTarget ?? resolveSelected();
+  const selectedAction = actionTarget
+    ? visibleActions.find((action) => "action:" + action.index === selectedValue)
+    : selectedCommand ? primaryAction(selectedCommand) : null;
+  const moreGroup = sortedGroups.find((group) => "more:" + group.name === selectedValue);
 
-  const handleSelect = (cmd: Command) => {
-    if (cmd.keepOpen) {
-      // Not a real command: don't record frecency and don't dismiss.
-      cmd.run();
-      return;
-    }
-    recordCommandUse(cmd.id);
-    cmd.run();
-    onClose();
-  };
-
-  const resolveSelected = (): Command | null => {
-    const id = selectedValue.split("\t")[1] ?? selectedValue;
-    return commands.find((c) => c.id === id) ?? null;
-  };
-
-  const handleSecondary = () => {
-    const cmd = resolveSelected();
-    if (cmd?.secondary) {
-      recordCommandUse(cmd.id);
-      cmd.secondary.run();
-      onClose();
-    }
-  };
-
-  /* ── Action menu (⌘.) ───────────────────────────────────────────────────
-     Entering clears the query so cmdk's fuzzy filter doesn't score every action
-     to zero against the old search text; typing then filters the actions. The
-     original query is restored on exit. */
-  const openActions = () => {
-    const cmd = resolveSelected();
-    if (!cmd || cmd.status) return;
-    preActionInputRef.current = rawInput;
-    setActionTarget(cmd);
-    setRawInput("");
-  };
-
+  const restoreInputFocus = () => requestAnimationFrame(() => inputRef.current?.focus());
   const closeActions = () => {
     setActionTarget(null);
     setRawInput(preActionInputRef.current);
     preActionInputRef.current = "";
+    setError(null);
+    restoreInputFocus();
+  };
+  const openActions = () => {
+    const command = resolveSelected();
+    if (!command || command.status || runningRef.current) return;
+    preActionInputRef.current = rawInput;
+    setActionTarget(command);
+    setRawInput("");
+    setError(null);
+  };
+  const cancelConfirmation = () => {
+    if (runningRef.current) return;
+    setConfirmation(null);
+    setError(null);
+    restoreInputFocus();
   };
 
-  const actionsFor = (cmd: Command) => {
-    const list: { label: string; hint?: string; run: () => void }[] = [
-      { label: (cmd.kind ?? "command") === "command" ? "Run" : "Open", hint: "↵", run: cmd.run },
-    ];
-    if (cmd.secondary) {
-      const l = cmd.secondary.label;
-      list.push({ label: l.charAt(0).toUpperCase() + l.slice(1), hint: "⌘↵", run: cmd.secondary.run });
+  const execute = async (command: Command, action: CommandAction) => {
+    if (runningRef.current || command.status) return;
+    runningRef.current = true;
+    setRunning(true);
+    setError(null);
+    // Restore the source query before a scope action rewrites it, not afterwards.
+    if (command.keepOpen && actionTarget) closeActions();
+    try {
+      await action.run();
+      if (!command.keepOpen) recordCommandUse(command.id);
+      setConfirmation(null);
+      if (!command.keepOpen) onClose();
+      else restoreInputFocus();
+    } catch (cause) {
+      setError((cause instanceof Error ? cause.message : String(cause)).slice(0, 1000));
+      if (!confirmation) restoreInputFocus();
+    } finally {
+      runningRef.current = false;
+      setRunning(false);
     }
-    if (cmd.actions) list.push(...cmd.actions);
-    return list;
   };
-
-  const runAction = (cmd: Command, action: { run: () => void }) => {
-    recordCommandUse(cmd.id);
-    action.run();
-    onClose();
-  };
-
-  const historyStep = (dir: 1 | -1) => {
-    if (dir === 1 && historyIndexRef.current === -1) {
-      historyRef.current = getCommandHistory();
-    }
-    const hist = historyRef.current;
-    if (hist.length === 0) return;
-    historyIndexRef.current =
-      dir === 1
-        ? Math.min(historyIndexRef.current + 1, hist.length - 1)
-        : Math.max(historyIndexRef.current - 1, -1);
-    if (historyIndexRef.current === -1) {
-      setRawInput("");
+  const requestAction = (command: Command, action: CommandAction) => {
+    if (runningRef.current || command.status) return;
+    setError(null);
+    if (action.confirmation) {
+      setConfirmation({ command, action });
       return;
     }
-    const id = hist[hist.length - 1 - historyIndexRef.current];
-    const cmd = commands.find((c) => c.id === id);
-    if (cmd) setRawInput(cmd.label);
+    void execute(command, action);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Mid-composition keys belong to the IME, not to us. cmdk skips these too.
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+  const applyScope = (kind: LauncherKind | null) => {
+    setRawInput(scopeQuery(kind, rawInput));
+    setFiltersVisible(false);
+    historyIndexRef.current = -1;
+    setError(null);
+    restoreInputFocus();
+  };
+  const focusFilters = (toggle = false) => {
+    if (toggle && filtersVisible) {
+      setFiltersVisible(false);
+      restoreInputFocus();
+      return;
+    }
+    setFiltersVisible(true);
+    requestAnimationFrame(() => filtersRef.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.focus());
+  };
+  const showMore = (group: typeof sortedGroups[number]) => {
+    // Files may contain grep hits. Infer the scope from rows, never the heading.
+    if (group.kind && FILTER_KINDS.includes(group.kind)) applyScope(group.kind);
+    else setExpandedGroups((previous) => new Set([...previous, group.name]));
+  };
+  const historyStep = (direction: 1 | -1) => {
+    if (direction === 1 && historyIndexRef.current === -1) {
+      const available = new Set(commands.filter((command) => !command.status && !command.keepOpen).map((command) => command.id));
+      historyRef.current = getCommandHistory().filter((id) => available.has(id));
+    }
+    const history = historyRef.current;
+    if (!history.length) return;
+    historyIndexRef.current = direction === 1
+      ? Math.min(historyIndexRef.current + 1, history.length - 1)
+      : Math.max(historyIndexRef.current - 1, -1);
+    const command = commands.find((item) => item.id === history[historyIndexRef.current]);
+    setRawInput(command?.label ?? "");
+  };
 
-    // A deliberate select-all must survive handleSelectionChange.
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") markUserSelection();
-
-    // ⌘. toggles the action menu for the selected row. Deliberately not Tab
-    // (navigation) nor → (moves the caret inside the query) nor ⌘K (opens the
-    // palette itself).
-    if ((e.metaKey || e.ctrlKey) && e.key === ".") {
-      e.preventDefault();
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (runningRef.current) {
+      event.preventDefault();
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") markUserSelection();
+    if (!actionTarget && event.altKey && (event.code === "KeyS" || event.key.toLowerCase() === "s")) {
+      event.preventDefault();
+      focusFilters();
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === ".") {
+      event.preventDefault();
       if (actionTarget) closeActions();
       else openActions();
       return;
     }
-
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      handleSecondary();
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      // Action-menu Enter must execute the selected verb, not an unrelated row.
+      if (actionTarget) {
+        if (selectedAction) requestAction(actionTarget, selectedAction);
+      } else {
+        const command = resolveSelected();
+        if (command?.secondary) requestAction(command, command.secondary);
+      }
       return;
     }
-
-    // Tab/Shift+Tab mirror ArrowDown/ArrowUp. cmdk has no Tab binding, so
-    // re-emit the arrow it does handle — going through cmdk's own next/prev is
-    // what scrolls the new selection into view.
-    if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      e.currentTarget.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: e.shiftKey ? "ArrowUp" : "ArrowDown",
-          bubbles: true,
-          // Without this the event is uncancelable and cmdk's preventDefault()
-          // silently no-ops.
-          cancelable: true,
-        }),
-      );
+    if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      event.currentTarget.dispatchEvent(new KeyboardEvent("keydown", {
+        key: event.shiftKey ? "ArrowUp" : "ArrowDown",
+        bubbles: true,
+        cancelable: true,
+      }));
       return;
     }
-
-    // Command history lives on Alt+Arrow. Plain arrows must stay with the result
-    // list: cmdk bails on defaultPrevented, so hijacking them here used to make
-    // the list unnavigable whenever the query was empty.
-    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-      e.preventDefault();
-      historyStep(e.key === "ArrowUp" ? 1 : -1);
+    if (!actionTarget && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      historyStep(event.key === "ArrowUp" ? 1 : -1);
     }
   };
 
   return (
     <CommandDialog
       open={open}
-      className="sm:max-w-[520px]"
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-      /* Radix's focus scope autofocuses the first tabbable element with
-         select:true, which select-alls the query — so the next character replaces
-         it instead of appending, and you can never type more than one letter. We
-         focus the input ourselves (without selecting), so suppress theirs. */
-      onOpenAutoFocus={(e) => e.preventDefault()}
-      onEscapeKeyDown={(e) => {
-        // First Escape backs out of the action menu; a second one closes.
-        if (actionTarget) {
-          e.preventDefault();
+      className="launcher-palette sm:max-w-[520px]"
+      onOpenChange={(nextOpen) => { if (!nextOpen && !runningRef.current) onClose(); }}
+      onOpenAutoFocus={(event) => event.preventDefault()}
+      onEscapeKeyDown={(event) => {
+        if (runningRef.current) event.preventDefault();
+        else if (confirmation) {
+          event.preventDefault();
+          cancelConfirmation();
+        } else if (actionTarget) {
+          event.preventDefault();
           closeActions();
+        } else if (filtersRef.current?.contains(document.activeElement)) {
+          event.preventDefault();
+          setFiltersVisible(false);
+          restoreInputFocus();
         }
       }}
     >
-      <CommandRoot
-        value={selectedValue}
-        onValueChange={setSelectedValue}
-        filter={(value, search) => rankMatch(value, search)}
-      >
-        <CommandInput
-          ref={inputRef}
-          autoFocus
-          leftSlot={
-            actionTarget ? (
-              <ScopePill kind={actionTarget.kind ?? "command"} onClear={closeActions} />
-            ) : scopedKind ? (
-              <ScopePill kind={scopedKind} onClear={() => setRawInput(query)} />
-            ) : undefined
-          }
-          placeholder={
-            actionTarget
-              ? `Filter actions for ${actionTarget.label}…`
-              : scopedKind
-                ? `Search ${SCOPE_LABELS[scopedKind].label.toLowerCase()}…`
-                : "Search everything — notes, files, docker, k8s, workflows…"
-          }
-          value={rawInput}
-          onValueChange={(v) => {
-            // Typing leaves the history walk, so the cursor must not persist.
-            historyIndexRef.current = -1;
-            setRawInput(v);
+      {confirmation ? (
+        <section role="alertdialog" aria-modal="true" aria-labelledby="launcher-confirm-title" aria-describedby="launcher-confirm-description" className="launcher-confirmation p-4">
+          <h2 id="launcher-confirm-title" className="text-sm font-medium">{confirmation.action.confirmation!.title}</h2>
+          <p id="launcher-confirm-description" className="launcher-confirm-description mt-2 whitespace-pre-wrap break-all text-xs leading-relaxed text-muted-foreground">{confirmation.action.confirmation!.description}</p>
+          {error && <p role="alert" className="launcher-error mt-3 text-xs text-destructive">{error}</p>}
+          <div className="mt-4 flex justify-end gap-2">
+            <button ref={cancelRef} type="button" disabled={running} className="launcher-confirm-button" onClick={cancelConfirmation}>Cancel</button>
+            <button type="button" disabled={running} className="launcher-confirm-button launcher-confirm-primary" onClick={() => void execute(confirmation.command, confirmation.action)}>
+              {running ? "Working…" : confirmation.action.confirmation!.confirmLabel ?? confirmation.action.label}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <CommandRoot
+          value={selectedValue} onValueChange={setSelectedValue} shouldFilter={false} loop aria-busy={running}
+          onKeyDownCapture={(event) => {
+            // Native buttons (source filters, scope clear, footer) must activate
+            // themselves, not cmdk's currently selected result as well.
+            if (event.key === "Enter" && event.target instanceof Element && event.target.closest("button")) {
+              event.stopPropagation();
+            }
           }}
-          onKeyDown={handleKeyDown}
-          onSelect={handleSelectionChange}
-          onPointerDown={markUserSelection}
-          onDoubleClick={markUserSelection}
-        />
-        <CommandList>
-          {hasQuery && !actionTarget && <CommandEmpty>No results found.</CommandEmpty>}
-          {/* cmdk only renders Empty when the filtered count is 0, so this needs
-              no extra condition beyond being in action mode. */}
-          {actionTarget && <CommandEmpty>No matching actions.</CommandEmpty>}
-
-          {actionTarget ? (
-            <CommandGroup heading={`Actions — ${actionTarget.label}`}>
-              {actionsFor(actionTarget).map((action, i) => (
-                <CommandItem
-                  key={`${action.label}:${i}`}
-                  value={`${action.label}\taction:${i}\t`}
-                  onSelect={() => runAction(actionTarget, action)}
-                >
-                  <div
-                    className={cn(
-                      "flex size-5 shrink-0 items-center justify-center rounded",
-                      KIND_META[actionTarget.kind ?? "command"].className,
-                    )}
-                  >
-                    <HugeiconsIcon icon={FlashIcon} size={13} strokeWidth={1.5} />
-                  </div>
-                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
-                  {action.hint ? <CommandShortcut>{action.hint}</CommandShortcut> : null}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          ) : null}
-
-          {!actionTarget && sortedGroups.map((group) => (
-            /* A group is hidden unless one of its items scores > 0, which would
-               swallow a status row whose label never matches the query. */
-            <CommandGroup
-              key={group.name}
-              heading={group.name}
-              forceMount={group.items.some((i) => i.status || i.alwaysShow) || undefined}
+        >
+          <CommandInput
+            ref={inputRef}
+            autoFocus
+            disabled={running}
+            leftSlot={actionTarget
+              ? <ScopePill kind={actionTarget.kind ?? "command"} onClear={closeActions} />
+              : scopedKind ? <ScopePill kind={scopedKind} onClear={() => applyScope(null)} /> : undefined}
+            placeholder={actionTarget
+              ? "Filter actions for " + actionTarget.label + "…"
+              : scopedKind ? "Search " + SCOPE_LABELS[scopedKind].label.toLowerCase() + "…"
+                : "Search everything — notes, files, docker, k8s, workflows…"}
+            value={rawInput}
+            onValueChange={(value) => {
+              historyIndexRef.current = -1;
+              setRawInput(value);
+              setError(null);
+            }}
+            onKeyDown={handleKeyDown}
+            onSelect={handleSelectionChange}
+            onPointerDown={markUserSelection}
+            onDoubleClick={markUserSelection}
+          />
+          {!actionTarget && (
+            <div
+              ref={filtersRef}
+              id="launcher-source-filters"
+              className="launcher-filters"
+              hidden={!filtersVisible}
+              role="group"
+              aria-label="Filter results by source"
+              aria-keyshortcuts="Alt+S"
+              onKeyDown={(event) => {
+                const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+                const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+                if (index < 0) return;
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  buttons[(index + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
+                }
+              }}
             >
-              {group.items.map((cmd) => {
-                const kind = cmd.kind ?? "command";
-                const Icon = getIcon(cmd.id, kind);
-                const meta = KIND_META[kind];
-                const indices = getMatchIndices(cmd.label, query);
-                return (
-                  <CommandItem
-                    key={cmd.id}
-                    value={`${cmd.label}\t${cmd.id}\t${cmd.keywords ?? ""}`}
-                    keywords={[cmd.id, cmd.keywords ?? "", cmd.group ?? ""]}
-                    forceMount={cmd.status || cmd.alwaysShow || undefined}
-                    disabled={cmd.status || undefined}
-                    onSelect={() => handleSelect(cmd)}
-                  >
-                    <div className={cn("flex size-5 shrink-0 items-center justify-center rounded", meta.className)}>
-                      <HugeiconsIcon icon={Icon} size={13} strokeWidth={1.5} />
-                    </div>
-                    <HighlightLabel text={cmd.label} indices={indices} className="min-w-0 flex-1" />
-                    {cmd.hint ? (
-                      <span className="shrink-0 text-[10px] text-muted-foreground/60">{cmd.hint}</span>
-                    ) : null}
-                    {cmd.secondary ? (
-                      <CommandShortcut>⌘↵ {cmd.secondary.label}</CommandShortcut>
-                    ) : null}
-                  </CommandItem>
-                );
-              })}
-              {group.hidden > 0 && GROUP_SCOPE_TOKEN[group.name] ? (
-                /* forceMount + disabled, not a plain div: cmdk re-appends item
-                   nodes to sort them, which would leave a bare div stranded above
-                   the rows. As a zero-scoring item it sorts to the end, and
-                   disabled keeps it out of keyboard navigation. No count — cmdk
-                   filters the surviving rows further, so any number we computed
-                   here would contradict what is on screen. */
-                <CommandItem
-                  key={`${group.name}:more`}
-                  value={`\tmore:${group.name}\t`}
-                  forceMount
-                  disabled
-                  className="pl-9 text-[10px] text-muted-foreground/40"
-                  onSelect={() => {}}
-                >
-                  type “{GROUP_SCOPE_TOKEN[group.name]}:” for all matches
-                </CommandItem>
-              ) : null}
-            </CommandGroup>
-          ))}
-        </CommandList>
-        <div className="flex items-center gap-3 border-t border-border/50 px-3 py-1.5 text-[9.5px] text-muted-foreground/50">
-          <span className="shrink-0">↵ open</span>
-          {actionTarget ? (
-            <span className="shrink-0">esc back</span>
-          ) : (
-            <>
-              <span className="shrink-0">⌘↵ action</span>
-              <span className="shrink-0">⌘. actions</span>
-              <span className="shrink-0">⇥ next</span>
-            </>
+              <button type="button" aria-pressed={!scopedKind} disabled={running} onClick={() => applyScope(null)}>All</button>
+              {FILTER_KINDS.map((kind) => (
+                <button key={kind} type="button" aria-pressed={scopedKind === kind} disabled={running} onClick={() => applyScope(kind)}>
+                  {SCOPE_LABELS[kind].label}
+                </button>
+              ))}
+            </div>
           )}
-          {/* Truncates rather than pushing the row wider than the 520px panel.
-              The scope legend only earns its space before you start typing —
-              once there's a query the pill already shows the active scope. */}
-          <span className="ml-auto min-w-0 truncate">
-            {actionTarget
-              ? `${actionsFor(actionTarget).length} actions`
-              : hasQuery
-                ? "⌥↑ history"
-                : SCOPE_LEGEND}
-          </span>
-        </div>
-      </CommandRoot>
+          <CommandList>
+            <CommandEmpty>{actionTarget ? "No matching actions." : "No results found."}</CommandEmpty>
+            {actionTarget ? (
+              <CommandGroup heading={"Actions — " + actionTarget.label}>
+                {visibleActions.map((action) => (
+                  <CommandItem key={action.index} value={"action:" + action.index} disabled={running} onSelect={() => requestAction(actionTarget, action)}>
+                    <span aria-hidden="true" data-kind={actionTarget.kind ?? "command"} className={cn("launcher-kind-icon", KIND_META[actionTarget.kind ?? "command"].className)}>
+                      <HugeiconsIcon icon={FlashIcon} size={13} strokeWidth={1.5} />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                    {action.hint && <CommandShortcut>{action.hint}</CommandShortcut>}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ) : sortedGroups.map((group) => (
+              <CommandGroup key={group.name} heading={group.name}>
+                {group.items.map((command) => (
+                  <CommandItem
+                    key={command.id}
+                    value={command.id}
+                    disabled={command.status || running || undefined}
+                    onSelect={() => requestAction(command, primaryAction(command))}
+                  >
+                    <span aria-hidden="true" data-kind={command.kind ?? "command"} className={cn("launcher-kind-icon", KIND_META[command.kind ?? "command"].className)}>
+                      <HugeiconsIcon icon={getIcon(command.id, command.kind ?? "command")} size={13} strokeWidth={1.5} />
+                    </span>
+                    <HighlightLabel text={command.label} indices={getMatchIndices(command.label, query)} className="min-w-0 flex-1" />
+                    {command.hint && <span className="launcher-item-hint" title={command.hint}>{command.hint}</span>}
+                    {command.secondary && <CommandShortcut title={command.secondary.label}>{modifier}↵ {command.secondary.label}</CommandShortcut>}
+                  </CommandItem>
+                ))}
+                {group.hidden > 0 && (
+                  <CommandItem
+                    value={"more:" + group.name}
+                    disabled={running}
+                    className="launcher-show-more"
+                    onSelect={() => showMore(group)}
+                  >
+                    Show {group.hidden} more results
+                    <span className="sr-only"> in {group.name}</span>
+                  </CommandItem>
+                )}
+              </CommandGroup>
+            ))}
+          </CommandList>
+          {error && <p role="alert" className="launcher-error border-t border-border px-3 py-2 text-xs text-destructive">{error}</p>}
+          <div className="launcher-footer" aria-live="polite">
+            {selectedCommand?.detail && <div className="launcher-detail" title={selectedCommand.detail}>{selectedCommand.detail}</div>}
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 truncate">{running ? "Working…" : "↵ " + (selectedAction?.label ?? (moreGroup ? "Show more results" : "Select a result"))}</span>
+              {actionTarget ? <span className="shrink-0">esc back</span> : <>
+                {selectedCommand?.secondary && <span className="min-w-0 truncate">{modifier}↵ {selectedCommand.secondary.label}</span>}
+                {selectedCommand && !selectedCommand.status && <span className="shrink-0">{modifier}. actions</span>}
+              </>}
+              <span className="ml-auto shrink-0">{actionTarget ? visibleActions.length + " actions" : <>
+                <button type="button" className="launcher-sources-toggle" disabled={running} aria-keyshortcuts="Alt+S" aria-expanded={filtersVisible} aria-controls="launcher-source-filters" onClick={() => focusFilters(true)}>{filterShortcut} sources</button>
+                <span className="ml-3" title="Recall recent commands">{historyShortcut}</span>
+              </>}</span>
+            </div>
+          </div>
+        </CommandRoot>
+      )}
     </CommandDialog>
   );
 }

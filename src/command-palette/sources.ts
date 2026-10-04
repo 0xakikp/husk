@@ -20,6 +20,18 @@ import { detectInstalled } from "../tools";
 type CacheEntry<T> = { at: number; data: T };
 const cache = new Map<string, CacheEntry<unknown>>();
 const inflight = new Map<string, Promise<unknown>>();
+const listeners = new Set<(key: string) => void>();
+let cacheGeneration = 0;
+
+/** Notify an open launcher when a stale-while-revalidate result arrives. */
+export function subscribeLauncherCache(listener: (key: string) => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+export function workspaceFilesCacheKey(root: string): string {
+  return `ws-files:${root}`;
+}
 
 /**
  * Stale-while-revalidate. A fresh entry is returned as-is; a stale one is still
@@ -32,13 +44,17 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   const refresh = (): Promise<T> => {
     const existing = inflight.get(key) as Promise<T> | undefined;
     if (existing) return existing;
+    const generation = cacheGeneration;
     const p = load()
       .then((data) => {
-        cache.set(key, { at: Date.now(), data });
+        if (generation === cacheGeneration) {
+          cache.set(key, { at: Date.now(), data });
+          for (const listener of listeners) listener(key);
+        }
         return data;
       })
       .finally(() => {
-        inflight.delete(key);
+        if (inflight.get(key) === p) inflight.delete(key);
       });
     inflight.set(key, p);
     return p;
@@ -53,6 +69,7 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
 }
 
 export function invalidateLauncherCache() {
+  cacheGeneration += 1;
   cache.clear();
   inflight.clear();
 }
@@ -202,8 +219,8 @@ export type GrepOutcome = {
 export async function searchWorkspaceContents(
   query: string,
   maxResults = 50,
+  root = getWorkspaceRoot(),
 ): Promise<GrepOutcome> {
-  const root = getWorkspaceRoot();
   if (!root || !query.trim()) return { results: [], missingTool: false };
 
   if (!(await loadAvailableTools()).has("rg")) {
@@ -271,10 +288,9 @@ export async function searchWorkspaceContents(
   return { results, missingTool: false };
 }
 
-export async function loadWorkspaceFiles(): Promise<WorkspaceFileEntry[]> {
-  return cached("ws-files", 60_000, async () => {
-    const root = getWorkspaceRoot();
-    if (!root) return [];
+export async function loadWorkspaceFiles(root = getWorkspaceRoot()): Promise<WorkspaceFileEntry[]> {
+  if (!root) return [];
+  return cached(workspaceFilesCacheKey(root), 60_000, async () => {
     let lines: string[] = [];
     // Prefer fd (fast, respects .gitignore). Skip it entirely when it isn't
     // installed rather than spawning a process that is certain to fail.

@@ -81,3 +81,11 @@ export function parseQuery(raw: string): { kind: LauncherKind | null; query: str
   }
   return { kind: null, query: raw };
 }
+
+/** Switching sources changes only the scope, never the user's search text. */
+export function scopeQuery(kind: LauncherKind | null, raw: string): string {
+  const { query } = parseQuery(raw);
+  if (!kind) return query;
+  const token = SCOPE_CANONICAL[kind];
+  return token ? `${token}: ${query}` : query;
+}

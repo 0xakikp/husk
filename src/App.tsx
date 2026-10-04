@@ -34,6 +34,8 @@ import { readActiveTerminal, getActiveTerminalExit, subscribeTerminalState, focu
 import { openActiveTerminalLogs } from "./terminal/registry";
 import { loadAccounts as loadTotpAccounts } from "./totp/store";
 import { useLauncherItems, type LauncherCtx } from "./command-palette/useLauncherItems";
+import { captureLauncherTerminalTarget, stageLauncherCommand } from "./command-palette/terminalActions";
+import { assertLauncherFileSource } from "./command-palette/fileTargets";
 import { getNotesDirectory, pinNote, unpinNote } from "./notes/store";
 import { isVaultPathWithin, replaceVaultPath } from "./notes/vaultPaths";
 import { isExplorerPathWithin, replaceExplorerPath } from "./explorer/pathOperations";
@@ -529,6 +531,8 @@ function App() {
   const activeFileRef = useRef<string | null>(activeFile);
   activeFileRef.current = activeFile;
   const term = useTerminalTabs();
+  const terminalTabsApiRef = useRef(term);
+  terminalTabsApiRef.current = term;
   const [activeKind, setActiveKind] = useState<ActiveKind>("term");
   const [aiOpen, setAiOpen] = useState(true);
 
@@ -598,25 +602,25 @@ function App() {
         id: "wall-next",
         label: "Next wallpaper",
         keywords: "background image cycle switch",
-        run: () => void stepWallpaper(1).then(reportWallpaper),
+        run: async () => { reportWallpaper(await stepWallpaper(1)); },
       },
       {
         id: "wall-prev",
         label: "Previous wallpaper",
         keywords: "background image cycle switch",
-        run: () => void stepWallpaper(-1).then(reportWallpaper),
+        run: async () => { reportWallpaper(await stepWallpaper(-1)); },
       },
       {
         id: "wall-random",
         label: "Random wallpaper",
         keywords: "background image shuffle",
-        run: () => void randomWallpaper().then(reportWallpaper),
+        run: async () => { reportWallpaper(await randomWallpaper()); },
       },
       { id: "browser", label: "Open browser", keywords: "web internet page url chrome", run: () => openBrowser() },
-      { id: "open-folder", label: "Open folder…", run: () => void pickWorkspaceFolder() },
+      { id: "open-folder", label: "Open folder…", run: async () => { await pickWorkspaceFolder(); } },
       { id: "welcome", label: "Welcome to Husk", keywords: "getting started onboarding first launch help", run: () => setWelcomeOpen(true) },
       { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
-      { id: "settings-window", label: "Open settings (new window)", run: () => void openSettingsWindow() },
+      { id: "settings-window", label: "Open settings (new window)", run: () => openSettingsWindow() },
       { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
       {
         id: "workflow-from-recent",
@@ -662,17 +666,12 @@ function App() {
             { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
             { id: "explain", label: "Explain last error (AI)", run: explainLastError },
             { id: "ai-bubble", label: "Toggle AI composer", hint: "Ctrl/Cmd+Shift+A", run: () => toggleComposer() },
-            { id: "ai-rebuild-index", label: "AI: Rebuild codebase index", run: () => {
-              import("./ai/codebaseSearch").then(({ buildCodebaseIndex }) => {
-                import("./workspace/store").then(({ getWorkspaceRoot }) => {
-                  const root = getWorkspaceRoot() || "/";
-                  buildCodebaseIndex(root).then(() => {
-                    toast({ title: "Codebase index rebuilt", variant: "success", duration: 2000 });
-                  }).catch((e: Error) => {
-                    toast({ title: `Index failed: ${e.message}`, variant: "error", duration: 3000 });
-                  });
-                });
-              });
+            { id: "ai-rebuild-index", label: "AI: Rebuild codebase index", run: async () => {
+              const root = getWorkspaceRoot();
+              if (!root) throw new Error("Open a workspace folder before rebuilding its index.");
+              const { buildCodebaseIndex } = await import("./ai/codebaseSearch");
+              await buildCodebaseIndex(root);
+              toast({ title: "Codebase index rebuilt", variant: "success", duration: 2000 });
             }},
           ]
         : []),
@@ -685,7 +684,7 @@ function App() {
       { id: "source-control", label: "Open source control", run: () => { cycleSidebarView("source-control"); } },
       { id: "git-history", label: "Open git history", run: () => setGitHistoryOpen(true) },
       { id: "shortcuts", label: "Keyboard shortcuts", run: () => setShortcutsOpen(true) },
-      { id: "check-updates", label: "Check for updates", run: () => void checkForUpdates(true) },
+      { id: "check-updates", label: "Check for updates", run: async () => { await checkForUpdates(true); } },
       { id: "preview", label: "Open preview", run: () => { setPreviewPath(undefined); setPreviewOpen(true); } },
       {
         id: "theme",
@@ -693,7 +692,7 @@ function App() {
         run: () => setPrefs({ theme: prefs.theme === "dark" ? "light" : "dark" }),
       },
       // Terminal tab commands
-      { id: "new-tab", label: "New terminal tab", hint: "Ctrl/Cmd+T", run: () => { term.addTab(); setActiveKind("term"); } },
+      { id: "new-tab", label: "New terminal tab", hint: "Ctrl/Cmd+T", run: () => { terminalTabsApiRef.current.addTab(); setActiveKind("term"); } },
       {
         id: "open-live-logs",
         label: "Open beautiful logs",
@@ -706,11 +705,15 @@ function App() {
           }
         },
       },
-      { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+Shift+W", run: () => term.closeTab(term.activeId) },
-      { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const n = term.tabs[(i + 1) % term.tabs.length]; if (n) { term.setActiveId(n.id); setActiveKind(n.sftpOpen ? "sftp" : "term"); } } },
-      { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const i = term.tabs.findIndex((t) => t.id === term.activeId); const p = term.tabs[(i - 1 + term.tabs.length) % term.tabs.length]; if (p) { term.setActiveId(p.id); setActiveKind(p.sftpOpen ? "sftp" : "term"); } } },
+      { id: "close-tab", label: "Close terminal tab", hint: "Ctrl/Cmd+Shift+W", primaryLabel: "Close tab",
+        confirmation: { title: "Close terminal tab?", description: `Close ${term.tabs.find((tab) => tab.id === term.activeId)?.title ?? "this terminal"}? Its shells and running jobs may be terminated.`, confirmLabel: "Close tab" },
+        run: () => terminalTabsApiRef.current.closeTab(term.activeId) },
+      { id: "next-tab", label: "Next terminal tab", hint: "Ctrl/Cmd+Tab", run: () => { const api = terminalTabsApiRef.current; const i = api.tabs.findIndex((t) => t.id === api.activeId); const n = api.tabs[(i + 1) % api.tabs.length]; if (n) { api.setActiveId(n.id); setActiveKind(n.sftpOpen ? "sftp" : "term"); } } },
+      { id: "prev-tab", label: "Previous terminal tab", hint: "Ctrl/Cmd+Shift+Tab", run: () => { const api = terminalTabsApiRef.current; const i = api.tabs.findIndex((t) => t.id === api.activeId); const p = api.tabs[(i - 1 + api.tabs.length) % api.tabs.length]; if (p) { api.setActiveId(p.id); setActiveKind(p.sftpOpen ? "sftp" : "term"); } } },
     ],
-    [prefs.aiEnabled, prefs.theme, term, totpAccountCount, showSidebarView, cycleSidebarView],
+    // The tab API object changes on each render. Only actual tab state should
+    // rebuild source items; handlers use its latest methods through the ref.
+    [prefs.aiEnabled, prefs.theme, term.tabs, term.activeId, totpAccountCount, showSidebarView, cycleSidebarView],
   );
 
   // ── Terminal tab universal shortcuts ──
@@ -870,14 +873,20 @@ function App() {
     setActiveKind((k) => (k === "sftp" ? "term" : k));
   }, [term]);
 
-  const openFile = useCallback((path: string, name: string) => {
+  const openFile = useCallback((path: string, name: string, sourceHost: string | null = remoteHost) => {
     setOpenFiles((prev) => {
       if (prev.some((f) => f.path === path)) return prev;
-      return [...prev, { path, name, remoteHost, pinned: false }];
+      return [...prev, { path, name, remoteHost: sourceHost, pinned: false }];
     });
     setActiveFile(path);
     setActiveKind("file");
   }, [remoteHost]);
+
+  const openLauncherFile = useCallback((path: string, name: string, sourceHost?: string) => {
+    assertLauncherFileSource(openFilesRef.current, path, sourceHost);
+    // Local workspace/vault searches stay local even when Remotes is selected.
+    openFile(path, name, sourceHost ?? null);
+  }, [openFile]);
 
   /* Assistant replies can turn a verified workspace-relative `path:line`
      reference into a normal editor navigation. The composer validates the
@@ -1047,24 +1056,28 @@ function App() {
   };
 
   // ── Launcher (Spotlight): merge static commands with live sources ──
+  // Deliberately freeze the reviewed terminal identity for this palette visit.
+  // Changes while searching/confirming are rejected, never retargeted silently.
+  const launcherTerminalTarget = useMemo(() => paletteOpen
+    ? captureLauncherTerminalTarget(term.tabs.find((tab) => tab.id === term.activeId)?.title)
+    : null, [paletteOpen]);
   const launcherCtx = useMemo<LauncherCtx>(
     () => ({
       openNote: (path, name) => {
+        openLauncherFile(path, name);
         showSidebarView("vault");
-        openFile(path, name);
       },
       pinNote: (path) => pinNote(path),
       unpinNote: (path) => unpinNote(path),
-      openFile: (path, name) => openFile(path, name),
-      openFileAtLine: (path, name, line) => {
-        openFile(path, name);
+      openFile: (path, name, sourceHost) => openLauncherFile(path, name, sourceHost),
+      openFileAtLine: (path, name, line, sourceHost) => {
+        openLauncherFile(path, name, sourceHost);
         // EditorArea holds the reveal until the model for `path` is active, so
         // this is safe to fire before the file has finished loading.
         window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path, line } }));
       },
-      typeInTerminal: (text) => {
-        if (text) typeInActiveTerminal(text);
-      },
+      typeInTerminal: (text) => stageLauncherCommand(launcherTerminalTarget, text),
+      terminalTargetLabel: launcherTerminalTarget?.label ?? "No verified terminal target — return to a shell prompt and reopen Cmd+K",
       openDocker: () => setDockerOpen(true),
       openK8s: () => showSidebarView("kubernetes"),
       switchK8sContext: (name) => {
@@ -1091,9 +1104,9 @@ function App() {
       },
       askAi: (q) => openBubble(q),
       setQuery: (v) => setPaletteInput(v),
-      openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
+      openFiles: openFiles.map((f) => ({ path: f.path, name: f.name, remoteHost: f.remoteHost ?? undefined })),
     }),
-    [showSidebarView, openFile, openFiles, openAi, browseK8sContext],
+    [showSidebarView, openLauncherFile, openFiles, openAi, browseK8sContext, launcherTerminalTarget],
   );
 
   const launcherItems = useLauncherItems(paletteOpen, paletteInput, commands, launcherCtx);
