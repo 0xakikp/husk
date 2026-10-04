@@ -66,7 +66,7 @@ export class TerminalKubeconfigCapture {
   }
 }
 
-/** Remove the private OSC from raw-output subscribers, including split chunks.
+/** Remove private kubeconfig/capture OSCs from subscribers, including split chunks.
  * xterm still receives the original stream so its parser retains prompt order.
  * A recognized record is discarded until its terminator without buffering its
  * payload, so neither malformed nor overlong metadata reaches logs/AI context. */
@@ -76,7 +76,7 @@ export class KubeconfigOutputFilter {
   private escaped = false;
 
   consume(chunk: string): string {
-    const prefixes = ["\x1b]779;", "\x9d779;"];
+    const prefixes = ["\x1b]779;", "\x9d779;", "\x1b]780;", "\x9d780;"];
     let output = "";
     for (const char of chunk) {
       if (this.discarding) {

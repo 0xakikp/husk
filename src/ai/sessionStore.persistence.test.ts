@@ -4,13 +4,37 @@ import { IDBFactory, IDBObjectStore } from "fake-indexeddb";
 
 vi.mock("../toast/store", () => ({ toast: vi.fn(() => "storage-toast"), dismissToast: vi.fn() }));
 const nativeWindow = vi.hoisted(() => ({
-  listener: undefined as undefined | ((event: { preventDefault: () => void }) => Promise<void>),
+  listener: undefined as undefined | ((event: { event: string; id: number }) => Promise<void>),
+  handler: undefined as undefined | ((event: { preventDefault: () => void }) => Promise<void>),
   close: vi.fn(async () => {}),
+  destroy: vi.fn(async () => { throw "Command plugin:window|destroy not allowed by ACL"; }),
+  unlisten: vi.fn(async () => {}),
+  registrations: 0,
+  closed: false,
+  events: [] as string[],
 }));
-vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({
-  close: nativeWindow.close,
-  onCloseRequested: async (listener: typeof nativeWindow.listener) => { nativeWindow.listener = listener; return () => {}; },
-}) }));
+vi.mock("@tauri-apps/api/window", async () => {
+  const sdk = await vi.importActual<typeof import("@tauri-apps/api/window")>("@tauri-apps/api/window");
+  const fixture = {
+    close: nativeWindow.close,
+    destroy: nativeWindow.destroy,
+    listen: async (_event: string, callback: NonNullable<typeof nativeWindow.listener>) => {
+      nativeWindow.registrations++;
+      nativeWindow.listener = callback;
+      return async () => {
+        await nativeWindow.unlisten();
+        if (nativeWindow.listener === callback) nativeWindow.listener = undefined;
+      };
+    },
+    onCloseRequested: async (handler: NonNullable<typeof nativeWindow.handler>) => {
+      nativeWindow.handler = handler;
+      // Use the installed SDK wrapper: an unprevented handler implicitly calls
+      // destroy(), reproducing the actual ACL rejection rather than hiding it.
+      return sdk.Window.prototype.onCloseRequested.call(fixture as unknown as InstanceType<typeof sdk.Window>, handler);
+    },
+  };
+  return { getCurrentWindow: () => fixture };
+});
 
 const LEGACY_KEY = "huskv2.ai.sessions.v1";
 
@@ -30,7 +54,23 @@ beforeEach(() => {
   vi.stubGlobal("indexedDB", new IDBFactory());
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   nativeWindow.listener = undefined;
+  nativeWindow.handler = undefined;
+  nativeWindow.registrations = 0;
+  nativeWindow.closed = false;
+  nativeWindow.events = [];
+  nativeWindow.unlisten.mockReset().mockImplementation(async () => { nativeWindow.events.push("unlisten"); });
+  nativeWindow.destroy.mockReset().mockImplementation(async () => { throw "Command plugin:window|destroy not allowed by ACL"; });
+  nativeWindow.close.mockReset().mockImplementation(async () => {
+    nativeWindow.events.push("close");
+    if (nativeWindow.listener) await nativeWindow.listener({ event: "tauri://close-requested", id: 2 });
+    else nativeWindow.closed = true;
+  });
 });
+
+async function emitClose() {
+  expect(nativeWindow.listener).toBeDefined();
+  await nativeWindow.listener!({ event: "tauri://close-requested", id: 1 });
+}
 
 describe("session archive migration and recovery", () => {
   it("migrates existing history, saves drafts and images, and reloads committed conversations", async () => {
@@ -85,19 +125,17 @@ describe("session archive migration and recovery", () => {
     expect(reloaded.getActiveSessionId()).toBe("global");
   });
 
-  it("awaits the final save on native close and does not recursively intercept the completed close", async () => {
+  it("awaits the final save, removes the SDK guard and closes without forbidden destroy", async () => {
     Object.assign(window, { __TAURI_INTERNALS__: {} });
     const store = await import("./sessionStore");
     await store.initialiseSessionPersistence();
     await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
     store.setSessionInput("global", "last unsaved draft");
-    const requested = { preventDefault: vi.fn() };
-    const completed = { preventDefault: vi.fn() };
-    nativeWindow.close.mockImplementationOnce(async () => { await nativeWindow.listener!(completed); });
-    await nativeWindow.listener!(requested);
-    expect(requested.preventDefault).toHaveBeenCalledOnce();
+    await emitClose();
     expect(nativeWindow.close).toHaveBeenCalledOnce();
-    expect(completed.preventDefault).not.toHaveBeenCalled();
+    expect(nativeWindow.events).toEqual(["unlisten", "close"]);
+    expect(nativeWindow.closed).toBe(true);
+    expect(nativeWindow.destroy).not.toHaveBeenCalled();
     expect(store.hasUnsavedSessions()).toBe(false);
   });
 
@@ -108,12 +146,111 @@ describe("session archive migration and recovery", () => {
     await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
     store.setSessionInput("global", "must not lose this draft");
     const put = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementationOnce(() => { throw new DOMException("full", "QuotaExceededError"); });
-    const requested = { preventDefault: vi.fn() };
-    await nativeWindow.listener!(requested);
-    expect(requested.preventDefault).toHaveBeenCalledOnce();
+    await emitClose();
     expect(nativeWindow.close).not.toHaveBeenCalled();
+    expect(nativeWindow.unlisten).not.toHaveBeenCalled();
+    expect(nativeWindow.destroy).not.toHaveBeenCalled();
+    expect(nativeWindow.listener).toBeDefined();
     expect(store.hasUnsavedSessions()).toBe(true);
+    const { toast } = await import("../toast/store");
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Chat changes have not been saved", action: expect.objectContaining({ label: "Retry save" }) }));
     put.mockRestore();
     expect(await store.flushSessionPersistence()).toBe(true);
+  });
+
+  it("also prevents implicit SDK destruction when no chat changes need saving", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    const store = await import("./sessionStore");
+    await store.initialiseSessionPersistence();
+    await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
+    expect(store.hasUnsavedSessions()).toBe(false);
+    await emitClose();
+    expect(nativeWindow.closed).toBe(true);
+    expect(nativeWindow.destroy).not.toHaveBeenCalled();
+    expect(nativeWindow.events).toEqual(["unlisten", "close"]);
+  });
+
+  it("prevents duplicate close requests synchronously and waits for native unsubscription", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    const store = await import("./sessionStore");
+    await store.initialiseSessionPersistence();
+    await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
+    let release!: () => void;
+    nativeWindow.unlisten.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
+    const firstEvent = { preventDefault: vi.fn() };
+    const first = nativeWindow.handler!(firstEvent);
+    expect(firstEvent.preventDefault).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(release).toBeDefined());
+    const duplicate = { preventDefault: vi.fn() };
+    await nativeWindow.handler!(duplicate);
+    expect(duplicate.preventDefault).toHaveBeenCalledOnce();
+    expect(nativeWindow.close).not.toHaveBeenCalled();
+    release(); await first;
+    expect(nativeWindow.close).toHaveBeenCalledOnce();
+    expect(nativeWindow.destroy).not.toHaveBeenCalled();
+  });
+
+  it("saves changes arriving during native unsubscription before allowing close", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    const store = await import("./sessionStore");
+    await store.initialiseSessionPersistence();
+    await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
+    nativeWindow.unlisten.mockImplementationOnce(async () => { store.setSessionInput("global", "arrived during close"); });
+    await emitClose();
+    expect(nativeWindow.closed).toBe(true); expect(store.hasUnsavedSessions()).toBe(false);
+    vi.resetModules();
+    const reloaded = await import("./sessionStore");
+    await reloaded.initialiseSessionPersistence();
+    expect(reloaded.getSession("global").input).toBe("arrived during close");
+  });
+
+  it("restores protection when native close fails and Retry close saves later edits", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    const store = await import("./sessionStore");
+    await store.initialiseSessionPersistence();
+    await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
+    nativeWindow.close.mockRejectedValueOnce("close transport unavailable");
+    await emitClose();
+    expect(nativeWindow.listener).toBeDefined(); expect(nativeWindow.registrations).toBe(2);
+    expect(nativeWindow.closed).toBe(false); expect(nativeWindow.destroy).not.toHaveBeenCalled();
+    expect(store.getSessionStorageStatus().state).toBe("saved");
+    const { toast } = await import("../toast/store");
+    const notice = vi.mocked(toast).mock.calls.map(([value]) => value).find((value) => value.title === "Husk could not close");
+    expect(notice?.action?.label).toBe("Retry close");
+    store.setSessionInput("global", "typed after failed close");
+    notice!.action!.onClick();
+    await vi.waitFor(() => expect(nativeWindow.closed).toBe(true));
+    expect(store.hasUnsavedSessions()).toBe(false);
+    expect(nativeWindow.close).toHaveBeenCalledTimes(2);
+  });
+
+  it("restores the close guard if saving edits arriving during unsubscribe fails", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    const store = await import("./sessionStore");
+    await store.initialiseSessionPersistence();
+    await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
+    nativeWindow.unlisten.mockImplementationOnce(async () => { store.setSessionInput("global", "late draft must survive"); });
+    const put = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementationOnce(() => { throw new DOMException("full", "QuotaExceededError"); });
+    await emitClose();
+    expect(nativeWindow.close).not.toHaveBeenCalled(); expect(nativeWindow.destroy).not.toHaveBeenCalled();
+    expect(nativeWindow.listener).toBeDefined(); expect(nativeWindow.registrations).toBe(2);
+    expect(store.hasUnsavedSessions()).toBe(true);
+    put.mockRestore();
+    await emitClose();
+    expect(nativeWindow.closed).toBe(true); expect(store.hasUnsavedSessions()).toBe(false);
+  });
+
+  it("retains failed listener removals for retry and never closes with a live guard", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    const store = await import("./sessionStore");
+    await store.initialiseSessionPersistence();
+    await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
+    nativeWindow.unlisten.mockRejectedValueOnce("could not remove close listener");
+    await emitClose();
+    expect(nativeWindow.close).not.toHaveBeenCalled();
+    expect(nativeWindow.listener).toBeDefined(); expect(nativeWindow.registrations).toBe(2);
+    await emitClose();
+    expect(nativeWindow.unlisten).toHaveBeenCalledTimes(3);
+    expect(nativeWindow.closed).toBe(true); expect(nativeWindow.destroy).not.toHaveBeenCalled();
   });
 });

@@ -2,8 +2,9 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { TerminalSessionStatus } from "./terminal/sessionLifecycle";
 
-const state = vi.hoisted(() => ({ aiEnabled: false, selected: "", activePtyId: 420, handles: new Map<number, Record<string, ReturnType<typeof vi.fn>>>() }));
+const state = vi.hoisted(() => ({ aiEnabled: false, selected: "", activePtyId: 420, status: { state: "ready" } as TerminalSessionStatus, statusListeners: new Set<() => void>(), handles: new Map<number, Record<string, ReturnType<typeof vi.fn>>>() }));
 vi.mock("./settings/preferences", () => ({ usePrefs: () => ({ aiEnabled: state.aiEnabled }) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ readText: vi.fn(async () => ""), writeText: vi.fn(async () => {}) }));
@@ -24,6 +25,10 @@ vi.mock("./terminal/registry", () => ({
   createSession: vi.fn(async () => {}), attachSession: vi.fn(), detachSession: vi.fn(),
   setSessionVisible: vi.fn(), setSessionFocused: vi.fn(), setSessionActive: vi.fn(), setSessionCallbacks: vi.fn(),
   registerTerminalLogsOpener: vi.fn(() => () => {}), getSessionHandle: vi.fn((leafId: number) => state.handles.get(leafId)),
+  getSessionStatus: vi.fn(() => state.status), subscribeSessionStatus: vi.fn((_leafId: number, listener: () => void) => {
+    state.statusListeners.add(listener); return () => { state.statusListeners.delete(listener); };
+  }),
+  checkSessionHealth: vi.fn(async () => {}), restartSession: vi.fn(async () => {}),
 }));
 
 import { TerminalView } from "./Terminal";
@@ -33,6 +38,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getShellHistory } from "./shellHistory";
 import { stageScreenCommand } from "./terminal/stageScreenCommand";
 import { clearWorkflowCaptureRequest, getWorkflowCaptureRequest } from "./workflows/captureRequest";
+import { checkSessionHealth, restartSession } from "./terminal/registry";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -47,6 +53,7 @@ function handle(leafId: number) {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   state.aiEnabled = false; state.selected = ""; state.activePtyId = 420; state.handles.clear();
+  state.status = { state: "ready" }; state.statusListeners.clear();
   clearWorkflowCaptureRequest();
   vi.spyOn(console, "log").mockImplementation(() => {});
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -117,4 +124,37 @@ it("captures the right-click selection snapshot for a workflow with AI disabled"
 it("does not offer workflow capture when there is no selected terminal text", async () => {
   await render(); await openMenu();
   expect(container.textContent).not.toContain("Add to workflow…"); expect(getWorkflowCaptureRequest()).toBeNull(); expectNoShellMutation();
+});
+
+it("observes connection health and binds recovery to the visible terminal leaf", async () => {
+  await render([91, 42]);
+  expect(container.querySelector('[aria-label="Terminal connection status"]')).toBeNull();
+  await act(async () => {
+    state.status = { state: "unresponsive", message: "Connection check timed out" };
+    for (const listener of [...state.statusListeners]) listener();
+  });
+  const notices = container.querySelectorAll('[aria-label="Terminal connection status"]');
+  expect(notices).toHaveLength(1);
+  expect(notices[0].textContent).toContain("Connection check timed out");
+  const noticeButton = (text: string) => [...notices[0].querySelectorAll("button")].find((node) => node.textContent === text)!;
+  await act(async () => noticeButton("Check again").click());
+  expect(checkSessionHealth).toHaveBeenCalledExactlyOnceWith(42);
+  await act(async () => noticeButton("Restart shell…").click());
+  expect(restartSession).not.toHaveBeenCalled();
+  await act(async () => noticeButton("Restart shell").click());
+  expect(restartSession).toHaveBeenCalledExactlyOnceWith(42);
+  expectNoShellMutation();
+});
+
+it("removes recovery chrome when health returns and unsubscribes on unmount", async () => {
+  state.status = { state: "slow-start" }; await render();
+  expect(container.querySelector('[aria-label="Terminal connection status"]')).not.toBeNull();
+  await act(async () => {
+    state.status = { state: "ready" };
+    for (const listener of [...state.statusListeners]) listener();
+  });
+  expect(container.querySelector('[aria-label="Terminal connection status"]')).toBeNull();
+  await act(async () => root.render(null));
+  expect(state.statusListeners.size).toBe(0);
+  expect(checkSessionHealth).not.toHaveBeenCalled(); expect(restartSession).not.toHaveBeenCalled();
 });

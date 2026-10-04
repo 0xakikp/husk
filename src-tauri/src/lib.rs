@@ -130,6 +130,8 @@ pub fn run() {
             ai_cli::kimi_cli_start,
             ai_cli::kimi_cli_stop,
             pty::pty_spawn,
+            pty::pty_attach,
+            pty::pty_status,
             pty::pty_write,
             pty::pty_resize,
             pty::pty_kill,

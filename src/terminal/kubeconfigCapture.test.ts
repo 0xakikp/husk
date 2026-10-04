@@ -3,6 +3,11 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { KubeconfigOutputFilter, MAX_TERMINAL_KUBECONFIG_BYTES, TerminalKubeconfigCapture, parseKubeconfigOsc, type KubeconfigCaptureScope } from "./kubeconfigCapture";
 
+it("keeps capture completion sentinels out of public output across chunk boundaries", () => {
+  const filter = new KubeconfigOutputFilter();
+  expect(filter.consume("visible\x1b]78") + filter.consume("0;husk-capture;1\x07after")).toBe("visibleafter");
+});
+
 const prefix = "husk;kubeconfig;1;";
 const defaultPath = "/fixture/home/.kube/config";
 const defaultValue = { kubeconfig: null, defaultKubeconfigPath: defaultPath };

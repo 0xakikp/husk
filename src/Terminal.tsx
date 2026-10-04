@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   getPromptPosition,
@@ -12,6 +12,7 @@ import { captureTerminalTarget } from "./ai/terminalTarget";
 import type { ScreenAiSelection } from "./ai/ScreenAiPopover";
 import { captureScreenCommandTarget, stageScreenCommand, type ScreenCommandTarget } from "./terminal/stageScreenCommand";
 import { TerminalSelectionActions, type TerminalSelectionSnapshot } from "./terminal/TerminalSelectionActions";
+import { TerminalSessionNotice } from "./terminal/TerminalSessionNotice";
 import { openSavedFixes } from "./terminal/savedFixesView";
 import { TerminalHistoryPanel } from "./TerminalHistory";
 import { useAutocomplete } from "./terminal/useAutocomplete";
@@ -26,6 +27,10 @@ import {
   getSessionHandle,
   setSessionCallbacks,
   registerTerminalLogsOpener,
+  getSessionStatus,
+  subscribeSessionStatus,
+  checkSessionHealth,
+  restartSession,
   type TerminalHandle,
 } from "./terminal/registry";
 import type { TerminalCheckpoint } from "./terminalPanes";
@@ -81,6 +86,10 @@ export function TerminalView({
      change. Keep the value from this leaf's first render instead. */
   const initialCwdRef = useRef(initialCwd);
   const [sessionReady, setSessionReady] = useState(false);
+  const sessionStatus = useSyncExternalStore(
+    (listener) => subscribeSessionStatus(leafId, listener),
+    () => getSessionStatus(leafId),
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -591,6 +600,12 @@ export function TerminalView({
       onContextMenu={handleContextMenu}
     >
       <div ref={containerRef} className="terminal-host" />
+      {active && <TerminalSessionNotice
+        key={leafId}
+        status={sessionStatus}
+        onCheck={() => checkSessionHealth(leafId)}
+        onRestart={() => restartSession(leafId)}
+      />}
       <TerminalSelectionActions
         terminal={sessionReady ? handleRef.current?.getTerm() ?? null : null}
         enabled={active && !menu && !screenSelection && !historyOpen && !searchOpen && !noteCaptureTarget}
@@ -601,7 +616,7 @@ export function TerminalView({
           else openScreenAction(action, snapshot);
         }}
       />
-      {restoreNoticeOpen && (
+      {restoreNoticeOpen && sessionStatus.state === "ready" && (
         <div className="terminal-restore-note" role="status">
           <span className="terminal-restore-dot" aria-hidden="true">●</span>
           <span>restored · fresh shell</span>

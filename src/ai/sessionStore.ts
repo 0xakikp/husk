@@ -282,22 +282,78 @@ function installPersistenceLifecycle() {
   void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
     const win = getCurrentWindow();
     let closeInProgress = false;
-    let allowSavedClose = false;
-    await win.onCloseRequested(async (event) => {
-      if (allowSavedClose || !hasUnsavedSessions()) return;
-      event.preventDefault();
-      if (closeInProgress) return;
+    let closeCompleted = false;
+    let unlisten: (() => void) | undefined;
+    let registering: Promise<void> | undefined;
+    let closeToast: string | undefined;
+    const pendingRemovals = new Set<() => void>();
+
+    function reportCloseError(error: unknown, guardUnavailable = false) {
+      if (closeToast) dismissToast(closeToast);
+      const detail = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+      closeToast = toast({
+        title: "Husk could not close",
+        message: `${detail} ${guardUnavailable ? "Close protection could not be restored. Keep this window open and retry here." : "The window was kept open. Retry to save pending chats and close safely."}`,
+        variant: "error", duration: 0,
+        action: { label: "Retry close", onClick: () => { void closeAfterSave(); } },
+      });
+    }
+
+    async function registerCloseGuard(): Promise<void> {
+      if (unlisten) return;
+      if (registering) return registering;
+      const operation = win.onCloseRequested(async (event) => {
+        // Tauri's wrapper calls destroy() after any unprevented callback. That
+        // bypasses native close and requires a capability Husk does not grant.
+        // Always stop that path synchronously, including duplicate requests.
+        event.preventDefault();
+        await closeAfterSave();
+      }).then((stop) => { unlisten = stop; });
+      registering = operation;
+      try { await operation; }
+      finally { if (registering === operation) registering = undefined; }
+    }
+
+    async function removeCloseGuard(): Promise<void> {
+      if (registering) await registering;
+      if (unlisten) { pendingRemovals.add(unlisten); unlisten = undefined; }
+      // The SDK's unsubscribe is asynchronous at runtime. Await native removal
+      // before close(), since a remaining JS listener prevents native closing.
+      // Keep failed removals for retry even if the SDK removed its JS callback.
+      for (const stop of pendingRemovals) {
+        await stop();
+        pendingRemovals.delete(stop);
+      }
+    }
+
+    async function closeAfterSave(): Promise<void> {
+      if (closeInProgress || closeCompleted) return;
       closeInProgress = true;
       try {
-        if (await flushSessionPersistence()) {
-          allowSavedClose = true;
-          await win.close();
-        }
+        // A retry also restores protection before trying storage again. If
+        // changes arrive during native unsubscription, restore the guard BEFORE
+        // awaiting another save so duplicate close requests cannot bypass it.
+        do {
+          await registerCloseGuard();
+          if (hasUnsavedSessions() && !await flushSessionPersistence()) return;
+          await removeCloseGuard();
+        } while (hasUnsavedSessions());
+        await win.close();
+        closeCompleted = true;
+        if (closeToast) { dismissToast(closeToast); closeToast = undefined; }
       } catch (error) {
-        allowSavedClose = false;
-        setStorageStatus("error", error);
+        let guardUnavailable = false;
+        try { await registerCloseGuard(); }
+        catch (registrationError) {
+          guardUnavailable = true;
+          console.error("Chat save-on-close could not be restored", registrationError);
+        }
+        reportCloseError(error, guardUnavailable);
       } finally { closeInProgress = false; }
-    });
+    }
+
+    try { await registerCloseGuard(); }
+    catch (error) { reportCloseError(error, true); }
   }).catch((error) => {
     console.error("Chat save-on-close could not be registered", error);
   });

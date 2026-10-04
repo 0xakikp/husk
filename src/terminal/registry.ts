@@ -58,6 +58,8 @@ import { ComparisonScopeTracker, captureComparisonOutput, clearRunComparisons, d
 import { clearFixRuns, recordCompletedFixRun } from "./fixMemory";
 import type { IMarker } from "@xterm/xterm";
 import { KUBECONFIG_OSC, KubeconfigOutputFilter, TerminalKubeconfigCapture, type TerminalKubeconfigSnapshot } from "./kubeconfigCapture";
+import { STARTING_TERMINAL, TerminalSessionConnection, boundedTerminalRequest, type NativeTerminalStatus, type TerminalSessionStatus } from "./sessionLifecycle";
+import { installTerminalWakeChecks, mayRestoreTerminalFocus } from "./sessionWake";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -116,6 +118,8 @@ type Session = {
   searchAddon: SearchAddonType;
   ptyId: number | null;
   ptyOpening: boolean;
+  connection: TerminalSessionConnection | null;
+  decoder: TextDecoder;
   disposed: boolean;
   container: HTMLDivElement | null;
   visible: boolean;
@@ -183,7 +187,7 @@ function flushPtyResize(session: Session): void {
   session.pendingPtyRows = -1;
   session.ptyResizeInFlight = true;
 
-  void invoke("pty_resize", { id: session.ptyId, cols, rows })
+  void boundedTerminalRequest(invoke("pty_resize", { id: session.ptyId, cols, rows }))
     .catch((error) => console.warn("[husk] PTY resize failed:", error))
     .finally(() => {
       session.ptyResizeInFlight = false;
@@ -202,7 +206,7 @@ function writeSessionInput(session: Session, data: string): void {
   // Invalidate before crossing IPC, not only once the next command OSC arrives.
   // This closes a selection race with app-run commands, pasted newlines or exit.
   if (/[\r\n\x03\x04]/.test(data)) session.kubeconfigCapture.invalidate();
-  void invoke("pty_write", { id: session.ptyId, data });
+  session.connection?.write(data);
 }
 
 /** Fit one attached xterm and preserve whether the user was following the
@@ -232,6 +236,74 @@ function fitAttachedSession(session: Session): void {
 
 const sessions = new Map<number, Session>();
 let activeLeafId: number | null = null;
+const statusListeners = new Map<number, Set<() => void>>();
+let stopWakeChecks: (() => void) | null = null;
+
+export function getSessionStatus(leafId: number): TerminalSessionStatus {
+  return sessions.get(leafId)?.connection?.status ?? STARTING_TERMINAL;
+}
+
+export function subscribeSessionStatus(leafId: number, callback: () => void): () => void {
+  let listeners = statusListeners.get(leafId);
+  if (!listeners) { listeners = new Set(); statusListeners.set(leafId, listeners); }
+  listeners.add(callback);
+  return () => {
+    listeners.delete(callback);
+    if (!listeners.size) statusListeners.delete(leafId);
+  };
+}
+
+export async function checkSessionHealth(leafId: number): Promise<void> {
+  const session = sessions.get(leafId);
+  if (!session || session.disposed) return;
+  await session.connection?.check();
+  if (session.disposed || !session.container || !session.visible) return;
+  fitAttachedSession(session);
+  session.term.refresh(0, session.term.rows - 1);
+  if (session.active && mayRestoreTerminalFocus(document, session.term.element)) session.term.focus();
+}
+
+export async function restartSession(leafId: number): Promise<void> {
+  const session = sessions.get(leafId);
+  if (!session || session.disposed || !session.connection) return;
+  // Only called after an explicit UI confirmation. Keep the xterm buffer, but
+  // discard prompt/command identity from the previous process.
+  await session.connection.restart(() => {
+    session.kubeconfigCapture.invalidate();
+    session.promptPosition = null;
+    session.cmdStartRow = null;
+    session.currentCommand = "";
+    session.lastCompletedRun = null;
+    session.workflowSessionId = `term_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+    session.commandStartedAt = 0;
+    if (session.isRemoteShell) session.cwd = session.initialCwd ?? "";
+    session.isRemoteShell = false;
+    session.remoteTarget = null;
+    session.comparisonScope = new ComparisonScopeTracker();
+    session.comparisonStart?.marker.dispose();
+    session.comparisonStart = null;
+    session.liveOutputTail = "";
+    session.decoder = new TextDecoder();
+    session.kubeconfigOutputFilter = new KubeconfigOutputFilter();
+    clearRunComparisons(leafId);
+    clearFixRuns(leafId);
+    clearFailure(leafId);
+    clearNextSteps(leafId);
+    if (session.active) { clearCurrentCommand(); setPromptPosition(null); setActiveRemoteTerminal({ isRemote: false }); }
+    // Restore terminal modes without reset()/clear(), which erase scrollback.
+    // This changes xterm only and is never emitted into the PTY as keystrokes.
+    session.term.write("\x1b[?1049l\x1b[?25h\x1b[?1l\x1b>\x1b[?2004l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[0m\r\n[Starting a new shell — previous scrollback retained]\r\n");
+  });
+}
+
+function startWakeChecks(): void {
+  if (stopWakeChecks) return;
+  stopWakeChecks = installTerminalWakeChecks(() => {
+    for (const session of sessions.values()) {
+      if (session.visible && !session.disposed) void checkSessionHealth(session.leafId);
+    }
+  });
+}
 
 /** Read-only identity for actions that must bind to a verified terminal target. */
 export function getActiveTerminalLeafId(): number | null {
@@ -379,6 +451,8 @@ export async function createSession(
     searchAddon,
     ptyId: null,
     ptyOpening: false,
+    connection: null,
+    decoder: new TextDecoder(),
     disposed: false,
     container: null,
     visible: false,
@@ -418,6 +492,7 @@ export async function createSession(
     liveOutputTail: "",
   };
   sessions.set(leafId, session);
+  startWakeChecks();
 
   // ── OSC Handlers ──────────────────────────────────────────────────────────
   term.parser.registerOscHandler(7, (data) => {
@@ -728,106 +803,92 @@ export async function createSession(
     return true;
   });
 
-  // ── PTY Spawn ─────────────────────────────────────────────────────────────
-  session.ptyOpening = true;
-  try {
-  const id = await invoke<number>("pty_spawn", {
-    cols: term.cols || 80,
-    rows: term.rows || 24,
-    cwd: initialCwd ?? null,
+  // Register input before starting the asynchronous native connection. The
+  // terminal DOM can mount immediately; startup health is published separately.
+  session.typingTimer = 0;
+  term.onData((data: string) => {
+    const out = interceptTerminalInput(data);
+    if (out === null) return;
+    writeSessionInput(session, out);
+    collapseFailure(leafId);
+    collapseNextSteps(leafId);
+    clearGitActivity(leafId);
+    clearEnvironmentWarning(leafId);
+    if (session.active) {
+      setTerminalTyping(true);
+      window.clearTimeout(session.typingTimer);
+      session.typingTimer = window.setTimeout(() => setTerminalTyping(false), 400);
+    }
+    session.callbacks.onData?.();
+  });
+  term.onResize(({ cols, rows }) => {
+    if (cols === session.lastCols && rows === session.lastRows) return;
+    session.lastCols = cols;
+    session.lastRows = rows;
+    queuePtyResize(session, cols, rows);
   });
 
-  if (session.disposed) {
-    void invoke("pty_kill", { id });
-    return session;
-  }
-  session.ptyId = id;
+  // Native output remains buffered until both listeners exist and attach is
+  // acknowledged. This closes the lost-first-prompt/startup-exit race.
+  const HUSK_CMD_RE = /husk\s+(cp|open|preview|notify|diff)\s+(.+?)(?:\r?\n|$)/;
+  session.connection = new TerminalSessionConnection({
+    spawn: () => invoke<number>("pty_spawn", {
+      cols: term.cols || 80, rows: term.rows || 24,
+      cwd: session.isRemoteShell ? (initialCwd ?? null) : (session.cwd || initialCwd || null),
+    }),
+    listenData: (id, callback) => listen<number[]>(`pty://data/${id}`, (event) => callback(event.payload)),
+    listenExit: (id, callback) => listen<NativeTerminalStatus | null>(`pty://exit/${id}`, (event) => callback(event.payload)),
+    attach: (id) => invoke<NativeTerminalStatus>("pty_attach", { id }),
+    status: (id) => invoke<NativeTerminalStatus>("pty_status", { id }),
+    write: (id, data) => invoke("pty_write", { id, data }),
+    kill: (id) => invoke("pty_kill", { id }),
+  }, (bytes) => {
+      const data = new Uint8Array(bytes);
+      const text = session.decoder.decode(data, { stream: true });
+      term.write(data);
+      const publicText = session.kubeconfigOutputFilter.consume(text);
+      if (publicText) emitTerminalOutput(leafId, publicText);
 
-    // Best-effort husk command scanning in PTY output (remote hosts without integration)
-    const HUSK_CMD_RE = /husk\s+(cp|open|preview|notify|diff)\s+(.+?)(?:\r?\n|$)/;
-
-    session.unlisteners.push(
-      await listen<number[]>(`pty://data/${id}`, (e) => {
-        const data = new Uint8Array(e.payload);
-        const text = new TextDecoder().decode(data);
-
-        // Write to terminal immediately — xterm.js handles ANSI sequences
-        // and progress bars correctly when fed in real-time
-        term.write(text);
-        const publicText = session.kubeconfigOutputFilter.consume(text);
-        if (publicText) emitTerminalOutput(leafId, publicText);
-
-        /* Dev servers commonly keep the foreground command running forever,
-           so waiting for OSC 133 D would never surface their local URL. Keep a
-           small per-PTY sample and only recognise explicit local endpoints. */
-        if (!session.isRemoteShell) {
-          session.liveOutputTail = `${session.liveOutputTail}${publicText}`.slice(-8_192);
-          const command = session.currentCommand || (session.active ? getCurrentCommand() : "");
-          recordPorts(session.leafId, {
-            command,
-            urls: extractLocalDevUrls(command, session.liveOutputTail),
-          });
-        }
-
-        // Scan for husk commands in the incoming text (not buffered)
-        // This is best-effort: husk commands typically emit on their own line
-        let match: RegExpMatchArray | null;
-        const scanText = publicText;
-        while ((match = scanText.match(HUSK_CMD_RE)) !== null) {
-          const [, verb, rest] = match;
-          const payload = `husk;${verb};${rest.trim()}`;
-          const cmd = parseBridgeOsc(payload);
-          if (cmd && session.active) {
-            dispatchBridge(cmd);
-          }
-          // Only process first match per chunk to avoid loops
-          break;
-        }
-      }),
-    );
-    session.unlisteners.push(
-      await listen(`pty://exit/${id}`, () => {
-        session.kubeconfigCapture.invalidate();
-        term.write("\r\n\x1b[2m[process exited]\x1b[0m\r\n");
-        emitTerminalOutput(leafId, "\n[process exited]\n");
-      }),
-    );
-
-    // Data handler
-    session.typingTimer = 0;
-    term.onData((data: string) => {
-      const out = interceptTerminalInput(data);
-      if (out === null) return;
-      writeSessionInput(session, out);
-      /* Typing at the prompt again means the user has moved on — the failure
-         strip collapses to its tiny indicator instead of holding a row. */
-      collapseFailure(leafId);
-      collapseNextSteps(leafId);
-      clearGitActivity(leafId);
-      clearEnvironmentWarning(leafId);
-      if (session.active) {
-        setTerminalTyping(true);
-        window.clearTimeout(session.typingTimer);
-        session.typingTimer = window.setTimeout(() => setTerminalTyping(false), 400);
+      /* Dev servers commonly keep the foreground command running forever,
+         so waiting for OSC 133 D would never surface their local URL. Keep a
+         small per-PTY sample and only recognise explicit local endpoints. */
+      if (!session.isRemoteShell) {
+        session.liveOutputTail = `${session.liveOutputTail}${publicText}`.slice(-8_192);
+        const command = session.currentCommand || (session.active ? getCurrentCommand() : "");
+        recordPorts(session.leafId, {
+          command,
+          urls: extractLocalDevUrls(command, session.liveOutputTail),
+        });
       }
-      // Trigger autocomplete check
-      session.callbacks.onData?.();
-    });
 
-    // ResizeObserver settles the visual fit first. Mirror that exact grid to
-    // the PTY immediately so shell prompts never redraw against stale columns.
-    term.onResize(({ cols, rows }) => {
-      if (cols === session.lastCols && rows === session.lastRows) return;
-      session.lastCols = cols;
-      session.lastRows = rows;
-      queuePtyResize(session, cols, rows);
-    });
-
-    session.ptyOpening = false;
-  } catch (e) {
-    session.ptyOpening = false;
-    console.error("[husk] PTY spawn failed:", e);
-  }
+      // Scan for husk commands in the incoming text (not buffered)
+      // This is best-effort: husk commands typically emit on their own line
+      let match: RegExpMatchArray | null;
+      const scanText = publicText;
+      while ((match = scanText.match(HUSK_CMD_RE)) !== null) {
+        const [, verb, rest] = match;
+        const payload = `husk;${verb};${rest.trim()}`;
+        const cmd = parseBridgeOsc(payload);
+        if (cmd && session.active) {
+          dispatchBridge(cmd);
+        }
+        // Only process first match per chunk to avoid loops
+        break;
+      }
+  }, () => {
+    const connection = session.connection;
+    if (!connection || session.disposed) return;
+    const wasPtyId = session.ptyId;
+    const connected = ["ready", "starting", "slow-start"].includes(connection.status.state);
+    session.ptyId = connected ? connection.id : null;
+    session.ptyOpening = connection.id === null && ["starting", "slow-start"].includes(connection.status.state);
+    term.options.disableStdin = session.ptyId === null;
+    if (!connected) session.kubeconfigCapture.invalidate();
+    if (session.active) setActiveTerminalPtyId(session.ptyId);
+    if (session.ptyId !== null && wasPtyId !== session.ptyId) queuePtyResize(session, term.cols || 80, term.rows || 24);
+    for (const callback of statusListeners.get(leafId) ?? []) callback();
+  });
+  void session.connection.start();
 
   // ── Preferences watcher ─────────────────────────────────────────────────
   session.prefsUnsub = subscribePrefs(() => {
@@ -955,10 +1016,12 @@ export function detachSession(leafId: number): void {
 export function setSessionVisible(leafId: number, visible: boolean): void {
   const session = sessions.get(leafId);
   if (!session) return;
+  const becameVisible = visible && !session.visible;
   session.visible = visible;
   if (visible && session.container) {
     fitAttachedSession(session);
   }
+  if (becameVisible) void checkSessionHealth(leafId);
 }
 
 export function setSessionFocused(leafId: number, focused: boolean): void {
@@ -1001,7 +1064,7 @@ export function setSessionActive(leafId: number, active: boolean): void {
       /* Never append a Run/Pilot command to a draft that exists at this prompt.
          The caller keeps the command available to copy and the user keeps their
          own in-progress input intact. */
-      if (readPromptDraft(session)) return false;
+      if (session.connection?.status.state !== "ready" || readPromptDraft(session)) return false;
       if (session.ptyId == null) return false;
       writeSessionInput(session, `${cmd}\r`);
       session.term.focus();
@@ -1113,7 +1176,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       };
     },
     getPromptReadiness: () => {
-      if (session.disposed || session.ptyOpening || session.ptyId == null || session.currentCommand || session.commandStartedAt || session.cmdStartRow != null) {
+      if (session.disposed || session.connection?.status.state !== "ready" || session.ptyOpening || session.ptyId == null || session.currentCommand || session.commandStartedAt || session.cmdStartRow != null) {
         return { ready: false, reason: "The terminal is busy or its shell prompt is not ready. Return to a fresh prompt first." };
       }
       return inspectPromptReadiness(session.term.buffer.active, session.promptPosition);
@@ -1143,14 +1206,13 @@ export function disposeSession(leafId: number): void {
   for (const un of session.unlisteners) un();
   session.unlisteners = [];
 
-  if (session.ptyId != null) {
-    void invoke("pty_kill", { id: session.ptyId });
-  }
+  session.connection?.dispose();
 
   session.prefsUnsub?.();
   session.comparisonStart?.marker.dispose();
   session.term.dispose();
   sessions.delete(leafId);
+  if (!sessions.size) { stopWakeChecks?.(); stopWakeChecks = null; }
   outputListeners.delete(leafId);
   logsOpeners.delete(leafId);
   clearFailure(leafId);
