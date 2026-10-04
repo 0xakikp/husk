@@ -1,5 +1,6 @@
 import { useRef, type MouseEvent } from "react";
 import { TerminalView } from "./Terminal";
+import { resolveTerminalLaunchCwd } from "./terminal/launchOptions";
 
 /** A tab's terminals form a binary tree: leaves are terminals, splits divide
  *  the space row-wise (side by side) or column-wise (stacked). */
@@ -18,7 +19,7 @@ let paneSeq = 1000;
 const nextPaneId = () => (paneSeq += 1);
 
 export function newLeaf(initialCwd?: string): Pane {
-  return { kind: "leaf", id: nextPaneId(), initialCwd };
+  return { kind: "leaf", id: nextPaneId(), initialCwd: resolveTerminalLaunchCwd(initialCwd) };
 }
 
 /** Update only one pane's persisted launch directory. OSC 7 gives us this
@@ -71,7 +72,7 @@ export function hydratePane(value: unknown, seen = new Set<number>(), depth = 0)
     return {
       kind: "leaf",
       id,
-      initialCwd: typeof raw.initialCwd === "string" ? raw.initialCwd : undefined,
+      initialCwd: resolveTerminalLaunchCwd(raw.initialCwd),
       checkpoint: checkpointFromUnknown(raw.checkpoint),
       restored: true,
     };

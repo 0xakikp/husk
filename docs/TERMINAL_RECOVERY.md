@@ -6,6 +6,15 @@ first prompts and startup exits. The terminal surface mounts immediately; slow
 startup (10 seconds without output), launch errors, disconnected output and shell
 exit have visible states instead of an unexplained blank pane.
 
+New-tab UI actions call the tab creator without forwarding click events. Launch
+directories are checked at runtime before entering pane state and again before
+native IPC, including explicit restarts. Only nonempty strings without NUL bytes
+are accepted; invalid objects fall back to a valid directory or the native default
+without being coerced or serialized. This prevents the cyclic-JSON startup error
+and the related failure to save tab layouts. Real rendered-button tests cover the
+click boundary, and hook tests verify that a miswired caller still cannot store
+an event as its directory.
+
 Each terminal has its own bounded input queue and worker. Registry locks are held
 only for session lookup/insertion/removal, never while writing, reading, closing
 or resizing a terminal. Unix PTYs use nonblocking I/O with a two-second input

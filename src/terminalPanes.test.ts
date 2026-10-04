@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
    xterm or the app-only Vite alias chain. */
 vi.mock("./Terminal", () => ({ TerminalView: () => null }));
 
-import { hydratePane, setLeafCheckpoint, setLeafCwd, type Pane } from "./terminalPanes";
+import { hydratePane, newLeaf, setLeafCheckpoint, setLeafCwd, type Pane } from "./terminalPanes";
 import { leafIds } from "./terminal/paneUtils";
 
 const savedLayout = {
@@ -22,6 +22,15 @@ const savedLayout = {
 };
 
 describe("terminal workspace restore", () => {
+  it("does not retain invalid runtime launch values in new or restored panes", () => {
+    const cyclic = { self: null as unknown }; cyclic.self = cyclic;
+    const fresh = newLeaf(cyclic as unknown as string);
+    const restored = hydratePane({ kind: "leaf", id: 1700, initialCwd: cyclic });
+    expect(fresh).toMatchObject({ kind: "leaf", initialCwd: undefined });
+    expect(restored).toMatchObject({ kind: "leaf", initialCwd: undefined });
+    expect(() => JSON.stringify({ fresh, restored })).not.toThrow();
+  });
+
   it("rehydrates the complete pane tree with checkpoints", () => {
     const pane = hydratePane(savedLayout);
     expect(pane).not.toBeNull();

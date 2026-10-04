@@ -600,7 +600,7 @@ export function TabBar({
              scroll out of reach precisely when the most tabs are open. */
           className="sticky right-0 z-10 size-6 shrink-0 rounded-none bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
           title="New tab"
-          onClick={onNewTerm}
+          onClick={() => onNewTerm()}
         >
           <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={1.75} />
         </Button>

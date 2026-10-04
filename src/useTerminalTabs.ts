@@ -17,6 +17,7 @@ import {
 } from "./terminalPanes";
 import { disposeSession } from "./terminal/registry";
 import { leafIds } from "./terminal/paneUtils";
+import { resolveTerminalLaunchCwd } from "./terminal/launchOptions";
 
 export type TermTab = {
   id: number;
@@ -147,7 +148,7 @@ export function useTerminalTabs() {
         let id = 1;
         for (const t of saved.tabs) {
           const restoredRoot = hydratePane(t.root, restoredPaneIds);
-          const fallback = makeTab(id, t.cwd || home || undefined);
+          const fallback = makeTab(id, resolveTerminalLaunchCwd(t.cwd, home));
           const root = restoredRoot ?? fallback.root;
           const leaves = leafIds(root);
           out.push({
@@ -179,7 +180,7 @@ export function useTerminalTabs() {
       }
     }
     // Fresh start — workspace root, then home, then let Rust decide.
-    const initialCwd = getWorkspaceRoot() || home || undefined;
+    const initialCwd = resolveTerminalLaunchCwd(getWorkspaceRoot(), home);
     setTabs([makeTab(1, initialCwd)]);
     setActiveId(1);
     nextId.current = 2;
@@ -197,7 +198,8 @@ export function useTerminalTabs() {
 
   const addTab = (initialCwd?: string) => {
     const id = nextId.current++;
-    setTabs((prev) => [...prev, makeTab(id, initialCwd || getActiveTerminalCwd() || home || undefined)]);
+    const cwd = resolveTerminalLaunchCwd(initialCwd, getActiveTerminalCwd(), home);
+    setTabs((prev) => [...prev, makeTab(id, cwd)]);
     setActiveId(id);
     return id;
   };

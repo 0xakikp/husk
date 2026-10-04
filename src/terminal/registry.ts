@@ -60,6 +60,7 @@ import type { IMarker } from "@xterm/xterm";
 import { KUBECONFIG_OSC, KubeconfigOutputFilter, TerminalKubeconfigCapture, type TerminalKubeconfigSnapshot } from "./kubeconfigCapture";
 import { STARTING_TERMINAL, TerminalSessionConnection, boundedTerminalRequest, type NativeTerminalStatus, type TerminalSessionStatus } from "./sessionLifecycle";
 import { installTerminalWakeChecks, mayRestoreTerminalFocus } from "./sessionWake";
+import { buildPtySpawnArgs, resolveTerminalLaunchCwd } from "./launchOptions";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -462,7 +463,7 @@ export async function createSession(
     comparisonScope: new ComparisonScopeTracker(),
     kubeconfigCapture: new TerminalKubeconfigCapture(),
     kubeconfigOutputFilter: new KubeconfigOutputFilter(),
-    initialCwd,
+    initialCwd: resolveTerminalLaunchCwd(initialCwd),
     callbacks: {},
     unlisteners: [],
     resizeTimer: 0,
@@ -832,10 +833,10 @@ export async function createSession(
   // acknowledged. This closes the lost-first-prompt/startup-exit race.
   const HUSK_CMD_RE = /husk\s+(cp|open|preview|notify|diff)\s+(.+?)(?:\r?\n|$)/;
   session.connection = new TerminalSessionConnection({
-    spawn: () => invoke<number>("pty_spawn", {
-      cols: term.cols || 80, rows: term.rows || 24,
-      cwd: session.isRemoteShell ? (initialCwd ?? null) : (session.cwd || initialCwd || null),
-    }),
+    spawn: () => invoke<number>("pty_spawn", buildPtySpawnArgs({
+      cols: term.cols, rows: term.rows,
+      cwd: session.cwd, initialCwd: session.initialCwd, isRemoteShell: session.isRemoteShell,
+    })),
     listenData: (id, callback) => listen<number[]>(`pty://data/${id}`, (event) => callback(event.payload)),
     listenExit: (id, callback) => listen<NativeTerminalStatus | null>(`pty://exit/${id}`, (event) => callback(event.payload)),
     attach: (id) => invoke<NativeTerminalStatus>("pty_attach", { id }),

@@ -1191,7 +1191,7 @@ function App() {
             onSelectFile: selectFile,
             onCloseTerm: term.closeTab,
             onCloseFile: closeFile,
-            onNewTerm: term.addTab,
+            onNewTerm: () => { term.addTab(); },
             onRenameTerm: term.renameTab,
             onSetTabColor: term.setTabColor,
             onPinTerm: term.pinTab,
