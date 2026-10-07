@@ -852,6 +852,9 @@ mod tests {
         }
     }
 
+    // ConPTY does not reliably relay nested Rust test-process stdio on GitHub's
+    // Windows runners, so retain this end-to-end fixture for supported PTY hosts.
+    #[cfg_attr(windows, ignore = "ConPTY nested test-process I/O is runner-dependent")]
     #[test]
     fn real_pty_startup_handshake_and_typing_work_without_any_shell_config() {
         let mut command = CommandBuilder::new(std::env::current_exe().unwrap());
