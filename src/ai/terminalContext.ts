@@ -227,13 +227,19 @@ export function focusActiveTerminal(): void {
 // --- Prompt position tracking (for click-to-edit) -------------------------
 
 let promptPos: { row: number; col: number } | null = null;
+let promptReader: (() => { row: number; col: number } | null) | null = null;
+
+export function setActiveTerminalPromptReader(reader: () => { row: number; col: number } | null): void {
+  promptReader = reader;
+}
 
 export function setPromptPosition(pos: { row: number; col: number } | null): void {
   promptPos = pos;
+  promptReader = null;
 }
 
 export function getPromptPosition(): { row: number; col: number } | null {
-  return promptPos;
+  return promptReader ? promptReader() : promptPos;
 }
 
 export function markCommandStart(): void {

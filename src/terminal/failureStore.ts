@@ -23,6 +23,15 @@ export type FailureKind =
   | "network"
   | "unknown";
 
+/** Captured when the command fails, never reconstructed from a later focus. */
+export type FailureTerminalScope = {
+  token: string;
+  ptyId: number;
+  cwd: string;
+  isRemote: boolean;
+  host: string | null;
+};
+
 export type FailureRecord = {
   leafId: number;
   command: string;
@@ -33,6 +42,8 @@ export type FailureRecord = {
   kind: FailureKind;
   /** Output matched the secret scanner — warn before sending it to AI. */
   sensitive: boolean;
+  /** Missing/uncertain shell provenance disables direct Retry. */
+  terminalScope?: FailureTerminalScope | null;
 };
 
 type FailureEntry = { record: FailureRecord; collapsed: boolean };
@@ -76,7 +87,7 @@ export const FAILURE_KIND_LABEL: Record<FailureKind, string> = {
 
 export function recordFailure(
   leafId: number,
-  fields: { command: string; output: string; exitCode: number; cwd: string },
+  fields: { command: string; output: string; exitCode: number; cwd: string; terminalScope?: FailureTerminalScope | null },
 ): void {
   const { command, output, exitCode, cwd } = fields;
   if (exitCode === 0) return;
@@ -90,6 +101,7 @@ export function recordFailure(
       at: Date.now(),
       kind: classifyFailure(command, output),
       sensitive: scanForSecrets(command, output).length > 0,
+      terminalScope: fields.terminalScope ? { ...fields.terminalScope } : null,
     },
     collapsed: false,
   });

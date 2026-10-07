@@ -1,6 +1,10 @@
 export type PromptPosition = { row: number; col: number };
 
-type PromptLine = { translateToString(trimRight?: boolean, startColumn?: number, endColumn?: number): string } | undefined;
+type PromptLine = {
+  translateToString(trimRight?: boolean, startColumn?: number, endColumn?: number): string;
+  readonly length?: number;
+  getCell?(column: number): { getChars(): string } | undefined;
+} | undefined;
 
 export type PromptBuffer = {
   type: string;
@@ -29,10 +33,11 @@ export function readEditablePrompt(buffer: PromptBuffer, prompt: PromptPosition 
 
   const parts: string[] = [];
   for (let row = prompt.row; row <= cursorRow; row += 1) {
-    const line = buffer.getLine(row)?.translateToString(true) ?? "";
+    const line = buffer.getLine(row);
     const start = row === prompt.row ? prompt.col : 0;
-    const end = row === cursorRow ? buffer.cursorX : line.length;
-    if (end > start) parts.push(line.slice(start, end));
+    const end = row === cursorRow ? buffer.cursorX : undefined;
+    // Prompt/cursor columns are terminal cells, not UTF-16 string offsets.
+    if (end === undefined || end > start) parts.push(line?.translateToString(true, start, end) ?? "");
   }
   return parts.join("").trim();
 }
@@ -44,7 +49,7 @@ export type PromptReadiness = { ready: true } | { ready: false; reason: string }
  * autosuggestions all fail closed. This does not mutate or clear shell input. */
 export function inspectPromptReadiness(buffer: PromptBuffer, prompt: PromptPosition | null): PromptReadiness {
   const unknown: PromptReadiness = { ready: false, reason: "Husk cannot verify an empty shell prompt. Return to a fresh prompt or copy the command instead." };
-  const input: PromptReadiness = { ready: false, reason: "The terminal already has visible input. Clear or submit it before staging this proposal." };
+  const input: PromptReadiness = { ready: false, reason: "The terminal already has input. Clear or submit it before continuing." };
   if (!prompt || buffer.type !== "normal" || !Number.isInteger(prompt.row) || !Number.isInteger(prompt.col)
     || prompt.row < 0 || prompt.col < 0) return unknown;
   const cursorRow = buffer.baseY + buffer.cursorY;
@@ -54,6 +59,7 @@ export function inspectPromptReadiness(buffer: PromptBuffer, prompt: PromptPosit
   const length = buffer.length;
   if (length == null || !Number.isInteger(length) || length <= cursorRow || length - cursorRow > 512) return unknown;
   let characters = 0;
+  let cells = 0;
   // Include the remainder of the line and visible continuation lines. A
   // bounded conservative scan may reject decoration, but never inserts into it.
   for (let row = cursorRow; row < length; row++) {
@@ -63,6 +69,19 @@ export function inspectPromptReadiness(buffer: PromptBuffer, prompt: PromptPosit
     characters += text.length;
     if (characters > 32 * 1024) return unknown;
     if (text.trim()) return input;
+    // Home before a spaces-only draft is still input. xterm's string view
+    // trims both untouched null cells and literal spaces, so distinguish them
+    // using cells when available. Erased/padded cells contain no characters.
+    if (line.getCell && line.length != null) {
+      const start = row === cursorRow ? prompt.col : 0;
+      cells += line.length - start;
+      if (cells > 256 * 1024) return unknown;
+      for (let column = start; column < line.length; column++) {
+        const cell = line.getCell(column);
+        if (!cell) return unknown;
+        if (cell.getChars()) return input;
+      }
+    }
   }
   return { ready: true };
 }

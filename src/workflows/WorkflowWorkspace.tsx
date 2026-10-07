@@ -20,7 +20,7 @@ export function WorkflowWorkspace({ children, editorVisible, onRevealEditor }: {
         <span className="workflow-draft-bar-name" title={session.workflow.name || "Untitled"}>{session.workflow.name || "Untitled"}</span>
         <CompactButton compact variant="ghost" className="workflow-draft-resume" aria-label="Resume workflow draft" onClick={resumeWorkflowEditor} title="Resume the unsaved workflow draft">Resume</CompactButton>
       </div>}
-      <div className="workflow-workspace-content">{children}</div>
+      <div className="workflow-workspace-content" data-workflow-run-host>{children}</div>
     </div>
   </div>;
 }

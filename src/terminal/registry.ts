@@ -24,7 +24,7 @@ import {
   getCurrentCommand,
   getCommandStartTime,
   markCommandStart,
-  setPromptPosition,
+  setActiveTerminalPromptReader,
   setFocusTerminalFn,
   setActiveTerminalPtyId,
   setActiveTerminalDraftReader,
@@ -52,7 +52,8 @@ import { parseBridgeOsc, dispatchBridge } from "../bridge";
 import type { Terminal as XTermType } from "@xterm/xterm";
 import type { SearchAddon as SearchAddonType } from "@xterm/addon-search";
 import type { FitAddon as FitAddonType } from "@xterm/addon-fit";
-import { absolutePromptPosition, inspectPromptReadiness, readEditablePrompt, type PromptReadiness } from "./promptDraft";
+import { inspectPromptReadiness, readEditablePrompt, type PromptReadiness } from "./promptDraft";
+import { TerminalPromptTracker } from "./promptTracker";
 import { parseRemoteShellTarget } from "./remoteShell";
 import { ComparisonScopeTracker, captureComparisonOutput, clearRunComparisons, dismissRunComparison, recordComparisonRun } from "./runComparison";
 import { clearFixRuns, recordCompletedFixRun } from "./fixMemory";
@@ -153,7 +154,7 @@ type Session = {
   remoteTarget: string | null;
   lastCompletedRun: CommandRun | null;
   /** Start of the editable prompt for this PTY (not globally shared). */
-  promptPosition: { row: number; col: number } | null;
+  promptTracker: TerminalPromptTracker;
   /** Absolute buffer row where the running command's output began (OSC 133 C). */
   cmdStartRow: number | null;
   comparisonStart: { marker: IMarker; ptyId: number; cwd: string; remoteHost: string | null } | null;
@@ -230,7 +231,7 @@ function fitAttachedSession(session: Session): void {
 
     const buffer = session.term.buffer.active;
     const wasFollowingBottom = buffer.viewportY >= buffer.baseY;
-    session.fitAddon.fit();
+    session.promptTracker.resize(dimensions.cols, () => session.fitAddon.fit());
     if (wasFollowingBottom) session.term.scrollToBottom();
   } catch {}
 }
@@ -271,7 +272,7 @@ export async function restartSession(leafId: number): Promise<void> {
   // discard prompt/command identity from the previous process.
   await session.connection.restart(() => {
     session.kubeconfigCapture.invalidate();
-    session.promptPosition = null;
+    session.promptTracker.clear();
     session.cmdStartRow = null;
     session.currentCommand = "";
     session.lastCompletedRun = null;
@@ -290,7 +291,7 @@ export async function restartSession(leafId: number): Promise<void> {
     clearFixRuns(leafId);
     clearFailure(leafId);
     clearNextSteps(leafId);
-    if (session.active) { clearCurrentCommand(); setPromptPosition(null); setActiveRemoteTerminal({ isRemote: false }); }
+    if (session.active) { clearCurrentCommand(); setActiveRemoteTerminal({ isRemote: false }); }
     // Restore terminal modes without reset()/clear(), which erase scrollback.
     // This changes xterm only and is never emitted into the PTY as keystrokes.
     session.term.write("\x1b[?1049l\x1b[?25h\x1b[?1l\x1b>\x1b[?2004l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[0m\r\n[Starting a new shell — previous scrollback retained]\r\n");
@@ -335,8 +336,8 @@ const logsOpeners = new Map<number, TerminalLogsOpener>();
 /** Return only the editable shell input after the prompt. `Ctrl+L` can make a
  * draft disappear visually while leaving it in readline, so the AI run path
  * must inspect xterm's real prompt buffer before writing anything. */
-function readPromptDraft(session: Pick<Session, "term" | "promptPosition">): string {
-  return readEditablePrompt(session.term.buffer.active, session.promptPosition);
+function readPromptDraft(session: Pick<Session, "term" | "promptTracker">): string {
+  return readEditablePrompt(session.term.buffer.active, session.promptTracker.position());
 }
 
 /** Let app-wide commands open the drawer belonging to the focused terminal. */
@@ -485,7 +486,7 @@ export async function createSession(
     isRemoteShell: false,
     remoteTarget: null,
     lastCompletedRun: null,
-    promptPosition: null,
+    promptTracker: new TerminalPromptTracker(term),
     cmdStartRow: null,
     comparisonStart: null,
     currentCommand: "",
@@ -518,15 +519,13 @@ export async function createSession(
 
   term.parser.registerOscHandler(133, (data) => {
     if (data.startsWith("B")) {
-      const buf = term.buffer.active;
-      const pos = absolutePromptPosition(buf);
-      session.promptPosition = pos;
+      session.promptTracker.capture();
       session.kubeconfigCapture.completePrompt();
-      if (session.active) setPromptPosition(pos);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.
     if (data.startsWith("D")) {
+      session.promptTracker.clear();
       session.kubeconfigCapture.invalidate();
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
       const exitCode = Number.isNaN(code) ? null : code;
@@ -603,7 +602,7 @@ export async function createSession(
            completed command with a real non-zero exit opens the strip — a
            successful next command (or a new command, below) retires it. */
         if (exitCode != null && exitCode !== 0) {
-          recordFailure(session.leafId, { command, output, exitCode, cwd: session.cwd });
+          recordFailure(session.leafId, { command, output, exitCode, cwd: session.cwd, terminalScope: getSessionHandle(session.leafId)?.getStagingScope() ?? null });
           clearNextSteps(session.leafId);
         } else if (exitCode === 0) {
           clearFailure(session.leafId);
@@ -669,6 +668,7 @@ export async function createSession(
       if (session.active) setActiveRemoteTerminal({ isRemote: false });
     }
     if (data.startsWith("C")) {
+      session.promptTracker.clear();
       session.kubeconfigCapture.invalidate();
       const b = term.buffer.active;
       session.cmdStartRow = b.baseY + b.cursorY;
@@ -1043,7 +1043,7 @@ export function setSessionActive(leafId: number, active: boolean): void {
   if (active) {
     setActiveTerminalCommandReader(() => session.active && !session.disposed ? session.currentCommand : "");
     setActiveRemoteTerminal({ isRemote: session.isRemoteShell, ...(session.remoteTarget ? { host: session.remoteTarget } : {}) });
-    setPromptPosition(session.promptPosition);
+    setActiveTerminalPromptReader(() => session.active && !session.disposed ? session.promptTracker.position() : null);
     setActiveTerminalPtyId(session.ptyId);
     setActiveTerminalReader(() => {
       const buf = session.term.buffer.active;
@@ -1065,7 +1065,7 @@ export function setSessionActive(leafId: number, active: boolean): void {
       /* Never append a Run/Pilot command to a draft that exists at this prompt.
          The caller keeps the command available to copy and the user keeps their
          own in-progress input intact. */
-      if (session.connection?.status.state !== "ready" || readPromptDraft(session)) return false;
+      if (!session.active || session.disposed || !getSessionHandle(session.leafId)?.getPromptReadiness().ready) return false;
       if (session.ptyId == null) return false;
       writeSessionInput(session, `${cmd}\r`);
       session.term.focus();
@@ -1144,7 +1144,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       return sel.length > 0 ? sel : null;
     },
     getLastCommandRun: () => session.lastCompletedRun ? { ...session.lastCompletedRun } : null,
-    clear: () => session.term.clear(),
+    clear: () => { session.promptTracker.clear(); session.term.clear(); },
     selectAll: () => session.term.selectAll(),
     hasSelection: () => session.term.hasSelection(),
     clearSelection: () => session.term.clearSelection(),
@@ -1180,7 +1180,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       if (session.disposed || session.connection?.status.state !== "ready" || session.ptyOpening || session.ptyId == null || session.currentCommand || session.commandStartedAt || session.cmdStartRow != null) {
         return { ready: false, reason: "The terminal is busy or its shell prompt is not ready. Return to a fresh prompt first." };
       }
-      return inspectPromptReadiness(session.term.buffer.active, session.promptPosition);
+      return inspectPromptReadiness(session.term.buffer.active, session.promptTracker.position());
     },
     getScreenElement: () => session.screenEl,
   };
@@ -1210,6 +1210,7 @@ export function disposeSession(leafId: number): void {
   session.connection?.dispose();
 
   session.prefsUnsub?.();
+  session.promptTracker.clear();
   session.comparisonStart?.marker.dispose();
   session.term.dispose();
   sessions.delete(leafId);

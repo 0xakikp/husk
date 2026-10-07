@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WorkflowWorkspace } from "./WorkflowWorkspace";
+import { WorkflowDialog } from "./WorkflowDialog";
 import { addWorkflowCapture, collapseWorkflowEditor, discardWorkflowEditor, getWorkflowEditorSession, resumeWorkflowEditor, setWorkflowEditorBusy, startWorkflowEditor, updateWorkflowEditor } from "./editorSession";
 
 let root: Root; let container: HTMLDivElement;
@@ -50,6 +51,30 @@ it("never adds an editor column or changes the terminal and AI DOM, size, or spa
   expect(container.querySelector(".workflow-sidebar-editor, .workflow-dock, [role=separator], [role=dialog]")).toBeNull();
 });
 
+it("hosts run reviews in the workspace content, excluding the sidebar", async () => {
+  await act(async () => root.render(createElement("div", {},
+    createElement("aside", { "aria-label": "Sidebar stand-in" }, "Workflows"),
+    createElement(WorkflowWorkspace, {
+      editorVisible: false, onRevealEditor: reveal,
+      children: createElement("textarea", { "aria-label": "Terminal stand-in" }),
+    }),
+    createElement(WorkflowDialog, {
+      title: "Review workflow", variant: "run", onClose: vi.fn(),
+      children: createElement("p", {}, "Commands"),
+    }),
+  )));
+  const content = container.querySelector(".workflow-workspace-content")!;
+  const sidebar = container.querySelector('[aria-label="Sidebar stand-in"]')!;
+  const layer = container.querySelector<HTMLElement>(".workflow-run-layer")!;
+  expect(content.hasAttribute("data-workflow-run-host")).toBe(true);
+  expect(layer).not.toBeNull();
+  expect(layer.parentElement).toBe(content);
+  expect(layer.dataset.workspace).toBe("true");
+  expect(content.contains(sidebar)).toBe(false);
+  expect(sidebar.querySelector("[role=dialog]")).toBeNull();
+  expect(layer.querySelector("[role=dialog]")).not.toBeNull();
+});
+
 it("reveals the existing rail only for explicit start, resume, and successful capture requests", async () => {
   await render(); expect(reveal).not.toHaveBeenCalled();
   await act(async () => startWorkflowEditor(workflow)); expect(reveal).toHaveBeenCalledTimes(1);
@@ -87,6 +112,8 @@ it("shows a reminder for a hidden uncollapsed editor without obscuring its sourc
   const reminder = container.querySelector(".workflow-draft-bar")!;
   expect(source.firstElementChild).toBe(reminder);
   expect(source.lastElementChild?.classList.contains("workflow-workspace-content")).toBe(true);
+  expect(source.lastElementChild?.hasAttribute("data-workflow-run-host")).toBe(true);
+  expect(source.lastElementChild?.contains(reminder)).toBe(false);
   expect(reminder.querySelector('[aria-label="Terminal stand-in"], [aria-label="AI stand-in"]')).toBeNull();
   expect(getWorkflowEditorSession()?.collapsed).toBe(false);
   expect(reveal).toHaveBeenCalledOnce();

@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon, Copy01Icon, RepeatIcon, SparklesIcon } from "@hugeicons/core-free-icons";
@@ -10,13 +11,10 @@ import {
   useFailure,
   type FailureRecord,
 } from "./failureStore";
-import {
-  runInActiveTerminal,
-  getActiveTerminalDraft,
-  setPendingRunAttachment,
-} from "../ai/terminalContext";
+import { setPendingRunAttachment } from "../ai/terminalContext";
 import { openComposer } from "../ai/bubbleStore";
 import { toast } from "../toast";
+import { retryFailure } from "./retryFailure";
 
 function commandLabel(command: string): string {
   const compact = command.trim().replace(/\s+/g, " ");
@@ -44,6 +42,8 @@ export function FailureStrip({
   onExplain?: (request: FailureExplainRequest) => void;
 }) {
   const entry = useFailure(leafId);
+  const retryLocks = useRef(new Set<number>());
+  const [retrying, setRetrying] = useState<ReadonlySet<number>>(() => new Set());
   if (!entry || leafId == null) return null;
   const { record, collapsed } = entry;
   const kindLabel = FAILURE_KIND_LABEL[record.kind];
@@ -84,19 +84,21 @@ export function FailureStrip({
   };
 
   /* Retry is always an explicit click. Husk never retries on its own. */
-  const retry = () => {
-    if (!record.command.trim()) return;
-    if (getActiveTerminalDraft()) {
+  const retry = async () => {
+    if (retryLocks.current.has(leafId) || !record.command.trim()) return;
+    retryLocks.current.add(leafId);
+    setRetrying(new Set(retryLocks.current));
+    try {
+      await retryFailure(leafId, record);
+    } catch (error) {
       toast({
-        title: "Terminal input is waiting",
-        message: "Clear or submit the text at the prompt before retrying this command.",
-        variant: "warning",
+        title: "Could not retry command",
+        message: error instanceof Error ? error.message : String(error),
+        variant: "error",
       });
-      return;
-    }
-    clearFailure(leafId);
-    if (!runInActiveTerminal(record.command)) {
-      toast({ title: "Could not retry command", message: "Open and focus a terminal, then try again.", variant: "error" });
+    } finally {
+      retryLocks.current.delete(leafId);
+      setRetrying(new Set(retryLocks.current));
     }
   };
 
@@ -171,11 +173,13 @@ export function FailureStrip({
         <button
           type="button"
           onClick={retry}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground"
+          disabled={retrying.has(leafId)}
+          aria-busy={retrying.has(leafId)}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground disabled:cursor-wait disabled:opacity-50"
           title={`Run again: ${record.command}`}
         >
           <HugeiconsIcon icon={RepeatIcon} size={10} strokeWidth={1.75} />
-          Retry
+          {retrying.has(leafId) ? "Retrying…" : "Retry"}
         </button>
       )}
       <button

@@ -9,19 +9,27 @@ vi.mock("./suggestions", () => ({ useWorkflowSuggestions: () => [], dismissWorkf
 vi.mock("../workspace/store", () => ({ useWorkspaceRoot: () => "/project" }));
 vi.mock("../settings/preferences", () => ({ usePrefs: () => ({ aiEnabled: false }) }));
 vi.mock("../ai/assist", () => ({ refineWorkflowDraft: vi.fn() }));
-vi.mock("./execution", () => ({ captureWorkflowTarget: () => null, workflowTargetError: () => "No verified terminal", executeWorkflow: vi.fn() }));
+vi.mock("./execution", () => ({ captureWorkflowTarget: vi.fn(() => null), workflowTargetError: vi.fn(() => "No verified terminal"), executeWorkflow: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn(), open: vi.fn() }));
 vi.mock("../fs", () => ({ writeFile: vi.fn(), readFileScoped: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
 vi.mock("../toast", () => ({ toast: vi.fn() }));
 import { RunbooksDialog } from "./RunbooksDialog";
 import { saveWorkflows } from "./store";
-import { executeWorkflow } from "./execution";
+import { captureWorkflowTarget, executeWorkflow, workflowTargetError } from "./execution";
+import { compileWorkflow } from "./params";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "../fs";
 import { getWorkflowEditorSession, discardWorkflowEditor, collapseWorkflowEditor, resumeWorkflowEditor, addWorkflowCapture } from "./editorSession";
 let container: HTMLDivElement; let root: Root;
-beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); const session = getWorkflowEditorSession(); if (session) discardWorkflowEditor(session.key); container = document.createElement("div"); document.body.append(container); root = createRoot(container); });
+beforeEach(() => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const session = getWorkflowEditorSession(); if (session) discardWorkflowEditor(session.key);
+  vi.mocked(captureWorkflowTarget).mockReturnValue(null);
+  vi.mocked(workflowTargetError).mockReturnValue("No verified terminal");
+  vi.mocked(executeWorkflow).mockReset().mockResolvedValue(undefined);
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+});
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); const session = getWorkflowEditorSession(); if (session) discardWorkflowEditor(session.key); vi.unstubAllGlobals(); });
 async function render(active = true) { await act(async () => { root.render(createElement(RunbooksDialog, { inline: true, active })); await vi.dynamicImportSettled(); }); }
 it("edits inside the existing workflow rail instead of adding a workspace column", async () => {
@@ -68,10 +76,42 @@ it("shows an explicitly captured draft rather than stacking it with an older run
   expect(document.querySelector(".workflow-dialog")).toBeNull();
   expect(executeWorkflow).not.toHaveBeenCalled(); expect(saveWorkflows).not.toHaveBeenCalled();
 });
-it("opens review rather than executing parameterless workflows", async () => {
+it("opens a preview with one explicit Run workflow action without executing parameterless workflows", async () => {
   await render(); await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Review & run Check"]')!.click());
-  expect(document.querySelector(".workflow-dialog")?.textContent).toContain("Run reviewed workflow");
+  const dialog = document.querySelector(".workflow-dialog")!;
+  expect(dialog.classList.contains("workflow-run-dialog")).toBe(true);
+  expect(dialog.textContent).toContain("Run workflow");
+  expect(dialog.textContent).toContain("git status");
+  expect(dialog.querySelector('input[type="checkbox"]')).toBeNull();
+  expect(dialog.querySelector('details')?.open).toBe(false);
+  expect(dialog.querySelector('details summary')?.textContent).toBe("Execution details");
+  expect(dialog.querySelector('ol.wf-run-steps > li.wf-run-step pre')?.textContent).toBe("git status");
+  const body = dialog.querySelector(".workflow-dialog-body")!;
+  const footer = dialog.querySelector(".workflow-dialog-footer")!;
+  expect(footer).not.toBeNull();
+  expect(body.contains(footer)).toBe(false);
+  expect(footer.parentElement).toBe(dialog);
+  const runButtons = [...dialog.querySelectorAll("button")].filter((button) => button.textContent === "Run workflow");
+  expect(runButtons).toHaveLength(1);
+  expect(footer.contains(runButtons[0])).toBe(true);
+  expect(runButtons[0].disabled).toBe(true);
   expect(executeWorkflow).not.toHaveBeenCalled(); expect(saveWorkflows).not.toHaveBeenCalled();
+});
+it("closes the run preview after the explicit action submits to a verified target", async () => {
+  const target = { leafId: 1, scope: { ptyId: 7, cwd: "/project", isRemote: false, host: null, scopeToken: "session:7" } };
+  vi.mocked(captureWorkflowTarget).mockReturnValue(target);
+  vi.mocked(workflowTargetError).mockReturnValue(null);
+  await render();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Review & run Check"]')!.click());
+  expect(executeWorkflow).not.toHaveBeenCalled();
+  const run = [...document.querySelectorAll<HTMLButtonElement>(".workflow-dialog button")].find((button) => button.textContent === "Run workflow")!;
+  expect(run.disabled).toBe(false);
+  await act(async () => run.click());
+  const workflow = { id: "wf_1", name: "Check", steps: ["git status"] };
+  expect(executeWorkflow).toHaveBeenCalledExactlyOnceWith(workflow, {}, target, compileWorkflow(workflow, {}).command);
+  expect(document.querySelector(".workflow-dialog")).toBeNull();
+  expect(container.querySelector('[aria-label="Review & run Check"]')).not.toBeNull();
+  expect(saveWorkflows).not.toHaveBeenCalled();
 });
 it("exports versioned JSON to a user-chosen file and does nothing on cancellation", async () => {
   vi.mocked(save).mockResolvedValueOnce(null).mockResolvedValueOnce("/exports/backup.json");

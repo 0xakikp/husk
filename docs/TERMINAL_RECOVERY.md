@@ -55,6 +55,27 @@ uses the existing permitted native close operation. It prevents the SDK's implic
 `window.destroy` path; no new destroy permission is granted. Save/close failures
 keep the window open with retry guidance.
 
+## Retrying a failed command
+
+The failure strip's **Retry** is an explicit resubmission, not a diagnosis or an
+automatic fix. It requires the same terminal session, folder and SSH identity as
+the failure, and a verified empty, idle prompt. It never clears existing input,
+changes directories or falls back to another terminal. An unknown prompt is
+reported as unverified, not as a claim that the user has typed something.
+
+Prompt boundaries now follow xterm buffer markers through reflow of preceding
+output and scrollback trimming instead of retaining fixed row coordinates. A
+width change that could truncate existing input invalidates the boundary until
+the shell supplies a fresh prompt. Erased/reset prompts and alternate-screen
+applications cannot authorize execution. Unicode prompt columns use terminal
+cells, and Home before a draft (including spaces) does not make that draft empty.
+
+Retry waits for the native write result and prevents duplicate clicks while it
+is pending. Rejected writes retain the failure; late acknowledgements cannot
+remove a newer failure. Acceptance means the command was submitted, not that it
+succeeded. For example, Git commands still need a Git repository as their working
+directory—Retry does not repair an incorrect target folder.
+
 ## Verification and release checks
 
 Automated coverage uses local fake transports, bounded writer/reader fixtures and
@@ -76,6 +97,10 @@ Before release, run these in a disposable desktop session:
    notice appears; cancelling/restarting should not create duplicate shells.
 6. Close normally with and without pending chat edits. Verify persistence and no
    `plugin:window|destroy not allowed by ACL` rejection.
+7. In a disposable tab, run a harmless failing command such as `false`, resize
+   the window/sidebar with the prompt empty, and click Retry. Then type an
+   unfinished command, move to its beginning, expand the failure strip and verify
+   Retry refuses without changing the input. Repeat with a spaces-only draft.
 
 Native changes require rebuilding/restarting Husk; frontend hot reload alone is
 insufficient. The user's intermittent overnight symptom still needs a real desktop

@@ -29,3 +29,31 @@ it.each(["target", "reconnect", "busy", "changed command"])("fails closed after 
   await expect(executeWorkflow(wf, {}, target, kind === "changed command" ? "different" : command)).rejects.toThrow();
   expect(invoke).not.toHaveBeenCalled();
 });
+
+it("rejects a switched terminal even if its host and directory match", async () => {
+  const target = captureWorkflowTarget(); const command = compileWorkflow(wf, {}).command;
+  vi.mocked(getActiveTerminalLeafId).mockReturnValue(2);
+  await expect(executeWorkflow(wf, {}, target, command)).rejects.toThrow("changed");
+  expect(invoke).not.toHaveBeenCalled();
+});
+
+it("does not duplicate a pending submission and releases its lock after failure", async () => {
+  const target = captureWorkflowTarget(); const command = compileWorkflow(wf, {}).command;
+  let rejectWrite!: (reason: Error) => void;
+  vi.mocked(invoke).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectWrite = reject; }));
+  const first = executeWorkflow(wf, {}, target, command);
+  await expect(executeWorkflow(wf, {}, target, command)).rejects.toThrow("submission in progress");
+  expect(invoke).toHaveBeenCalledTimes(1);
+  rejectWrite(new Error("Shell disconnected"));
+  await expect(first).rejects.toThrow("Shell disconnected");
+  await executeWorkflow(wf, {}, target, command);
+  expect(invoke).toHaveBeenCalledTimes(2);
+});
+
+it("rejects unknown targets and unverified remote hosts without writing", async () => {
+  vi.mocked(captureScreenCommandTarget).mockReturnValue({ ...scope, isRemote: true, host: null });
+  const target = captureWorkflowTarget();
+  expect(target).toBeNull();
+  await expect(executeWorkflow(wf, {}, target, compileWorkflow(wf, {}).command)).rejects.toThrow("No verified terminal");
+  expect(invoke).not.toHaveBeenCalled();
+});

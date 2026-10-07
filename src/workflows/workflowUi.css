@@ -1,6 +1,37 @@
 .workflow-dialog { position: fixed; z-index: 80; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; outline: none; }
 .workflow-dialog-title { margin: 0; font: inherit; }
 .workflow-dialog-body { overflow: auto; min-height: 0; font-size: 12px; }
+/* Centre in the workspace, excluding the sidebar/header/status bar. The layer
+   never intercepts terminal input outside the card. Standalone previews fall
+   back to the viewport. Keep long content inside a capped, scrollable body. */
+.workflow-run-layer { position: fixed; z-index: 80; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; pointer-events: none; }
+.workflow-run-layer[data-workspace="true"] { position: absolute; }
+.workflow-run-layer .workflow-run-dialog { position: relative; inset: auto; transform: none; width: min(520px, 100%); max-height: min(640px, 100%); pointer-events: auto; }
+.workflow-run-dialog, .workflow-run-dialog * { box-sizing: border-box; }
+.workflow-run-dialog .workflow-dialog-body { padding: 12px 14px; overscroll-behavior: contain; }
+.workflow-run-dialog .workflow-dialog-footer { flex-shrink: 0; padding: 10px 14px; border-top: 1px solid var(--border); }
+.wf-run-form { gap: 14px; }
+.wf-run-target { min-width: 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.wf-run-target-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wf-run-destination { min-width: 0; color: var(--muted-foreground); font-size: 11px; overflow-wrap: anywhere; }
+.wf-run-target-row .compact-button { flex-shrink: 0; }
+.wf-run-directory { display: block; margin-top: 3px; color: var(--foreground); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.wf-run-command-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.wf-run-form .wf-run-command-heading h3 { margin: 0; }
+.wf-run-count { margin-left: 4px; color: var(--muted-foreground); font-size: 11px; font-weight: 400; }
+.wf-run-policy { color: var(--muted-foreground); font-size: 10px; }
+.wf-run-steps { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 6px; }
+.wf-run-step { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px; }
+.wf-run-step + .wf-run-step { border-top: 1px solid var(--border); }
+.wf-run-step-number { flex-shrink: 0; min-width: 12px; color: var(--muted-foreground); font-size: 10px; font-variant-numeric: tabular-nums; }
+.wf-run-step-content { flex: 1; min-width: 0; }
+.wf-run-step-content strong { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 500; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.wf-run-form .wf-run-step pre { margin: 0; color: var(--foreground); font-size: 12px; line-height: 1.6; }
+.wf-run-form .wf-run-details[open] > summary { margin-bottom: 10px; }
+.wf-run-details .compact-help { margin: 0 0 10px; }
+.wf-run-details pre { margin: 0; padding: 8px; border-radius: 5px; background: var(--muted); }
+.wf-run-actions { margin: 0; padding: 0; border: 0; }
+.wf-run-footer-note { min-width: 0; flex: 1 1 150px; color: var(--muted-foreground); font-size: 10px; }
 /* Workflow-specific structure only. Controls/surfaces live in compact-form.css. */
 .wf-form h3 { margin: 0 0 8px; color: var(--foreground); font-weight: 600; font-size: 12px; }
 .wf-field { margin: 0; }
@@ -20,7 +51,7 @@
 .wf-form summary { cursor: pointer; color: var(--muted-foreground); }
 .workflow-workspace { display: flex; min-width: 0; min-height: 0; flex: 1; position: relative; }
 .workflow-workspace-source { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.workflow-workspace-content { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.workflow-workspace-content { display: flex; flex: 1; min-width: 0; min-height: 0; position: relative; }
 .workflow-sidebar-editor { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
 .compact-panel.workflow-sidebar-editor { border: 0; border-radius: 0; }
 .workflow-sidebar-editor-body { flex: 1; }
