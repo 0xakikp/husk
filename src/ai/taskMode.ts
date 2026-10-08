@@ -23,6 +23,7 @@ export type AiTaskEvent = {
   command?: string;
   commandFingerprint?: string;
   terminalPtyId?: number | null;
+  terminalRunId?: string;
   exitCode?: number | null;
 };
 

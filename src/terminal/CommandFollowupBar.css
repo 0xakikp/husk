@@ -1,0 +1,26 @@
+.composer-followup {
+  flex: 0 0 auto;
+  padding: 6px 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.composer-followup-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.composer-followup label { display: inline-flex; align-items: center; gap: 6px; color: var(--foreground); cursor: pointer; }
+.composer-followup input { accent-color: var(--primary); }
+.composer-followup p { margin: 5px 0; overflow-wrap: anywhere; }
+.composer-followup button {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--background);
+  color: var(--foreground);
+  cursor: pointer;
+}
+.composer-followup button:disabled { opacity: .45; cursor: default; }
+.composer-followup button:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
+.composer-interrupt-review { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 5px; }
+.composer-interrupt-review button + button { margin-left: 6px; }
+.composer-command-result { margin: 10px 0; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; color: var(--muted-foreground); }
+.composer-command-result summary { cursor: pointer; }
+.composer-command-result pre { margin-top: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--foreground); }

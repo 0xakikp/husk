@@ -300,10 +300,19 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     # (e.g. after ssh'ing out of or back into a machine).
     _husk_detect_remote >/dev/null
     __husk_report_kubeconfig
+    # Powerlevel10k moves its own precmd hook last and rebuilds PS1 there,
+    # discarding a marker appended by an earlier hook. Let the theme emit its
+    # supported prompt marks on every redraw instead. Session-local only: no
+    # user config is edited. Checking here also handles deferred theme loading.
+    if (( $+functions[p10k] && $+functions[_p9k_set_prompt] )) \
+        && [[ "${POWERLEVEL9K_TERM_SHELL_INTEGRATION:-false}" != true ]]; then
+      typeset -g POWERLEVEL9K_TERM_SHELL_INTEGRATION=true
+      p10k reload
+    fi
     # Re-inject prompt-end marker in case a framework rebuilt PS1 (p10k, starship).
     # B MUST be appended AFTER PS1 so the cursor is at the input position when
     # the OSC handler fires — prepending captures (0,0) before prompt rendering.
-    if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then
+    if [[ "$PS1" != *$'\e]133;B\e\\'* && "$PS1" != *$'\e]133;B\a'* ]]; then
       PS1="$PS1"$'%{\e]133;B\e\\%}'
     fi
 

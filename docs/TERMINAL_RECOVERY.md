@@ -76,6 +76,24 @@ remove a newer failure. Acceptance means the command was submitted, not that it
 succeeded. For example, Git commands still need a Git repository as their working
 directory—Retry does not repair an incorrect target folder.
 
+## AI Run command and Task mode
+
+AI code-block **Run command** uses the terminal's live connection and prompt
+state in both normal chat and Task mode. A busy shell, existing input, unverified
+prompt or rejected input queue is reported separately from a missing terminal.
+Task events and the sent-command notice are created only after input is accepted
+for delivery; this is not a claim that the command completed successfully.
+
+Powerlevel10k can rebuild `PS1` after Husk's prompt hook and remove its ready
+marker. Husk enables the theme's supported terminal-shell integration in the
+current shell, without editing `.zshrc` or `.p10k.zsh`. Its prompt appearance is
+unchanged. Duplicate Husk/theme command marks are processed once, including the
+empty-command marks a theme may emit on Enter; private kubeconfig metadata is
+not discarded by duplicate completion marks. Plain zsh retains Husk's appended
+prompt marker. This bundled-script fix requires rebuilding/restarting Husk and
+opening a new terminal tab; frontend hot reload alone does not update shells
+already running.
+
 ## Verification and release checks
 
 Automated coverage uses local fake transports, bounded writer/reader fixtures and
@@ -101,6 +119,10 @@ Before release, run these in a disposable desktop session:
    the window/sidebar with the prompt empty, and click Retry. Then type an
    unfinished command, move to its beginning, expand the failure strip and verify
    Retry refuses without changing the input. Repeat with a spaces-only draft.
+8. With Powerlevel10k, use Task mode to run an AI shell block from an empty prompt
+   after several ordinary commands, empty Enter presses and window resizes.
+   Verify one submission and one Task event. With a real draft or a busy shell,
+   verify the specific refusal and that neither the draft nor the Task is changed.
 
 Native changes require rebuilding/restarting Husk; frontend hot reload alone is
 insufficient. The user's intermittent overnight symptom still needs a real desktop

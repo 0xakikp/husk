@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Cancel01Icon,
@@ -33,18 +33,20 @@ import {
   getActiveTerminalCwd,
   getActiveRemoteTerminal,
   getActiveTerminalPtyId,
-  getActiveTerminalDraft,
   isCommandRunning,
   readActiveTerminal,
-  runInActiveTerminal,
   getRecentCommandRuns,
   getPendingRunAttachment,
   subscribeTerminalCommandRuns,
+  subscribeTerminalState,
+  interruptTerminalRun,
   useActiveTerminalCwd,
   useActiveRemoteTerminal,
   type CommandRun,
 } from "../ai/terminalContext";
 import { TerminalPilot } from "./TerminalPilot";
+import { CommandFollowupBar } from "./CommandFollowupBar";
+import { analyzeCommandFollowup, commandFollowupScopeMatches, getCommandFollowup, pauseCommandFollowup, trackCommandFollowup, useCommandFollowup } from "../ai/commandFollowup";
 import { captureTerminalTarget, isCurrentTerminalTarget, type TerminalTarget } from "../ai/terminalTarget";
 import { AppliedEditsActivity, PendingEditsReview } from "../ai/PendingEditsReview";
 import { PendingMcpActionsReview } from "../ai/PendingMcpActionsReview";
@@ -67,7 +69,6 @@ import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { getProjectMemory } from "../ai/projectMemory";
 import { isEnvDestructive, protectedTargets } from "./envSignals";
 import { recordTimelineEvent } from "../timeline/store";
-import { safeTimelineCommand } from "../timeline/commandMetadata";
 import { buildHuskAssistantContext } from "../ai/huskContext";
 import { ContextInspector } from "../ai/ContextInspector";
 import {
@@ -90,6 +91,7 @@ import { buildBuiltinTools, mergeTools } from "../ai/builtinTools";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "../toast";
 import { getTerminalRunDecision, getWorkspaceRunDecision } from "./commandRun";
+import { notifyTerminalFolderUnavailable, runComposerTerminalCommand } from "./composerTerminalRun";
 import { WorkflowCaptureButton } from "../workflows/WorkflowCaptureButton";
 import { shq } from "../lib/shellQuote";
 import { useWorkspaceRoot } from "../workspace/store";
@@ -128,7 +130,6 @@ import {
   appendAiTaskEvent,
   createAiTask,
   deriveAiTaskStages,
-  isVerificationCommand,
   setAiTaskStatus,
   taskCommandFingerprint,
   taskModeSystemContext,
@@ -150,6 +151,7 @@ type ComposerAttachment = {
 };
 
 const PROJECT_LENS_ORIENTATION_PROMPT = "Using the attached Project Lens snapshot, orient me to this project. Explain what it is, its main architecture, how to run, test, and build it, and the relevant current Git state. Cite relative source files for grounded claims, and clearly say what would still need deeper inspection.";
+
 
 function taskEventId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -581,6 +583,7 @@ function TaskModeCard({
   onReview,
   onRunTerminalSteps,
   terminalStepsDisabled,
+  activity,
 }: {
   task: AiTaskState;
   busy: boolean;
@@ -592,12 +595,14 @@ function TaskModeCard({
   onReview: () => void;
   onRunTerminalSteps?: () => void;
   terminalStepsDisabled?: boolean;
+  activity?: string;
 }) {
   const [expanded, setExpanded] = useState(true);
   const stages = deriveAiTaskStages(task);
   const progress = taskProgress(task);
   const needsReview = stages.some((stage) => stage.state === "review");
-  const statusLabel = task.status === "running" && busy ? "AI WORKING" : task.status.toUpperCase();
+  const statusLabel = task.status !== "running" ? task.status.toUpperCase()
+    : busy ? "AI WORKING" : activity || (needsReview ? "NEEDS REVIEW" : "AWAITING YOU");
 
   return (
     <section className={cn("task-mode-card", `is-${task.status}`)} aria-label="Task Mode">
@@ -606,6 +611,9 @@ function TaskModeCard({
         <strong>TASK MODE</strong>
         <span className="task-mode-status">{statusLabel}</span>
         <span className="task-mode-spacer" />
+        {(task.status === "running" || task.status === "paused") && (
+          <button type="button" className="task-mode-icon-btn" onClick={onStop} title="Stop AI work and follow-ups. Running shell commands need a separate interrupt.">Stop Task</button>
+        )}
         <button type="button" className="task-mode-icon-btn" onClick={() => setExpanded((value) => !value)}>
           {expanded ? "hide" : `${progress}%`}
         </button>
@@ -659,7 +667,6 @@ function TaskModeCard({
             {(task.status === "running" || task.status === "paused") && (
               <>
                 <button type="button" onClick={onFinish}>Finish</button>
-                <button type="button" className="is-danger" onClick={onStop}>Stop task</button>
               </>
             )}
             {(task.status === "completed" || task.status === "stopped") && (
@@ -742,15 +749,16 @@ export function TerminalAiComposer({
   const [tick, setTick] = useState(0);
   const [height, setHeight] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [pendingRun, setPendingRun] = useState<{ sessionId: string; command: string; productionTarget: string | null; target: TerminalTarget } | null>(null);
+  const [pendingRun, setPendingRun] = useState<{ sessionId: string; taskId?: string; command: string; productionTarget: string | null; target: TerminalTarget } | null>(null);
   const [pendingWorkspaceRun, setPendingWorkspaceRun] = useState<{
     sessionId: string;
+    taskId?: string;
     command: string;
     workspacePath: string;
     terminalCwd: string;
     target: TerminalTarget;
   } | null>(null);
-  const [pendingRemoteRun, setPendingRemoteRun] = useState<{ sessionId: string; command: string; host: string; target: TerminalTarget } | null>(null);
+  const [pendingRemoteRun, setPendingRemoteRun] = useState<{ sessionId: string; taskId?: string; command: string; host: string; target: TerminalTarget } | null>(null);
   const [remotePathDraft, setRemotePathDraft] = useState<string | null>(null);
   const [remotePathLoading, setRemotePathLoading] = useState(false);
   const [pilotRequest, setPilotRequest] = useState<{ id: number; task: string } | null>(null);
@@ -779,6 +787,10 @@ export function TerminalAiComposer({
   const activeWorkspaceRoot = useWorkspaceRoot();
   const activeTerminalCwd = useActiveTerminalCwd();
   const activeRemoteTerminal = useActiveRemoteTerminal();
+  const activeTerminalPtyId = useSyncExternalStore(subscribeTerminalState, getActiveTerminalPtyId);
+  const commandFollowup = useCommandFollowup(sessionId);
+  const followupOwnerId = useId();
+  const automaticBusy = commandFollowup?.phase === "analyzing";
 
   // Right-dock (side panel) state
   /* Docked to either side. Everything about a side dock is shared except which
@@ -802,6 +814,7 @@ export function TerminalAiComposer({
   const remoteWorkspace = normalizeRemoteWorkspace(session.remoteWorkspace);
   const workspaceScopePath = remoteWorkspace?.path || workspacePath;
   const activeTask = session.task;
+  const autoFollowup = session.autoCommandFollowup !== false;
   const subscriptionAutoApply = useSubscriptionAutoApply(sessionId, workspacePath);
   const currentWorkspacePath = currentTerminalWorkspace(activeTerminalCwd, activeWorkspaceRoot);
   const workspaceChangeKey = workspacePath && currentWorkspacePath
@@ -816,6 +829,31 @@ export function TerminalAiComposer({
     !!activeTerminalCwd &&
     !isPathInWorkspace(activeTerminalCwd, workspacePath) &&
     dismissedWorkspaceChange !== workspaceChangeKey;
+
+  useEffect(() => () => {
+    if (getCommandFollowup(sessionId)?.ownerId === followupOwnerId) {
+      pauseCommandFollowup(sessionId, "Chat was left or closed. Result analysis is paused; commands are never replayed.");
+    }
+  }, [sessionId, open, followupOwnerId]);
+
+  useEffect(() => {
+    if (!commandFollowup || commandFollowup.ownerId !== followupOwnerId || commandFollowup.phase === "done" || commandFollowup.phase === "paused") return;
+    const target = commandFollowup.target;
+    const targetChanged = activeTerminalPtyId !== target.ptyId || activeRemoteTerminal.isRemote !== target.isRemote
+      || (activeRemoteTerminal.host ?? null) !== target.host;
+    if (!open || !prefs.aiEnabled || !autoFollowup || targetChanged
+      || workspacePath !== (commandFollowup.workspacePath || "")
+      || (commandFollowup.taskId && (activeTask?.id !== commandFollowup.taskId || activeTask.status !== "running"))) {
+      pauseCommandFollowup(sessionId, "Follow-up paused because the chat, terminal or Task changed. No next command will run.");
+      return;
+    }
+    if (automaticBusy && !commandFollowupScopeMatches(commandFollowup)) {
+      pauseCommandFollowup(sessionId, "The terminal folder changed; result analysis stopped.");
+    } else if (commandFollowup.phase === "ready") {
+      if (busy || input.trim()) pauseCommandFollowup(sessionId, "Your message takes priority. The result is saved below; send feedback or choose Analyze result.");
+      else void analyzeCommandFollowup(sessionId, commandFollowup.id, followupOwnerId);
+    }
+  }, [commandFollowup, open, prefs.aiEnabled, autoFollowup, activeTerminalPtyId, activeRemoteTerminal, activeTerminalCwd, workspacePath, activeTask, sessionId, busy, automaticBusy, input, followupOwnerId]);
 
   const updateTask = useCallback((updater: (task: AiTaskState) => AiTaskState) => {
     updateSession(sessionId, (current) => current.task
@@ -1798,6 +1836,8 @@ export function TerminalAiComposer({
   ) => {
     const text = (textOverride ?? pendingSendRef.current?.text ?? input).trim();
     if (!text || busy) return;
+    pauseCommandFollowup(sessionId, "Your feedback takes priority. The command result stays in this chat; no automatic analysis is queued.");
+    setPilotRequest(null);
     const request = beginAiRequest(sessionId);
     if (!request) {
       toast({ title: "This chat is already responding", message: "Stop or finish its current request first.", variant: "info" });
@@ -1862,6 +1902,7 @@ export function TerminalAiComposer({
       setInput("");
       setSlashOpen(false);
       setStatus("💭 thinking…");
+      const historyAtSend = getSession(sessionId).messages.filter((message) => !message.streaming);
       appendSessionMessage(sessionId, { role: "user", content: prepared.text, timestamp: Date.now(), ...(images.length ? { images } : {}) });
       appendSessionMessage(sessionId, { id: request.id, role: "assistant", content: "", streaming: true, timestamp: Date.now() });
       replyStarted = true;
@@ -2049,7 +2090,7 @@ export function TerminalAiComposer({
         },
       );
       };
-      const conversation: AiMessage[] = [...messages.filter((message) => !message.streaming), { role: "user", content: prepared.text, ...(images.length ? { images } : {}) }];
+      const conversation: AiMessage[] = [...historyAtSend, { role: "user", content: prepared.text, ...(images.length ? { images } : {}) }];
       await streamReply(conversation);
       assertAiRequest(request);
       if (provider.kind === "cli" && assistantResponse) {
@@ -2250,14 +2291,17 @@ export function TerminalAiComposer({
   }, [input, busy, messages, sessionId, contextItems, budgetKb, currentFile, prefs.aiFileToolsEnabled, prefs.aiMcpToolsEnabled, workspacePath, remoteWorkspace, session.workspaceEditAccess, subscriptionAutoApply, recordTaskEventFor]);
 
   const stop = useCallback(() => {
+    pauseCommandFollowup(sessionId);
     if (requestRef.current) cancelAiRequest(requestRef.current);
     setBusy(false);
     setStatus(null);
-  }, []);
+  }, [sessionId]);
 
   const pauseTask = useCallback(() => {
     if (!activeTask || activeTask.status !== "running") return;
-    if (busy) stop();
+    stop();
+    setPendingRun(null); setPendingWorkspaceRun(null); setPendingRemoteRun(null);
+    setPendingTaskStart(null); setPendingProjectLensPrompt(null);
     updateTask((task) => setAiTaskStatus(task, "paused"));
   }, [activeTask, busy, stop, updateTask]);
 
@@ -2273,8 +2317,8 @@ export function TerminalAiComposer({
 
   const finishTask = useCallback(() => {
     if (!activeTask || (activeTask.status !== "running" && activeTask.status !== "paused")) return;
-    if (busy) {
-      toast({ title: "AI is still responding", message: "Stop or wait for this response before finishing the task.", variant: "info" });
+    if (busy || automaticBusy || (commandFollowup?.taskId === activeTask.id && !commandFollowup.completed)) {
+      toast({ title: "Task work is still pending", message: "Wait for the command and analysis to finish, or stop the task without marking it completed.", variant: "info" });
       return;
     }
     const stages = deriveAiTaskStages(activeTask);
@@ -2293,11 +2337,15 @@ export function TerminalAiComposer({
       return;
     }
     updateTask((task) => setAiTaskStatus(task, "completed"));
-  }, [activeTask, busy, updateTask]);
+  }, [activeTask, busy, automaticBusy, commandFollowup, updateTask]);
 
   const stopTask = useCallback(() => {
     if (!activeTask) return;
-    if (busy) stop();
+    stop();
+    setPilotRequest(null);
+    setPendingRun(null); setPendingWorkspaceRun(null); setPendingRemoteRun(null);
+    setPendingTaskStart(null);
+    setPendingProjectLensPrompt(null);
     updateTask((task) => setAiTaskStatus(task, "stopped"));
   }, [activeTask, busy, stop, updateTask]);
 
@@ -2410,7 +2458,7 @@ export function TerminalAiComposer({
       const event = [...current.task.events].reverse().find((item) =>
         (item.type === "command" || item.type === "check")
         && item.state === "running"
-        && item.commandFingerprint === fingerprint
+        && (item.terminalRunId ? item.terminalRunId === run.runId : item.commandFingerprint === fingerprint)
         && item.terminalPtyId === run.terminalPtyId,
       );
       if (!event) return current;
@@ -2481,6 +2529,7 @@ export function TerminalAiComposer({
   };
 
   const handleClose = () => {
+    pauseCommandFollowup(sessionId, "Chat closed. Automatic analysis is paused; the shell command is not interrupted.");
     if (requestRef.current) cancelAiRequest(requestRef.current);
     setOpen(false);
     setBusy(false);
@@ -2491,59 +2540,22 @@ export function TerminalAiComposer({
     command: string,
     destinationCwd?: string,
     evidenceCommand = command,
+    followup = true,
   ): boolean => {
-    const cmd = command.trim();
-    if (!cmd) return false;
-    if (isCommandRunning()) {
-      toast({
-        title: "Terminal is busy",
-        message: "Wait for the current command to finish, or copy this command to run it yourself.",
-        variant: "info",
-      });
+    if (followup && (busy || getCommandFollowup(sessionId)?.phase === "analyzing")) {
+      toast({ title: "AI is still responding", message: "Stop or finish the response before running another command.", variant: "info" });
       return false;
     }
-    if (getActiveTerminalDraft()) {
-      toast({
-        title: "Terminal input is waiting",
-        message: "Husk did not run this command because it could join text already at the prompt. Clear or submit that input, then try again.",
-        variant: "warning",
-      });
-      return false;
-    }
-    const targetPtyId = getActiveTerminalPtyId();
-    if (!runInActiveTerminal(cmd)) {
-      toast({
-        title: "No active terminal",
-        message: "Open and focus a terminal before running a command from Husk.",
-        variant: "error",
-      });
-      return false;
-    }
-    const cwd = destinationCwd || getActiveTerminalCwd();
-    const task = getSession(sessionId).task;
-    if (task?.status === "running") {
-      const safe = safeTimelineCommand(evidenceCommand);
-      const isCheck = isVerificationCommand(evidenceCommand);
-      recordTaskEventFor(task.id, {
-        id: taskEventId(isCheck ? "check" : "command"),
-        type: isCheck ? "check" : "command",
-        label: safe.display,
-        state: "running",
-        at: Date.now(),
-        detail: cwd || undefined,
-        ...(safe.command ? { command: safe.command } : {}),
-        commandFingerprint: taskCommandFingerprint(cmd),
-        startedAt: Date.now(),
-        terminalPtyId: targetPtyId,
-      });
-    }
-    toast({
-      title: "Command sent to terminal",
-      message: cwd ? `Running in ${cwd}` : "Running in the active terminal",
-      variant: "info",
-      duration: 2200,
+    const target = captureTerminalTarget();
+    return runComposerTerminalCommand(command, {
+      destinationCwd, evidenceCommand, task: getSession(sessionId).task,
+      onTaskEvent: recordTaskEventFor,
+      onAccepted: followup ? (receipt) => trackCommandFollowup({
+        ...receipt, sessionId, ownerId: followupOwnerId, auto: getSession(sessionId).autoCommandFollowup !== false
+          && (!getSession(sessionId).task || getSession(sessionId).task?.status === "running"),
+        target: { ...target, cwd: !target.isRemote && destinationCwd ? destinationCwd : target.cwd },
+      }) : undefined,
     });
-    return true;
   };
 
   type SendCommandResult = "sent" | "blocked" | "workspace-mismatch";
@@ -2567,24 +2579,21 @@ export function TerminalAiComposer({
         return "blocked";
       }
       if (!remoteWorkspace && !options?.supervisedRemote) {
-        setPendingRemoteRun({ sessionId, command: cmd, host: activeRemote.host, target: captureTerminalTarget() });
+        setPendingRemoteRun({ sessionId, taskId: activeTask?.id, command: cmd, host: activeRemote.host, target: captureTerminalTarget() });
         return "workspace-mismatch";
       }
-      return writeCommandToActiveTerminal(cmd, `${activeRemote.host} (SSH)`, cmd) ? "sent" : "blocked";
+      return writeCommandToActiveTerminal(cmd, `${activeRemote.host} (SSH)`, cmd, !options?.supervisedRemote) ? "sent" : "blocked";
     }
 
     const target = getWorkspaceRunDecision(workspacePath, getActiveTerminalCwd());
     if (!target.ready) {
       if (target.reason === "no-terminal") {
-        toast({
-          title: "No active terminal",
-          message: "Open and focus a terminal before running a command from Husk.",
-          variant: "error",
-        });
+        notifyTerminalFolderUnavailable();
         return "blocked";
       }
       setPendingWorkspaceRun({
         sessionId,
+        taskId: activeTask?.id,
         command: cmd,
         workspacePath: target.workspacePath,
         terminalCwd: target.terminalCwd,
@@ -2593,30 +2602,33 @@ export function TerminalAiComposer({
       return "workspace-mismatch";
     }
 
-    return writeCommandToActiveTerminal(cmd) ? "sent" : "blocked";
+    return writeCommandToActiveTerminal(cmd, undefined, cmd, !options?.supervisedRemote) ? "sent" : "blocked";
   };
 
   const runCommand = (command: string) => {
     const cmd = command.trim();
     if (!cmd) return;
+    setPilotRequest(null);
     setPendingWorkspaceRun(null);
     /* Production gate: a command that mutates shared infrastructure, while a
        protected target is active, always stops for an explicit approval that
        names the target — even when the command itself looks "safe". */
     const protectedHits = protectedTargets();
     if (protectedHits.length > 0 && isEnvDestructive(cmd)) {
-      setPendingRun({ sessionId, command: cmd, productionTarget: protectedHits[0], target: captureTerminalTarget() });
+      setPendingRun({ sessionId, taskId: activeTask?.id, command: cmd, productionTarget: protectedHits[0], target: captureTerminalTarget() });
       return;
     }
     if (isDangerousCommand(cmd)) {
-      setPendingRun({ sessionId, command: cmd, productionTarget: null, target: captureTerminalTarget() });
+      setPendingRun({ sessionId, taskId: activeTask?.id, command: cmd, productionTarget: null, target: captureTerminalTarget() });
       return;
     }
     sendCommandToTerminal(cmd);
   };
 
-  const validateApprovalTarget = (target: TerminalTarget): boolean => {
-    if (isCurrentTerminalTarget(target)) return true;
+  const validateApprovalTarget = (approval: { sessionId: string; taskId?: string; target: TerminalTarget }): boolean => {
+    const task = getSession(sessionId).task;
+    if (approval.sessionId === sessionId && approval.taskId === task?.id
+      && (!task || task.status === "running") && isCurrentTerminalTarget(approval.target)) return true;
     setPendingRun(null);
     setPendingWorkspaceRun(null);
     setPendingRemoteRun(null);
@@ -2626,7 +2638,7 @@ export function TerminalAiComposer({
 
   const confirmRun = () => {
     if (pendingRun) {
-      if (!validateApprovalTarget(pendingRun.target)) return;
+      if (!validateApprovalTarget(pendingRun)) return;
       const result = sendCommandToTerminal(pendingRun.command);
       if (result === "sent" || result === "workspace-mismatch") setPendingRun(null);
     }
@@ -2636,7 +2648,7 @@ export function TerminalAiComposer({
 
   const confirmWorkspaceRun = () => {
     if (!pendingWorkspaceRun) return;
-    if (!validateApprovalTarget(pendingWorkspaceRun.target)) return;
+    if (!validateApprovalTarget(pendingWorkspaceRun)) return;
     const currentWorkspace = normalizeWorkspacePath(getSession(sessionId).workspacePath);
     if (currentWorkspace !== pendingWorkspaceRun.workspacePath) {
       setPendingWorkspaceRun(null);
@@ -2659,10 +2671,10 @@ export function TerminalAiComposer({
 
   const runInTerminalFolderOnce = () => {
     if (!pendingWorkspaceRun) return;
-    if (!validateApprovalTarget(pendingWorkspaceRun.target)) return;
+    if (!validateApprovalTarget(pendingWorkspaceRun)) return;
     const currentCwd = normalizeWorkspacePath(getActiveTerminalCwd());
     if (!currentCwd) {
-      toast({ title: "No active terminal", variant: "error" });
+      notifyTerminalFolderUnavailable();
       return;
     }
     if (currentCwd !== pendingWorkspaceRun.terminalCwd) {
@@ -2681,7 +2693,7 @@ export function TerminalAiComposer({
 
   const confirmRemoteRunOnce = () => {
     if (!pendingRemoteRun) return;
-    if (!validateApprovalTarget(pendingRemoteRun.target)) return;
+    if (!validateApprovalTarget(pendingRemoteRun)) return;
     const active = getActiveRemoteTerminal();
     if (!active.isRemote || active.host !== pendingRemoteRun.host) {
       setPendingRemoteRun(null);
@@ -3355,7 +3367,9 @@ export function TerminalAiComposer({
       {activeTask && (
         <TaskModeCard
           task={activeTask}
-          busy={busy}
+          busy={busy || automaticBusy}
+          activity={pendingRun || pendingWorkspaceRun || pendingRemoteRun ? "NEEDS APPROVAL"
+            : commandFollowup?.taskId === activeTask.id && commandFollowup.phase === "waiting" ? "WAITING FOR COMMAND" : undefined}
           onPause={pauseTask}
           onResume={resumeTask}
           onFinish={finishTask}
@@ -3363,7 +3377,7 @@ export function TerminalAiComposer({
           onDismiss={dismissTask}
           onReview={reviewTaskChanges}
           onRunTerminalSteps={variant === "docked" ? startTaskTerminalSteps : undefined}
-          terminalStepsDisabled={busy}
+          terminalStepsDisabled={busy || automaticBusy}
         />
       )}
 
@@ -3398,6 +3412,12 @@ export function TerminalAiComposer({
           )
         ) : (
           messages.map((msg, i) => {
+            if (msg.kind === "command-result") return (
+              <details key={msg.id ?? i} className="composer-command-result">
+                <summary>Terminal result · {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : "observed"}</summary>
+                <pre>{msg.content}</pre>
+              </details>
+            );
             const isUser = msg.role === "user";
             const textParts = isUser ? msg.content : stripCodeBlocks(msg.content);
             const codeBlocks = isUser ? [] : parseCodeBlocks(msg.content);
@@ -3825,9 +3845,28 @@ export function TerminalAiComposer({
             isTerminalRunning={isCommandRunning}
             runInTargetTerminal={(command) => sendCommandToTerminal(command, { supervisedRemote: true }) === "sent"}
             providerWorkspacePath={activeRemoteTerminal.isRemote ? undefined : workspacePath || undefined}
-            supervisionPaused={Boolean(activeTask && activeTask.status !== "running")}
+            supervisionPaused={!pilotRequest || busy || automaticBusy || Boolean(activeTask && activeTask.status !== "running")}
           />
         )}
+        <CommandFollowupBar
+          enabled={autoFollowup}
+          state={commandFollowup}
+          busy={busy || automaticBusy}
+          onToggle={(enabled) => {
+            updateSession(sessionId, (current) => ({ ...current, autoCommandFollowup: enabled }));
+            if (!enabled) pauseCommandFollowup(sessionId, "Auto follow-up is off. Command results stay in this chat.");
+          }}
+          onStop={() => pauseCommandFollowup(sessionId)}
+          onAnalyze={() => { if (commandFollowup) void analyzeCommandFollowup(sessionId, commandFollowup.id, followupOwnerId); }}
+          onInterrupt={() => {
+            if (!commandFollowup || commandFollowup.target.ptyId == null) return;
+            pauseCommandFollowup(sessionId, "Follow-up stopped. Waiting for the shell after your interrupt request.");
+            const interrupted = interruptTerminalRun(commandFollowup.id, commandFollowup.target.ptyId);
+            toast(interrupted
+              ? { title: "Interrupt sent", message: "Ctrl+C was sent to the original command. Check the terminal; interruption does not undo changes.", variant: "info" }
+              : { title: "Command is no longer interruptible", message: "Nothing was sent. The command may have finished or the terminal changed. Inspect it directly.", variant: "warning" });
+          }}
+        />
         <div className="wb-composer">
           {(chipItems.length > 0 || resumedChatNeedsTerminalChoice) && (
             <div className="wb-composer-head">
@@ -3963,7 +4002,7 @@ export function TerminalAiComposer({
                   handleClose();
                 }
               }}
-              placeholder="ask husk…"
+              placeholder={activeTask ? "ask, correct a command, or give feedback…" : "ask husk…"}
               rows={1}
               className="composer-textarea"
             />
@@ -4000,12 +4039,12 @@ export function TerminalAiComposer({
             )}
             <button
               type="button"
-              onClick={busy ? stop : () => handleSend()}
-              disabled={!busy && !input.trim()}
-              className={cn("composer-send-btn", busy && "is-stop")}
-              title={busy ? "Stop generating" : "Send"}
+              onClick={busy || (automaticBusy && !input.trim()) ? stop : () => handleSend()}
+              disabled={!busy && !automaticBusy && !input.trim()}
+              className={cn("composer-send-btn", (busy || automaticBusy && !input.trim()) && "is-stop")}
+              title={busy || automaticBusy && !input.trim() ? "Stop generating" : automaticBusy ? "Send feedback and stop automatic analysis" : "Send"}
             >
-              {busy ? <><HugeiconsIcon icon={StopIcon} size={10} strokeWidth={2} /><span>stop</span></> : "⏎"}
+              {busy || automaticBusy && !input.trim() ? <><HugeiconsIcon icon={StopIcon} size={10} strokeWidth={2} /><span>stop</span></> : "⏎"}
             </button>
           </div>
         </div>
@@ -4014,7 +4053,7 @@ export function TerminalAiComposer({
       <div className="composer-footer">
         <span className="wb-status-left">
           {/* The status line is the switcher — see ai/ModelSwitcher. */}
-          <ModelSwitcher busy={busy} />
+          <ModelSwitcher busy={busy || automaticBusy} />
           <button
             type="button"
             onClick={() => setInspectorOpen(true)}

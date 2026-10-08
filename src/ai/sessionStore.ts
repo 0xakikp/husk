@@ -33,6 +33,8 @@ export type AiReplyTrace = {
 
 export type AiMessage = {
   id?: string;
+  /** Locally observed evidence, not a message typed by the user. */
+  kind?: "command-result";
   role: Role;
   content: string;
   streaming?: boolean;
@@ -59,6 +61,8 @@ export type AiSession = {
   /** Explicit, scope-specific consent for reviewed changes from any provider.
       It never grants a provider direct filesystem write access. */
   workspaceEditAccess?: boolean;
+  /** Analyze commands explicitly run from this chat; never watches manual input. */
+  autoCommandFollowup?: boolean;
   /** Persistent supervised work state. Running tasks restore paused so Husk
       never resumes actions silently after an application restart. */
   task?: AiTaskState;

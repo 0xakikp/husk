@@ -188,19 +188,20 @@ export class TerminalSessionConnection {
     return operation;
   }
 
-  write(data: string): void {
-    if (!data || this.disposed || this.id === null || !this.attached) return;
-    if (!["ready", "starting", "slow-start"].includes(this.status.state)) return;
+  write(data: string): boolean {
+    if (!data || this.disposed || this.id === null || !this.attached) return false;
+    if (!["ready", "starting", "slow-start"].includes(this.status.state)) return false;
     const size = new TextEncoder().encode(data).length;
     if (size + this.pendingBytes > MAX_PENDING_INPUT) {
       this.pendingInput = [];
       this.pendingBytes = 0;
       this.publish({ state: "unresponsive", message: "Too much pending terminal input. Unsent input was dropped, not replayed. Check the prompt before typing again." });
-      return;
+      return false;
     }
     this.pendingInput.push({ data, size, expires: Date.now() + REQUEST_TIMEOUT_MS });
     this.pendingBytes += size;
     void this.flushInput();
+    return true;
   }
   private async flushInput(): Promise<void> {
     if (this.writing || this.id === null) return;

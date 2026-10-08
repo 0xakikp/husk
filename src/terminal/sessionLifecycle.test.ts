@@ -34,6 +34,15 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("terminal startup and generation identity", () => {
+  it("reports input enqueue refusal instead of claiming delivery to an unavailable shell", async () => {
+    const f = fixture();
+    expect(f.connection.write("git status\r")).toBe(false);
+    await f.ready();
+    expect(f.connection.write("git status\r")).toBe(true);
+    f.connection.dispose();
+    expect(f.connection.write("git status\r")).toBe(false);
+  });
+
   it("subscribes before the attach handshake and receives buffered first-prompt bytes", async () => {
     const f = fixture();
     f.transport.attach.mockImplementation(async id => {

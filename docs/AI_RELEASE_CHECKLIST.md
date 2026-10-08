@@ -18,6 +18,8 @@ The regression suite uses mocked providers, temporary filesystem fixtures, DOM c
 
 ## On-screen AI smoke checks
 
+For Chat/Task command execution, also run the [command follow-up checks](AI_COMMAND_FOLLOWUP.md). They cover result identity, automatic-analysis boundaries, feedback, stopping, interruption and output privacy.
+
 Use both a narrow docked layout and the full window, with light/dark themes and keyboard navigation. These features use the current provider; test an API provider and an installed signed-in CLI. No workspace or SFTP connection should be opened just to explain selected text.
 
 For Codex with ChatGPT sign-in, also test an installation saved with `gpt-5.4-mini` or `gpt-5.4`: the settings and actual CLI launch must use the documented `gpt-5.6-luna` / `gpt-5.6-terra` replacements. A stale local model cache must not re-offer retired selections; a selected model absent from the cache must remain visibly labelled as a saved selection. Refreshing the picker should reread the local cache, and **Codex default** must remain available. Simulated unsupported-model errors should show readable guidance, not raw JSON or credentials. API and custom/local model identifiers must not receive this subscription-only migration. See [OpenAI's Codex retirement guidance](https://learn.chatgpt.com/docs/models#deprecated-codex-models).

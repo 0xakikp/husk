@@ -7,11 +7,26 @@ import { isWindowFocused } from "../windowFocus";
  * TerminalView registers a reader; the panel calls it when sending a message.
  */
 let reader: (() => string) | null = null;
-let runner: ((cmd: string) => boolean) | null = null;
+export type TerminalRunFailureReason =
+  | "no-terminal"
+  | "terminal-unavailable"
+  | "terminal-busy"
+  | "input-present"
+  | "prompt-unverified"
+  | "write-failed";
+
+/** Success means accepted for delivery to the PTY, not command completion. */
+export type TerminalRunResult =
+  | { ok: true; runId?: string }
+  | { ok: false; reason: TerminalRunFailureReason; message?: string };
+
+let runner: ((cmd: string) => TerminalRunResult) | null = null;
 let activePtyId: number | null = null;
 
 export function setActiveTerminalPtyId(id: number | null): void {
+  if (activePtyId === id) return;
   activePtyId = id;
+  emitTerminalState();
 }
 
 export function getActiveTerminalPtyId(): number | null {
@@ -42,15 +57,42 @@ export function readActiveTerminal(maxChars = 8192): string {
   return firstNewline >= 0 ? truncated.slice(firstNewline + 1) : truncated;
 }
 
-/** The active terminal registers a runner that types a command into its PTY.
- * It can refuse when the prompt already contains unsubmitted input. */
-export function setActiveTerminalRunner(fn: ((cmd: string) => boolean) | null): void {
+/** The active terminal verifies its live prompt and connection before writing.
+ * A refusal must retain its reason; an unsafe prompt is not a missing terminal. */
+export function setActiveTerminalRunner(fn: ((cmd: string) => TerminalRunResult) | null): void {
   runner = fn;
 }
 
+export function runInActiveTerminalResult(cmd: string): TerminalRunResult {
+  if (!runner) return { ok: false, reason: "no-terminal" };
+  try {
+    return runner(cmd);
+  } catch {
+    // Never retry: a failing write may already have sent part of the input.
+    return { ok: false, reason: "write-failed" };
+  }
+}
+
+/** Compatibility for callers that only need to know whether input was accepted. */
 export function runInActiveTerminal(cmd: string): boolean {
-  if (!runner) return false;
-  return runner(cmd);
+  return runInActiveTerminalResult(cmd).ok;
+}
+
+type TerminalRunInterrupter = (runId: string, expectedPtyId: number) => boolean;
+let runInterrupter: TerminalRunInterrupter | null = null;
+
+/** Registry-owned lookup, deliberately independent of the currently focused
+ * terminal. A tab change must never redirect a task's interrupt keystroke. */
+export function setTerminalRunInterrupter(interrupter: TerminalRunInterrupter | null): void {
+  runInterrupter = interrupter;
+}
+
+/** Send Ctrl+C only if the registry still recognizes this exact running receipt.
+ * A refusal never falls back to the active terminal or restarts a shell. */
+export function interruptTerminalRun(runId: string, expectedPtyId: number): boolean {
+  if (!runId || !Number.isInteger(expectedPtyId) || expectedPtyId < 0 || !runInterrupter) return false;
+  try { return runInterrupter(runId, expectedPtyId); }
+  catch { return false; }
 }
 
 /* A direct Run action must never silently join text already waiting at a shell
@@ -330,6 +372,9 @@ export type CommandRun = {
 export type ObservedCommandRun = CommandRun & {
   terminalPtyId: number | null;
   cwd: string;
+  /** Present only when the first preexec matched an accepted app command. */
+  runId?: string;
+  startedAt?: number;
 };
 
 const commandRunSubscribers = new Set<(run: ObservedCommandRun) => void>();

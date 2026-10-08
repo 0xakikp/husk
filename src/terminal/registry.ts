@@ -10,6 +10,7 @@ import { fontStack } from "../styles/fonts";
 import {
   setActiveTerminalReader,
   setActiveTerminalRunner,
+  setTerminalRunInterrupter,
   setActiveTerminalTyper,
   setActiveTerminalSearchOpener,
   setActiveTerminalSearcher,
@@ -54,6 +55,8 @@ import type { SearchAddon as SearchAddonType } from "@xterm/addon-search";
 import type { FitAddon as FitAddonType } from "@xterm/addon-fit";
 import { inspectPromptReadiness, readEditablePrompt, type PromptReadiness } from "./promptDraft";
 import { TerminalPromptTracker } from "./promptTracker";
+import { ShellCommandMarkers } from "./shellCommandMarkers";
+import { TerminalRunReceipts, type TerminalRunTarget } from "./runReceipts";
 import { parseRemoteShellTarget } from "./remoteShell";
 import { ComparisonScopeTracker, captureComparisonOutput, clearRunComparisons, dismissRunComparison, recordComparisonRun } from "./runComparison";
 import { clearFixRuns, recordCompletedFixRun } from "./fixMemory";
@@ -155,6 +158,8 @@ type Session = {
   lastCompletedRun: CommandRun | null;
   /** Start of the editable prompt for this PTY (not globally shared). */
   promptTracker: TerminalPromptTracker;
+  shellCommandMarkers: ShellCommandMarkers;
+  runReceipts: TerminalRunReceipts;
   /** Absolute buffer row where the running command's output began (OSC 133 C). */
   cmdStartRow: number | null;
   comparisonStart: { marker: IMarker; ptyId: number; cwd: string; remoteHost: string | null } | null;
@@ -203,12 +208,15 @@ function queuePtyResize(session: Session, cols: number, rows: number): void {
   flushPtyResize(session);
 }
 
-function writeSessionInput(session: Session, data: string): void {
-  if (session.ptyId == null) return;
+function writeSessionInput(session: Session, data: string, preserveRunReceipt = false): boolean {
+  if (session.ptyId == null) return false;
+  // Manual input can edit/cancel queued input or steer an interactive command.
+  // Neither case may authorize automatic continuation from an app receipt.
+  if (!preserveRunReceipt) session.runReceipts.clear();
   // Invalidate before crossing IPC, not only once the next command OSC arrives.
   // This closes a selection race with app-run commands, pasted newlines or exit.
   if (/[\r\n\x03\x04]/.test(data)) session.kubeconfigCapture.invalidate();
-  session.connection?.write(data);
+  return session.connection?.write(data) ?? false;
 }
 
 /** Fit one attached xterm and preserve whether the user was following the
@@ -237,6 +245,27 @@ function fitAttachedSession(session: Session): void {
 }
 
 const sessions = new Map<number, Session>();
+
+function runTarget(session: Session): TerminalRunTarget | null {
+  if (session.ptyId === null) return null;
+  return {
+    ptyId: session.ptyId, sessionId: session.workflowSessionId,
+    generation: session.comparisonScope.getGeneration(), cwd: session.cwd,
+    isRemote: session.isRemoteShell, remoteTarget: session.remoteTarget,
+    observedHost: session.comparisonScope.target(session.isRemoteShell),
+  };
+}
+
+function interruptSessionRun(runId: string, expectedPtyId: number): boolean {
+  for (const session of sessions.values()) {
+    if (session.ptyId !== expectedPtyId || session.disposed || session.ptyOpening
+      || session.connection?.status.state !== "ready" || !session.currentCommand
+      || !session.commandStartedAt || session.cmdStartRow === null) continue;
+    const target = runTarget(session);
+    if (target && session.runReceipts.interrupt(runId, target, data => writeSessionInput(session, data, true))) return true;
+  }
+  return false;
+}
 let activeLeafId: number | null = null;
 const statusListeners = new Map<number, Set<() => void>>();
 let stopWakeChecks: (() => void) | null = null;
@@ -273,6 +302,8 @@ export async function restartSession(leafId: number): Promise<void> {
   await session.connection.restart(() => {
     session.kubeconfigCapture.invalidate();
     session.promptTracker.clear();
+    session.runReceipts.clear();
+    session.shellCommandMarkers.reset();
     session.cmdStartRow = null;
     session.currentCommand = "";
     session.lastCompletedRun = null;
@@ -487,6 +518,8 @@ export async function createSession(
     remoteTarget: null,
     lastCompletedRun: null,
     promptTracker: new TerminalPromptTracker(term),
+    shellCommandMarkers: new ShellCommandMarkers(),
+    runReceipts: new TerminalRunReceipts(),
     cmdStartRow: null,
     comparisonStart: null,
     currentCommand: "",
@@ -494,6 +527,7 @@ export async function createSession(
     liveOutputTail: "",
   };
   sessions.set(leafId, session);
+  setTerminalRunInterrupter(interruptSessionRun);
   startWakeChecks();
 
   // ── OSC Handlers ──────────────────────────────────────────────────────────
@@ -518,13 +552,16 @@ export async function createSession(
   });
 
   term.parser.registerOscHandler(133, (data) => {
+    if (!session.shellCommandMarkers.accept(data)) return true;
     if (data.startsWith("B")) {
+      session.runReceipts.clear();
       session.promptTracker.capture();
       session.kubeconfigCapture.completePrompt();
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.
     if (data.startsWith("D")) {
+      const receipt = session.runReceipts.complete(session.currentCommand, runTarget(session));
       session.promptTracker.clear();
       session.kubeconfigCapture.invalidate();
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
@@ -577,6 +614,7 @@ export async function createSession(
            while an observed command is still running. */
         publishTerminalCommandRun({
           ...completedRun,
+          ...receipt,
           terminalPtyId: session.ptyId,
           cwd: session.cwd,
         });
@@ -697,8 +735,10 @@ export async function createSession(
 
   term.parser.registerOscHandler(778, (data) => {
     if (!data.startsWith("husk;cmd;")) return true;
+    session.shellCommandMarkers.announceCommand();
     session.kubeconfigCapture.invalidate();
     const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";").trim();
+    session.runReceipts.preexec(cmd, runTarget(session), Date.now());
     session.currentCommand = cmd;
     session.commandStartedAt = Date.now();
     recordEnvironmentWarning(session.leafId, {
@@ -882,6 +922,7 @@ export async function createSession(
     const wasPtyId = session.ptyId;
     const connected = ["ready", "starting", "slow-start"].includes(connection.status.state);
     session.ptyId = connected ? connection.id : null;
+    if (!connected || wasPtyId !== session.ptyId) session.runReceipts.clear();
     session.ptyOpening = connection.id === null && ["starting", "slow-start"].includes(connection.status.state);
     term.options.disableStdin = session.ptyId === null;
     if (!connected) session.kubeconfigCapture.invalidate();
@@ -1065,11 +1106,24 @@ export function setSessionActive(leafId: number, active: boolean): void {
       /* Never append a Run/Pilot command to a draft that exists at this prompt.
          The caller keeps the command available to copy and the user keeps their
          own in-progress input intact. */
-      if (!session.active || session.disposed || !getSessionHandle(session.leafId)?.getPromptReadiness().ready) return false;
-      if (session.ptyId == null) return false;
-      writeSessionInput(session, `${cmd}\r`);
+      if (!session.active || session.disposed) return { ok: false, reason: "no-terminal" };
+      if (session.runReceipts.hasPending) return { ok: false, reason: "terminal-busy" };
+      const prompt = getSessionHandle(session.leafId)?.getPromptReadiness();
+      if (!prompt) return { ok: false, reason: "terminal-unavailable" };
+      if (!prompt.ready) return { ok: false, reason: prompt.code ?? "prompt-unverified", message: prompt.reason };
+      const target = runTarget(session);
+      if (!target) return { ok: false, reason: "terminal-unavailable" };
+      const runId = session.runReceipts.queue(cmd, target);
+      let accepted = false;
+      try { accepted = writeSessionInput(session, `${cmd}\r`, true); }
+      catch { /* A partial write must never be retried or keep its receipt. */ }
+      if (!accepted) {
+        session.runReceipts.clear();
+        return { ok: false, reason: "write-failed" };
+      }
+      session.promptTracker.clear();
       session.term.focus();
-      return true;
+      return { ok: true, runId };
     });
 
     setActiveTerminalTyper((text: string) => {
@@ -1177,8 +1231,11 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       };
     },
     getPromptReadiness: () => {
-      if (session.disposed || session.connection?.status.state !== "ready" || session.ptyOpening || session.ptyId == null || session.currentCommand || session.commandStartedAt || session.cmdStartRow != null) {
-        return { ready: false, reason: "The terminal is busy or its shell prompt is not ready. Return to a fresh prompt first." };
+      if (session.disposed || session.connection?.status.state !== "ready" || session.ptyOpening || session.ptyId == null) {
+        return { ready: false, code: "terminal-unavailable", reason: "The terminal connection is not ready. Check its connection status before running a command." };
+      }
+      if (session.runReceipts.hasPending || session.currentCommand || session.commandStartedAt || session.cmdStartRow != null) {
+        return { ready: false, code: "terminal-busy", reason: "The terminal is busy. Wait for the current command to finish before running another." };
       }
       return inspectPromptReadiness(session.term.buffer.active, session.promptTracker.position());
     },
@@ -1210,11 +1267,12 @@ export function disposeSession(leafId: number): void {
   session.connection?.dispose();
 
   session.prefsUnsub?.();
+  session.runReceipts.clear();
   session.promptTracker.clear();
   session.comparisonStart?.marker.dispose();
   session.term.dispose();
   sessions.delete(leafId);
-  if (!sessions.size) { stopWakeChecks?.(); stopWakeChecks = null; }
+  if (!sessions.size) { stopWakeChecks?.(); stopWakeChecks = null; setTerminalRunInterrupter(null); }
   outputListeners.delete(leafId);
   logsOpeners.delete(leafId);
   clearFailure(leafId);

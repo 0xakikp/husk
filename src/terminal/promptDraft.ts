@@ -42,14 +42,18 @@ export function readEditablePrompt(buffer: PromptBuffer, prompt: PromptPosition 
   return parts.join("").trim();
 }
 
-export type PromptReadiness = { ready: true } | { ready: false; reason: string };
+export type PromptReadiness = { ready: true } | {
+  ready: false;
+  reason: string;
+  code?: "input-present" | "prompt-unverified" | "terminal-busy" | "terminal-unavailable";
+};
 
 /** Staging must prove a genuinely empty prompt, not just an empty prefix to
  * the cursor. Unknown/stale markers, Home before a draft, trailing text and
  * autosuggestions all fail closed. This does not mutate or clear shell input. */
 export function inspectPromptReadiness(buffer: PromptBuffer, prompt: PromptPosition | null): PromptReadiness {
-  const unknown: PromptReadiness = { ready: false, reason: "Husk cannot verify an empty shell prompt. Return to a fresh prompt or copy the command instead." };
-  const input: PromptReadiness = { ready: false, reason: "The terminal already has input. Clear or submit it before continuing." };
+  const unknown: PromptReadiness = { ready: false, code: "prompt-unverified", reason: "Husk cannot verify an empty shell prompt. Return to a fresh prompt or copy the command instead." };
+  const input: PromptReadiness = { ready: false, code: "input-present", reason: "The terminal already has input. Clear or submit it before continuing." };
   if (!prompt || buffer.type !== "normal" || !Number.isInteger(prompt.row) || !Number.isInteger(prompt.col)
     || prompt.row < 0 || prompt.col < 0) return unknown;
   const cursorRow = buffer.baseY + buffer.cursorY;
