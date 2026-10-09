@@ -1248,6 +1248,7 @@ function App() {
             activeFile={activeFile}
             remoteHost={remoteHost}
             openFile={openFile}
+            openLocalFile={openLauncherFile}
             openGitGraph={openGitGraph}
             openIssues={openIssues}
             openSftp={openSftp}

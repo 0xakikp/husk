@@ -9,6 +9,7 @@ import { getAllSessions, updateExistingSession, type AiSession } from "./session
 import { subscribeTerminalCommandRuns, type ObservedCommandRun } from "./terminalContext";
 import { captureTerminalTarget, isCurrentTerminalTarget, type TerminalTarget } from "./terminalTarget";
 import { prepareTaskCommandEvidence, prepareTaskFollowupReply } from "./taskFollowupReply";
+import type { AiTaskStatus } from "./taskMode";
 
 export type CommandFollowup = {
   id: string;
@@ -25,6 +26,8 @@ export type CommandFollowup = {
   completed: boolean;
   result?: ObservedCommandRun;
   resultMessageId?: string;
+  analysisTrigger?: "automatic" | "manual";
+  analysisTaskStatus?: AiTaskStatus;
 };
 
 // Runtime only. Reloading/reopening a chat never restarts a command or analysis.
@@ -64,11 +67,31 @@ export function pauseCommandFollowup(sessionId: string, note = "Follow-up stoppe
   if (entry && entry.phase !== "done") update(entry.id, { phase: "paused", note });
 }
 
-export function commandFollowupScopeMatches(entry: CommandFollowup): boolean {
+export function isManualCommandAnalysis(entry: CommandFollowup | undefined): boolean {
+  return entry?.phase === "analyzing" && entry.analysisTrigger === "manual";
+}
+
+/** Shared by the request and the mounted composer. An explicit read-only
+ * explanation does not resume Task or opt back into automatic follow-ups. */
+export function commandFollowupBlockReason(entry: CommandFollowup, options: { waitingForCommand?: boolean } = {}): string | null {
+  if (!getPrefs().aiEnabled) return "AI is disabled. Enable AI in Settings before analyzing this result.";
   const session = sessionFor(entry.sessionId);
-  return Boolean(session && session.workspacePath === entry.workspacePath && remoteKey(session) === entry.remoteScope
-    && (entry.taskId ? session.task?.id === entry.taskId && session.task.status === "running" : !session.task || session.task.status !== "running")
-    && isCurrentTerminalTarget(entry.target));
+  if (!session) return "The original chat is unavailable. Open its saved result before continuing.";
+  if (session.workspacePath !== entry.workspacePath || remoteKey(session) !== entry.remoteScope) return "The chat workspace changed. Return to the original workspace before analyzing this result.";
+  if (entry.taskId !== session.task?.id) return "The Task changed. This result belongs to the earlier Task; review its saved output in chat.";
+  const manual = isManualCommandAnalysis(entry);
+  if (!manual && session.autoCommandFollowup === false) return "Auto follow-up is off. Choose Analyze result for a one-time explanation.";
+  if (session.task) {
+    if (session.task.status === "stopped" || session.task.status === "completed") return `Task is ${session.task.status}. Review the saved result in chat; this Task will not continue.`;
+    if (!manual && session.task.status !== "running") return "Task is paused. Choose Analyze result for a one-time explanation, or Resume for future automatic follow-ups.";
+    if (manual && session.task.status !== entry.analysisTaskStatus) return "Task status changed during analysis. Choose Analyze result again when ready.";
+  }
+  const current = captureTerminalTarget();
+  if (entry.target.ptyId == null || current.ptyId !== entry.target.ptyId) return "The selected terminal changed. Focus the original terminal, then choose Analyze result.";
+  if (current.isRemote !== entry.target.isRemote || current.host !== entry.target.host) return "The SSH target changed. Return to the original connection before analyzing this result.";
+  // An approved cd wrapper may still be moving to its destination while waiting.
+  if (!options.waitingForCommand && !isCurrentTerminalTarget(entry.target)) return "The terminal folder changed. Return to the original folder, then choose Analyze result.";
+  return null;
 }
 
 export function trackCommandFollowup(input: {
@@ -134,12 +157,14 @@ export function observeCommandFollowup(run: ObservedCommandRun) {
 }
 
 /** Observer-only: deliberately no tools, action broker or edit-proposal parser. */
-export async function analyzeCommandFollowup(sessionId: string, id: string, ownerId?: string) {
+export async function analyzeCommandFollowup(sessionId: string, id: string, ownerId?: string, trigger: "automatic" | "manual" = "automatic") {
   const entry = latest.get(sessionId);
   const session = sessionFor(sessionId);
   if (!entry || entry.id !== id || !entry.result || !session || entry.phase === "analyzing" || entry.phase === "done") return;
-  if (!getPrefs().aiEnabled || !commandFollowupScopeMatches(entry)) {
-    pauseCommandFollowup(sessionId, "Terminal, workspace or Task changed. Review the saved result in this chat before continuing."); return;
+  const analysisEntry: CommandFollowup = { ...entry, phase: "analyzing", analysisTrigger: trigger, analysisTaskStatus: session.task?.status };
+  const blocked = commandFollowupBlockReason(analysisEntry);
+  if (blocked) {
+    pauseCommandFollowup(sessionId, blocked); return;
   }
   if (session.input.trim()) {
     pauseCommandFollowup(sessionId, "Your draft takes priority. Send your feedback, or clear it before analyzing the result."); return;
@@ -147,7 +172,12 @@ export async function analyzeCommandFollowup(sessionId: string, id: string, owne
   const request = beginAiRequest(sessionId);
   if (!request) { pauseCommandFollowup(sessionId, "This chat is already responding. Analyze the saved result when it finishes."); return; }
   requests.set(sessionId, request);
-  update(id, { phase: "analyzing", ownerId: ownerId ?? entry.ownerId, note: "Reading the command result… Next commands still need Run." });
+  update(id, {
+    phase: "analyzing", ownerId: ownerId ?? entry.ownerId, analysisTrigger: trigger, analysisTaskStatus: analysisEntry.analysisTaskStatus,
+    note: trigger === "manual" && session.task?.status === "paused"
+      ? "Analyzing the saved result… Task stays paused. No commands will run."
+      : "Reading the command result… Next commands still need Run.",
+  });
   try {
     const prepared = prepareTaskFollowupReply({
       objective: entry.taskId ? session.task?.objective : undefined, workspacePath: entry.workspacePath,
@@ -169,12 +199,14 @@ export async function analyzeCommandFollowup(sessionId: string, id: string, owne
     await streamChat({ provider, model, apiKey, baseURL: cfg.baseURL, workspacePath: entry.workspacePath },
       prepared.system, prepared.messages, (delta) => {
         if (!isCurrentAiRequest(request)) return;
-        if (!commandFollowupScopeMatches(entry) || !getPrefs().aiEnabled) { pauseCommandFollowup(sessionId, "Context changed; result analysis stopped."); return; }
+        const blocked = commandFollowupBlockReason(analysisEntry);
+        if (blocked) { pauseCommandFollowup(sessionId, blocked); return; }
         updateExistingSession(sessionId, (current) => ({ ...current, messages: current.messages.map((message) =>
           message.id === request.id ? { ...message, content: message.content + delta } : message) }));
       }, undefined, request.controller.signal);
     if (isCurrentAiRequest(request)) {
-      if (!commandFollowupScopeMatches(entry) || !getPrefs().aiEnabled) pauseCommandFollowup(sessionId, "Context changed; result analysis stopped.");
+      const blocked = commandFollowupBlockReason(analysisEntry);
+      if (blocked) pauseCommandFollowup(sessionId, blocked);
       else update(id, { phase: "done", result: undefined, command: "", note: "Result analyzed. Review the suggestion or send feedback; nothing else runs automatically." });
     }
   } catch (error) {

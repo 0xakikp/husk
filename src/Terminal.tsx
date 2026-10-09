@@ -300,12 +300,13 @@ export function TerminalView({
   }, [query, searchOpen]);
 
   // ── History ───────────────────────────────────────────────────────────────
-  const selectHistory = (command: string) => {
+  const selectHistory = async (command: string): Promise<void> => {
     const target = historyTargetRef.current;
-    void stageScreenCommand(leafId, target, command).then(() => {
-      historyOpenRef.current = false;
-      setHistoryOpen(false);
-    }).catch((cause) => toast({ title: "Could not stage history command", message: cause instanceof Error ? cause.message : "Review the terminal first.", variant: "warning" }));
+    await stageScreenCommand(leafId, target, command);
+    // An older write must not close a picker reopened for a new target.
+    if (historyTargetRef.current !== target) return;
+    historyOpenRef.current = false;
+    setHistoryOpen(false);
   };
 
   const openHistory = () => {

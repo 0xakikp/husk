@@ -44,6 +44,7 @@ export function SidebarHost({
   activeFile,
   remoteHost,
   openFile,
+  openLocalFile,
   openGitGraph,
   openIssues,
   openSftp,
@@ -70,6 +71,7 @@ export function SidebarHost({
   activeFile: string | null;
   remoteHost: string | null;
   openFile: (path: string, name: string) => void;
+  openLocalFile?: (path: string, name: string) => void;
   openGitGraph: () => void;
   openIssues: () => void;
   openSftp: (host: string) => void;
@@ -154,7 +156,7 @@ export function SidebarHost({
               ) : id === "remotes" ? (
                 lazyPanel(<RemotesView inline onSftp={(h) => openSftp(h)} />, "Remotes")
               ) : id === "workflows" ? (
-                lazyPanel(<RunbooksDialog inline active={explorerOpen && sidebarView === "workflows"} />, "Workflows")
+                lazyPanel(<RunbooksDialog inline active={explorerOpen && sidebarView === "workflows"} onOpenScript={openLocalFile} />, "Workflows")
               ) : id === "tools-hub" ? (
                 lazyPanel(
                   <ToolsHubView

@@ -18,19 +18,25 @@ import { RunbooksDialog } from "./RunbooksDialog";
 import { saveWorkflows } from "./store";
 import { captureWorkflowTarget, executeWorkflow, workflowTargetError } from "./execution";
 import { compileWorkflow } from "./params";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "../fs";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { writeFile, readFileScoped } from "../fs";
+import { addLinkedScript, getWorkflowLibrary, WORKFLOW_LIBRARY_STORAGE_KEY } from "./library";
+import { beginWorkflowRun, clearWorkflowRunStatuses, getWorkflowRunStatus } from "./runStatus";
+import { publishTerminalCommandRun } from "../ai/terminalContext";
 import { getWorkflowEditorSession, discardWorkflowEditor, collapseWorkflowEditor, resumeWorkflowEditor, addWorkflowCapture } from "./editorSession";
 let container: HTMLDivElement; let root: Root;
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  localStorage.removeItem(WORKFLOW_LIBRARY_STORAGE_KEY);
+  window.dispatchEvent(new StorageEvent("storage", { key: WORKFLOW_LIBRARY_STORAGE_KEY }));
+  clearWorkflowRunStatuses();
   const session = getWorkflowEditorSession(); if (session) discardWorkflowEditor(session.key);
   vi.mocked(captureWorkflowTarget).mockReturnValue(null);
   vi.mocked(workflowTargetError).mockReturnValue("No verified terminal");
   vi.mocked(executeWorkflow).mockReset().mockResolvedValue(undefined);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); const session = getWorkflowEditorSession(); if (session) discardWorkflowEditor(session.key); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); clearWorkflowRunStatuses(); const session = getWorkflowEditorSession(); if (session) discardWorkflowEditor(session.key); vi.unstubAllGlobals(); });
 async function render(active = true) { await act(async () => { root.render(createElement(RunbooksDialog, { inline: true, active })); await vi.dynamicImportSettled(); }); }
 it("edits inside the existing workflow rail instead of adding a workspace column", async () => {
   await render(); expect(saveWorkflows).not.toHaveBeenCalled();
@@ -124,5 +130,99 @@ it("exports versioned JSON to a user-chosen file and does nothing on cancellatio
     if (i === 0) expect(writeFile).not.toHaveBeenCalled();
   }
   expect(writeFile).toHaveBeenCalledWith("/exports/backup.json", expect.stringContaining('"version": 1'));
+  expect(executeWorkflow).not.toHaveBeenCalled();
+});
+
+it("filters workflows and scripts locally and restores the list with Escape", async () => {
+  addLinkedScript({ name: "Environment", path: "/project/scripts/check-env.sh" });
+  await render();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Search workflows and scripts"]')!.click());
+  const input = container.querySelector<HTMLInputElement>('[aria-label="Filter workflows and scripts"]')!;
+  const query = async (value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await query("git status");
+  expect(container.querySelector('[aria-label="Review & run Check"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label="Review & run Environment"]')).toBeNull();
+  await query("scripts/check-env");
+  expect(container.querySelector('[aria-label="Review & run Check"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Review & run Environment"]')).not.toBeNull();
+  await query("not found");
+  expect(container.textContent).toContain("No matching workflows or scripts.");
+  await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(container.querySelector('[aria-label="Filter workflows and scripts"]')).toBeNull();
+  expect(container.querySelectorAll(".wf-library-item")).toHaveLength(2);
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Search workflows and scripts");
+  expect(executeWorkflow).not.toHaveBeenCalled();
+});
+
+it("pins workflows and scripts without executing or rewriting definitions", async () => {
+  const script = addLinkedScript({ name: "Environment", path: "/project/check.sh" });
+  await render();
+  for (const name of ["Check", "Environment"]) {
+    await act(async () => container.querySelector<HTMLButtonElement>(`[aria-label="Pin ${name}"]`)!.click());
+  }
+  expect(container.querySelectorAll('section[aria-label="Pinned"] .wf-library-item')).toHaveLength(2);
+  expect(JSON.parse(localStorage.getItem(WORKFLOW_LIBRARY_STORAGE_KEY)!)).toMatchObject({ pinnedWorkflowIds: ["wf_1"], pinnedScriptIds: [script.id] });
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Unpin Check"]')!.click());
+  expect(container.querySelectorAll('section[aria-label="Pinned"] .wf-library-item')).toHaveLength(1);
+  expect(getWorkflowLibrary().scripts).toHaveLength(1);
+  expect(executeWorkflow).not.toHaveBeenCalled(); expect(saveWorkflows).not.toHaveBeenCalled();
+});
+
+it("links and opens only the original file without reading or executing on discovery", async () => {
+  const onOpenScript = vi.fn();
+  vi.mocked(open).mockResolvedValueOnce(null).mockResolvedValueOnce("/project/scripts/check.sh");
+  await act(async () => root.render(createElement(RunbooksDialog, { inline: true, onOpenScript })));
+  const link = () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Link script…")!;
+  await act(async () => link().click());
+  expect(getWorkflowLibrary().scripts).toHaveLength(0);
+  await act(async () => link().click());
+  expect(getWorkflowLibrary().scripts).toHaveLength(1);
+  expect(getWorkflowLibrary().scripts[0].path).toBe("/project/scripts/check.sh");
+  expect(readFileScoped).not.toHaveBeenCalled();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Open check.sh"]')!.click());
+  expect(onOpenScript).toHaveBeenCalledExactlyOnceWith("/project/scripts/check.sh", "check.sh");
+  expect(executeWorkflow).not.toHaveBeenCalled(); expect(saveWorkflows).not.toHaveBeenCalled(); expect(writeFile).not.toHaveBeenCalled();
+});
+
+it("requires a local target and an explicit run for a linked script", async () => {
+  const script = addLinkedScript({ name: "Environment", path: "/project/check.sh" });
+  const scope = { ptyId: 7, cwd: "/project", isRemote: true, host: "prod", scopeToken: "session:7" };
+  vi.mocked(captureWorkflowTarget).mockReturnValue({ leafId: 1, scope });
+  vi.mocked(workflowTargetError).mockReturnValue(null);
+  await render();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Review & run Environment"]')!.click());
+  const button = (name: string) => [...document.querySelectorAll<HTMLButtonElement>(".workflow-dialog button")].find(button => button.textContent === name)!;
+  expect(button("Run script").disabled).toBe(true);
+  expect(document.querySelector(".workflow-dialog")?.textContent).toContain("cannot run on an SSH host");
+  const local = { leafId: 1, scope: { ...scope, isRemote: false, host: null } };
+  vi.mocked(captureWorkflowTarget).mockReturnValue(local);
+  await act(async () => button("Refresh target").click());
+  expect(button("Run script").disabled).toBe(false);
+  expect(executeWorkflow).not.toHaveBeenCalled();
+  await act(async () => button("Run script").click());
+  expect(executeWorkflow).toHaveBeenCalledWith(expect.objectContaining({ id: script.id, steps: ["'/project/check.sh'"] }), {}, local, expect.any(String), { localOnly: true });
+  expect(document.querySelector(".workflow-dialog")).toBeNull();
+});
+
+it("shows observed failure output without rerunning and stays closable if the result is cleared", async () => {
+  beginWorkflowRun({ id: "wf_1", name: "Check", steps: ["git status"] }, {},
+    { leafId: 1, scope: { ptyId: 7, cwd: "/project", isRemote: false, host: null, scopeToken: "session:7" } }, "git status", "ui:1");
+  const submitted = getWorkflowRunStatus("wf_1")!.submittedAt;
+  publishTerminalCommandRun({ runId: "ui:1", terminalPtyId: 7, cwd: "/project", command: "git status", output: "not a git repository", exitCode: 128, startedAt: submitted + 1, at: submitted + 2 });
+  await render();
+  expect(container.textContent).toContain("Last run failed");
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="View output for Check"]')!.click());
+  expect(document.querySelector('.workflow-dialog pre')?.textContent).toBe("not a git repository");
+  expect(document.querySelector('.workflow-dialog')?.textContent).toContain("exit 128");
+  expect(document.querySelector('.workflow-dialog')?.textContent).toContain("Bounded terminal capture");
+  await act(async () => clearWorkflowRunStatuses());
+  expect(document.querySelector('.workflow-dialog')?.textContent).toContain("Result unavailable");
+  const close = [...document.querySelectorAll<HTMLButtonElement>('.workflow-dialog button')].find(button => button.textContent === "Close")!;
+  await act(async () => close.click());
+  expect(document.querySelector('.workflow-dialog')).toBeNull();
+  expect(container.querySelector('[inert]')).toBeNull();
   expect(executeWorkflow).not.toHaveBeenCalled();
 });

@@ -25,7 +25,7 @@ export function CommandFollowupBar({ enabled, state, busy, onToggle, onStop, onA
       <p role="status">{state.note}</p>
       <div className="composer-followup-row">
         {(state.phase === "waiting" || state.phase === "ready" || state.phase === "analyzing") && <button type="button" onClick={onStop}>Stop follow-up</button>}
-        {state.phase === "paused" && state.result && <button type="button" disabled={busy} onClick={onAnalyze}>Analyze result</button>}
+        {state.phase === "paused" && state.result && <button type="button" disabled={busy} onClick={onAnalyze} title="Explain this saved result once. Does not resume Task or run another command.">Analyze result</button>}
         {!state.completed && <button type="button" onClick={() => setConfirmInterrupt((value) => !value)}>Interrupt command…</button>}
       </div>
       {confirmInterrupt && !state.completed && <div className="composer-interrupt-review">

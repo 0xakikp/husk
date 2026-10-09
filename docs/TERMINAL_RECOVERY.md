@@ -76,6 +76,27 @@ remove a newer failure. Acceptance means the command was submitted, not that it
 succeeded. For example, Git commands still need a Git repository as their working
 directory—Retry does not repair an incorrect target folder.
 
+## Ctrl+R history insertion
+
+Selecting a history row inserts one reviewed command without Enter. It does not
+clear the screen or replace existing input. If insertion is refused, the picker
+keeps the search/selection and shows the reason inline with **Copy command**;
+the warning is no longer hidden behind the history overlay. Pending selection
+writes are locked against duplicate clicks and Enter presses.
+
+Some shell themes emit OSC 133 `P;k=r` and a second `B` around the right prompt.
+For example, Powerlevel10k does this when it inherits `TERM_PROGRAM=WarpTerminal`.
+Husk previously mistook that second `B` for the editable input position, producing
+“cannot verify an empty shell prompt” after the cursor returned to the left.
+The tracker now preserves the left boundary and recognizes only the exact,
+unchanged cells within explicitly marked right-prompt text. Unmarked text,
+drafts at Home, stale/erased boundaries, incomplete markers, and alternate-screen
+applications still cannot authorize insertion. Typing and width changes retire
+the decoration evidence. This fix does not guess a prompt from its appearance.
+
+For an older shell that does not emit prompt boundaries, open a new tab in the
+updated app. Copy remains available if the shell integration cannot be verified.
+
 ## AI Run command and Task mode
 
 AI code-block **Run command** uses the terminal's live connection and prompt

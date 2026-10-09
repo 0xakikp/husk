@@ -12,7 +12,7 @@
 - **Stop follow-up** cancels the observer request. **Stop Task** also stops Task work and clears outstanding terminal approvals. The Task Stop button remains available with the Task card collapsed.
 - Neither button silently terminates a shell command. **Interrupt command… → Send Ctrl+C** is a separate, explicit action bound to that command's original terminal and connection. Husk refuses stale interrupts. Ctrl+C is not rollback; a program can ignore it or leave work already performed intact.
 - Terminal/chat/workspace/host changes, paused Tasks, lost provenance, or unconfirmed completion stop automatic continuation. After 90 seconds without confirmed completion, the observer pauses; it does not kill the command. A later confirmed result may still be recorded, but is not automatically analyzed.
-- **Analyze result** explicitly requests analysis of a retained result after a pause, once the original scope is available and the chat has no unsent draft. It never reruns the command.
+- **Analyze result** explicitly requests a one-time explanation of a retained result, once the original scope is available and the chat has no unsent draft. It works while the same Task is **paused**, and with **Auto follow-up off**. It does not resume Task, enable automatic follow-ups or rerun the command. Stop still cancels the explanation. Stopped/completed/replaced Tasks and changed targets remain blocked with a specific reason.
 - Restarting Husk never restores a live observer or replays commands. The older, explicitly started **Terminal steps** diagnostic loop is separate; normal Run follow-ups do not start it.
 
 ## Data and limitations
@@ -26,7 +26,7 @@ Secret-pattern matches pause sharing and prevent the result from being automatic
 Use a disposable local folder, a fresh shell with Husk integration and an API or signed-in provider. Do not use production credentials or hosts.
 
 1. Ask for `printf 'follow-up test\n'` in a shell code block. Click Run in ordinary Chat, then repeat inside Task. Expect one saved result and one automatic analysis, with no next command executed.
-2. Turn Auto follow-up off and run it again: save the result locally, but make no model request. Analyze result should work explicitly. Turning the toggle back on must not replay a previous result.
+2. Turn Auto follow-up off and run it again: save the result locally, but make no model request. Analyze result should work explicitly. Repeat with Task paused: clicking Analyze must produce one explanation while the Task badge stays paused. Turning Auto follow-up off during that explicit explanation must not cancel it; Stop must still cancel it. Turning the toggle back on must not replay a previous result.
 3. Run `sleep 5` from chat and click Stop follow-up (or Stop Task). Its eventual result may be saved; no automatic analysis may start. Repeat with Interrupt command and confirm Ctrl+C. Canceling the confirmation must send nothing.
 4. While analysis streams, type “That was the wrong command; explain it without running anything” and send. The correction must take priority, old deltas must stop, and earlier command evidence must remain in context.
 5. Switch terminal/chat/host before completion. The original result must not appear in another conversation or trigger an automatic request from it. Return and explicitly Analyze result if appropriate.

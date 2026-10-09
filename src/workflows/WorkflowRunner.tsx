@@ -16,14 +16,16 @@ function subscribeRunTarget(onChange: () => void): () => void {
   return () => { unsubscribers.forEach((unsubscribe) => unsubscribe()); clearInterval(timer); };
 }
 
-export function WorkflowRunner({ workflow, onClose }: { workflow: Workflow; onClose: () => void }) {
+export function WorkflowRunner({ workflow, onClose, scriptPath, onOpenScript }: { workflow: Workflow; onClose: () => void; scriptPath?: string; onOpenScript?: () => void }) {
   let inputError = ""; let inputs: ReturnType<typeof getWorkflowInputs> = [];
   try { inputs = getWorkflowInputs(workflow); } catch (reason) { inputError = String(reason); }
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(inputs.map((input) => [input.name, input.defaultValue ?? ""])));
   const [target, setTarget] = useState(captureWorkflowTarget);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [showSecrets, setShowSecrets] = useState(false);
   const submitting = useRef(false);
-  const targetError = useSyncExternalStore(subscribeRunTarget, () => workflowTargetError(target), () => null);
+  const targetError = useSyncExternalStore(subscribeRunTarget, () => scriptPath && target?.scope.isRemote
+    ? "This is a local script. Focus a local terminal, then refresh the target. It cannot run on an SSH host."
+    : workflowTargetError(target), () => null);
   let compiled: ReturnType<typeof compileWorkflow> | null = null; let validation = inputError;
   try { if (!validation) compiled = compileWorkflow(workflow, values); } catch (reason) { validation = reason instanceof Error ? reason.message : String(reason); }
   const hasSecret = inputs.some((input) => input.type === "secret" && values[input.name]);
@@ -39,11 +41,12 @@ export function WorkflowRunner({ workflow, onClose }: { workflow: Workflow; onCl
         if (submitting.current || !compiled || !target || targetError) return; const command = compiled.command;
         submitting.current = true;
         setBusy(true); setError("");
-        void executeWorkflow(workflow, values, target, command).then(onClose).catch((reason) => { setError(reason instanceof Error ? reason.message : String(reason)); }).finally(() => { submitting.current = false; setBusy(false); });
-      }}>{busy ? "Submitting…" : "Run workflow"}</CompactButton>
+        const run = scriptPath ? executeWorkflow(workflow, values, target, command, { localOnly: true }) : executeWorkflow(workflow, values, target, command);
+        void run.then(onClose).catch((reason) => { setError(reason instanceof Error ? reason.message : String(reason)); }).finally(() => { submitting.current = false; setBusy(false); });
+      }}>{busy ? "Submitting…" : scriptPath ? "Run script" : "Run workflow"}</CompactButton>
     </div>
   </div>;
-  return <WorkflowDialog title={"Run workflow · " + workflow.name} onClose={onClose} busy={busy} variant="run" footer={runActions}>
+  return <WorkflowDialog title={(scriptPath ? "Run script · " : "Run workflow · ") + workflow.name} onClose={onClose} busy={busy} variant="run" footer={runActions}>
     <CompactForm className="wf-form wf-run-form">
       <section className="wf-run-target" aria-label="Target terminal">
         <div className="wf-run-target-row">
@@ -53,6 +56,11 @@ export function WorkflowRunner({ workflow, onClose }: { workflow: Workflow; onCl
         <code className="wf-run-directory">{target?.scope.cwd || "Directory unknown"}</code>
         {targetError && <p className="compact-help wf-warning" role="status">{targetError}</p>}
       </section>
+      {scriptPath && <section className="wf-script-source" aria-label="Linked script">
+        <h3>Linked local file</h3><code>{scriptPath}</code>
+        <p className="compact-help">Runs the current file in the directory shown above. The file must be executable and use a valid shebang. Husk does not change permissions, copy its contents, or send it to AI.</p>
+        {onOpenScript && <CompactButton compact disabled={busy} onClick={onOpenScript}>Open original file</CompactButton>}
+      </section>}
       {inputs.length > 0 && <section><h3>Runtime inputs</h3><div className="wf-input-grid">{inputs.map((input) => <CompactLabel key={input.name} className="compact-field wf-field"><span>{input.label}{input.required ? " *" : " (optional)"}</span>
         <CompactInput type={input.type === "secret" ? "password" : "text"} inputMode={input.type === "number" ? "decimal" : undefined} value={values[input.name] ?? ""} autoComplete="off" spellCheck={false} disabled={busy}
           onChange={(event) => { setValues((current) => ({ ...current, [input.name]: event.target.value })); setError(""); }} />

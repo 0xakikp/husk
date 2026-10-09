@@ -5,7 +5,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const fixtures = vi.hoisted(() => ({ enabled: true }));
 vi.mock("./settings/preferences", () => ({ usePrefs: () => ({ aiEnabled: fixtures.enabled, fontFamily: "system" }) }));
 vi.mock("./ai/screenAssist", () => ({ requestScreenAssist: vi.fn(), parseScreenObject: (response: string) => JSON.parse(response) }));
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
 import { requestScreenAssist } from "./ai/screenAssist";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { TerminalHistoryPanel } from "./TerminalHistory";
 import type { HistoryRecallRow } from "./ai/historyRecall";
 
@@ -34,13 +36,15 @@ async function query(text: string): Promise<void> {
   });
 }
 async function startRecall(): Promise<void> { await render(); await click("Ask AI"); await query("forward Postgres"); }
-function deferred() {
-  let resolve!: (result: string) => void;
-  const promise = new Promise<string>((done) => { resolve = done; });
-  return { promise, resolve };
+function deferred<T = string>() {
+  let resolve!: (result: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); fixtures.enabled = true;
+  select.mockReset(); close.mockReset(); vi.mocked(writeText).mockReset().mockResolvedValue();
   entries = rows.map((row) => row.command);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
@@ -104,4 +108,114 @@ it("does not offer AI when globally disabled, and aborts when disabled while run
   fixtures.enabled = true; await startRecall(); vi.mocked(requestScreenAssist).mockReturnValue(new Promise(() => {})); await click("Find matches");
   const signal = vi.mocked(requestScreenAssist).mock.calls[0][0].signal!;
   fixtures.enabled = false; await render(); expect(signal.aborted).toBe(true); expect(container.textContent).not.toContain("Find matches");
+});
+
+const promptError = "Husk cannot verify an empty shell prompt. Return to a fresh prompt or copy the command instead.";
+function historyInput(): HTMLInputElement { return container.querySelector<HTMLInputElement>(".term-hist-input")!; }
+function historyItem(index = 0): HTMLButtonElement { return container.querySelectorAll<HTMLButtonElement>(".term-hist-item")[index]; }
+function enter(): void { historyInput().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); }
+
+it("shows a staging refusal in the picker, preserves search and selection, and copies only on request", async () => {
+  select.mockRejectedValue(new Error(promptError));
+  await render(); await query("git");
+  await act(async () => historyItem().click());
+  const alert = container.querySelector('[role="alert"]')!;
+  expect(alert.textContent).toContain("Could not stage history command");
+  expect(alert.textContent).toContain(promptError);
+  expect(alert.textContent).toContain("git status");
+  expect(historyInput().value).toBe("git");
+  expect(historyItem().classList.contains("active")).toBe(true);
+  expect(close).not.toHaveBeenCalled();
+  expect(writeText).not.toHaveBeenCalled();
+  await click("Copy command");
+  expect(writeText).toHaveBeenCalledExactlyOnceWith("git status");
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("Copied. Nothing was run.");
+  expect(select).toHaveBeenCalledExactlyOnceWith("git status");
+  expect(close).not.toHaveBeenCalled();
+});
+
+it("catches synchronous staging errors from existing consumers", async () => {
+  select.mockImplementation(() => { throw new Error(promptError); });
+  await render();
+  await act(async () => enter());
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(promptError);
+  expect(close).not.toHaveBeenCalled();
+});
+
+it.each(["mouse", "Enter"])("awaits %s staging success and lets the terminal close only after confirmation", async (input) => {
+  const pending = deferred<void>();
+  select.mockImplementation(async () => { await pending.promise; close(); });
+  await render();
+  await act(async () => { if (input === "mouse") historyItem().click(); else enter(); });
+  expect(select).toHaveBeenCalledExactlyOnceWith("git status");
+  expect(close).not.toHaveBeenCalled();
+  expect(container.querySelector('.term-hist-list')?.getAttribute("aria-busy")).toBe("true");
+  expect(historyItem().disabled).toBe(true);
+  await act(async () => pending.resolve());
+  expect(close).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("locks duplicate clicks and Enter even before the pending state renders", async () => {
+  const pending = deferred<void>(); select.mockReturnValue(pending.promise);
+  await render();
+  await act(async () => { historyItem().click(); historyItem().click(); enter(); });
+  await act(async () => enter());
+  expect(select).toHaveBeenCalledExactlyOnceWith("git status");
+  await act(async () => pending.reject(new Error(promptError)));
+  expect(historyItem().disabled).toBe(false);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(promptError);
+  select.mockResolvedValue(undefined);
+  await act(async () => enter());
+  expect(select).toHaveBeenCalledTimes(2);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("reports clipboard failures inline without an unhandled rejection and permits retry", async () => {
+  select.mockRejectedValue(new Error(promptError));
+  vi.mocked(writeText).mockRejectedValueOnce(new Error("Clipboard unavailable"));
+  await render(); await act(async () => historyItem().click());
+  await click("Copy command");
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Could not copy command: Clipboard unavailable");
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  await click("Copy command");
+  expect(writeText).toHaveBeenCalledTimes(2);
+  expect(container.querySelector('[role="status"]')?.textContent).toContain("Copied");
+  expect(container.textContent).not.toContain("Clipboard unavailable");
+  expect(close).not.toHaveBeenCalled();
+});
+
+it.each(["terminal", "unmount"])("ignores a late staging refusal after %s changes", async (change) => {
+  const pending = deferred<void>(); select.mockReturnValue(pending.promise);
+  await render(); await act(async () => historyItem().click());
+  if (change === "terminal") await render(2);
+  else await act(async () => root.render(null));
+  await act(async () => pending.reject(new Error(promptError)));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(close).not.toHaveBeenCalled();
+});
+
+it.each(["success", "failure"])("ignores late clipboard %s for a superseded staging refusal", async (result) => {
+  const pending = deferred<void>(); vi.mocked(writeText).mockReturnValue(pending.promise);
+  select.mockRejectedValue(new Error(promptError));
+  await render(); await act(async () => historyItem().click());
+  await click("Copy command");
+  await act(async () => historyItem(1).click());
+  await act(async () => {
+    if (result === "success") pending.resolve();
+    else pending.reject(new Error("Old clipboard failure"));
+  });
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(rows[1].command);
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(container.textContent).not.toContain("Old clipboard failure");
+});
+
+it("shows the same inline recovery when an AI-recalled history result cannot be staged", async () => {
+  select.mockRejectedValue(new Error(promptError));
+  await startRecall(); vi.mocked(requestScreenAssist).mockResolvedValue('{"matches":["h2"]}'); await click("Find matches");
+  await act(async () => historyItem().click());
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(promptError);
+  await click("Copy command");
+  expect(writeText).toHaveBeenCalledExactlyOnceWith(rows[1].command);
+  expect(close).not.toHaveBeenCalled();
 });

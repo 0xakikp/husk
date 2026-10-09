@@ -1,9 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
-import { getActiveTerminalLeafId, getSessionHandle } from "../terminal/registry";
+import { getActiveTerminalLeafId, getSessionHandle, submitTrackedTerminalCommand } from "../terminal/registry";
 import { captureScreenCommandTarget, type ScreenCommandTarget } from "../terminal/stageScreenCommand";
 import { isCurrentTerminalTarget } from "../ai/terminalTarget";
 import { compileWorkflow } from "./params";
 import type { Workflow } from "./store";
+import { beginWorkflowRun, markWorkflowRunSubmitted, markWorkflowRunWriteFailed } from "./runStatus";
 
 export type WorkflowTarget = { leafId: number; scope: ScreenCommandTarget };
 export function captureWorkflowTarget(): WorkflowTarget | null {
@@ -20,14 +20,25 @@ export function workflowTargetError(target: WorkflowTarget | null): string | nul
 }
 const pending = new Set<number>();
 /** Execute only after the reviewed target and complete command are rechecked. */
-export async function executeWorkflow(wf: Workflow, values: Record<string, string>, target: WorkflowTarget | null, reviewedCommand: string): Promise<void> {
+export async function executeWorkflow(wf: Workflow, values: Record<string, string>, target: WorkflowTarget | null, reviewedCommand: string, options: { localOnly?: boolean } = {}): Promise<void> {
   const compiled = compileWorkflow(wf, values);
   if (compiled.command !== reviewedCommand) throw new Error("Workflow changed after review. Preview it again.");
   const error = workflowTargetError(target); if (error || !target) throw new Error(error || "No target.");
+  if (options.localOnly && target.scope.isRemote) throw new Error("Linked local scripts can only run in a local terminal. Refresh the target in the intended local terminal.");
+  if (target.scope.ptyId === null) throw new Error("The terminal connection is unavailable.");
   if (pending.has(target.leafId)) throw new Error("This terminal already has a workflow submission in progress.");
   pending.add(target.leafId);
+  const kind = options.localOnly ? "script" : "workflow";
+  let runId: string | undefined;
   try {
-    await invoke("pty_write", { id: target.scope.ptyId, data: compiled.command + "\r" });
+    await submitTrackedTerminalCommand(target.leafId, { ...target.scope, ptyId: target.scope.ptyId }, compiled.command, receipt => {
+      runId = receipt;
+      beginWorkflowRun(wf, values, target, compiled.command, receipt, kind);
+    });
+    if (runId) markWorkflowRunSubmitted(wf.id, runId, kind);
     if (isCurrentTerminalTarget(target.scope)) getSessionHandle(target.leafId)?.focus();
+  } catch (error) {
+    if (runId) markWorkflowRunWriteFailed(wf.id, runId, kind);
+    throw error;
   } finally { pending.delete(target.leafId); }
 }

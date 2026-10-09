@@ -28,7 +28,9 @@ vi.mock("./sessionLifecycle", async importOriginal => {
   };
 });
 
-import { createSession, disposeSession, getSessionHandle, restartSession, setSessionActive } from "./registry";
+import { createSession, disposeSession, getSessionHandle, restartSession, setSessionActive, submitTrackedTerminalCommand } from "./registry";
+import { invoke } from "@tauri-apps/api/core";
+import { captureScreenCommandTarget, stageScreenCommand } from "./stageScreenCommand";
 import {
   interruptTerminalRun, runInActiveTerminalResult, setActiveTerminalPtyId, setActiveTerminalRunner,
   subscribeTerminalCommandRuns, type ObservedCommandRun,
@@ -44,9 +46,11 @@ afterEach(() => {
   setActiveTerminalPtyId(null);
   fixture.writes = [];
   fixture.accept = true;
+  vi.mocked(invoke).mockReset().mockResolvedValue(undefined);
 });
 
 const osc = (id: number, data: string) => `\x1b]${id};${data}\x07`;
+const nativeWrites = () => vi.mocked(invoke).mock.calls.filter(([command]) => command === "pty_write");
 async function setup() {
   const leaf = ++nextLeaf;
   leaves.push(leaf);
@@ -62,6 +66,95 @@ async function setup() {
 }
 
 describe("registry receipt integration without native shell processes", () => {
+  it("tracks awaited native workflow writes before output can arrive, without a duplicate write", async () => {
+    const { leaf, session, start, finish, completed } = await setup();
+    const target = captureScreenCommandTarget(leaf)!;
+    let runId = "";
+    const result = submitTrackedTerminalCommand(leaf, { ...target, ptyId: target.ptyId! }, "git status", receipt => {
+      expect(nativeWrites()).toEqual([]);
+      runId = receipt;
+    });
+    expect(runId).not.toBe("");
+    expect(runInActiveTerminalResult("git log")).toMatchObject({ ok: false, reason: "terminal-busy" });
+    await start("git status");
+    await finish();
+    expect(await result).toBe(runId);
+    expect(completed[0]).toMatchObject({ runId, command: "git status" });
+    expect(nativeWrites()).toEqual([["pty_write", { id: session.ptyId, data: "git status\r" }]]);
+    expect(fixture.writes).toEqual([]);
+  });
+
+  it.each(["scope", "input", "control"])("refuses tracked writes after %s changes", async kind => {
+    const { leaf, write } = await setup();
+    const captured = captureScreenCommandTarget(leaf)!;
+    const target = { ...captured, ptyId: captured.ptyId! };
+    if (kind === "scope") target.scopeToken += ":stale";
+    if (kind === "input") await write("draft");
+    const onQueued = vi.fn();
+    await expect(submitTrackedTerminalCommand(leaf, target, kind === "control" ? "git status\nwhoami" : "git status", onQueued)).rejects.toThrow();
+    expect(onQueued).not.toHaveBeenCalled();
+    expect(nativeWrites()).toEqual([]);
+  });
+
+  it("awaits native rejection and does not retain the rejected write's receipt", async () => {
+    const { leaf, start, finish, completed } = await setup();
+    const captured = captureScreenCommandTarget(leaf)!;
+    vi.mocked(invoke).mockImplementation(async command => {
+      if (command === "pty_write") throw new Error("write disconnected");
+      return undefined;
+    });
+    await expect(submitTrackedTerminalCommand(leaf, { ...captured, ptyId: captured.ptyId! }, "git status", () => {})).rejects.toThrow("write disconnected");
+    await start("git status"); await finish();
+    expect(completed[0].runId).toBeUndefined();
+  });
+
+  it("does not let a late native rejection cancel a newer receipt", async () => {
+    const { leaf, start, finish, completed } = await setup();
+    const captured = captureScreenCommandTarget(leaf)!;
+    let rejectWrite!: (reason: Error) => void;
+    vi.mocked(invoke).mockImplementation(command => command === "pty_write"
+      ? new Promise((_resolve, reject) => { rejectWrite = reject; }) : Promise.resolve(undefined));
+    const first = submitTrackedTerminalCommand(leaf, { ...captured, ptyId: captured.ptyId! }, "git status", () => {});
+    await start("git status"); await finish();
+    const second = runInActiveTerminalResult("git log");
+    expect(second.ok).toBe(true);
+    rejectWrite(new Error("late rejection"));
+    await expect(first).rejects.toThrow("late rejection");
+    await start("git log"); await finish();
+    expect(completed[1].runId).toBe(second.ok ? second.runId : "missing receipt");
+  });
+
+  it("stages a history command at the left prompt despite a second B marking right-prompt text", async () => {
+    const { leaf, session, write } = await setup();
+    const target = captureScreenCommandTarget(leaf);
+    expect(target).not.toBeNull();
+    await write("\x1b[50G" + osc(133, "P;k=r") + "12:34" + osc(133, "B") + "\x1b[3G");
+    expect(getSessionHandle(leaf)!.getPromptReadiness()).toEqual({ ready: true });
+    await stageScreenCommand(leaf, target, "git status");
+    expect(nativeWrites()).toEqual([["pty_write", { id: session.ptyId, data: "git status" }]]);
+    expect(fixture.writes).toEqual([]);
+  });
+
+  it("still refuses an unknown prompt and inserts only after a real fresh boundary", async () => {
+    const { leaf, session, write } = await setup();
+    const target = captureScreenCommandTarget(leaf);
+    await write("\x1b[2K");
+    await expect(stageScreenCommand(leaf, target, "git status")).rejects.toThrow("cannot verify an empty shell prompt");
+    expect(nativeWrites()).toEqual([]);
+    await write("\r❯ " + osc(133, "B"));
+    await stageScreenCommand(leaf, target, "git status");
+    expect(nativeWrites()).toEqual([["pty_write", { id: session.ptyId, data: "git status" }]]);
+  });
+
+  it("does not reuse right-prompt evidence after manual typing, even before echo arrives", async () => {
+    const { leaf, write } = await setup();
+    const target = captureScreenCommandTarget(leaf);
+    await write("\x1b[50G" + osc(133, "P;k=r") + "12:34" + osc(133, "B") + "\x1b[3G");
+    getSessionHandle(leaf)!.write("draft");
+    await expect(stageScreenCommand(leaf, target, "git status")).rejects.toThrow();
+    expect(nativeWrites()).toEqual([]);
+  });
+
   it("returns a receipt before preexec, blocks duplicate queued runs, and emits it on exact completion", async () => {
     const { session, start, finish, completed } = await setup();
     const result = runInActiveTerminalResult("git status");

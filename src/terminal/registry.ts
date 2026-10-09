@@ -53,7 +53,7 @@ import { parseBridgeOsc, dispatchBridge } from "../bridge";
 import type { Terminal as XTermType } from "@xterm/xterm";
 import type { SearchAddon as SearchAddonType } from "@xterm/addon-search";
 import type { FitAddon as FitAddonType } from "@xterm/addon-fit";
-import { inspectPromptReadiness, readEditablePrompt, type PromptReadiness } from "./promptDraft";
+import { readEditablePrompt, type PromptReadiness } from "./promptDraft";
 import { TerminalPromptTracker } from "./promptTracker";
 import { ShellCommandMarkers } from "./shellCommandMarkers";
 import { TerminalRunReceipts, type TerminalRunTarget } from "./runReceipts";
@@ -209,6 +209,7 @@ function queuePtyResize(session: Session, cols: number, rows: number): void {
 }
 
 function writeSessionInput(session: Session, data: string, preserveRunReceipt = false): boolean {
+  session.promptTracker.noteInput();
   if (session.ptyId == null) return false;
   // Manual input can edit/cancel queued input or steer an interactive command.
   // Neither case may authorize automatic continuation from an app receipt.
@@ -254,6 +255,40 @@ function runTarget(session: Session): TerminalRunTarget | null {
     isRemote: session.isRemoteShell, remoteTarget: session.remoteTarget,
     observedHost: session.comparisonScope.target(session.isRemoteShell),
   };
+}
+
+/** Submit a reviewed command with a receipt before IPC can emit its output.
+ * Unlike the interactive runner, callers await native write rejection. A write
+ * acknowledgement is not an observed shell start or successful command result. */
+export async function submitTrackedTerminalCommand(
+  leafId: number,
+  expected: { ptyId: number; cwd: string; isRemote: boolean; host: string | null; scopeToken: string },
+  command: string,
+  onQueued: (runId: string) => void,
+): Promise<string> {
+  const session = sessions.get(leafId);
+  const handle = getSessionHandle(leafId);
+  const scope = handle?.getStagingScope();
+  if (!session || !handle || !scope || scope.token !== expected.scopeToken || scope.ptyId !== expected.ptyId
+    || scope.cwd !== expected.cwd || scope.isRemote !== expected.isRemote || scope.host !== expected.host) {
+    throw new Error("The terminal, directory, or connection changed. Refresh the target and review again.");
+  }
+  const prompt = handle.getPromptReadiness();
+  if (!prompt.ready) throw new Error(prompt.reason);
+  const target = runTarget(session);
+  if (!target || !command.trim() || /[\x00-\x1f\x7f]/.test(command)) throw new Error("The reviewed command cannot be submitted safely.");
+  const runId = session.runReceipts.queue(command, target);
+  try {
+    onQueued(runId);
+    session.promptTracker.noteInput();
+    session.promptTracker.clear();
+    session.kubeconfigCapture.invalidate();
+    await invoke("pty_write", { id: expected.ptyId, data: command + "\r" });
+    return runId;
+  } catch (error) {
+    session.runReceipts.discard(runId);
+    throw error;
+  }
 }
 
 function interruptSessionRun(runId: string, expectedPtyId: number): boolean {
@@ -552,6 +587,7 @@ export async function createSession(
   });
 
   term.parser.registerOscHandler(133, (data) => {
+    if (session.promptTracker.observeRightPrompt(data)) return true;
     if (!session.shellCommandMarkers.accept(data)) return true;
     if (data.startsWith("B")) {
       session.runReceipts.clear();
@@ -1237,7 +1273,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       if (session.runReceipts.hasPending || session.currentCommand || session.commandStartedAt || session.cmdStartRow != null) {
         return { ready: false, code: "terminal-busy", reason: "The terminal is busy. Wait for the current command to finish before running another." };
       }
-      return inspectPromptReadiness(session.term.buffer.active, session.promptTracker.position());
+      return session.promptTracker.readiness();
     },
     getScreenElement: () => session.screenEl,
   };

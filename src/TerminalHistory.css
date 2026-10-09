@@ -20,3 +20,13 @@
 .term-hist-recall-actions button:disabled { cursor: default; opacity: .45; }
 .term-hist-recall-result { display: flex; justify-content: space-between; align-items: center; }
 .term-hist-recall-stage { flex-shrink: 0; color: var(--muted-foreground); font-size: 10px; }
+.term-hist-item:disabled, .term-hist-modes button:disabled { cursor: wait; opacity: .6; }
+.term-hist-stage-error { flex-shrink: 0; max-height: 30vh; overflow-y: auto; margin: 6px 3px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--muted); color: var(--foreground); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.term-hist-stage-error strong { font-weight: 600; }
+.term-hist-stage-error p { margin: 4px 0; color: var(--muted-foreground); }
+.term-hist-stage-error code { display: block; max-height: 3em; overflow: auto; margin: 6px 0; white-space: pre-wrap; font: inherit; }
+.term-hist-stage-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.term-hist-stage-actions button { padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; cursor: pointer; font: inherit; color: var(--foreground); }
+.term-hist-stage-actions button:hover:not(:disabled) { background: var(--background); }
+.term-hist-stage-actions button:disabled { opacity: .6; cursor: wait; }
+.term-hist-stage-actions span { color: var(--muted-foreground); }

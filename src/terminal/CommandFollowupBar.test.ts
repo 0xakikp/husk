@@ -61,6 +61,7 @@ it("offers explicit analysis of a completed paused result, disabled while busy",
   const value = state({ phase: "paused", completed: true, result: { command: "pwd", output: "/project", exitCode: 0, at: 5, cwd: "/project", terminalPtyId: 3 } });
   render(value, true); click("Analyze result"); expect(handlers.onAnalyze).not.toHaveBeenCalled();
   render(value); click("Analyze result"); expect(handlers.onAnalyze).toHaveBeenCalledTimes(1);
+  expect([...container.querySelectorAll("button")].find((button) => button.textContent === "Analyze result")?.title).toContain("Does not resume Task");
   expect(container.textContent).not.toContain("Interrupt command");
 });
 it("keeps completed analysis compact without stale run controls", () => {

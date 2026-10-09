@@ -23,7 +23,9 @@ vi.mock("../sidebar/SidebarRail", () => ({ SidebarRail: () => createElement("nav
 vi.mock("../tools-hub/stageLocalToolCommand", () => ({ stageLocalToolCommandWithNotice: vi.fn() }));
 vi.mock("../git/SourceControlPanel", () => ({ SourceControlPanel: () => createElement(Probe, { name: "source-control" }) }));
 vi.mock("../remotes/RemotesView", () => ({ RemotesView: () => createElement(Probe, { name: "remotes" }) }));
-vi.mock("../workflows/RunbooksDialog", () => ({ RunbooksDialog: ({ active }: { active: boolean }) => createElement(Probe, { name: "workflows", active }) }));
+vi.mock("../workflows/RunbooksDialog", () => ({ RunbooksDialog: ({ active, onOpenScript }: { active: boolean; onOpenScript?: (path: string, name: string) => void }) => createElement("div", null,
+  createElement(Probe, { name: "workflows", active }),
+  createElement("button", { "aria-label": "Open linked local script", onClick: () => onOpenScript?.("/project/check.sh", "check.sh") }, "Open script")) }));
 vi.mock("../tools-hub/ToolsHubView", () => ({ ToolsHubView: ({ active }: { active: boolean }) => createElement(Probe, { name: "tools-hub", active }) }));
 vi.mock("../kubernetes/KubernetesView", () => ({ KubernetesView: () => createElement(Probe, { name: "kubernetes" }) }));
 vi.mock("../docker/DockerView", () => ({ DockerView: ({ active }: { active: boolean }) => createElement(Probe, { name: "docker", active }) }));
@@ -121,4 +123,12 @@ it("removes the resize handle while collapsed and restores its keyboard behavior
   await act(async () => { resize.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); });
   expect(props.setExplorerWidth).toHaveBeenCalledExactlyOnceWith(284);
   expect(props.persistSidebarWidth).toHaveBeenCalledExactlyOnceWith(284);
+});
+
+it("opens linked scripts through the explicit local-file path even while SSH files are selected", async () => {
+  const openLocalFile = vi.fn();
+  await render({ sidebarView: "workflows", remoteHost: "prod", openLocalFile });
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open linked local script"]')!.click());
+  expect(openLocalFile).toHaveBeenCalledExactlyOnceWith("/project/check.sh", "check.sh");
+  expect(props.openFile).not.toHaveBeenCalled();
 });

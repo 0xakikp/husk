@@ -127,7 +127,7 @@ describe("command receipt observation", () => {
     expect(followup.getCommandFollowup("chat")?.phase).toBe("paused");
     expect(messages()).toHaveLength(1);
     expect(client.streamChat).not.toHaveBeenCalled();
-    await followup.analyzeCommandFollowup("chat", "run-1");
+    await followup.analyzeCommandFollowup("chat", "run-1", undefined, "manual");
     expect(client.streamChat).toHaveBeenCalledTimes(1);
   });
 
@@ -183,6 +183,87 @@ describe("command receipt observation", () => {
 });
 
 describe("observer-only analysis", () => {
+  it.each([true, false])("explicit Analyze works while Task stays paused (auto follow-up %s)", async (autoCommandFollowup) => {
+    changeSession({ autoCommandFollowup, task: { ...fixtures.sessions.get("chat")!.task!, status: "paused" } });
+    track(); complete();
+    let resolve!: () => void;
+    vi.mocked(client.streamChat).mockImplementation(() => new Promise<void>((done) => { resolve = done; }));
+    const analysis = followup.analyzeCommandFollowup("chat", "run-1", "dock", "manual");
+    const entry = followup.getCommandFollowup("chat")!;
+    expect(entry).toMatchObject({ phase: "analyzing", analysisTrigger: "manual", analysisTaskStatus: "paused" });
+    expect(entry.note).toContain("Task stays paused");
+    // The mounted composer uses this exact guard: it must not cancel the click.
+    expect(followup.commandFollowupBlockReason(entry)).toBeNull();
+    const call = vi.mocked(client.streamChat).mock.calls[0];
+    expect(call[4]).toBeUndefined();
+    call[3]("The command printed hello Husk.");
+    resolve(); await analysis;
+    expect(followup.getCommandFollowup("chat")?.phase).toBe("done");
+    expect(fixtures.sessions.get("chat")?.task?.status).toBe("paused");
+    expect(fixtures.sessions.get("chat")?.autoCommandFollowup).toBe(autoCommandFollowup);
+    expect(messages()[messages().length - 1].content).toContain("hello Husk");
+  });
+
+  it.each(["manual", "automatic"] as const)("turning Auto follow-up off preserves only a %s request", async (trigger) => {
+    track(); complete();
+    let resolve!: () => void;
+    vi.mocked(client.streamChat).mockImplementation(() => new Promise<void>((done) => { resolve = done; }));
+    const analysis = followup.analyzeCommandFollowup("chat", "run-1", "dock", trigger);
+    changeSession({ autoCommandFollowup: false });
+    const entry = followup.getCommandFollowup("chat")!;
+    expect(followup.isManualCommandAnalysis(entry)).toBe(trigger === "manual");
+    expect(followup.commandFollowupBlockReason(entry) === null).toBe(trigger === "manual");
+    const call = vi.mocked(client.streamChat).mock.calls[0];
+    call[3]("One-time explanation");
+    expect(call[5]?.aborted).toBe(trigger !== "manual");
+    resolve(); await analysis;
+    expect(followup.getCommandFollowup("chat")?.phase).toBe(trigger === "manual" ? "done" : "paused");
+  });
+
+  it("Stop still cancels an explicit explanation of a paused Task", async () => {
+    changeSession({ task: { ...fixtures.sessions.get("chat")!.task!, status: "paused" } });
+    track(); complete();
+    let resolve!: () => void;
+    vi.mocked(client.streamChat).mockImplementation(() => new Promise<void>((done) => { resolve = done; }));
+    const analysis = followup.analyzeCommandFollowup("chat", "run-1", "dock", "manual");
+    followup.pauseCommandFollowup("chat");
+    const call = vi.mocked(client.streamChat).mock.calls[0];
+    expect(call[5]?.aborted).toBe(true);
+    call[3]("late explanation"); resolve(); await analysis;
+    expect(JSON.stringify(messages())).not.toContain("late explanation");
+    expect(fixtures.sessions.get("chat")?.task?.status).toBe("paused");
+  });
+
+  it.each(["stopped", "completed"] as const)("explicit Analyze does not continue a %s Task", async (status) => {
+    track(); complete();
+    changeSession({ task: { ...fixtures.sessions.get("chat")!.task!, status } });
+    await followup.analyzeCommandFollowup("chat", "run-1", "dock", "manual");
+    expect(client.streamChat).not.toHaveBeenCalled();
+    expect(followup.getCommandFollowup("chat")?.note).toContain(`Task is ${status}`);
+  });
+
+  it("an explicit analysis cannot continue across a later Task status change", async () => {
+    changeSession({ task: { ...fixtures.sessions.get("chat")!.task!, status: "paused" } });
+    track(); complete();
+    let resolve!: () => void;
+    vi.mocked(client.streamChat).mockImplementation(() => new Promise<void>((done) => { resolve = done; }));
+    const analysis = followup.analyzeCommandFollowup("chat", "run-1", "dock", "manual");
+    changeSession({ task: { ...fixtures.sessions.get("chat")!.task!, status: "running" } });
+    const call = vi.mocked(client.streamChat).mock.calls[0];
+    call[3]("late explanation"); resolve(); await analysis;
+    expect(call[5]?.aborted).toBe(true);
+    expect(followup.getCommandFollowup("chat")?.note).toContain("Task status changed");
+    expect(JSON.stringify(messages())).not.toContain("late explanation");
+  });
+
+  it("gives an actionable reason when explicit Analyze targets a different terminal", async () => {
+    changeSession({ task: { ...fixtures.sessions.get("chat")!.task!, status: "paused" } });
+    track(); complete(); fixtures.target.ptyId = 10;
+    await followup.analyzeCommandFollowup("chat", "run-1", "dock", "manual");
+    expect(client.streamChat).not.toHaveBeenCalled();
+    expect(followup.getCommandFollowup("chat")?.note).toContain("Focus the original terminal");
+  });
+
   it("does not start observation or analysis for a paused task", async () => {
     changeSession({ task: { ...fixtures.sessions.get("chat")!.task!, status: "paused" } });
     track();
@@ -190,6 +271,7 @@ describe("observer-only analysis", () => {
     complete();
     await followup.analyzeCommandFollowup("chat", "run-1");
     expect(client.streamChat).not.toHaveBeenCalled();
+    expect(followup.getCommandFollowup("chat")?.note).toContain("Task is paused");
     expect(messages()[0].content).toContain("README.md");
   });
 
@@ -289,11 +371,11 @@ describe("observer-only analysis", () => {
     lifecycle.cancelAiRequest(next!);
   });
 
-  it("stopping cancels the stream, suppresses late deltas and leaves correction request ownership intact", async () => {
+  it.each(["automatic", "manual"] as const)("feedback cancels a %s stream, suppresses late deltas and preserves correction ownership", async (trigger) => {
     track(); complete();
     let resolve!: () => void;
     vi.mocked(client.streamChat).mockImplementation(() => new Promise<void>((done) => { resolve = done; }));
-    const analysis = followup.analyzeCommandFollowup("chat", "run-1");
+    const analysis = followup.analyzeCommandFollowup("chat", "run-1", "dock", trigger);
     const call = vi.mocked(client.streamChat).mock.calls[0];
     call[3]("Initial finding.");
     followup.pauseCommandFollowup("chat", "User correction takes priority.");

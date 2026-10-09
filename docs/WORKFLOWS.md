@@ -28,6 +28,20 @@ Example: command `git log -n {{count}} --oneline`; add a number input named `cou
 
 Saving is local, never executes commands, and only reports success after SQLite accepts the change. Definitions are stored in `~/.husk/state.sqlite` with a browser-storage compatibility copy under `huskv2.runbooks`. Failed saves leave the editor open. Unreadable durable data is not overwritten by an empty fallback. Runtime input values and terminal approvals are not saved as part of the workflow.
 
+## Library: search, pins and linked scripts
+
+Use the header **Search** icon to filter names, descriptions, commands and linked paths locally. Escape clears the search and restores the list. Pin a workflow or script to place it in **Pinned**; unpinning keeps the item.
+
+**Link script…** selects an existing local file. Husk saves its path, not a copy of its contents. Linking, searching, pinning and opening a file never execute it. **Open original file** opens the actual local file in Husk, even when another sidebar is browsing SSH files. Removing a link does not delete that file.
+
+**Review & run** shows the target terminal, working directory and quoted script path. Linked scripts run only on a verified local terminal, using the current file on disk. The script must be executable with a valid shebang. Husk does not infer an interpreter, change permissions, transfer the file to a remote host, or change the terminal directory. Review the file before running it; edits made after linking apply to subsequent runs.
+
+Pins and script paths are saved in device-local WebView storage (`huskv2.workflow-library.v1`) until removed or app browsing data is cleared. They survive ordinary restarts but are not included in workflow JSON exports or cloud sync. Workflow definitions continue to use SQLite as described above.
+
+After submission, a row shows **Awaiting result** until shell integration reports a matching completion. Only observed exit codes produce **Last run succeeded/failed**. If completion cannot be verified within two minutes, it shows **Result unavailable**; this does not stop the command, which may still be running. A later verified completion can update that result.
+
+**View output** shows the original target and a bounded terminal capture without rerunning anything. The most recent run per item is kept in window memory only (up to 100 items, 8 KiB output each), cleared on window close/reload or removal. These are not durable logs or a check of the current definition/file. Secret-input runs and captures flagged as credential-bearing omit output; detection is heuristic, so do not assume arbitrary logs are free of secrets. Nothing in this result viewer is automatically sent to AI.
+
 ## Import and export
 
 - **Workflows → … → Import JSON…**: choose a file or paste JSON, then **Preview import**.
@@ -88,3 +102,5 @@ Secret values are hidden in the preview unless explicitly revealed. They are not
 5. Test literal input containing spaces, single/double quotes, semicolons and dollar-sign expressions. They must arrive as one argument, not execute as shell code. Multiline/control-bearing runtime values must be rejected.
 6. Test native save failure, reopen/cancel behavior, narrow windows, keyboard focus and both themes in the desktop app. Automated DOM/native tests do not replace live terminal integration, OS file-dialog and visual checks.
 7. Collect a terminal selection into a new draft, edit its name/metadata, resize and collapse, then collect an AI shell block into Current draft. Verify all edits survive, the terminal/chat stays usable, and no PTY write or save occurs until explicitly requested. Repeat with a narrow window, sidebar hidden, a cancelled replacement, and a pending/failed save.
+8. Search by name, command and linked path; press Escape and verify the full list returns. Pin both kinds of item, restart Husk, and confirm the pins and file links remain. Cancel the script chooser and remove a link: neither action should modify or execute a file.
+9. Link a disposable executable script with a shebang; open and edit the original file, then review/run it in a local test terminal. Verify an SSH target is refused. Exercise success, nonzero exit, missing/deleted file, and unknown completion. View output without rerunning; reload the window and confirm run results (not pins/links) are cleared.

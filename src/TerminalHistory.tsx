@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { usePrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { requestScreenAssist } from "./ai/screenAssist";
@@ -260,7 +261,7 @@ export function TerminalHistoryPanel({
   rows?: HistoryRecallRow[];
   terminalId?: string | number;
   loading: boolean;
-  onSelect: (command: string) => void;
+  onSelect: (command: string) => void | Promise<void>;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -270,6 +271,15 @@ export function TerminalHistoryPanel({
   const [aiMatches, setAiMatches] = useState<HistoryRecallCandidate[] | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [staging, setStaging] = useState(false);
+  const [stageError, setStageError] = useState<{ command: string; message: string } | null>(null);
+  const stageErrorRef = useRef(stageError);
+  stageErrorRef.current = stageError;
+  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied">("idle");
+  const [copyError, setCopyError] = useState("");
+  const stagingRef = useRef(false);
+  const copyingRef = useRef(false);
+  const mountedRef = useRef(true);
   const requestRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -310,6 +320,11 @@ export function TerminalHistoryPanel({
     if (!prefs.aiEnabled) { cancelRecall(); setAiMode(false); }
   }, [prefs.aiEnabled]);
   useEffect(() => () => { requestRef.current?.abort(); }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  useEffect(() => { stageErrorRef.current = null; setStageError(null); setCopyState("idle"); setCopyError(""); }, [terminalId]);
 
   async function findHistoryMatches(): Promise<void> {
     if (!prefs.aiEnabled || !aiMode || aiBusy || loading) return;
@@ -402,6 +417,7 @@ export function TerminalHistoryPanel({
       event.stopPropagation();
       event.stopImmediatePropagation();
       input.focus({ preventScroll: true });
+      if (stagingRef.current) return;
       setQuery((current) => isBackspace ? current.slice(0, -1) : `${current}${event.key}`.slice(0, 2000));
     };
 
@@ -433,9 +449,48 @@ export function TerminalHistoryPanel({
     };
   }, [onClose]);
 
-  const choose = (i: number) => {
+  const choose = async (i: number): Promise<void> => {
+    if (stagingRef.current) return;
     const cmd = aiMode ? aiMatches?.[i]?.command : scored[i]?.command;
-    if (cmd) onSelect(cmd);
+    if (!cmd) return;
+    const selectedTerminal = terminalId;
+    stagingRef.current = true;
+    stageErrorRef.current = null;
+    setStaging(true); setIndex(i); setStageError(null); setCopyState("idle"); setCopyError("");
+    try {
+      // The terminal owns closing the picker after a confirmed staging write.
+      // A refusal must leave both the selected command and search intact.
+      await onSelect(cmd);
+    } catch (error) {
+      if (mountedRef.current && liveContextRef.current.terminalId === selectedTerminal) {
+        const failure = { command: cmd, message: error instanceof Error ? error.message
+          : typeof error === "string" && error ? error : "Husk could not stage this command. Return to a fresh shell prompt or copy the command instead." };
+        stageErrorRef.current = failure;
+        setStageError(failure);
+      }
+    } finally {
+      stagingRef.current = false;
+      if (mountedRef.current) setStaging(false);
+    }
+  };
+
+  const copyCommand = async (): Promise<void> => {
+    if (!stageError || copyingRef.current) return;
+    const selectedError = stageError;
+    const selectedTerminal = terminalId;
+    copyingRef.current = true;
+    setCopyState("copying"); setCopyError("");
+    try {
+      await writeText(selectedError.command);
+      if (mountedRef.current && liveContextRef.current.terminalId === selectedTerminal && stageErrorRef.current === selectedError) setCopyState("copied");
+    } catch (error) {
+      if (mountedRef.current && liveContextRef.current.terminalId === selectedTerminal && stageErrorRef.current === selectedError) {
+        setCopyState("idle");
+        setCopyError(error instanceof Error ? `Could not copy command: ${error.message}` : "Could not copy command. Please try again.");
+      }
+    } finally {
+      copyingRef.current = false;
+    }
   };
 
   return (
@@ -469,12 +524,14 @@ export function TerminalHistoryPanel({
             autoCapitalize="off"
             spellCheck={false}
             maxLength={2000}
+            readOnly={staging}
             className="term-hist-input"
             value={query}
             placeholder={loading ? "Loading history…" : aiMode ? "e.g. The command I used to forward Postgres" : "Search history…"}
             aria-label={aiMode ? "Describe a saved command" : "Search history"}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
+              if (stagingRef.current && e.key !== "Escape") { e.preventDefault(); return; }
               if (e.key === "ArrowDown" || (e.ctrlKey && e.key.toLowerCase() === "r")) {
                 e.preventDefault();
                 setIndex((i) => Math.min(Math.max((aiMode ? aiMatches?.length ?? 0 : scored.length) - 1, 0), i + 1));
@@ -483,7 +540,7 @@ export function TerminalHistoryPanel({
                 setIndex((i) => Math.max(0, i - 1));
               } else if (e.key === "Enter") {
                 e.preventDefault();
-                choose(index);
+                void choose(index);
               } else if (e.key === "Escape") {
                 e.preventDefault();
                 close();
@@ -494,6 +551,7 @@ export function TerminalHistoryPanel({
             <button
               type="button"
               className="term-hist-input-clear"
+              disabled={staging}
               onClick={() => {
                 setQuery("");
                 inputRef.current?.focus();
@@ -509,8 +567,8 @@ export function TerminalHistoryPanel({
         </div>
 
         {prefs.aiEnabled && <div className="term-hist-modes" aria-label="History search mode">
-          <button type="button" aria-pressed={!aiMode} onClick={() => { cancelRecall(); setAiMode(false); setAiError(""); inputRef.current?.focus(); }}>Local search</button>
-          <button type="button" aria-pressed={aiMode} onClick={() => { setAiMode(true); inputRef.current?.focus(); }}>Ask AI</button>
+          <button type="button" disabled={staging} aria-pressed={!aiMode} onClick={() => { cancelRecall(); setAiMode(false); setAiError(""); inputRef.current?.focus(); }}>Local search</button>
+          <button type="button" disabled={staging} aria-pressed={aiMode} onClick={() => { setAiMode(true); inputRef.current?.focus(); }}>Ask AI</button>
           <span>Saved commands only</span>
         </div>}
 
@@ -538,10 +596,10 @@ export function TerminalHistoryPanel({
           {aiError && <p role="alert" className="term-hist-recall-note">{aiError}</p>}
         </div>}
 
-        <div className="term-hist-list" ref={listRef}>
+        <div className="term-hist-list" ref={listRef} aria-busy={staging}>
           {aiMode ? aiMatches && (aiMatches.length ? aiMatches.map((candidate, resultIndex) => <button
             type="button" key={candidate.id} className={`term-hist-item term-hist-recall-result ${resultIndex === index ? "active" : ""}`}
-            title={`Stage this saved command: ${candidate.command}`} onMouseEnter={() => setIndex(resultIndex)} onClick={() => choose(resultIndex)}
+            disabled={staging} title={`Stage this saved command: ${candidate.command}`} onMouseEnter={() => { if (!stagingRef.current) setIndex(resultIndex); }} onClick={() => { void choose(resultIndex); }}
           ><span><code>{candidate.command}</code><small>{historyRecallMetadata(candidate)}</small></span><span className="term-hist-recall-stage">stage</span></button>)
             : <div className="term-hist-empty">No strong match in this reviewed sample. Try another description or local search.</div>) : <>
           {scored.length === 0 ? (
@@ -567,8 +625,9 @@ export function TerminalHistoryPanel({
                     isComment ? "comment" : "",
                     `type-${type}`,
                   ].join(" ")}
-                  onMouseEnter={() => setIndex(i)}
-                  onClick={() => choose(i)}
+                  disabled={staging}
+                  onMouseEnter={() => { if (!stagingRef.current) setIndex(i); }}
+                  onClick={() => { void choose(i); }}
                   title={command} /* full text on hover */
                 >
                   <span className="term-hist-item-icon" aria-hidden="true">
@@ -590,6 +649,16 @@ export function TerminalHistoryPanel({
           )}
           </>}
         </div>
+        {stageError && <div className="term-hist-stage-error" role="alert">
+          <strong>Could not stage history command</strong>
+          <p>{stageError.message}</p>
+          <code>{stageError.command}</code>
+          <div className="term-hist-stage-actions">
+            <button type="button" disabled={copyState === "copying"} onClick={() => { void copyCommand(); }}>{copyState === "copying" ? "Copying…" : "Copy command"}</button>
+            {copyState === "copied" && <span role="status">Copied. Nothing was run.</span>}
+          </div>
+          {copyError && <p>{copyError}</p>}
+        </div>}
         <div className="term-hist-footer">
           <span className="term-hist-footer-count">
             {aiMode ? aiMatches ? `${aiMatches.length} saved match${aiMatches.length === 1 ? "" : "es"}` : "Review before sending" : scored.length > 0
@@ -601,7 +670,7 @@ export function TerminalHistoryPanel({
           <span className="term-hist-footer-hints">
             <kbd>↑↓</kbd> navigate
             <span className="term-hist-footer-divider" />
-            <kbd>↵</kbd> stage
+            <kbd>↵</kbd> {staging ? "staging…" : "stage"}
             <span className="term-hist-footer-divider" />
             <kbd>Esc</kbd> close
           </span>

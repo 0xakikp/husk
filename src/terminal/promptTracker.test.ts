@@ -10,6 +10,7 @@ function setup(cols = 60, rows = 5, scrollback = 100) {
   terminals.push(term);
   const tracker = new TerminalPromptTracker(term);
   term.parser.registerOscHandler(133, (data) => {
+    if (tracker.observeRightPrompt(data)) return true;
     if (data.startsWith("B")) tracker.capture();
     if (data.startsWith("C") || data.startsWith("D")) tracker.clear();
     return true;
@@ -17,8 +18,78 @@ function setup(cols = 60, rows = 5, scrollback = 100) {
   return { term, tracker, write: (text: string) => new Promise<void>(resolve => term.write(text, resolve)) };
 }
 const B = "\x1b]133;B\x07";
+const rightPrompt = "\x1b[50G\x1b]133;P;k=r\x07" + "12:34" + B + "\x1b[3G";
 
 describe("live prompt tracking in actual xterm buffers", () => {
+  it("keeps the editable boundary when a theme ends a marked right prompt with B", async () => {
+    const { term, tracker, write } = setup();
+    await write("❯ " + B + rightPrompt);
+    expect(tracker.position()).toEqual({ row: 0, col: 2 });
+    expect(tracker.readiness()).toEqual({ ready: true });
+    expect(readEditablePrompt(term.buffer.active, tracker.position())).toBe("");
+  });
+
+  it("does not infer decoration from unmarked right-side text", async () => {
+    const { tracker, write } = setup();
+    await write("❯ " + B + "\x1b[50G12:34\x1b[3G");
+    expect(tracker.readiness()).toMatchObject({ ready: false, code: "input-present" });
+  });
+
+  it.each(["draft\x1b[5D", "    \x1b[4D", "\x1b[50G99:99\x1b[3G", "\x1b[50G     \x1b[3G", "\r\ncontinuation\x1b[1A\x1b[3G"])("does not mask actual input or changed right-prompt cells: %j", async text => {
+    const { tracker, write } = setup();
+    await write("❯ " + B + rightPrompt + text);
+    expect(tracker.readiness().ready).toBe(false);
+  });
+
+  it("retires right-prompt evidence on manual input until a fresh prompt is rendered", async () => {
+    const { tracker, write } = setup();
+    await write("❯ " + B + rightPrompt);
+    tracker.noteInput();
+    expect(tracker.readiness().ready).toBe(false);
+    await write("\r\n❯ " + B + rightPrompt);
+    expect(tracker.readiness()).toEqual({ ready: true });
+  });
+
+  it("fails closed on incomplete, wrapped, or unbound right prompts", async () => {
+    const { tracker, write } = setup();
+    await write("❯ " + B + "\x1b[50G\x1b]133;P;k=r\x0712:34\x1b[3G");
+    expect(tracker.readiness().ready).toBe(false);
+    await write("\r\n❯ " + B + "\x1b[50G\x1b]133;P;k=r\x07" + "x".repeat(20) + B);
+    expect(tracker.readiness().ready).toBe(false);
+    tracker.clear();
+    await write(rightPrompt);
+    expect(tracker.position()).toBeNull();
+  });
+
+  it("does not use a right-prompt end to recover an erased left boundary", async () => {
+    const { tracker, write } = setup();
+    await write("❯ " + B + "\x1b[2K" + rightPrompt);
+    expect(tracker.position()).toBeNull();
+    expect(tracker.readiness()).toMatchObject({ ready: false, code: "prompt-unverified" });
+  });
+
+  it.each(["erased", "width", "external-width"])("consumes a split right-prompt end after the left anchor becomes %s", async change => {
+    const { term, tracker, write } = setup();
+    await write("❯ " + B + "\x1b[40G\x1b]133;P;k=r\x07");
+    if (change === "erased") await write("\x1b[2K");
+    else if (change === "width") tracker.resize(70, () => term.resize(70, 5));
+    else term.resize(70, 5);
+    expect(tracker.readiness().ready).toBe(false);
+    await write("time" + B);
+    expect(tracker.position()).toBeNull();
+    expect(tracker.readiness().ready).toBe(false);
+  });
+
+  it("requires new decoration evidence after width changes and command boundaries", async () => {
+    const { term, tracker, write } = setup();
+    await write("❯ " + B + rightPrompt);
+    tracker.resize(70, () => term.resize(70, 5));
+    expect(tracker.readiness().ready).toBe(false);
+    await write("\r\n❯ " + B + rightPrompt);
+    expect(tracker.readiness().ready).toBe(true);
+    await write("\x1b]133;C\x07");
+    expect(tracker.readiness().ready).toBe(false);
+  });
   it("follows an empty prompt when earlier output reflows, without reading that output as a draft", async () => {
     const { term, tracker, write } = setup();
     await write("x".repeat(59) + "\r\n❯ " + B);

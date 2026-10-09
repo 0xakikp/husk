@@ -64,4 +64,10 @@ export class TerminalRunReceipts {
   }
 
   clear(): void { this.pending = null; this.running = null; }
+
+  /** A late rejected write must not retire a newer command's receipt. */
+  discard(runId: string): void {
+    if (this.pending?.runId === runId) this.pending = null;
+    if (this.running?.runId === runId) this.running = null;
+  }
 }

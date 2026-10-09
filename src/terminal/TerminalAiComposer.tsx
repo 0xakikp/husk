@@ -46,7 +46,7 @@ import {
 } from "../ai/terminalContext";
 import { TerminalPilot } from "./TerminalPilot";
 import { CommandFollowupBar } from "./CommandFollowupBar";
-import { analyzeCommandFollowup, commandFollowupScopeMatches, getCommandFollowup, pauseCommandFollowup, trackCommandFollowup, useCommandFollowup } from "../ai/commandFollowup";
+import { analyzeCommandFollowup, commandFollowupBlockReason, getCommandFollowup, isManualCommandAnalysis, pauseCommandFollowup, trackCommandFollowup, useCommandFollowup } from "../ai/commandFollowup";
 import { captureTerminalTarget, isCurrentTerminalTarget, type TerminalTarget } from "../ai/terminalTarget";
 import { AppliedEditsActivity, PendingEditsReview } from "../ai/PendingEditsReview";
 import { PendingMcpActionsReview } from "../ai/PendingMcpActionsReview";
@@ -838,18 +838,13 @@ export function TerminalAiComposer({
 
   useEffect(() => {
     if (!commandFollowup || commandFollowup.ownerId !== followupOwnerId || commandFollowup.phase === "done" || commandFollowup.phase === "paused") return;
-    const target = commandFollowup.target;
-    const targetChanged = activeTerminalPtyId !== target.ptyId || activeRemoteTerminal.isRemote !== target.isRemote
-      || (activeRemoteTerminal.host ?? null) !== target.host;
-    if (!open || !prefs.aiEnabled || !autoFollowup || targetChanged
-      || workspacePath !== (commandFollowup.workspacePath || "")
-      || (commandFollowup.taskId && (activeTask?.id !== commandFollowup.taskId || activeTask.status !== "running"))) {
-      pauseCommandFollowup(sessionId, "Follow-up paused because the chat, terminal or Task changed. No next command will run.");
+    const blocked = !open ? "Chat closed. Automatic analysis is paused; no command will run."
+      : commandFollowupBlockReason(commandFollowup, { waitingForCommand: commandFollowup.phase === "waiting" });
+    if (blocked) {
+      pauseCommandFollowup(sessionId, blocked);
       return;
     }
-    if (automaticBusy && !commandFollowupScopeMatches(commandFollowup)) {
-      pauseCommandFollowup(sessionId, "The terminal folder changed; result analysis stopped.");
-    } else if (commandFollowup.phase === "ready") {
+    if (commandFollowup.phase === "ready") {
       if (busy || input.trim()) pauseCommandFollowup(sessionId, "Your message takes priority. The result is saved below; send feedback or choose Analyze result.");
       else void analyzeCommandFollowup(sessionId, commandFollowup.id, followupOwnerId);
     }
@@ -3854,10 +3849,10 @@ export function TerminalAiComposer({
           busy={busy || automaticBusy}
           onToggle={(enabled) => {
             updateSession(sessionId, (current) => ({ ...current, autoCommandFollowup: enabled }));
-            if (!enabled) pauseCommandFollowup(sessionId, "Auto follow-up is off. Command results stay in this chat.");
+            if (!enabled && !isManualCommandAnalysis(getCommandFollowup(sessionId))) pauseCommandFollowup(sessionId, "Auto follow-up is off. Command results stay in this chat.");
           }}
           onStop={() => pauseCommandFollowup(sessionId)}
-          onAnalyze={() => { if (commandFollowup) void analyzeCommandFollowup(sessionId, commandFollowup.id, followupOwnerId); }}
+          onAnalyze={() => { if (commandFollowup) void analyzeCommandFollowup(sessionId, commandFollowup.id, followupOwnerId, "manual"); }}
           onInterrupt={() => {
             if (!commandFollowup || commandFollowup.target.ptyId == null) return;
             pauseCommandFollowup(sessionId, "Follow-up stopped. Waiting for the shell after your interrupt request.");
