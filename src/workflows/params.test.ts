@@ -4,6 +4,7 @@ import { compileWorkflow, extractParams, getWorkflowInputs } from "./params";
 import type { Workflow } from "./store";
 const wf: Workflow = { id: "wf_test", name: "Print", steps: ["printf '%s' {{value}}"] };
 const run = (command: string) => execFileSync("sh", ["-c", command], { encoding: "utf8", timeout: 2000 });
+const activeShellAliasTests = process.platform !== "win32";
 it("keeps legacy placeholders/defaults and merges typed input metadata", () => {
   expect(extractParams(["echo {{count=5}} {{name}}", "echo {{count}}"]).map((item) => item.name)).toEqual(["count", "name"]);
   expect(getWorkflowInputs({ steps: ["git log -n {{count=5}}"], inputs: [{ name: "count", label: "Number of commits", type: "number", required: true }] })[0]).toMatchObject({ label: "Number of commits", defaultValue: "5" });
@@ -46,14 +47,14 @@ it("shares directory and environment across steps without affecting the parent s
 it("rejects inline defaults for explicitly secret inputs", () => {
   expect(() => getWorkflowInputs({ steps: ["echo {{token=unsafe}}"], inputs: [{ name: "token", label: "Token", type: "secret", required: true }] })).toThrow("inline defaults");
 });
-it("keeps saved command alias and function calls in the active shell without a child wrapper", () => {
+it.skipIf(!activeShellAliasTests)("keeps saved command alias and function calls in the active shell without a child wrapper", () => {
   const command = compileWorkflow({ kind: "command", steps: ["  saved_alias  "] }, {});
   expect(command).toEqual({ steps: ["  saved_alias  "], command: "  saved_alias  " });
   expect(run("alias saved_alias='printf alias-ready'\n" + command.command)).toBe("alias-ready");
   expect(run("saved_function() { printf function-ready; }\n" + compileWorkflow({ kind: "command", steps: ["saved_function"] }, {}).command)).toBe("function-ready");
   expect(compileWorkflow({ steps: ["saved_alias"] }, {}).command).toMatch(/^sh -c /);
 });
-it.each(["{{value}}", "'{{value}}'", '"{{value}}"'])("uses portable literal whole arguments in saved commands: %s", (placeholder) => {
+it.skipIf(!activeShellAliasTests).each(["{{value}}", "'{{value}}'", '"{{value}}"'])("uses portable literal whole arguments in saved commands: %s", (placeholder) => {
   const value = "Feature Branch/path_1.2:@+=,-";
   const compiled = compileWorkflow({ kind: "command", steps: ["saved_alias " + placeholder] }, { value });
   expect(compiled.command).toBe("saved_alias '" + value + "'");
