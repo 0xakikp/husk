@@ -138,6 +138,7 @@ import {
   type AiTaskState,
 } from "../ai/taskMode";
 import "./TerminalAiComposer.css";
+import "./FullChatTranscript.css";
 
 interface CodeBlock {
   lang: string;

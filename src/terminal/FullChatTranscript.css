@@ -1,0 +1,127 @@
+/* The full AI-chats workspace has room for a conversation, not extra chrome
+   around every line. Keep these overrides separate and full-only: the dock,
+   input sizing, chosen font size and code/diff layouts must stay unchanged. */
+.composer-full .composer-messages {
+  gap: 8px;
+  line-height: 1.55;
+}
+
+.composer-full .msg-block {
+  min-width: 0;
+}
+
+.composer-full .msg-block-head {
+  gap: 6px;
+  padding: 0 0 2px 12px;
+}
+
+.composer-full .msg-meta {
+  flex: 0 1 auto;
+  max-width: 40ch;
+}
+
+.composer-full .msg-time {
+  margin-left: 2px;
+}
+
+.composer-full .msg-block-body {
+  min-width: 0;
+  padding: 1px 0 2px 10px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* User actions share the identity row instead of reserving a third row below
+   even a two-word question. They stay visible and keyboard/touch accessible. */
+.composer-full .msg-block-user:not(.msg-block-compact) {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
+  justify-content: start;
+  align-items: center;
+  column-gap: 10px;
+}
+
+.composer-full .msg-block-user:not(.msg-block-compact) .msg-block-head {
+  grid-column: 1;
+  grid-row: 1;
+  padding-bottom: 0;
+}
+
+.composer-full .msg-block-user:not(.msg-block-compact) .msg-block-body {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.composer-full .msg-block-user:not(.msg-block-compact) .msg-block-after {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.composer-full .msg-block-foot {
+  gap: 2px;
+  padding: 2px 0 0 12px;
+}
+
+.composer-full .msg-block-user .msg-block-foot {
+  padding: 0;
+}
+
+.composer-full .msg-block-foot .msg-act {
+  min-height: 22px;
+  padding: 1px 5px;
+}
+
+/* Keep evidence and actions together beneath the answer, not on opposite
+   edges of a wide window. Wrap naturally at narrow widths or larger fonts;
+   expanded evidence always follows both controls on its own full-width row. */
+.composer-full .msg-block-after.has-trace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  padding: 2px 0 0 12px;
+}
+
+.composer-full .msg-block-after.has-trace .ai-reply-trace-summary {
+  flex: 0 1 auto;
+  width: auto;
+  height: auto;
+  min-height: 22px;
+}
+
+.composer-full .msg-block-after.has-trace .msg-block-foot {
+  height: auto;
+  padding: 0;
+}
+
+.composer-full .msg-block-after.has-trace .ai-reply-trace-details {
+  order: 1;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+/* Older/simple replies use the single-row renderer. Do not truncate them or
+   overlay their text with controls when the full workspace becomes narrow. */
+.composer-full .msg-block-compact {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.composer-full .msg-compact-text {
+  flex: 0 1 auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.composer-full .msg-compact-actions {
+  position: static;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.composer-full .msg-block-compact:hover .msg-time,
+.composer-full .msg-block-compact:focus-within .msg-time {
+  opacity: 1;
+}
