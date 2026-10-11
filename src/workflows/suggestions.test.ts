@@ -27,6 +27,15 @@ function event(
 }
 
 describe("workflow suggestion detection", () => {
+  it("does not turn a saved interactive command into a multi-step workflow", () => {
+    const rows = ["one", "two", "three"].flatMap((session, run) => [
+      event(run * 10, run * 100, "pnpm test", session),
+      event(run * 10 + 1, run * 100 + 1, "pnpm build", session),
+    ]);
+    const candidate = detectWorkflowSuggestion([...rows].reverse(), "/repo")!;
+    expect(candidate).not.toBeNull();
+    expect(classifyWorkflowSuggestion(candidate, [{ id: "command", kind: "command", name: "Tests", steps: ["pnpm test"] }])).toEqual(candidate);
+  });
   it("offers the longest exact safe routine repeated across terminal sessions", () => {
     const chronological = [
       event(1, 10, "pnpm lint", "one"),

@@ -7,7 +7,7 @@ import { exportWorkflowJson } from "./transfer";
 import { stageWorkflowDraft, workflowDraftFromSuggestion } from "./draftStore";
 import { dismissWorkflowSuggestionFingerprint, useWorkflowSuggestions, type WorkflowSuggestion } from "./suggestions";
 import { useWorkflowRunRequest, clearWorkflowRunRequest } from "./runRequest";
-import { openWorkflowEditor } from "./editorActions";
+import { openSavedCommandEditor, openWorkflowEditor } from "./editorActions";
 import { collapseWorkflowEditor, getWorkflowEditorSession, resumeWorkflowEditor, useWorkflowEditorSession } from "./editorSession";
 import { WorkflowRunner } from "./WorkflowRunner";
 import { WorkflowImport } from "./WorkflowImport";
@@ -35,6 +35,7 @@ export function RunbooksDialog({ onClose, inline, active = true, onOpenScript }:
   const runs = useWorkflowRunStatuses();
   const [searchOpen, setSearchOpen] = useState(false); const [query, setQuery] = useState("");
   const searchButton = useRef<HTMLButtonElement>(null); const linking = useRef(false);
+  const searchInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<Mode>({ kind: "list" });
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const editorSession = useWorkflowEditorSession(); const requested = useWorkflowRunRequest();
@@ -55,6 +56,7 @@ export function RunbooksDialog({ onClose, inline, active = true, onOpenScript }:
 
   const report = (reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason));
   const editWorkflow = (workflow: Workflow | null) => { try { openWorkflowEditor(workflow); } catch (reason) { report(reason); } };
+  const newCommand = () => { try { openSavedCommandEditor(); } catch (reason) { report(reason); } };
   const commit = async (list: Workflow[]) => {
     setBusy(true); setError("");
     try { await saveWorkflows(list); } finally { setBusy(false); }
@@ -65,7 +67,7 @@ export function RunbooksDialog({ onClose, inline, active = true, onOpenScript }:
     await commit([...current, { ...structuredClone(wf), id: newWorkflowId(), name }]);
   };
   const remove = async (wf: Workflow) => {
-    if (!confirm("Delete workflow “" + wf.name + "”?")) return;
+    if (!confirm(`Delete ${wf.kind === "command" ? "command" : "workflow"} “${wf.name}”?`)) return;
     await commit(loadWorkflows().filter((item) => item.id !== wf.id));
     clearWorkflowRunStatus(wf.id);
     try { removeWorkflowPin(wf.id); } catch (reason) { report(reason); }
@@ -102,22 +104,32 @@ export function RunbooksDialog({ onClose, inline, active = true, onOpenScript }:
   return <>
     {editing ? <Suspense fallback={<div className="compact-body compact-help" role="status">Opening workflow editor…</div>}><WorkflowSidebarEditor /></Suspense> : <Modal icon={WorkflowCircle01Icon} title="Workflows" context={workflows.length + " saved"} onClose={onClose} inline={inline}
       headerActions={<>
-        <button ref={searchButton} type="button" aria-label="Search workflows and scripts" title="Search workflows and scripts" aria-expanded={searchOpen} disabled={mode.kind !== "list"} onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setQuery(""); }} className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted"><HugeiconsIcon icon={Search01Icon} size={14} /></button>
+        <button ref={searchButton} type="button" aria-label="Search saved items" title="Search commands, workflows and scripts" aria-expanded={searchOpen} disabled={mode.kind !== "list"} onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setQuery(""); }} className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted"><HugeiconsIcon icon={Search01Icon} size={14} /></button>
         <button type="button" aria-label="New workflow" title="New workflow" disabled={busy || mode.kind !== "list" || editorSession?.busy} onClick={() => editWorkflow(null)} className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted"><HugeiconsIcon icon={Add01Icon} size={14} /></button>
         <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label="Workflow options" className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted"><HugeiconsIcon icon={MoreHorizontalIcon} size={14} /></button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="border border-border"><DropdownMenuItem className={menuItemClass} disabled={busy || mode.kind !== "list" || !!libraryError} onSelect={() => void linkScript()}>Link script…</DropdownMenuItem><DropdownMenuItem className={menuItemClass} disabled={busy || mode.kind !== "list"} onSelect={() => setMode({ kind: "import" })}>Import JSON…</DropdownMenuItem><DropdownMenuItem className={menuItemClass} disabled={busy || mode.kind !== "list" || !workflows.length} onSelect={() => void exportFile(workflows)}>Export all workflows…</DropdownMenuItem></DropdownMenuContent>
+          <DropdownMenuContent align="end" className="border border-border"><DropdownMenuItem className={menuItemClass} disabled={busy || mode.kind !== "list" || editorSession?.busy} onSelect={newCommand}>Save command…</DropdownMenuItem><DropdownMenuItem className={menuItemClass} disabled={busy || mode.kind !== "list" || !!libraryError} onSelect={() => void linkScript()}>Link script…</DropdownMenuItem><DropdownMenuItem className={menuItemClass} disabled={busy || mode.kind !== "list"} onSelect={() => setMode({ kind: "import" })}>Import JSON…</DropdownMenuItem><DropdownMenuItem className={menuItemClass} disabled={busy || mode.kind !== "list" || !workflows.length} onSelect={() => void exportFile(workflows)}>Export all workflows…</DropdownMenuItem></DropdownMenuContent>
         </DropdownMenu>
       </>}>
       {error && <p role="alert" className="compact-error">{error}</p>}
       {getWorkflowLoadError() && <p role="alert" className="compact-error">{getWorkflowLoadError()}</p>}
       {libraryError && <p role="alert" className="compact-error">{libraryError}</p>}
-      {searchOpen && <div className="compact-form wf-library-search"><CompactInput autoFocus aria-label="Filter workflows and scripts" placeholder="Search workflows and scripts…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setQuery(""); setSearchOpen(false); searchButton.current?.focus(); } }} /><button type="button" aria-label="Clear workflow search" onClick={() => setQuery("")} disabled={!query}>×</button></div>}
-      {editorSession && <button type="button" className="workflow-sidebar-draft" onClick={resumeWorkflowEditor}>Resume draft <span>{editorSession.workflow.name || "Untitled workflow"}</span></button>}
+      {searchOpen && <div className="wf-library-search" role="search" aria-label="Workflows"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault(); event.stopPropagation();
+          setQuery(""); setSearchOpen(false); searchButton.current?.focus();
+        }}>
+        <CompactInput ref={searchInput} autoFocus aria-label="Filter saved items" placeholder="Search saved items…" value={query} onChange={(event) => setQuery(event.target.value)} />
+        {query.length > 0 && <button type="button" className="wf-library-search-clear" aria-label="Clear workflow search" title="Clear search"
+          onClick={() => { setQuery(""); searchInput.current?.focus(); }}>×</button>}
+      </div>}
+      {editorSession && <button type="button" className="workflow-sidebar-draft" onClick={resumeWorkflowEditor}>Resume draft <span>{editorSession.workflow.name || (editorSession.workflow.kind === "command" ? "Untitled command" : "Untitled workflow")}</span></button>}
       <div inert={busy || mode.kind !== "list" ? true : undefined}>
         <RunbookList suggestions={query.trim() ? [] : suggestions}
           onReviewSuggestion={(suggestion) => stageWorkflowDraft(workflowDraftFromSuggestion(suggestion))}
           onIgnoreSuggestion={(suggestion) => dismissWorkflowSuggestionFingerprint(suggestion.fingerprint, true)}
           onNew={() => editWorkflow(null)}
+          onNewCommand={newCommand}
           onLinkScript={() => void linkScript()}
           libraryProps={{ workflows, library, query, runs, active,
             onEdit: editWorkflow,
@@ -140,9 +152,9 @@ export function RunbooksDialog({ onClose, inline, active = true, onOpenScript }:
   </>;
 }
 
-function RunbookList({ suggestions, onNew, onLinkScript, onReviewSuggestion, onIgnoreSuggestion, libraryProps }: {
+function RunbookList({ suggestions, onNew, onNewCommand, onLinkScript, onReviewSuggestion, onIgnoreSuggestion, libraryProps }: {
   suggestions: WorkflowSuggestion[];
-  onNew: () => void; onLinkScript: () => void;
+  onNew: () => void; onNewCommand: () => void; onLinkScript: () => void;
   onReviewSuggestion: (suggestion: WorkflowSuggestion) => void;
   onIgnoreSuggestion: (suggestion: WorkflowSuggestion) => void;
   libraryProps: ComponentProps<typeof WorkflowLibraryItems>;
@@ -161,16 +173,18 @@ function RunbookList({ suggestions, onNew, onLinkScript, onReviewSuggestion, onI
       </div>}
       {empty && <div className="wf-library-empty">
         <HugeiconsIcon icon={PlayIcon} size={22} />
-        <strong>No workflows yet</strong>
+        <strong>No saved items yet</strong>
         <p>Save repeatable commands or link an existing script. Nothing runs until you review it.</p>
       </div>}
       <WorkflowLibraryItems {...libraryProps} />
       <div className="wf-library-create">
+        <button type="button" className="rb-new" onClick={onNewCommand}>Save command…</button>
         <button type="button" className="rb-new" onClick={onNew}>+ New workflow</button>
         <button type="button" className="rb-new" onClick={onLinkScript}>Link script…</button>
       </div>
     </div></HuskContextMenuTrigger>
     <HuskContextMenuContent title="Workflows">
+      <HuskContextMenuItem icon={Add01Icon} onSelect={onNewCommand}>Save command…</HuskContextMenuItem>
       <HuskContextMenuItem icon={Add01Icon} onSelect={onNew}>New workflow…</HuskContextMenuItem>
       <HuskContextMenuItem icon={Add01Icon} onSelect={onLinkScript}>Link script…</HuskContextMenuItem>
     </HuskContextMenuContent>

@@ -2,7 +2,7 @@ import { CompactForm, CompactInput, CompactTextarea, CompactSelect, CompactButto
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { newWorkflowId, type Workflow, type WorkflowInput } from "./store";
 import { validateWorkflow } from "./schema";
-import { extractParams, getWorkflowInputs } from "./params";
+import { COMMAND_INPUT_HELP, extractParams, getWorkflowInputs } from "./params";
 import { assertShareableWorkflows } from "./transfer";
 import type { WorkflowDraft } from "./draftStore";
 import { usePrefs } from "../settings/preferences";
@@ -22,13 +22,15 @@ type Props = {
 };
 function initialValue(initial: Workflow | null, draft?: WorkflowDraft | null): Workflow {
   const steps = draft?.steps ?? initial?.steps ?? [""];
+  const kind = draft?.kind ?? initial?.kind;
   let inputs: WorkflowInput[];
   try { inputs = getWorkflowInputs({ steps, inputs: initial?.inputs }); } catch { inputs = initial?.inputs ?? []; }
-  return { id: draft?.targetWorkflowId ?? initial?.id ?? newWorkflowId(), name: draft?.name ?? initial?.name ?? "", description: draft?.description ?? initial?.description ?? "", steps, stepTitles: steps.map((_, i) => draft ? "" : initial?.stepTitles?.[i] ?? ""), inputs, stopOnError: draft?.stopOnError ?? initial?.stopOnError ?? true };
+  return { id: draft?.targetWorkflowId ?? initial?.id ?? newWorkflowId(), ...(kind ? { kind } : {}), name: draft?.name ?? initial?.name ?? "", description: draft?.description ?? initial?.description ?? "", steps, ...(kind === "command" ? {} : { stepTitles: steps.map((_, i) => draft ? "" : initial?.stepTitles?.[i] ?? "") }), inputs, stopOnError: draft?.stopOnError ?? initial?.stopOnError ?? true };
 }
 const sourceDescriptions: Record<string, string> = {
   evolution: "Review the proposed update. Saving replaces this workflow’s steps; nothing runs.",
   "terminal-selection": "Collected from terminal text. Check that each step is a command, not output. Saving does not run it.",
+  "terminal-history": "Collected from terminal command history. Review the command before saving; saving does not run it.",
   "ai-code": "Collected from AI code. Review every command; saving does not run it.",
   manual: "Collect commands here. Saving does not run them.",
   edit: "Review your workflow. Saving does not run it.",
@@ -40,6 +42,7 @@ export function WorkflowEditor({ initial, draft, value, onChange, onSave, onCanc
   const [internal, setInternal] = useState(() => initialValue(initial, draft));
   const controlled = value !== undefined && onChange !== undefined;
   const workflow = controlled ? value : internal;
+  const isCommand = workflow.kind === "command";
   const { name, description = "", steps, inputs = [], stopOnError = true } = workflow;
   const [descriptionOpen, setDescriptionOpen] = useState(() => !!description);
   const keys = useRef<string[]>([]);
@@ -65,7 +68,7 @@ export function WorkflowEditor({ initial, draft, value, onChange, onSave, onCanc
   };
   const changeRows = (next: Row[]) => {
     keys.current = next.map((item) => item.key);
-    change({ ...workflow, steps: next.map((item) => item.command), stepTitles: next.map((item) => item.title) });
+    change({ ...workflow, steps: next.map((item) => item.command), ...(!isCommand ? { stepTitles: next.map((item) => item.title) } : {}) });
   };
   const inferred = extractParams(steps);
   const missing = inferred.filter((param) => !inputs.some((input) => input.name === param.name));
@@ -89,7 +92,7 @@ export function WorkflowEditor({ initial, draft, value, onChange, onSave, onCanc
   return <CompactForm className="wf-form" ref={(element) => { alive.current = element !== null; }}>
     {draft && <details className="wf-disclosure"><summary>About this draft</summary><p className="compact-help wf-help">{sourceDescriptions[draft.source] ?? "Draft from local command history. Review every command; saving does not run it."}</p>
       {draft.originalSteps && <details><summary>Previously saved steps</summary><pre>{draft.originalSteps.join("\n")}</pre></details>}
-      {prefs.aiEnabled && <CompactButton type="button" disabled={refining || saving || !!validation} onClick={() => {
+      {prefs.aiEnabled && !isCommand && <CompactButton type="button" disabled={refining || saving || !!validation} onClick={() => {
         const revision = editRevision.current; const snapshot = currentSnapshot.current; setRefining(true); setError("");
         void refineWorkflowDraft(name, description, candidate.steps).then((refined) => {
           if (!alive.current) return;
@@ -102,12 +105,21 @@ export function WorkflowEditor({ initial, draft, value, onChange, onSave, onCanc
     </details>}
     <div className="compact-field">
       <CompactLabel htmlFor={fieldId + "-name"}>Name</CompactLabel>
-      <CompactInput id={fieldId + "-name"} aria-label="Workflow name" disabled={saving} value={name} placeholder="Review recent commits" onChange={(event) => change({ ...workflow, name: event.target.value })} />
+      <CompactInput id={fieldId + "-name"} aria-label={isCommand ? "Command name" : "Workflow name"} disabled={saving} value={name} placeholder="Review recent commits" onChange={(event) => change({ ...workflow, name: event.target.value })} />
     </div>
+    {isCommand && <div className="compact-field">
+      <CompactLabel htmlFor={fieldId + "-command"}>Command</CompactLabel>
+      <CompactTextarea id={fieldId + "-command"} aria-label="Command" disabled={saving} rows={2} value={steps[0] ?? ""} spellCheck={false} placeholder="git log -n {{count}} --oneline"
+        ref={(element) => { if (element && rows[0]) textAreas.current.set(rows[0].key, element); else if (rows[0]) textAreas.current.delete(rows[0].key); }}
+        onSelect={(event) => { if (rows[0]) cursor.current.set(rows[0].key, event.currentTarget.selectionStart); }}
+        onChange={(event) => change({ ...workflow, steps: [event.target.value] })} />
+      {inputs.length > 0 && rows[0] && <CompactSelect aria-label="Insert input in command" disabled={saving} value="" onChange={(event) => insert(rows[0], event.target.value)}><option value="">Insert input…</option>{inputs.filter((input) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(input.name)).map((input, i) => <option key={i} value={input.name}>{input.label || input.name}</option>)}</CompactSelect>}
+      <p className="compact-help wf-help">Runs in the target terminal’s shell. Aliases and functions must already be loaded; cd and export can change that shell. Saving does not run it.</p>
+    </div>}
     <details className="wf-disclosure" open={descriptionOpen} onToggle={(event) => setDescriptionOpen(event.currentTarget.open)}><summary>Description (optional)</summary>
-      <div className="compact-field"><CompactLabel htmlFor={fieldId + "-description"}>Description</CompactLabel><CompactInput id={fieldId + "-description"} disabled={saving} value={description} placeholder="What this workflow does" onChange={(event) => change({ ...workflow, description: event.target.value })} /></div>
+      <div className="compact-field"><CompactLabel htmlFor={fieldId + "-description"}>Description</CompactLabel><CompactInput id={fieldId + "-description"} disabled={saving} value={description} placeholder={isCommand ? "What this command does" : "What this workflow does"} onChange={(event) => change({ ...workflow, description: event.target.value })} /></div>
     </details>
-    <fieldset className="compact-section" disabled={saving}><legend className="compact-label">Steps</legend>
+    {!isCommand && <fieldset className="compact-section" disabled={saving}><legend className="compact-label">Steps</legend>
       {rows.map((item, index) => <article className="wf-step" key={item.key}>
         <div className="wf-step-head"><span className="compact-label">Step {index + 1}</span><span className="wf-step-actions">
           <CompactButton type="button" compact icon variant="ghost" aria-label={"Move step " + (index + 1) + " up"} disabled={index === 0} onClick={() => move(index, -1)}>↑</CompactButton>
@@ -123,12 +135,13 @@ export function WorkflowEditor({ initial, draft, value, onChange, onSave, onCanc
         {inputs.length > 0 && <CompactSelect aria-label={"Insert input in step " + (index + 1)} value="" onChange={(event) => insert(item, event.target.value)}><option value="">Insert input…</option>{inputs.filter((input) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(input.name)).map((input, i) => <option key={i} value={input.name}>{input.label || input.name}</option>)}</CompactSelect>}
       </article>)}
       <CompactButton type="button" disabled={rows.length >= 100} onClick={() => changeRows([...rows, { key: crypto.randomUUID(), command: "", title: "" }])}>+ Add step</CompactButton>
-    </fieldset>
+    </fieldset>}
     <details className="wf-disclosure"><summary>Inputs{inputs.length > 0 ? ` · ${inputs.length}` : " (optional)"}{missing.length > 0 ? ` · ${missing.length} detected` : ""}</summary>
     <fieldset className="compact-section" disabled={saving}><legend className="compact-label">Reusable values</legend><p className="compact-help wf-help">Define labels and validation, then use Insert input in a command. Renaming an input does not rewrite its placeholders. Runtime values are never saved.</p>
+      {isCommand && <p className="compact-help wf-help">{COMMAND_INPUT_HELP}</p>}
       {missing.length > 0 && <div className="wf-scope">Detected placeholders: {missing.map((param) => param.name).join(", ")} <CompactButton type="button" onClick={() => change({ ...workflow, inputs: [...inputs, ...missing.map((param): WorkflowInput => ({ name: param.name, label: param.name, type: "text", required: param.default === null, defaultValue: param.default ?? undefined }))] })}>Configure detected inputs</CompactButton></div>}
       {inputs.map((input, index) => <article className="wf-input-card" key={index}>
-        {input.name && !inferred.some((param) => param.name === input.name) && <p className="compact-help wf-help">Not used in a step yet. Insert this input into a command, or remove it.</p>}
+        {input.name && !inferred.some((param) => param.name === input.name) && <p className="compact-help wf-help">{isCommand ? "Not used in the command yet." : "Not used in a step yet."} Insert this input into a command, or remove it.</p>}
         <div className="wf-input-grid">
         <div className="compact-field"><CompactLabel htmlFor={fieldId + "-input-name-" + index}>Input name</CompactLabel><CompactInput id={fieldId + "-input-name-" + index} value={input.name} placeholder="count" onChange={(event) => updateInput(index, { name: event.target.value })} /></div>
         <div className="compact-field"><CompactLabel htmlFor={fieldId + "-input-label-" + index}>Label</CompactLabel><CompactInput id={fieldId + "-input-label-" + index} value={input.label} placeholder="Number of commits" onChange={(event) => updateInput(index, { label: event.target.value })} /></div>
@@ -137,16 +150,16 @@ export function WorkflowEditor({ initial, draft, value, onChange, onSave, onCanc
       </div><div className="wf-step-head"><CompactLabel className="compact-check wf-check"><input type="checkbox" checked={input.required} onChange={(event) => updateInput(index, { required: event.target.checked })} />Required</CompactLabel><CompactButton type="button" compact variant="danger" onClick={() => change({ ...workflow, inputs: inputs.filter((_, i) => i !== index) })}>Remove input</CompactButton></div></article>)}
       <CompactButton type="button" disabled={inputs.length >= 32} onClick={() => change({ ...workflow, inputs: [...inputs, { name: "", label: "", type: "text", required: true }] })}>+ Add input</CompactButton>
     </fieldset></details>
-    <details className="wf-disclosure"><summary>Execution options</summary><fieldset className="compact-section" disabled={saving}>
+    {!isCommand && <details className="wf-disclosure"><summary>Execution options</summary><fieldset className="compact-section" disabled={saving}>
       <p className="compact-help wf-help">One command line per card. Input values are literal arguments. Steps share a POSIX child shell; directory changes and variables do not change your interactive terminal.</p>
       <CompactLabel className="compact-check wf-check"><input type="checkbox" checked={stopOnError} onChange={(event) => change({ ...workflow, stopOnError: event.target.checked })} />Stop when a step fails</CompactLabel>
-    </fieldset></details>
+    </fieldset></details>}
     {showValidation && validation && <p className="compact-help wf-warning" role="status">{validation}</p>}{error && <p className="compact-error wf-error" role="alert">{error}</p>}{notice && <p className="compact-help wf-help" role="status">{notice}</p>}
     <div className="compact-actions wf-actions">
       {onDiscard && <CompactButton type="button" variant="danger" className="compact-action-start" disabled={saving || refining} onClick={onDiscard}>Discard draft</CompactButton>}
       <div className="compact-actions-main"><CompactButton type="button" variant="ghost" disabled={saving} onClick={onCancel}>Collapse</CompactButton><CompactButton type="button" variant="primary" disabled={saving || refining || !!validation} onClick={() => {
       setSaving(true); setError(""); void onSave(validateWorkflow(candidate)).catch((reason) => { if (alive.current) setError(String(reason)); }).finally(() => { if (alive.current) setSaving(false); });
-    }}>{saving ? "Saving…" : draft?.source === "evolution" ? "Save update" : "Save workflow"}</CompactButton></div></div>
+    }}>{saving ? "Saving…" : isCommand ? "Save command" : draft?.source === "evolution" ? "Save update" : "Save workflow"}</CompactButton></div></div>
     {footerNote != null && <div className="compact-help">{footerNote}</div>}
   </CompactForm>;
 }

@@ -13,9 +13,34 @@ it("round-trips a versioned definition with titles/inputs but no runtime state",
 it("accepts old Copy JSON single definitions/arrays and rejects unknown versions", () => {
   expect(parseWorkflowImport(JSON.stringify(wf))).toEqual([wf]);
   expect(parseWorkflowImport(JSON.stringify([wf]))).toEqual([wf]);
-  expect(() => parseWorkflowImport('{"format":"husk-workflows","version":2,"workflows":[]}')).toThrow("Unsupported");
+  expect(() => parseWorkflowImport('{"format":"husk-workflows","version":3,"workflows":[]}')).toThrow("Unsupported");
   expect(() => parseWorkflowImport("{")).toThrow("valid JSON");
   expect(() => parseWorkflowImport("[]")).toThrow("at least one");
+});
+it("round-trips saved alias commands through v2 and preserves kind during canonicalization", () => {
+  const command: Workflow = { id: "wf_alias", name: "Quick status", kind: "command", steps: ["  gs  "], stopOnError: true };
+  const exported = exportWorkflowJson([wf, command]);
+  expect(JSON.parse(exported).version).toBe(2);
+  expect(parseWorkflowImport(exported)).toEqual([wf, command]);
+  expect(parseWorkflowImport(JSON.stringify({ ...command, runtimeValue: "discard-me" }))).toEqual([command]);
+  expect(validateWorkflow({ ...command, values: { secret: "runtime-only" } })).toEqual(command);
+  expect(JSON.parse(exportWorkflowJson([wf])).version).toBe(1);
+  expect(parseWorkflowImport(JSON.stringify({ format: "husk-workflows", version: 2, workflows: [wf] }))).toEqual([wf]);
+  expect(() => parseWorkflowImport(JSON.stringify({ format: "husk-workflows", version: 1, workflows: [command] }))).toThrow("version 2");
+});
+it("rejects unknown kinds and invalid saved command shapes instead of changing their meaning", () => {
+  const command = { id: "wf_alias", name: "Alias", kind: "command", steps: ["gs"] };
+  expect(() => validateWorkflow({ ...command, kind: "workflow" })).toThrow("kind");
+  expect(() => validateWorkflow({ ...command, kind: null })).toThrow("kind");
+  for (const steps of [["gs", "pwd"], ["gs\npwd"], ["gs\rpwd"], ["gs\tpwd"], ["gs\u2028pwd"], ["gs\x85pwd"], ["gs\x1bpwd"], ["é".repeat(4001)]]) expect(() => validateWorkflow({ ...command, steps })).toThrow();
+  expect(() => parseWorkflowImport(JSON.stringify({ ...command, kind: "unknown" }))).toThrow("kind");
+});
+it("applies existing credential checks and conflict replacement to saved commands", () => {
+  const command: Workflow = { id: wf.id, name: wf.name, kind: "command", steps: ["gco {{branch=main}}"] };
+  const existing = validateWorkflowList([wf]);
+  const merged = mergeWorkflowImport(existing, [command], { 0: { action: "replace", target: existing[0] } });
+  expect(merged[0]).toMatchObject({ id: wf.id, kind: "command", steps: command.steps });
+  expect(() => exportWorkflowJson([{ ...command, steps: ["tool --password abc"] }])).toThrow("credentials");
 });
 it("rejects oversized and malformed definitions without truncating commands", () => {
   expect(() => validateWorkflow({ ...wf, steps: ["é".repeat(4001)] })).toThrow("8,000".replace(",", ""));

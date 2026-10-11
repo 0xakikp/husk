@@ -34,13 +34,17 @@ export function startWorkflowEditor(initial: Workflow | null = null, draft: Work
   if (draft) {
     if (draft.targetWorkflowId && (!initial || draft.targetWorkflowId !== initial.id)) throw new Error("The original workflow no longer exists. Reopen the workflow list.");
     Object.assign(workflow, { name: draft.name, description: draft.description, steps: [...draft.steps], stopOnError: draft.stopOnError });
-    workflow.stepTitles = draft.steps.map((_, index) => initial?.steps[index] === draft.steps[index] ? initial.stepTitles?.[index] ?? "" : "");
+    if (draft.kind) workflow.kind = draft.kind;
+    if (workflow.kind !== "command") workflow.stepTitles = draft.steps.map((_, index) => initial?.steps[index] === draft.steps[index] ? initial.stepTitles?.[index] ?? "" : "");
   }
+  if (workflow.kind === "command" && workflow.steps.length !== 1) throw new Error("A saved command must contain exactly one command. Use a workflow for multiple steps.");
   publish({ key: crypto.randomUUID(), workflow, original: initial ? structuredClone(initial) : null, sourceDraft: draft ? structuredClone(draft) : null, collapsed: false, busy: false, revision: 0, revealRevision: 0 });
 }
 export function updateWorkflowEditor(key: string, workflow: Workflow) {
   if (!session || session.key !== key || session.busy) return;
   if (workflow.id !== session.workflow.id) throw new Error("Cannot change a draft's workflow identity.");
+  if (workflow.kind !== session.workflow.kind) throw new Error("Cannot change a draft's kind.");
+  if (workflow.kind === "command" && workflow.steps.length !== 1) throw new Error("A saved command must contain exactly one command. Use a workflow for multiple steps.");
   publish({ ...session, workflow: structuredClone(workflow), revision: session.revision + 1 });
 }
 export function collapseWorkflowEditor(key: string) {
@@ -58,7 +62,7 @@ export function finishWorkflowEditor(key: string, revision: number) {
   publish(null);
 }
 
-export function addWorkflowCapture(text: string, source: "terminal-selection" | "ai-code", target: "new" | "current", expectedKey: string | null, replaceExisting = false) {
+export function addWorkflowCapture(text: string, source: "terminal-selection" | "terminal-history" | "ai-code", target: "new" | "current", expectedKey: string | null, replaceExisting = false) {
   if (!text.trim()) throw new Error("Select command text to add to a workflow.");
   if (new TextEncoder().encode(text).length > 8000) throw new Error("Selected text exceeds the 8,000-byte step limit. Select a smaller command; nothing was shortened.");
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(text)) throw new Error("Selected text contains control characters. Copy a plain command instead.");
@@ -70,8 +74,9 @@ export function addWorkflowCapture(text: string, source: "terminal-selection" | 
   }
   if (!session) throw new Error("There is no current workflow draft. Choose New workflow.");
   const replacingEmpty = session.workflow.steps.length === 1 && !session.workflow.steps[0].trim();
+  if (session.workflow.kind === "command" && !replacingEmpty) throw new Error("The current saved-command draft already has a command. Edit it directly or choose New workflow for multiple steps.");
   if (!replacingEmpty && session.workflow.steps.length >= 100) throw new Error("A workflow can contain at most 100 steps.");
   const steps = replacingEmpty ? [text] : [...session.workflow.steps, text];
   const stepTitles = replacingEmpty ? [session.workflow.stepTitles?.[0] ?? ""] : [...session.workflow.steps.map((_, index) => session!.workflow.stepTitles?.[index] ?? ""), ""];
-  publish({ ...session, workflow: { ...session.workflow, steps, stepTitles }, collapsed: false, revision: session.revision + 1, revealRevision: session.revealRevision + 1 });
+  publish({ ...session, workflow: { ...session.workflow, steps, ...(session.workflow.kind === "command" ? {} : { stepTitles }) }, collapsed: false, revision: session.revision + 1, revealRevision: session.revealRevision + 1 });
 }

@@ -33,11 +33,12 @@ export function WorkflowImport({ onClose }: { onClose: () => void }) {
     <CompactButton type="button" disabled={busy || !text.trim()} onClick={() => {
       try { const parsed = parseWorkflowImport(text); setIncoming(parsed); setExisting(structuredClone(loadWorkflows())); setChoices({}); setError(""); } catch (reason) { setIncoming(null); setError(String(reason)); }
     }}>Preview import</CompactButton>
-    {incoming && <section><h3>{incoming.length} workflow{incoming.length === 1 ? "" : "s"} to review</h3>{conflicts.map(({ index, incoming: workflow, matches }) => <article key={index} className="wf-step">
-      <strong>{workflow.name}</strong><p className="compact-help wf-help">{workflow.steps.length} steps · {workflow.inputs?.length ?? 0} declared inputs · {workflow.stopOnError === false ? "continue after failures" : "stop on failed step"}</p>
+    {incoming && <section><h3>{incoming.length} saved item{incoming.length === 1 ? "" : "s"} to review</h3>{conflicts.map(({ index, incoming: workflow, matches }) => <article key={index} className="wf-step">
+      <strong>{workflow.name}</strong><p className="compact-help wf-help">{workflow.kind === "command" ? "Command · terminal shell" : `Workflow · ${workflow.steps.length} steps · ${workflow.stopOnError === false ? "continue after failures" : "stop on failed step"}`} · {workflow.inputs?.length ?? 0} declared inputs</p>
+      {workflow.kind === "command" && <p className="compact-help wf-help">Runs directly in the selected terminal shell when you later choose Run command. Aliases and functions must already be loaded; directory and environment changes affect that shell. Importing does not run it.</p>}
       <ol>{workflow.steps.map((step, i) => <li key={i}>{workflow.stepTitles?.[i] && <strong>{workflow.stepTitles[i]}</strong>}<pre>{step}</pre></li>)}</ol>
       {workflow.description && <p>{workflow.description}</p>}
-      {matches.map((saved) => <details key={saved.id}><summary>Existing: {saved.name} · {saved.id}</summary><p className="compact-help wf-help">Replace overwrites these saved steps:</p>{saved.steps.map((step, i) => <pre key={i}>{i + 1}. {step}</pre>)}</details>)}
+      {matches.map((saved) => <details key={saved.id}><summary>Existing: {saved.name} · {saved.id}</summary><p className="compact-help wf-help">{saved.kind === "command" ? "Command · terminal shell" : "Workflow · POSIX child shell"}. Replace overwrites this definition:</p>{saved.steps.map((step, i) => <pre key={i}>{i + 1}. {step}</pre>)}</details>)}
       {(workflow.inputs?.length ?? 0) > 0 && <details><summary>Input definitions</summary>{workflow.inputs!.map((input) => <p key={input.name}>{input.label} · {input.name} · {input.type} · {input.required ? "required" : "optional"}{input.defaultValue !== undefined ? " · default: " + input.defaultValue : ""}</p>)}</details>}
       <CompactLabel className="compact-field wf-field"><span>{matches.length ? "Conflicts with " + matches.map((item) => item.name).join(", ") : "Import action"}</span>
         <CompactSelect aria-label={"Import action for " + workflow.name} value={choices[index]?.action === "replace" ? "replace:" + (choices[index] as { target: Workflow }).target.id : choices[index]?.action ?? (matches.length ? "" : "keep-both")} onChange={(event) => {
@@ -46,7 +47,7 @@ export function WorkflowImport({ onClose }: { onClose: () => void }) {
         }}><option value="" disabled>Choose an action…</option><option value="keep-both">{matches.length ? "Keep both (rename incoming)" : "Add workflow"}</option>{matches.map((item) => <option key={item.id} value={"replace:" + item.id}>Replace {item.name} · {item.id}</option>)}<option value="skip">Skip</option></CompactSelect>
       </CompactLabel>
     </article>)}</section>}
-    {preview && <details><summary>Result: {preview.length} saved workflows</summary><ul>{preview.map((wf) => <li key={wf.id}>{wf.name}</li>)}</ul></details>}
+    {preview && <details><summary>Result: {preview.length} saved items</summary><ul>{preview.map((wf) => <li key={wf.id}>{wf.name} · {wf.kind === "command" ? "Command" : "Workflow"}</li>)}</ul></details>}
     {(error || previewError) && <p className="compact-error wf-error" role="alert">{error || previewError}</p>}
     <div className="compact-actions wf-actions"><CompactButton type="button" variant="ghost" disabled={busy} onClick={onClose}>Cancel</CompactButton><CompactButton type="button" disabled={busy || !incoming || !preview || Object.values(choices).filter((choice) => choice.action === "skip").length === incoming.length} variant="primary" onClick={() => {
       if (!incoming) return; setBusy(true); setError("");

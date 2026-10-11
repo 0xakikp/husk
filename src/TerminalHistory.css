@@ -30,3 +30,6 @@
 .term-hist-stage-actions button:hover:not(:disabled) { background: var(--background); }
 .term-hist-stage-actions button:disabled { opacity: .6; cursor: wait; }
 .term-hist-stage-actions span { color: var(--muted-foreground); }
+.term-hist-save-command { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--foreground); font: inherit; cursor: pointer; }
+.term-hist-save-command:hover:not(:disabled) { background: var(--muted); }
+.term-hist-save-command:disabled { opacity: .45; cursor: default; }

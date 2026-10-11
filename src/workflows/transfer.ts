@@ -22,7 +22,10 @@ export function assertShareableWorkflows(list: Workflow[]): void {
 }
 export function exportWorkflowJson(workflows: Workflow[]): string {
   const list = validateWorkflowList(workflows); assertShareableWorkflows(list);
-  const payload = JSON.stringify({ format: "husk-workflows", version: 1, workflows: list }, null, 2);
+  // Older importers silently discard unknown fields. Version 2 makes them
+  // reject commands instead of changing their active-shell execution meaning.
+  const version = list.some((workflow) => workflow.kind === "command") ? 2 : 1;
+  const payload = JSON.stringify({ format: "husk-workflows", version, workflows: list }, null, 2);
   if (bytes(payload) > MAX_WORKFLOW_BYTES) throw new Error("Export exceeds 1 MiB. Export fewer workflows.");
   return payload;
 }
@@ -31,7 +34,8 @@ export function parseWorkflowImport(json: string): Workflow[] {
   let raw: unknown;
   try { raw = JSON.parse(json); } catch { throw new Error("This is not valid JSON."); }
   if (object(raw) && ("version" in raw || "format" in raw || "workflows" in raw)) {
-    if (raw.format !== "husk-workflows" || raw.version !== 1) throw new Error("Unsupported workflow format/version. Expected husk-workflows version 1.");
+    if (raw.format !== "husk-workflows" || (raw.version !== 1 && raw.version !== 2)) throw new Error("Unsupported workflow format/version. Expected husk-workflows version 1 or 2.");
+    if (raw.version === 1 && Array.isArray(raw.workflows) && raw.workflows.some((item) => object(item) && item.kind === "command")) throw new Error("Saved commands require husk-workflows version 2.");
     raw = raw.workflows;
   } else if (object(raw)) raw = [raw]; // Legacy Copy workflow JSON.
   if (!Array.isArray(raw) || !raw.length) throw new Error("Import needs at least one workflow.");

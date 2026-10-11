@@ -28,9 +28,19 @@ Example: command `git log -n {{count}} --oneline`; add a number input named `cou
 
 Saving is local, never executes commands, and only reports success after SQLite accepts the change. Definitions are stored in `~/.husk/state.sqlite` with a browser-storage compatibility copy under `huskv2.runbooks`. Failed saves leave the editor open. Unreadable durable data is not overwritten by an empty fallback. Runtime input values and terminal approvals are not saved as part of the workflow.
 
+## Saved commands, including aliases and functions
+
+Choose **Save command…** in the Workflows sidebar to save a named, single-line command, such as `arsloginp sandbox node-1` or `my-check`. Unlike a workflow, it runs **directly in the reviewed terminal's interactive shell**, not in a POSIX child shell. Aliases/functions must already be loaded in that shell; Husk does not discover them or read/source shell configuration. `cd`, `export`, remote logins and other state-changing commands affect that terminal. Saving a command does not install or redefine an alias.
+
+**Save command…** is also available on terminal selections, the highlighted Ctrl+R history result, and AI shell-code blocks. It opens an editable draft with the exact text, without staging, running, or saving it automatically. Multiline captures must be edited down to one line before saving. The editor uses the existing sidebar and supports collapse/resume and replacement confirmation like workflow drafts.
+
+Commands appear under **Commands**, can be searched and pinned, and use the same reviewed target, observed run status and output viewer as workflows. Definitions are saved in the same local SQLite store and persist until deleted. Deleting a saved command does not remove the alias/function from the shell or affect a script on disk.
+
+Optional inputs use whole-argument placeholders, e.g. `my-check {{environment}}`. Because the active shell may vary, saved-command inputs have a stricter portable grammar than workflow inputs: only ASCII letters, digits, spaces and `_ . / : @ + = , -` are allowed in values. Quotes, escapes, combined-word placeholders and shell expressions are rejected rather than guessed. Plain commands with no placeholders remain unchanged. For complex parameterized logic, use a reviewed script or POSIX workflow. Commands are not inherently read-only or safe merely because they are saved; always review the shell, host and expanded command before Run.
+
 ## Library: search, pins and linked scripts
 
-Use the header **Search** icon to filter names, descriptions, commands and linked paths locally. Escape clears the search and restores the list. Pin a workflow or script to place it in **Pinned**; unpinning keeps the item.
+Use the header **Search** icon to filter names, descriptions, commands and linked paths locally. Escape clears the search and restores the list. Pin a command, workflow or script to place it in **Pinned**; unpinning keeps the item.
 
 **Link script…** selects an existing local file. Husk saves its path, not a copy of its contents. Linking, searching, pinning and opening a file never execute it. **Open original file** opens the actual local file in Husk, even when another sidebar is browsing SSH files. Removing a link does not delete that file.
 
@@ -73,6 +83,8 @@ Version 1 example:
 }
 ```
 
+Exports containing saved commands use **version 2**, with `"kind": "command"` and exactly one entry in `steps`. Workflow-only exports retain version 1. Imports preserve the kind and explicitly show direct-terminal-shell behavior; command entries in a version-1 envelope are rejected to avoid changing execution semantics silently. Older Husk versions cannot import version 2.
+
 Legacy single workflow objects and arrays from the previous **Copy workflow JSON** action are accepted. IDs and names are required. Unsupported format versions, malformed definitions, duplicate IDs, invalid input metadata, and oversized data are rejected rather than truncated. Unknown runtime/UI fields are excluded from the canonical definition.
 
 Limits: 500 workflows; 100 steps per workflow; 8,000 UTF-8 bytes per step; 32 inputs; 64-byte input identifiers; 160-byte names, labels and step titles; 2,000-byte descriptions/defaults/runtime values; 1 MiB stored/imported/exported collection. Pretty-printed exports near the size limit may require exporting fewer workflows.
@@ -89,7 +101,7 @@ Running requires an empty, idle prompt with verified shell integration. Switchin
 
 Runtime inputs are literal shell arguments, including within simple quoted placeholders or prefixes/suffixes. They are not shell snippets and do not split into multiple arguments. Dynamic executable names, shell assignments/dispatchers/interpreters with inputs, and ambiguous parameterized shell grammar (substitutions, redirections, heredocs, functions) are rejected. For complex logic, put it in a reviewed executable script and pass literal arguments to that script. Programs can interpret arguments as flags or code; quoting does not make an arbitrary workflow harmless. Use tools' `--` argument delimiters when appropriate and only run workflows you trust.
 
-Steps run sequentially in one **POSIX `sh` child process**. Directory/environment changes carry between steps but do not change the interactive terminal's directory after completion. Interactive aliases/functions and shell-specific syntax are not inherited; Windows shells need a POSIX environment. Each card's final exit status determines failure. **Stop when a step fails** prevents later cards from running; it cannot detect a failure that an authored expression intentionally masks. The runner sends exactly one reviewed command and a final Enter to the captured PTY. A successful submission is not a claim that the workflow succeeded—read the terminal output/exit status.
+Workflow steps (not saved commands) run sequentially in one **POSIX `sh` child process**. Directory/environment changes carry between steps but do not change the interactive terminal's directory after completion. Interactive aliases/functions and shell-specific syntax are not inherited; Windows shells need a POSIX environment. Each card's final exit status determines failure. **Stop when a step fails** prevents later cards from running; it cannot detect a failure that an authored expression intentionally masks. The runner sends exactly one reviewed command and a final Enter to the captured PTY. A successful submission is not a claim that the workflow succeeded—read the terminal output/exit status.
 
 Secret values are hidden in the preview unless explicitly revealed. They are not persisted in workflow definitions, but executing a CLI command can expose them in shell history, process arguments, terminal logs, or output. Prefer credentials already supplied through a trusted environment/keychain when the tool supports that. Husk does not promise secure secret injection into arbitrary shell commands.
 
@@ -104,3 +116,5 @@ Secret values are hidden in the preview unless explicitly revealed. They are not
 7. Collect a terminal selection into a new draft, edit its name/metadata, resize and collapse, then collect an AI shell block into Current draft. Verify all edits survive, the terminal/chat stays usable, and no PTY write or save occurs until explicitly requested. Repeat with a narrow window, sidebar hidden, a cancelled replacement, and a pending/failed save.
 8. Search by name, command and linked path; press Escape and verify the full list returns. Pin both kinds of item, restart Husk, and confirm the pins and file links remain. Cancel the script chooser and remove a link: neither action should modify or execute a file.
 9. Link a disposable executable script with a shebang; open and edit the original file, then review/run it in a local test terminal. Verify an SSH target is refused. Exercise success, nonzero exit, missing/deleted file, and unknown completion. View output without rerunning; reload the window and confirm run results (not pins/links) are cleared.
+10. In a disposable shell, define `alias husk_check='printf hello'`, save `husk_check` as a command, and review/run it. Verify it resolves the alias in that terminal. Try another shell where the alias is absent: do not infer success. Save a command from Ctrl+R, a terminal selection and an AI shell block; verify no execution occurs until explicit Run. Test a cancelled draft replacement, pending save, and multiline capture.
+11. Pin/search a command, save/restart, then export/import version 2 alongside a workflow. Confirm the command retains its direct-shell behavior and the workflow its child-shell behavior. Test whole-argument inputs with spaces and reject quote/shell-expression values. Change the target or type a draft before Run and verify submission is blocked. Check success/failure output and secret masking.

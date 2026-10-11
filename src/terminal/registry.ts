@@ -225,11 +225,18 @@ function writeSessionInput(session: Session, data: string, preserveRunReceipt = 
  * not spend hundreds of milliseconds at different sizes. */
 function fitAttachedSession(session: Session): void {
   const container = session.container;
-  if (!container || !container.clientWidth || !container.clientHeight) return;
+  if (session.disposed || !session.visible || document.visibilityState === "hidden"
+    || !container?.isConnected || !container.clientWidth || !container.clientHeight) return;
 
   try {
     const dimensions = session.fitAddon.proposeDimensions();
-    if (!dimensions) return;
+    // During hide/wake and layout transitions FitAddon clamps even a 1px host
+    // to a 2-column, 1-row grid. Reflowing history into that grid can overflow
+    // the scrollback limit and permanently discard it. Keep the last usable
+    // grid until a visible host can fit a meaningful terminal again. Do not
+    // cache rejected measurements: the next visible fit must retry them.
+    if (!dimensions || !Number.isSafeInteger(dimensions.cols) || !Number.isSafeInteger(dimensions.rows)
+      || dimensions.cols < 20 || dimensions.rows < 3) return;
 
     session.lastWidth = container.clientWidth;
     session.lastHeight = container.clientHeight;
@@ -240,7 +247,8 @@ function fitAttachedSession(session: Session): void {
 
     const buffer = session.term.buffer.active;
     const wasFollowingBottom = buffer.viewportY >= buffer.baseY;
-    session.promptTracker.resize(dimensions.cols, () => session.fitAddon.fit());
+    // Apply the validated snapshot, rather than having fit() measure again.
+    session.promptTracker.resize(dimensions.cols, () => session.term.resize(dimensions.cols, dimensions.rows));
     if (wasFollowingBottom) session.term.scrollToBottom();
   } catch {}
 }
@@ -1004,6 +1012,8 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
   if (session.container) detachSession(leafId);
 
   session.container = container;
+  session.lastWidth = -1;
+  session.lastHeight = -1;
 
   // Move existing xterm element into container (preserves buffer + scrollback)
   const element = session.term.element;
@@ -1043,8 +1053,6 @@ export function attachSession(leafId: number, container: HTMLDivElement): void {
 
   session.lastCols = session.term.cols;
   session.lastRows = session.term.rows;
-  session.lastWidth = container.clientWidth;
-  session.lastHeight = container.clientHeight;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -2,7 +2,10 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-vi.mock("./store", () => ({ useWorkflows: () => [{ id: "wf_1", name: "Check", steps: ["git status"] }], loadWorkflows: () => [{ id: "wf_1", name: "Check", steps: ["git status"] }], saveWorkflows: vi.fn(), newWorkflowId: () => "new", getWorkflowLoadError: () => null }));
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+const fixture = vi.hoisted(() => ({ workflows: [] as import("./schema").Workflow[] }));
+vi.mock("./store", () => ({ useWorkflows: () => fixture.workflows, loadWorkflows: () => fixture.workflows, saveWorkflows: vi.fn(), newWorkflowId: () => "new", getWorkflowLoadError: () => null }));
 vi.mock("./draftStore", () => ({ useWorkflowDraft: () => null, clearWorkflowDraft: vi.fn(), stageWorkflowDraft: vi.fn(), workflowDraftFromSuggestion: vi.fn() }));
 vi.mock("./runRequest", () => ({ useWorkflowRunRequest: () => null, clearWorkflowRunRequest: vi.fn() }));
 vi.mock("./suggestions", () => ({ useWorkflowSuggestions: () => [], dismissWorkflowSuggestionFingerprint: vi.fn() }));
@@ -26,6 +29,7 @@ import { publishTerminalCommandRun } from "../ai/terminalContext";
 import { getWorkflowEditorSession, discardWorkflowEditor, collapseWorkflowEditor, resumeWorkflowEditor, addWorkflowCapture } from "./editorSession";
 let container: HTMLDivElement; let root: Root;
 beforeEach(() => {
+  fixture.workflows = [{ id: "wf_1", name: "Check", steps: ["git status"] }];
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   localStorage.removeItem(WORKFLOW_LIBRARY_STORAGE_KEY);
   window.dispatchEvent(new StorageEvent("storage", { key: WORKFLOW_LIBRARY_STORAGE_KEY }));
@@ -133,11 +137,67 @@ it("exports versioned JSON to a user-chosen file and does nothing on cancellatio
   expect(executeWorkflow).not.toHaveBeenCalled();
 });
 
+it("opens a new saved-command draft without saving or executing", async () => {
+  await render();
+  const add = [...container.querySelectorAll("button")].find(button => button.textContent === "Save command…")!;
+  await act(async () => { add.click(); await vi.dynamicImportSettled(); });
+  expect(getWorkflowEditorSession()?.workflow).toMatchObject({ kind: "command", steps: [""] });
+  expect(getWorkflowEditorSession()?.original).toBeNull();
+  expect(container.textContent).toContain("Save command");
+  expect(container.textContent).not.toContain("Add step");
+  expect(saveWorkflows).not.toHaveBeenCalled();
+  expect(executeWorkflow).not.toHaveBeenCalled();
+});
+
+it("groups and pins saved commands, and reviews the exact direct-shell command", async () => {
+  const command = { id: "cmd_1", kind: "command" as const, name: "My login", steps: ["arsloginp sandbox node-1"] };
+  fixture.workflows.push(command);
+  const target = { leafId: 1, scope: { ptyId: 7, cwd: "/project", isRemote: false, host: null, scopeToken: "session:7" } };
+  vi.mocked(captureWorkflowTarget).mockReturnValue(target);
+  vi.mocked(workflowTargetError).mockReturnValue(null);
+  await render();
+  expect(container.querySelector('[aria-label="Commands"] [data-item-kind="command"]')?.textContent).toContain("My login");
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Pin My login"]')!.click());
+  expect(getWorkflowLibrary().pinnedWorkflowIds).toEqual(["cmd_1"]);
+  expect(container.querySelector('[aria-label="Pinned"] [data-item-kind="command"]')).not.toBeNull();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Review & run My login"]')!.click());
+  expect(executeWorkflow).not.toHaveBeenCalled();
+  const dialog = document.querySelector(".workflow-dialog")!;
+  expect(dialog.textContent).toContain("Aliases and functions must already be loaded");
+  expect(dialog.textContent).not.toContain("Stops on error");
+  expect(dialog.querySelector(".wf-run-step pre")?.textContent).toBe(command.steps[0]);
+  const run = [...dialog.querySelectorAll("button")].find(button => button.textContent === "Run command")!;
+  expect(run.disabled).toBe(false);
+  await act(async () => run.click());
+  expect(executeWorkflow).toHaveBeenCalledExactlyOnceWith(command, {}, target, command.steps[0]);
+  expect(document.querySelector(".workflow-dialog")).toBeNull();
+});
+
+it("finds saved command text and exports its direct-shell kind in version 2", async () => {
+  fixture.workflows.push({ id: "cmd_1", kind: "command", name: "My login", steps: ["arsloginp sandbox node-1"] });
+  await render();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Search saved items"]')!.click());
+  const input = container.querySelector<HTMLInputElement>('[aria-label="Filter saved items"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "arsloginp");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(container.querySelector('[aria-label="Review & run My login"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label="Review & run Check"]')).toBeNull();
+  vi.mocked(save).mockResolvedValueOnce("/exports/commands.json");
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Workflow options"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent === "Export all workflows…")!;
+  await act(async () => item.click());
+  expect(writeFile).toHaveBeenCalledWith("/exports/commands.json", expect.stringContaining('"version": 2'));
+  expect(writeFile).toHaveBeenCalledWith("/exports/commands.json", expect.stringContaining('"kind": "command"'));
+  expect(executeWorkflow).not.toHaveBeenCalled();
+});
+
 it("filters workflows and scripts locally and restores the list with Escape", async () => {
   addLinkedScript({ name: "Environment", path: "/project/scripts/check-env.sh" });
   await render();
-  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Search workflows and scripts"]')!.click());
-  const input = container.querySelector<HTMLInputElement>('[aria-label="Filter workflows and scripts"]')!;
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Search saved items"]')!.click());
+  const input = container.querySelector<HTMLInputElement>('[aria-label="Filter saved items"]')!;
   const query = async (value: string) => act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -149,12 +209,48 @@ it("filters workflows and scripts locally and restores the list with Escape", as
   expect(container.querySelector('[aria-label="Review & run Check"]')).toBeNull();
   expect(container.querySelector('[aria-label="Review & run Environment"]')).not.toBeNull();
   await query("not found");
-  expect(container.textContent).toContain("No matching workflows or scripts.");
+  expect(container.textContent).toContain("No matching commands, workflows or scripts.");
   await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-  expect(container.querySelector('[aria-label="Filter workflows and scripts"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Filter saved items"]')).toBeNull();
   expect(container.querySelectorAll(".wf-library-item")).toHaveLength(2);
-  expect(document.activeElement?.getAttribute("aria-label")).toBe("Search workflows and scripts");
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Search saved items");
   expect(executeWorkflow).not.toHaveBeenCalled();
+});
+
+it("shows Clear only inside a populated search, restores input focus, and supports Escape from the button", async () => {
+  await render();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Search saved items"]')!.click());
+  const field = container.querySelector<HTMLInputElement>('[aria-label="Filter saved items"]')!;
+  const group = container.querySelector('.wf-library-search')!;
+  const clear = () => group.querySelector<HTMLButtonElement>('[aria-label="Clear workflow search"]');
+  expect(group.classList.contains("compact-form")).toBe(false);
+  expect(clear()).toBeNull();
+  const typeQuery = async () => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "unmatched");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await typeQuery();
+  expect(clear()?.classList.contains("wf-library-search-clear")).toBe(true);
+  await act(async () => { clear()!.focus(); clear()!.click(); });
+  expect(field.value).toBe("");
+  expect(document.activeElement).toBe(field);
+  expect(clear()).toBeNull();
+  expect(container.querySelector('[aria-label="Review & run Check"]')).not.toBeNull();
+  await typeQuery();
+  await act(async () => {
+    clear()!.focus();
+    clear()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  expect(container.querySelector('.wf-library-search')).toBeNull();
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Search saved items");
+  expect(executeWorkflow).not.toHaveBeenCalled();
+});
+
+it("keeps the clear action inside the search input without adding a second row", () => {
+  const css = readFileSync(resolve("src/workflows/workflowLibrary.css"), "utf8");
+  expect(css).toMatch(/\.wf-library-search\s*\{[^}]*position: relative/);
+  expect(css).toMatch(/\.wf-library-search \.compact-control\s*\{[^}]*padding-right: 34px/);
+  expect(css).toMatch(/\.wf-library-search-clear\s*\{[^}]*position: absolute;[^}]*top: 50%;[^}]*height: 24px/);
 });
 
 it("pins workflows and scripts without executing or rewriting definitions", async () => {

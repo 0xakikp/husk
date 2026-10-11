@@ -12,6 +12,7 @@ vi.mock("../toast", () => ({ toast: vi.fn() }));
 import { WorkflowSidebarEditor } from "./WorkflowSidebarEditor";
 import { toast } from "../toast";
 import { saveWorkflows } from "./store";
+import { openSavedCommandEditor } from "./editorActions";
 import { addWorkflowCapture, discardWorkflowEditor, getWorkflowEditorSession, resumeWorkflowEditor, setWorkflowEditorBusy, startWorkflowEditor } from "./editorSession";
 
 let root: Root; let container: HTMLDivElement;
@@ -110,4 +111,39 @@ it("reports a failed save after unmount and retains an editable draft on reopen"
   await renderEditor();
   expect(container.querySelector<HTMLInputElement>('[aria-label="Workflow name"]')?.value).toBe("Kept after error");
   expect(button("Save workflow").disabled).toBe(false);
+});
+
+it("saves a fresh command alongside workflows, without mistaking the draft for a missing original", async () => {
+  openSavedCommandEditor("  ll --color=auto  ", "terminal-history");
+  await renderEditor();
+  expect(container.querySelector('[aria-label="Saved command editor"]')).not.toBeNull();
+  expect(container.textContent).toContain("New command");
+  expect(getWorkflowEditorSession()?.original).toBeNull();
+  await input("Command name", "  List files  ");
+  await click("Collapse command editor");
+  expect(getWorkflowEditorSession()?.workflow).toMatchObject({ kind: "command", name: "  List files  ", steps: ["  ll --color=auto  "] });
+  await act(async () => resumeWorkflowEditor());
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Command"]')?.value).toBe("  ll --color=auto  ");
+  expect(saveWorkflows).not.toHaveBeenCalled();
+  await click("Save command");
+  expect(saveWorkflows).toHaveBeenCalledWith([wf, expect.objectContaining({ kind: "command", name: "List files", steps: ["  ll --color=auto  "] })]);
+  expect(toast).toHaveBeenCalledWith({ title: "Command saved", message: "Nothing was executed.", variant: "success" });
+  expect(getWorkflowEditorSession()).toBeNull();
+});
+
+it("retains saved command kind when editing and protects it against concurrent changes", async () => {
+  const command: Workflow = { id: "saved_command", kind: "command", name: "Status", steps: ["git status"] };
+  fixture.saved.push(structuredClone(command));
+  startWorkflowEditor(command); await renderEditor();
+  expect(container.textContent).toContain("Edit command");
+  await input("Command name", "Status updated");
+  fixture.saved = [wf, { ...command, name: "Changed elsewhere" }];
+  await click("Save command");
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("changed while you were editing");
+  expect(saveWorkflows).not.toHaveBeenCalled();
+  expect(getWorkflowEditorSession()?.workflow).toMatchObject({ kind: "command", name: "Status updated" });
+  fixture.saved = [wf, structuredClone(command)];
+  await click("Save command");
+  expect(saveWorkflows).toHaveBeenCalledWith([wf, expect.objectContaining({ id: command.id, kind: "command", name: "Status updated" })]);
+  expect(getWorkflowEditorSession()).toBeNull();
 });

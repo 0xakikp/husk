@@ -116,6 +116,11 @@ fn validate_workflow_state(value: &str) -> Result<(), String> {
         let item = item.as_object().ok_or("each workflow must be an object")?;
         let id = item.get("id").and_then(Value::as_str).unwrap_or_default();
         let name = item.get("name").and_then(Value::as_str).unwrap_or_default();
+        let is_command = match item.get("kind") {
+            None => false,
+            Some(value) if value.as_str() == Some("command") => true,
+            Some(_) => return Err("saved item kind must be command or omitted".into()),
+        };
         let steps = item
             .get("steps")
             .and_then(Value::as_array)
@@ -136,6 +141,15 @@ fn validate_workflow_state(value: &str) -> Result<(), String> {
             return Err(
                 "workflow steps must be non-empty strings no longer than 8,000 bytes".into(),
             );
+        }
+        if is_command
+            && (steps.len() != 1
+                || steps[0].as_str().is_none_or(|text| {
+                    text.chars()
+                        .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
+                }))
+        {
+            return Err("a saved command must contain exactly one single-line command".into());
         }
         if item
             .get("description")
@@ -455,6 +469,40 @@ mod tests {
     fn workflow_state_preserves_typed_inputs_and_step_titles() {
         let value = serde_json::json!({"items":[{"id":"wf_1","name":"History","steps":["git log -n {{count}}"],"stepTitles":["Recent commits"],"inputs":[{"name":"count","label":"Number of commits","type":"number","required":true,"defaultValue":"5"}]}]});
         assert!(validate_workflow_state(&value.to_string()).is_ok());
+    }
+
+    #[test]
+    fn workflow_state_accepts_saved_alias_commands_without_rewriting_them() {
+        let value = serde_json::json!({"items":[{"id":"wf_alias","name":"Status alias","kind":"command","steps":["  gs  "]}]});
+        assert!(validate_workflow_state(&value.to_string()).is_ok());
+    }
+
+    #[test]
+    fn workflow_state_rejects_unknown_kinds_and_non_single_line_commands() {
+        let good = serde_json::json!({"items":[{"id":"wf_alias","name":"Alias","kind":"command","steps":["gs"]}]});
+        for kind in [
+            serde_json::json!("workflow"),
+            serde_json::json!("unknown"),
+            serde_json::Value::Null,
+        ] {
+            let mut value = good.clone();
+            value["items"][0]["kind"] = kind;
+            assert!(validate_workflow_state(&value.to_string()).is_err());
+        }
+        for steps in [
+            serde_json::json!(["gs", "pwd"]),
+            serde_json::json!(["gs\npwd"]),
+            serde_json::json!(["gs\rpwd"]),
+            serde_json::json!(["gs\tpwd"]),
+            serde_json::json!(["gs\u{001b}pwd"]),
+            serde_json::json!(["gs\u{0085}pwd"]),
+            serde_json::json!(["gs\u{2028}pwd"]),
+            serde_json::json!(["é".repeat(4_001)]),
+        ] {
+            let mut value = good.clone();
+            value["items"][0]["steps"] = steps;
+            assert!(validate_workflow_state(&value.to_string()).is_err());
+        }
     }
 
     #[test]

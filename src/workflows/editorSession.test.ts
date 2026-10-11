@@ -178,4 +178,37 @@ describe("workflow editor session", () => {
     finishWorkflowEditor(key, current().revision);
     expect(getWorkflowEditorSession()).toBeNull();
   });
+
+  it("keeps a command draft distinct from an existing original across edits and collapse", () => {
+    startWorkflowEditor(null, { kind: "command", name: "", description: "", steps: ["  git status  "], stopOnError: true, source: "terminal-history" });
+    const key = current().key;
+    expect(current().original).toBeNull();
+    expect(current().sourceDraft).toMatchObject({ kind: "command", source: "terminal-history" });
+    expect(current().workflow).toMatchObject({ kind: "command", steps: ["  git status  "] });
+    updateWorkflowEditor(key, { ...current().workflow, name: "  Status  " });
+    collapseWorkflowEditor(key); resumeWorkflowEditor();
+    expect(current()).toMatchObject({ key, original: null, workflow: { kind: "command", name: "  Status  ", steps: ["  git status  "] } });
+    expect(() => updateWorkflowEditor(key, { ...current().workflow, kind: undefined })).toThrow("kind");
+    expect(() => updateWorkflowEditor(key, { ...current().workflow, steps: ["git status", "pwd"] })).toThrow("exactly one command");
+    expect(current().workflow.steps).toEqual(["  git status  "]);
+  });
+
+  it("only fills a blank command draft from capture and never appends another step", () => {
+    startWorkflowEditor(null, { kind: "command", name: "Status", description: "Preserve this", steps: [""], stopOnError: true, source: "manual" });
+    const key = current().key;
+    collapseWorkflowEditor(key);
+    addWorkflowCapture("git status", "terminal-history", "current", key);
+    expect(current()).toMatchObject({ collapsed: false, workflow: { kind: "command", name: "Status", description: "Preserve this", steps: ["git status"] } });
+    expect(current().workflow).not.toHaveProperty("stepTitles");
+    const full = current();
+    expect(() => addWorkflowCapture("pwd", "terminal-selection", "current", key)).toThrow("already has a command");
+    expect(current()).toBe(full);
+  });
+
+  it("preserves saved command kind when opening an edit draft without an explicit kind", () => {
+    const command: Workflow = { id: "saved_command", kind: "command", name: "Status", steps: ["git status"] };
+    startWorkflowEditor(command, { name: "Status", description: "Updated", steps: ["git status --short"], stopOnError: true, source: "edit" });
+    expect(current().original).toEqual(command);
+    expect(current().workflow).toMatchObject({ kind: "command", description: "Updated", steps: ["git status --short"] });
+  });
 });

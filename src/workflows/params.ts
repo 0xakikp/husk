@@ -2,7 +2,9 @@ import { shq } from "../lib/shellQuote";
 import { bytes, isWorkflowNumber, type Workflow, type WorkflowInput } from "./schema";
 
 export type WorkflowParam = { name: string; default: string | null };
+export const COMMAND_INPUT_HELP = "Saved command inputs must be whole arguments containing only ASCII letters, digits, spaces, and _ . / : @ + = , -. Quotes, backslashes, and shell syntax are not supported.";
 const paramRe = () => /\{\{\s*([A-Za-z0-9_]+)\s*(?:=\s*([^}]*?))?\s*\}\}/g;
+const unsafePrograms = /^(?:eval|exec|source|\.|env|sudo|doas|xargs|sh|bash|zsh|fish|dash|ksh|csh|tcsh|python[\d.]*|node|nodejs|perl|ruby|php|lua|awk|osascript|if|then|elif|else|fi|for|while|until|do|done|case|esac|select|function|time|coproc|!|command|builtin|return|trap|shift|set|unset|export|read|readonly|local|declare|typeset|alias|unalias)$/i;
 export function extractParams(steps: string[]): WorkflowParam[] {
   const seen = new Map<string, string | null>();
   for (const step of steps) for (const match of step.matchAll(paramRe())) {
@@ -45,7 +47,6 @@ function expandStep(text: string, values: Record<string, string>): string {
   if (!extractParams([text]).length) return text;
   if (/[<>\x60]/.test(text) || /\$\(|\$\{|[\r\n]/.test(text)) throw new Error("Parameterized steps cannot use redirection, heredocs, backticks, or shell substitutions. Use simple argument placeholders.");
   let result = ""; let i = 0; let needsProgram = true;
-  const unsafePrograms = /^(?:eval|exec|source|\.|env|sudo|doas|xargs|sh|bash|zsh|fish|dash|ksh|csh|tcsh|python[\d.]*|node|nodejs|perl|ruby|php|lua|awk|osascript|if|then|elif|else|fi|for|while|until|do|done|case|esac|select|function|time|coproc|!|command|builtin|return|trap|shift|set|unset|export|read|readonly|local|declare|typeset|alias|unalias)$/i;
   while (i < text.length) {
     if (/\s/.test(text[i])) { result += text[i++]; continue; }
     if (/[;&|]/.test(text[i])) { result += text[i++]; needsProgram = true; continue; }
@@ -90,16 +91,60 @@ function expandStep(text: string, values: Record<string, string>): string {
   }
   return result;
 }
+/** The active shell is intentionally not guessed from the local login shell:
+ * it may be fish, PowerShell, or an SSH session. A small literal alphabet in
+ * standalone single-quoted arguments needs no dialect-specific escaping.
+ * Plain authored commands are unchanged; only parameterized templates use
+ * this deliberately small grammar. Aliases/functions still resolve in-shell. */
+function expandSavedCommand(text: string, values: Record<string, string>): string {
+  if (!extractParams([text]).length) {
+    if (text.includes("{{")) throw new Error("Malformed input placeholder.");
+    return text;
+  }
+  let result = ""; let i = 0; let needsProgram = true;
+  while (i < text.length) {
+    if (text[i] === " ") { result += text[i++]; continue; }
+    const remaining = text.slice(i);
+    const input = remaining.match(/^(['"])?\{\{\s*([A-Za-z0-9_]+)\s*(?:=\s*([^}]*?))?\s*\}\}\1(?= |$)/);
+    if (input) {
+      if (needsProgram) throw new Error("Inputs cannot select an executable, shell assignment, interpreter, or command dispatcher.");
+      if (!Object.prototype.hasOwnProperty.call(values, input[2])) throw new Error("Missing input: " + input[2]);
+      const value = values[input[2]];
+      if (!/^[A-Za-z0-9 _./:@+=,-]*$/.test(value)) throw new Error(input[2] + ": " + COMMAND_INPUT_HELP);
+      result += "'" + value + "'";
+      i += input[0].length;
+      continue;
+    }
+    const literal = remaining.match(/^(?:'[A-Za-z0-9 _./:@%+=,-]*'|"[A-Za-z0-9 _./:@%+=,-]*"|[A-Za-z0-9_./:@%+=,-]+)(?= |$)/)?.[0];
+    if (!literal || literal === "--%" || literal.startsWith("@")) throw new Error("Parameterized saved commands support a simple command with whole-argument inputs, not shell syntax or combined words. " + COMMAND_INPUT_HELP);
+    if (needsProgram) {
+      const program = (literal.split("/").pop() ?? "").replace(/\.exe$/i, "");
+      if (!/^[A-Za-z_./][A-Za-z0-9_./-]*$/.test(literal) || unsafePrograms.test(program)
+        || /^(?:pwsh|powershell|cmd)(?:\.exe)?$|^(?:iex|invoke-expression|invoke-command|icm|start-process|saps|start|foreach|foreach-object|begin|end|switch|and|or|not)$/i.test(program)) throw new Error("Inputs cannot select an executable, shell assignment, interpreter, or command dispatcher.");
+      needsProgram = false;
+    }
+    result += literal;
+    i += literal.length;
+  }
+  return result;
+}
 export function substituteParams(text: string, values: Record<string, string>): string {
   return expandStep(text, valuesFor({ steps: [text] }, values));
 }
-export function compileWorkflow(wf: Pick<Workflow, "steps" | "inputs" | "stopOnError">, values: Record<string, string>): { steps: string[]; command: string } {
+export function compileWorkflow(wf: Pick<Workflow, "steps" | "inputs" | "stopOnError" | "kind">, values: Record<string, string>): { steps: string[]; command: string } {
   if (!wf.steps.length || wf.steps.length > 100) throw new Error("Use 1–100 steps.");
+  if (wf.kind !== undefined && wf.kind !== "command") throw new Error("Unknown saved item kind.");
+  if (wf.kind === "command" && wf.steps.length !== 1) throw new Error("A saved command needs exactly one command line.");
   const resolved = valuesFor(wf, values);
   const steps = wf.steps.map((step, index) => {
     if (!step.trim() || bytes(step) > 8000 || /[\x00-\x1f\x7f\u2028\u2029]/.test(step)) throw new Error("Step " + (index + 1) + ": use one command line per card, at most 8,000 UTF-8 bytes.");
-    return expandStep(step, resolved);
+    if (wf.kind === "command" && /[\x80-\x9f]/.test(step)) throw new Error("Saved commands cannot contain control characters.");
+    return wf.kind === "command" ? expandSavedCommand(step, resolved) : expandStep(step, resolved);
   });
+  if (wf.kind === "command") {
+    if (bytes(steps[0]) > 64 * 1024) throw new Error("Expanded command exceeds the 64 KiB terminal-run limit.");
+    return { steps, command: steps[0] };
+  }
   // Each reviewed step is a separate argument; semicolons in a later step
   // cannot escape a simple && chain. cd/env changes last within the workflow.
   const script = 'status=0; for step do eval "$step"; status=$?; ' +

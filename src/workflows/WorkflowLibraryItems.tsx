@@ -44,29 +44,31 @@ export function WorkflowLibraryItems(props: Props) {
     : `${item.value.name}\n${item.value.path}`).toLocaleLowerCase().includes(needle));
   const isPinned = (item: Item) => (item.kind === "workflow" ? props.library.pinnedWorkflowIds : props.library.pinnedScriptIds).includes(item.value.id);
   const pinned = items.filter(isPinned);
-  const workflows = items.filter((item) => item.kind === "workflow" && !isPinned(item));
+  const commands = items.filter((item) => item.kind === "workflow" && item.value.kind === "command" && !isPinned(item));
+  const workflows = items.filter((item) => item.kind === "workflow" && item.value.kind !== "command" && !isPinned(item));
   const scripts = items.filter((item) => item.kind === "script" && !isPinned(item));
-  const groups = [{ name: "Pinned", items: pinned }, { name: "Workflows", items: workflows }, { name: "Scripts", items: scripts }];
-  const showHeadings = props.library.scripts.length > 0 || props.library.pinnedWorkflowIds.some((id) => props.workflows.some((wf) => wf.id === id));
+  const groups = [{ name: "Pinned", items: pinned }, { name: "Commands", items: commands }, { name: "Workflows", items: workflows }, { name: "Scripts", items: scripts }];
+  const showHeadings = props.library.scripts.length > 0 || props.workflows.some(wf => wf.kind === "command") || props.library.pinnedWorkflowIds.some((id) => props.workflows.some((wf) => wf.id === id));
 
   const renderItem = (item: Item) => {
     const { value, kind } = item;
+    const label = item.kind === "workflow" && item.value.kind === "command" ? "command" : kind;
     const pinnedItem = isPinned(item);
     const runKey = workflowRunKey(value.id, kind);
     const run = props.runs.get(runKey);
     const pinLabel = `${pinnedItem ? "Unpin" : "Pin"} ${value.name}`;
     const pin = () => props.onPin(kind, value.id, !pinnedItem);
     return <HuskContextMenu key={`${kind}:${value.id}`}>
-      <HuskContextMenuTrigger asChild><div className="rb-item wf-library-item" data-item-id={value.id} data-item-kind={kind} onContextMenu={(event) => event.stopPropagation()}>
+      <HuskContextMenuTrigger asChild><div className="rb-item wf-library-item" data-item-id={value.id} data-item-kind={label} onContextMenu={(event) => event.stopPropagation()}>
         <button type="button" className="rb-run" title={kind === "script" ? "Review & run local script" : "Review & run"} aria-label={"Review & run " + value.name}
           onClick={() => item.kind === "workflow" ? props.onRun(item.value) : props.onRunScript(item.value)}><HugeiconsIcon icon={PlayIcon} size={11} strokeWidth={2} /></button>
         <div className="rb-meta">
           <span className="rb-name" title={value.name}>{value.name}</span>
-          <span className="rb-steps" title={item.kind === "script" ? item.value.path : undefined}>{item.kind === "script" ? "Linked script · " + item.value.path : `${item.value.steps.length} step${item.value.steps.length === 1 ? "" : "s"}`}</span>
+          <span className="rb-steps" title={item.kind === "script" ? item.value.path : label === "command" ? item.value.steps[0] : undefined}>{item.kind === "script" ? "Script · " + item.value.path : label === "command" ? "Command · terminal shell" : `Workflow · ${item.value.steps.length} step${item.value.steps.length === 1 ? "" : "s"}`}</span>
         </div>
         <div className="wf-library-item-actions">
           <button type="button" className="ai-icon" aria-label={pinLabel} title={pinLabel} aria-pressed={pinnedItem} onClick={pin}><HugeiconsIcon icon={pinnedItem ? PinOffIcon : PinIcon} size={12} /></button>
-          {item.kind === "workflow" ? <button type="button" className="ai-icon" title="Edit workflow" aria-label={"Edit " + value.name} onClick={() => props.onEdit(item.value)}><HugeiconsIcon icon={Edit02Icon} size={12} /></button>
+          {item.kind === "workflow" ? <button type="button" className="ai-icon" title={"Edit " + label} aria-label={"Edit " + value.name} onClick={() => props.onEdit(item.value)}><HugeiconsIcon icon={Edit02Icon} size={12} /></button>
             : <button type="button" className="ai-icon" disabled={!props.onOpenScript} title="Open original file" aria-label={"Open " + value.name} onClick={() => item.kind === "script" && props.onOpenScript?.(item.value)}><HugeiconsIcon icon={File02Icon} size={12} /></button>}
         </div>
         {run && <div className="wf-library-run" data-phase={run.phase}>
@@ -78,14 +80,14 @@ export function WorkflowLibraryItems(props: Props) {
         <HuskContextMenuItem icon={pinnedItem ? PinOffIcon : PinIcon} onSelect={pin}>{pinnedItem ? "Unpin" : "Pin to top"}</HuskContextMenuItem>
         {item.kind === "workflow" ? <>
           <HuskContextMenuItem icon={PlayIcon} onSelect={() => props.onRun(item.value)}>Review & run…</HuskContextMenuItem>
-          <HuskContextMenuItem icon={Edit02Icon} onSelect={() => props.onEdit(item.value)}>Edit workflow…</HuskContextMenuItem>
+          <HuskContextMenuItem icon={Edit02Icon} onSelect={() => props.onEdit(item.value)}>Edit {label}…</HuskContextMenuItem>
           <HuskContextMenuItem icon={RepeatIcon} onSelect={() => props.onDuplicate(item.value)}>Duplicate</HuskContextMenuItem>
           <HuskContextMenuSeparator />
-          <HuskContextMenuItem icon={Copy01Icon} onSelect={() => props.onCopyCommands(item.value)}>Copy step templates</HuskContextMenuItem>
-          <HuskContextMenuItem icon={Copy01Icon} onSelect={() => props.onCopyJson(item.value)}>Copy workflow JSON</HuskContextMenuItem>
+          <HuskContextMenuItem icon={Copy01Icon} onSelect={() => props.onCopyCommands(item.value)}>{label === "command" ? "Copy command template" : "Copy step templates"}</HuskContextMenuItem>
+          <HuskContextMenuItem icon={Copy01Icon} onSelect={() => props.onCopyJson(item.value)}>Copy {label} JSON</HuskContextMenuItem>
           <HuskContextMenuItem icon={Copy01Icon} onSelect={() => props.onExport(item.value)}>Export JSON…</HuskContextMenuItem>
           <HuskContextMenuSeparator />
-          <HuskContextMenuItem icon={Delete02Icon} danger onSelect={() => props.onDelete(item.value)}>Delete workflow…</HuskContextMenuItem>
+          <HuskContextMenuItem icon={Delete02Icon} danger onSelect={() => props.onDelete(item.value)}>Delete {label}…</HuskContextMenuItem>
         </> : <>
           <HuskContextMenuItem icon={File02Icon} disabled={!props.onOpenScript} onSelect={() => props.onOpenScript?.(item.value)}>Open original file</HuskContextMenuItem>
           <HuskContextMenuItem icon={PlayIcon} onSelect={() => props.onRunScript(item.value)}>Review & run local script…</HuskContextMenuItem>
@@ -100,6 +102,6 @@ export function WorkflowLibraryItems(props: Props) {
       {showHeadings && <h3 className="wf-library-heading">{group.name}<span>{group.items.length}</span></h3>}
       <div className="rb-list">{group.items.map(renderItem)}</div>
     </section>)}
-    {items.length === 0 && needle && <p className="wf-library-empty" role="status">No matching workflows or scripts.</p>}
+    {items.length === 0 && needle && <p className="wf-library-empty" role="status">No matching commands, workflows or scripts.</p>}
   </div>;
 }

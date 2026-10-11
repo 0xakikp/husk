@@ -230,6 +230,9 @@ export function classifyWorkflowSuggestion(
   candidate: NewWorkflowSuggestion,
   workflows: Workflow[],
 ): WorkflowSuggestion | null {
+  // Saved commands resolve in an interactive shell and cannot evolve into a
+  // multi-step POSIX workflow without an explicit new definition.
+  workflows = workflows.filter(workflow => workflow.kind !== "command");
   if (workflows.some((workflow) => (
     workflow.steps.length === candidate.steps.length
     && workflow.steps.every((step, index) => workflowStepMatches(step, candidate.steps[index]))

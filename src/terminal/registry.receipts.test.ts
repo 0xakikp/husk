@@ -17,6 +17,7 @@ vi.mock("./sessionLifecycle", async importOriginal => {
       status = { state: "ready" };
       constructor(_transport: unknown, _onData: unknown, private onChange: () => void) {}
       async start() { this.onChange(); }
+      async check() {}
       write(data: string) {
         if (!fixture.accept) return false;
         fixture.writes.push({ ptyId: this.id, data });
@@ -28,7 +29,7 @@ vi.mock("./sessionLifecycle", async importOriginal => {
   };
 });
 
-import { createSession, disposeSession, getSessionHandle, restartSession, setSessionActive, submitTrackedTerminalCommand } from "./registry";
+import { checkSessionHealth, createSession, disposeSession, getSessionHandle, restartSession, setSessionActive, setSessionVisible, submitTrackedTerminalCommand } from "./registry";
 import { invoke } from "@tauri-apps/api/core";
 import { captureScreenCommandTarget, stageScreenCommand } from "./stageScreenCommand";
 import {
@@ -66,6 +67,77 @@ async function setup() {
 }
 
 describe("registry receipt integration without native shell processes", () => {
+  it("preserves actual scrollback across tiny wake/layout measurements, then resumes ordinary resizing", async () => {
+    const { leaf, session, write } = await setup();
+    session.term.resize(120, 30);
+    await write(Array.from({ length: 100 }, (_, i) => `LINE${String(i).padStart(3, "0")} ${"x".repeat(90)}\r\n`).join(""));
+    session.term.scrollToTop();
+    const history = getSessionHandle(leaf)!.getBuffer(1000);
+    const beforeLength = session.term.buffer.normal.length;
+    const host = document.createElement("div");
+    document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 1000 }, clientHeight: { value: 600 } });
+    session.container = host;
+    const measure = vi.spyOn(session.fitAddon, "proposeDimensions").mockReturnValue({ cols: 2, rows: 1 });
+    const refit = vi.spyOn(session.fitAddon, "fit");
+    const resize = vi.spyOn(session.term, "resize");
+    try {
+      setSessionVisible(leaf, true);
+      await checkSessionHealth(leaf);
+      getSessionHandle(leaf)!.resize();
+      expect(resize).not.toHaveBeenCalled();
+      expect(session.term.buffer.normal.length).toBe(beforeLength);
+      expect(session.term.buffer.normal.viewportY).toBe(0);
+      expect(getSessionHandle(leaf)!.getBuffer(1000)).toBe(history);
+      expect(session.lastWidth).toBe(-1);
+
+      measure.mockReturnValue({ cols: 100, rows: 25 });
+      await checkSessionHealth(leaf);
+      expect(resize).toHaveBeenCalledExactlyOnceWith(100, 25);
+      expect(refit).not.toHaveBeenCalled();
+      expect(getSessionHandle(leaf)!.getBuffer(1000)).toBe(history);
+      expect(session.term.buffer.normal.baseY).toBeGreaterThan(0);
+      expect(session.term.buffer.normal.viewportY).toBeLessThan(session.term.buffer.normal.baseY);
+      expect(nativeWrites()).toEqual([]);
+      expect(fixture.writes).toEqual([]);
+      expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "pty_resize").slice(-1)[0])
+        .toEqual(["pty_resize", { id: session.ptyId, cols: 100, rows: 25 }]);
+    } finally { host.remove(); }
+  });
+
+  it("ignores hidden, detached and invalid geometry without invalidating the prompt", async () => {
+    const { leaf, session } = await setup();
+    const host = document.createElement("div");
+    Object.defineProperties(host, { clientWidth: { value: 1000 }, clientHeight: { value: 600 } });
+    session.container = host;
+    const measure = vi.spyOn(session.fitAddon, "proposeDimensions").mockReturnValue({ cols: 100, rows: 25 });
+    const resize = vi.spyOn(session.term, "resize");
+    try {
+      setSessionVisible(leaf, true);
+      expect(measure).not.toHaveBeenCalled(); // Detached/parked host.
+      document.body.append(host);
+      setSessionVisible(leaf, false);
+      getSessionHandle(leaf)!.resize();
+      expect(measure).not.toHaveBeenCalled();
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      setSessionVisible(leaf, true);
+      await checkSessionHealth(leaf);
+      expect(resize).not.toHaveBeenCalled();
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+      for (const dims of [{ cols: NaN, rows: 24 }, { cols: 80, rows: Infinity }, { cols: 80.5, rows: 24 }, { cols: 19, rows: 24 }, { cols: 80, rows: 2 }]) {
+        measure.mockReturnValue(dims);
+        getSessionHandle(leaf)!.resize();
+      }
+      expect(resize).not.toHaveBeenCalled();
+      expect(getSessionHandle(leaf)!.getPromptReadiness()).toEqual({ ready: true });
+      measure.mockReturnValue({ cols: 100, rows: 25 });
+      getSessionHandle(leaf)!.resize();
+      expect(resize).toHaveBeenCalledExactlyOnceWith(100, 25);
+      expect(session.term.buffer.active.viewportY).toBe(session.term.buffer.active.baseY);
+      expect(getSessionHandle(leaf)!.getPromptReadiness()).toEqual({ ready: true });
+    } finally { host.remove(); }
+  });
+
   it("tracks awaited native workflow writes before output can arrive, without a duplicate write", async () => {
     const { leaf, session, start, finish, completed } = await setup();
     const target = captureScreenCommandTarget(leaf)!;

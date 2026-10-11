@@ -67,6 +67,12 @@ it("captures exact multiline selections for workflows even when AI is disabled",
   expect(action).toHaveBeenCalledExactlyOnceWith("workflow", { text: selected, x: 50, y: 102 });
   expect(toolbar()).toBeNull();
 });
+it("captures an exact saved command without running or depending on AI", async () => {
+  selected = "  arsloginp dev host-1  "; await render(true, false); await select();
+  await click("Save command…");
+  expect(action).toHaveBeenCalledExactlyOnceWith("command", { text: selected, x: 50, y: 102 });
+  expect(toolbar()).toBeNull();
+});
 it("does not capture a selection that changed after the workflow toolbar appeared", async () => {
   await render(); await select(); selected = "changed";
   await click("Add to workflow…"); expect(action).not.toHaveBeenCalled();

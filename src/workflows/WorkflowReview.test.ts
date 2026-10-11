@@ -266,6 +266,32 @@ it("previews pasted JSON and resolves conflicts without executing anything", asy
   expect(container.textContent).toContain("Saved (2)"); await click("Import reviewed workflows");
   expect(vi.mocked(saveWorkflows).mock.calls[0][0]).toHaveLength(2); expect(executeWorkflow).not.toHaveBeenCalled();
 });
+it("labels imported commands as direct-shell definitions and preserves their kind without running", async () => {
+  const command: Workflow = { id: "cmd_1", name: "My check", kind: "command", steps: ["my-check"] };
+  await act(async () => root.render(createElement(WorkflowImport, { onClose: vi.fn() })));
+  await paste(JSON.stringify({ format: "husk-workflows", version: 2, workflows: [command] }));
+  await click("Preview import");
+  expect(container.textContent).toContain("Command · terminal shell");
+  expect(container.textContent).toContain("directory and environment changes affect that shell");
+  expect(saveWorkflows).not.toHaveBeenCalled();
+  expect(executeWorkflow).not.toHaveBeenCalled();
+  await click("Import reviewed workflows");
+  expect(vi.mocked(saveWorkflows).mock.calls[0][0]).toContainEqual(expect.objectContaining(command));
+  expect(executeWorkflow).not.toHaveBeenCalled();
+});
+it("masks saved-command secret inputs without invalidating the portable preview", async () => {
+  const command: Workflow = { id: "cmd_1", name: "My check", kind: "command", steps: ["my-check {{token}}"], inputs: [{ name: "token", label: "Token", type: "secret", required: true }] };
+  await act(async () => root.render(createElement(WorkflowRunner, { workflow: command, onClose: vi.fn() })));
+  const input = container.querySelector<HTMLInputElement>('input[type="password"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "secret123");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(button("Run command").disabled).toBe(false);
+  expect(container.querySelector(".wf-run-step pre")?.textContent).toBe("my-check 'hidden secret'");
+  expect(container.textContent).not.toContain("secret123");
+  expect(executeWorkflow).not.toHaveBeenCalled();
+});
 it("invalidates preview on JSON changes and catches changed saved state", async () => {
   await act(async () => root.render(createElement(WorkflowImport, { onClose: vi.fn() })));
   await paste(JSON.stringify({ id: "new", name: "New", steps: ["printf new"] })); await click("Preview import");

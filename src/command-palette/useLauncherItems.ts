@@ -482,15 +482,15 @@ export function useLauncherItems(
         id: `workflow:${wf.id}`,
         kind: "workflow",
         label: wf.name,
-        detail: wf.description || `Workflow · ${wf.steps.length} steps`,
-        hint: `${wf.steps.length} step${wf.steps.length === 1 ? "" : "s"}`,
+        detail: wf.description || (wf.kind === "command" ? "Saved command · terminal shell" : `Workflow · ${wf.steps.length} steps`),
+        hint: wf.kind === "command" ? "command" : `${wf.steps.length} step${wf.steps.length === 1 ? "" : "s"}`,
         keywords: wf.description ?? "",
         group: "Workflows",
         run: () => ctx.runWorkflow(wf),
         secondary: { label: "edit", run: () => ctx.openWorkflows() },
         actions: [
           {
-            label: "Copy step templates",
+            label: wf.kind === "command" ? "Copy command template" : "Copy step templates",
             run: () =>
               copy(wf.steps.join("\n")),
           },

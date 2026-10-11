@@ -75,3 +75,29 @@ it("rejects unknown targets and unverified remote hosts without writing", async 
   await expect(executeWorkflow(wf, {}, target, compileWorkflow(wf, {}).command)).rejects.toThrow("No verified terminal");
   expect(invoke).not.toHaveBeenCalled();
 });
+it("submits an alias directly with one Enter and tracks it in the existing workflow receipt namespace", async () => {
+  const command = { ...wf, kind: "command" as const, steps: ["  gs  "] };
+  const target = captureWorkflowTarget();
+  expect(compileWorkflow(command, {}).command).toBe("  gs  ");
+  expect(invoke).not.toHaveBeenCalled();
+  await executeWorkflow(command, {}, target, "  gs  ");
+  expect(invoke).toHaveBeenCalledTimes(1);
+  expect(invoke).toHaveBeenCalledWith("pty_write", { id: 7, data: "  gs  \r" });
+  expect(getWorkflowRunStatus(wf.id)).toMatchObject({ kind: "workflow", runId: "run:1", phase: "running" });
+});
+it.each(["target", "reconnect", "busy", "changed command", "changed kind"])("retains command scope and review guards after %s changes", async (change) => {
+  const command = { ...wf, kind: "command" as const, steps: ["gs"] };
+  const target = captureWorkflowTarget();
+  if (change === "target") vi.mocked(isCurrentTerminalTarget).mockReturnValue(false);
+  if (change === "reconnect") vi.mocked(captureScreenCommandTarget).mockReturnValue({ ...scope, scopeToken: "new-session" });
+  if (change === "busy") vi.mocked(getSessionHandle).mockReturnValue({ getPromptReadiness: () => ({ ready: false, reason: "Existing draft" }) } as unknown as TerminalHandle);
+  await expect(executeWorkflow(change === "changed kind" ? { ...command, kind: undefined } : command, {}, target, change === "changed command" ? "different" : "gs")).rejects.toThrow();
+  expect(submitTrackedTerminalCommand).not.toHaveBeenCalled();
+  expect(invoke).not.toHaveBeenCalled();
+});
+it("rejects unsafe active-shell inputs before tracking or writing a command", async () => {
+  const command = { ...wf, kind: "command" as const, steps: ["gco {{branch}}"] };
+  await expect(executeWorkflow(command, { branch: "x'; echo injected" }, captureWorkflowTarget(), "gco anything")).rejects.toThrow("Saved command inputs");
+  expect(submitTrackedTerminalCommand).not.toHaveBeenCalled();
+  expect(getWorkflowRunStatus(command.id)).toBeUndefined();
+});

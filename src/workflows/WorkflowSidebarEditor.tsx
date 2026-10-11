@@ -13,6 +13,8 @@ import "./workflowUi.css";
 export function WorkflowSidebarEditor() {
   const session = useWorkflowEditorSession();
   if (!session || session.collapsed) return null;
+  const isCommand = session.workflow.kind === "command";
+  const itemLabel = isCommand ? "command" : "workflow";
   const save = async (workflow: Workflow) => {
     const currentSession = getWorkflowEditorSession();
     if (!currentSession || currentSession.key !== session.key || currentSession.busy) throw new Error("This draft is no longer available for saving.");
@@ -27,21 +29,21 @@ export function WorkflowSidebarEditor() {
       await saveWorkflows(currentSession.original ? current.map((item) => item.id === workflow.id ? workflow : item) : [...current, workflow]);
       if (currentSession.sourceDraft?.fingerprint) dismissWorkflowSuggestionFingerprint(currentSession.sourceDraft.fingerprint);
       finishWorkflowEditor(session.key, currentSession.revision);
-      toast({ title: "Workflow saved", message: "Nothing was executed.", variant: "success" });
+      toast({ title: isCommand ? "Command saved" : "Workflow saved", message: "Nothing was executed.", variant: "success" });
     } catch (reason) {
       // The sidebar may have been closed during the write. Report failures even
       // when the original form has unmounted; the draft remains in window memory.
-      toast({ title: "Could not save workflow", message: reason instanceof Error ? reason.message : String(reason), variant: "error" });
+      toast({ title: `Could not save ${itemLabel}`, message: reason instanceof Error ? reason.message : String(reason), variant: "error" });
       throw reason;
     } finally { setWorkflowEditorBusy(session.key, false); }
   };
-  return <section className="compact-panel workflow-sidebar-editor" aria-label="Workflow editor"
+  return <section className="compact-panel workflow-sidebar-editor" aria-label={isCommand ? "Saved command editor" : "Workflow editor"}
     onKeyDown={(event) => { if (event.key === "Escape" && !event.defaultPrevented && !session.busy) { event.stopPropagation(); collapseWorkflowEditor(session.key); } }}>
-    <PanelHeader icon={WorkflowCircle01Icon} title={session.original ? "Edit workflow" : "New workflow"} actions={<CompactButton type="button" variant="ghost" icon aria-label="Collapse workflow editor" title="Collapse · keep draft" disabled={session.busy} onClick={() => collapseWorkflowEditor(session.key)}><HugeiconsIcon icon={MinusSignIcon} size={13} /></CompactButton>} />
+    <PanelHeader icon={WorkflowCircle01Icon} title={`${session.original ? "Edit" : "New"} ${itemLabel}`} actions={<CompactButton type="button" variant="ghost" icon aria-label={`Collapse ${itemLabel} editor`} title="Collapse · keep draft" disabled={session.busy} onClick={() => collapseWorkflowEditor(session.key)}><HugeiconsIcon icon={MinusSignIcon} size={13} /></CompactButton>} />
     <div className="compact-body workflow-sidebar-editor-body">
       <WorkflowEditor key={session.key} initial={session.original} draft={session.sourceDraft} value={session.workflow} busy={session.busy}
         onChange={(workflow) => updateWorkflowEditor(session.key, workflow)} onSave={save} onCancel={() => collapseWorkflowEditor(session.key)}
-        onDiscard={() => { if (window.confirm("Discard this unsaved workflow draft?")) discardWorkflowEditor(session.key); }}
+        onDiscard={() => { if (window.confirm(`Discard this unsaved ${itemLabel} draft?`)) discardWorkflowEditor(session.key); }}
         footerNote="Draft kept in this window. Save to keep it after restart." />
     </div>
   </section>;

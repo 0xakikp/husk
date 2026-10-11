@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { cn } from "@/lib/utils";
+import "./NotesView.css";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Label } from "@/components/ui/label";
@@ -255,6 +256,7 @@ export function NotesView({
   const [createName, setCreateName] = useState("");
   const [createDir, setCreateDir] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchToggleRef = useRef<HTMLButtonElement>(null);
   const notesDirRef = useRef<string>("");
 
   const refreshTemplates = useCallback(() => {
@@ -975,13 +977,16 @@ export function NotesView({
               )}
               {tree.length > 0 && (
                 <button
+                  ref={searchToggleRef}
                   type="button"
-                  onClick={() => setSearchActive(true)}
+                  onClick={() => { setSearchActive(true); searchInputRef.current?.focus(); }}
                   className={cn(
                     "inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
                     searchActive && "bg-muted/60 text-foreground"
                   )}
                   title="Search notes"
+                  aria-label="Search notes"
+                  aria-expanded={searchActive}
                 >
                   <HugeiconsIcon icon={Search01Icon} size={14} />
                 </button>
@@ -1004,9 +1009,19 @@ export function NotesView({
 
       {/* Search */}
       {searchActive && (
-        <div className="mb-2">
-          <div className="flex h-7 items-center rounded-md border border-border/45 bg-muted/25 p-0.5 focus-within:border-primary/45">
-            <HugeiconsIcon icon={Search01Icon} size={10} className="ml-1.5 shrink-0 text-muted-foreground" />
+        <div className="mb-2" role="search" aria-label="Notes"
+          onBlur={(event) => {
+            if (!search && !event.currentTarget.contains(event.relatedTarget as Node | null)) setSearchActive(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault(); event.stopPropagation();
+            lensRequestRef.current += 1;
+            setSearch(""); setLensResults([]); setLensNotice(""); setSearching(false); setSearchActive(false);
+            searchToggleRef.current?.focus();
+          }}>
+          <div className="notes-search-field">
+            <HugeiconsIcon icon={Search01Icon} size={12} className="shrink-0 text-muted-foreground" />
             <input
               ref={searchInputRef}
               type="text"
@@ -1020,30 +1035,21 @@ export function NotesView({
                   setSearching(false);
                 }
               }}
-              onBlur={() => {
-                if (!search) setSearchActive(false);
-              }}
               onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  lensRequestRef.current += 1;
-                  setSearch("");
-                  setLensResults([]);
-                  setSearchActive(false);
-                } else if (e.key === "Enter" && lensMode) {
+                if (e.key === "Enter" && lensMode) {
                   e.preventDefault();
                   void runVaultLens();
                 }
               }}
               placeholder={lensMode ? "Ask Vault Lens…" : "Search names & content…"}
-              className="h-full min-w-0 flex-1 bg-transparent px-1.5 text-[10px] text-foreground outline-none"
+              aria-label={lensMode ? "Ask Vault Lens" : "Search notes"}
+              className="notes-search-input"
               autoFocus
             />
             <button
               type="button"
-              className={cn(
-                "flex h-5 shrink-0 items-center gap-1 rounded px-1.5 font-mono text-[8px] uppercase tracking-wide text-muted-foreground transition-all hover:bg-muted hover:text-foreground",
-                lensMode && "border border-primary/35 bg-primary/10 text-primary",
-              )}
+              className="notes-search-lens"
+              aria-pressed={lensMode}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
                 lensRequestRef.current += 1;

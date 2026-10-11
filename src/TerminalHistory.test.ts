@@ -6,6 +6,8 @@ const fixtures = vi.hoisted(() => ({ enabled: true }));
 vi.mock("./settings/preferences", () => ({ usePrefs: () => ({ aiEnabled: fixtures.enabled, fontFamily: "system" }) }));
 vi.mock("./ai/screenAssist", () => ({ requestScreenAssist: vi.fn(), parseScreenObject: (response: string) => JSON.parse(response) }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
+vi.mock("./workflows/savedCommandCapture", () => ({ captureSavedCommand: vi.fn() }));
+import { captureSavedCommand } from "./workflows/savedCommandCapture";
 import { requestScreenAssist } from "./ai/screenAssist";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { TerminalHistoryPanel } from "./TerminalHistory";
@@ -45,6 +47,7 @@ function deferred<T = string>() {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); fixtures.enabled = true;
   select.mockReset(); close.mockReset(); vi.mocked(writeText).mockReset().mockResolvedValue();
+  vi.mocked(captureSavedCommand).mockReset().mockReturnValue(true);
   entries = rows.map((row) => row.command);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
@@ -57,6 +60,30 @@ it("preserves default local fuzzy search without contacting AI", async () => {
   await act(async () => container.querySelector<HTMLButtonElement>(".term-hist-item")!.click());
   expect(select).toHaveBeenCalledWith("git status");
   expect(container.textContent).toContain("stage");
+});
+
+it("saves the highlighted history command as a draft without staging or AI", async () => {
+  await render();
+  await query("ssh");
+  await click("Save command…");
+  expect(captureSavedCommand).toHaveBeenCalledExactlyOnceWith("ssh -L 5432:localhost:5432 db", "terminal-history");
+  expect(select).not.toHaveBeenCalled(); expect(requestScreenAssist).not.toHaveBeenCalled();
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it("retains the history picker if draft replacement is cancelled", async () => {
+  vi.mocked(captureSavedCommand).mockReturnValue(false);
+  await render(); await click("Save command…");
+  expect(close).not.toHaveBeenCalled(); expect(select).not.toHaveBeenCalled();
+});
+
+it("cannot save a history command while a staging write is pending", async () => {
+  const staged = deferred<void>(); select.mockReturnValue(staged.promise);
+  await render();
+  await act(async () => container.querySelector<HTMLButtonElement>(".term-hist-item")!.click());
+  await click("Save command…");
+  expect(captureSavedCommand).not.toHaveBeenCalled();
+  await act(async () => staged.resolve());
 });
 
 it("requires explicit review and send, omits detected secrets and honors exclusions", async () => {

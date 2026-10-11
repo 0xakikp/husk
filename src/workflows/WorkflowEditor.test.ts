@@ -9,6 +9,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { WorkflowEditor } from "./WorkflowEditor";
 import type { Workflow } from "./store";
 import { refineWorkflowDraft } from "../ai/assist";
+import { invoke } from "@tauri-apps/api/core";
 const wf: Workflow = { id: "wf_1", name: "History", steps: ["git log -n {{count}}", "git status"], stepTitles: ["History", "Status"], inputs: [{ name: "count", label: "Commits", type: "number", required: true, defaultValue: "5" }] };
 let container: HTMLDivElement; let root: Root; const save = vi.fn();
 beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); prefs.aiEnabled = false; vi.mocked(refineWorkflowDraft).mockReset(); save.mockReset().mockResolvedValue(undefined); container = document.createElement("div"); document.body.append(container); root = createRoot(container); });
@@ -185,4 +186,57 @@ it("discards late AI refinement after externally collected commands change the d
   expect(container.querySelector('[role="status"]')?.textContent).toContain("draft changed");
   expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Step 3 command"]')?.value).toBe("pwd");
   expect(button("Discard draft").disabled).toBe(false);
+});
+
+it("uses compact Name and Command fields without workflow-only controls or AI refinement", async () => {
+  prefs.aiEnabled = true;
+  await act(async () => root.render(createElement(WorkflowEditor, {
+    initial: null,
+    draft: { kind: "command", name: "Status", description: "", steps: ["git status"], stopOnError: true, source: "terminal-history" },
+    onSave: save, onCancel: vi.fn(),
+  })));
+  expect(container.querySelector('[aria-label="Command name"]')?.classList.contains("compact-control")).toBe(true);
+  const command = container.querySelector<HTMLTextAreaElement>('[aria-label="Command"]')!;
+  expect(command.value).toBe("git status");
+  expect(command.parentElement?.classList.contains("compact-field")).toBe(true);
+  expect(command.parentElement?.querySelector("label")?.htmlFor).toBe(command.id);
+  expect(container.querySelector(".wf-step")).toBeNull();
+  expect(container.querySelector('[aria-label="Workflow name"]')).toBeNull();
+  expect([...container.querySelectorAll("button")].map((item) => item.textContent).join(" ")).not.toMatch(/Add step|Add title|Duplicate|Delete|Refine/);
+  expect(container.textContent).not.toMatch(/Execution options|Stop when a step fails|POSIX child shell/);
+  expect(container.textContent).toContain("Aliases and functions must already be loaded");
+  expect(container.textContent).toContain("cd and export can change that shell");
+  expect([...container.querySelectorAll("details")].every((details) => !details.open)).toBe(true);
+  expect(button("Save command").dataset.compactVariant).toBe("primary");
+  expect(save).not.toHaveBeenCalled(); expect(invoke).not.toHaveBeenCalled(); expect(refineWorkflowDraft).not.toHaveBeenCalled();
+  await click("Save command");
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ kind: "command", name: "Status", steps: ["git status"] }));
+  expect(save.mock.calls[0][0]).not.toHaveProperty("stepTitles");
+  expect(invoke).not.toHaveBeenCalled(); expect(refineWorkflowDraft).not.toHaveBeenCalled();
+});
+
+it("keeps command input insertion and edits in the same command kind", async () => {
+  await render({ ...wf, kind: "command", steps: ["git log -n {{count}}"], stepTitles: undefined });
+  const command = container.querySelector<HTMLTextAreaElement>('[aria-label="Command"]')!;
+  await type(command, "git log -n ");
+  command.setSelectionRange(command.value.length, command.value.length);
+  await act(async () => command.dispatchEvent(new Event("select", { bubbles: true })));
+  const select = container.querySelector<HTMLSelectElement>('[aria-label="Insert input in command"]')!;
+  await act(async () => { select.value = "count"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(command.value).toBe("git log -n {{count}}");
+  await click("Save command");
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ kind: "command", steps: ["git log -n {{count}}"], inputs: wf.inputs }));
+  expect(save.mock.calls[0][0]).not.toHaveProperty("stepTitles");
+});
+
+it("locks the flat command field and its actions while a command save is pending", async () => {
+  let finish!: () => void;
+  save.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+  await render({ id: "cmd", kind: "command", name: "Status", steps: ["git status"] });
+  await click("Save command");
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Command"]')?.disabled).toBe(true);
+  expect(container.querySelector<HTMLInputElement>('[aria-label="Command name"]')?.disabled).toBe(true);
+  expect(button("Saving…").disabled).toBe(true); expect(button("Collapse").disabled).toBe(true);
+  await act(async () => finish());
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Command"]')?.disabled).toBe(false);
 });

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Workflow } from "./schema";
 const fixture = vi.hoisted(() => ({ session: null as null | { key: string; busy: boolean; workflow: Workflow } }));
 vi.mock("./editorSession", () => ({ useWorkflowEditorSession: () => fixture.session, addWorkflowCapture: vi.fn() }));
+vi.mock("./savedCommandCapture", () => ({ captureSavedCommand: vi.fn() }));
+import { captureSavedCommand } from "./savedCommandCapture";
 import { addWorkflowCapture } from "./editorSession";
 import { WorkflowCapture } from "./WorkflowCapture";
 import { WorkflowCaptureButton } from "./WorkflowCaptureButton";
@@ -24,6 +26,15 @@ async function capture(text = "printf hello", source: "terminal-selection" | "ai
 function button(label: string) { const found = [...document.querySelectorAll("button")].find((node) => node.textContent === label); expect(found, label).toBeDefined(); return found!; }
 async function click(label: string) { await act(async () => button(label).click()); }
 async function chooseNew() { await act(async () => document.querySelectorAll<HTMLInputElement>('input[type="radio"]')[1].click()); }
+
+it("captures AI shell code into a command draft only on explicit Save command", async () => {
+  const text = "  arsloginp dev host-1\n";
+  await act(async () => root.render(createElement(WorkflowCaptureButton, { language: "sh", code: text })));
+  expect(captureSavedCommand).not.toHaveBeenCalled();
+  await click("Save command…");
+  expect(captureSavedCommand).toHaveBeenCalledExactlyOnceWith(text, "ai-code");
+  expect(getWorkflowCaptureRequest()).toBeNull(); expect(addWorkflowCapture).not.toHaveBeenCalled();
+});
 
 it("opens an inert exact-text preview and cancellation never creates a draft", async () => {
   const text = "$ printf one\noutput\nprintf two "; await capture(text);

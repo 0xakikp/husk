@@ -29,3 +29,26 @@ it("never overwrites unreadable durable data with an empty fallback", async () =
   vi.mocked(invoke).mockClear(); await expect(store.saveWorkflows([wf])).rejects.toThrow("could not be loaded");
   expect(invoke).not.toHaveBeenCalled(); expect(store.getWorkflowLoadError()).toBeTruthy();
 });
+it("persists and reloads command kind and alias bytes in the existing durable workflow store", async () => {
+  const command = { id: "wf_alias", name: "Alias", kind: "command", steps: ["  gs  "], stopOnError: true } as const;
+  const store = await import("./store");
+  vi.mocked(invoke).mockResolvedValueOnce(JSON.stringify({ items: [wf] })); await store.initialiseWorkflowStore();
+  vi.mocked(invoke).mockClear().mockResolvedValue(undefined);
+  await store.saveWorkflows([wf, { ...command, steps: [...command.steps] }]);
+  expect(invoke).toHaveBeenCalledTimes(1);
+  expect(invoke).toHaveBeenCalledWith("workflow_state_save", { valueJson: JSON.stringify({ items: [wf, { id: command.id, name: command.name, steps: command.steps, stopOnError: true, kind: "command" }], dismissed: [] }) });
+  expect(JSON.parse(localStorage.getItem("huskv2.runbooks")!)[1]).toEqual(command);
+  vi.resetModules();
+  const reloaded = await import("./store");
+  vi.mocked(invoke).mockResolvedValueOnce(JSON.stringify({ items: [wf, command] }));
+  await reloaded.initialiseWorkflowStore();
+  expect(reloaded.loadWorkflows()).toEqual([wf, command]);
+});
+it("rejects invalid command metadata before writing durable or browser state", async () => {
+  const store = await import("./store");
+  vi.mocked(invoke).mockResolvedValueOnce(JSON.stringify({ items: [wf] })); await store.initialiseWorkflowStore();
+  vi.mocked(invoke).mockClear();
+  expect(() => store.saveWorkflows([{ ...wf, kind: "command", steps: ["gs", "pwd"] }])).toThrow("exactly one");
+  expect(invoke).not.toHaveBeenCalled();
+  expect(store.loadWorkflows()).toEqual([wf]);
+});

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { captureSavedCommand } from "./workflows/savedCommandCapture";
 import { usePrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { requestScreenAssist } from "./ai/screenAssist";
@@ -668,6 +669,13 @@ export function TerminalHistoryPanel({
                 : ""}
           </span>
           <span className="term-hist-footer-hints">
+            <button type="button" className="term-hist-save-command" disabled={staging || loading || !(aiMode ? aiMatches?.[index]?.command : scored[index]?.command)}
+              title="Save the highlighted command to Workflows; nothing is staged or run"
+              onClick={() => {
+                if (stagingRef.current) return;
+                const command = aiMode ? aiMatches?.[index]?.command : scored[index]?.command;
+                if (command && captureSavedCommand(command, "terminal-history")) close();
+              }}>Save command…</button>
             <kbd>↑↓</kbd> navigate
             <span className="term-hist-footer-divider" />
             <kbd>↵</kbd> {staging ? "staging…" : "stage"}

@@ -1,0 +1,70 @@
+/* One shared search surface, not a native input box inside another border.
+   These resets are scoped because Husk intentionally omits Tailwind preflight. */
+.notes-search-field {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 32px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--muted) 25%, transparent);
+}
+
+.notes-search-field:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+
+.notes-search-input {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  flex: 1 1 0%;
+  width: 0;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+}
+
+/* Override only the input's global !important focus ring. The outer rounded
+   field supplies its focus indicator; Lens keeps its own keyboard indicator. */
+.notes-search-input:focus-visible {
+  box-shadow: none !important;
+}
+
+.notes-search-input::placeholder { color: var(--muted-foreground); }
+
+.notes-search-lens {
+  box-sizing: border-box;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.notes-search-lens:hover { background: var(--muted); color: var(--foreground); }
+.notes-search-lens[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}

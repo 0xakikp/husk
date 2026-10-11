@@ -6,6 +6,7 @@ import "./workflowUi.css";
 /** Draft navigation only. Editing occupies the existing rail, never a new column. */
 export function WorkflowWorkspace({ children, editorVisible, onRevealEditor }: { children: ReactNode; editorVisible: boolean; onRevealEditor: () => void }) {
   const session = useWorkflowEditorSession();
+  const draftKind = session?.workflow.kind === "command" ? "command" : "workflow";
   const revealRequest = session ? `${session.key}:${session.revealRevision}` : null;
   const handledReveal = useRef<string | null>(null);
   useEffect(() => {
@@ -15,10 +16,10 @@ export function WorkflowWorkspace({ children, editorVisible, onRevealEditor }: {
   }, [revealRequest, session?.collapsed, onRevealEditor]);
   return <div className="workflow-workspace">
     <div className="workflow-workspace-source">
-      {session && (session.collapsed || !editorVisible) && <div className="workflow-draft-bar" aria-label="Unsaved workflow draft">
-        <span className="workflow-draft-bar-label">Workflow draft</span>
+      {session && (session.collapsed || !editorVisible) && <div className="workflow-draft-bar" aria-label={`Unsaved ${draftKind} draft`}>
+        <span className="workflow-draft-bar-label">{draftKind === "command" ? "Command draft" : "Workflow draft"}</span>
         <span className="workflow-draft-bar-name" title={session.workflow.name || "Untitled"}>{session.workflow.name || "Untitled"}</span>
-        <CompactButton compact variant="ghost" className="workflow-draft-resume" aria-label="Resume workflow draft" onClick={resumeWorkflowEditor} title="Resume the unsaved workflow draft">Resume</CompactButton>
+        <CompactButton compact variant="ghost" className="workflow-draft-resume" aria-label={`Resume ${draftKind} draft`} onClick={resumeWorkflowEditor} title={`Resume the unsaved ${draftKind} draft`}>Resume</CompactButton>
       </div>}
       <div className="workflow-workspace-content" data-workflow-run-host>{children}</div>
     </div>

@@ -125,3 +125,13 @@ it("does not reveal a previously collapsed draft until Resume is chosen", async 
   expect(container.querySelector(".workflow-draft-bar")).not.toBeNull();
   await resume(); expect(reveal).toHaveBeenCalledOnce();
 });
+it("labels a collapsed saved-command draft without confusing it with a multi-step workflow", async () => {
+  startWorkflowEditor({ ...workflow, kind: "command", steps: ["my-check"] });
+  collapseWorkflowEditor(getWorkflowEditorSession()!.key);
+  await render();
+  expect(container.querySelector('[aria-label="Unsaved command draft"]')?.textContent).toContain("Command draft");
+  expect(reveal).not.toHaveBeenCalled();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Resume command draft"]')!.click());
+  expect(reveal).toHaveBeenCalledOnce();
+  expect(getWorkflowEditorSession()?.workflow.kind).toBe("command");
+});

@@ -11,3 +11,10 @@ export function openWorkflowEditor(initial: Workflow | null = null, draft: Workf
   startWorkflowEditor(initial, draft, current?.key ?? null, !!current);
   return true;
 }
+
+/** A new saved command is a draft, never an already-persisted original. */
+export function openSavedCommandEditor(text = "", source: WorkflowDraft["source"] = "manual"): boolean {
+  if (new TextEncoder().encode(text).length > 8000) throw new Error("Command exceeds the 8,000-byte limit. Select a smaller command; nothing was shortened.");
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(text)) throw new Error("Command contains control characters. Copy a plain command instead.");
+  return openWorkflowEditor(null, { kind: "command", name: "", description: "", steps: [text], stopOnError: true, source });
+}

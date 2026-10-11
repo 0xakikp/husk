@@ -40,6 +40,7 @@ import { showVaultCaptureToast } from "./notes/captureToast";
 import { formatTerminalRun, formatTerminalSelection } from "./notes/terminalCapture";
 import { toast } from "./toast";
 import { requestWorkflowCapture } from "./workflows/captureRequest";
+import { captureSavedCommand } from "./workflows/savedCommandCapture";
 import "@xterm/xterm/css/xterm.css";
 
 const ScreenAiPopover = lazy(() => import("./ai/ScreenAiPopover").then((module) => ({ default: module.ScreenAiPopover })));
@@ -614,6 +615,7 @@ export function TerminalView({
         onAction={(action, snapshot) => {
           if (action === "save") saveTerminalSelection(snapshot.text);
           else if (action === "workflow") requestWorkflowCapture(snapshot.text, "terminal-selection");
+          else if (action === "command") captureSavedCommand(snapshot.text, "terminal-selection");
           else openScreenAction(action, snapshot);
         }}
       />
@@ -702,6 +704,7 @@ export function TerminalView({
             {prefs.aiEnabled && (menu.selectedText || menu.draft) && <button type="button" className="ectx-item" disabled={/[\r\n]/.test(menu.selectedText || menu.draft)} title="Propose a change to one command; nothing runs automatically" onClick={() => openScreenAction("tweak")}>Modify command with AI…</button>}
             {prefs.aiEnabled && (menu.selectedText || menu.draft) && <button type="button" className="ectx-item" disabled={/[\r\n]/.test(menu.selectedText || menu.draft)} title="Text-only review; nothing runs or is sent until requested" onClick={() => openScreenAction("review")}>Review before running…</button>}
             {menu.selectedText && <button type="button" className="ectx-item" title="Review this exact selection; nothing runs" onClick={() => { requestWorkflowCapture(menu.exactSelectedText, "terminal-selection"); setMenu(null); }}>Add to workflow…</button>}
+            {menu.selectedText && <button type="button" className="ectx-item" title="Review and save this command; nothing runs" onClick={() => { if (captureSavedCommand(menu.exactSelectedText, "terminal-selection")) setMenu(null); }}>Save command…</button>}
             <button type="button" className="ectx-item" onClick={menuCopy}>
               Copy
             </button>

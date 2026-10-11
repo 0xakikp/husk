@@ -17,6 +17,8 @@ function subscribeRunTarget(onChange: () => void): () => void {
 }
 
 export function WorkflowRunner({ workflow, onClose, scriptPath, onOpenScript }: { workflow: Workflow; onClose: () => void; scriptPath?: string; onOpenScript?: () => void }) {
+  const isCommand = workflow.kind === "command";
+  const runLabel = scriptPath ? "Run script" : isCommand ? "Run command" : "Run workflow";
   let inputError = ""; let inputs: ReturnType<typeof getWorkflowInputs> = [];
   try { inputs = getWorkflowInputs(workflow); } catch (reason) { inputError = String(reason); }
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(inputs.map((input) => [input.name, input.defaultValue ?? ""])));
@@ -31,7 +33,7 @@ export function WorkflowRunner({ workflow, onClose, scriptPath, onOpenScript }: 
   const hasSecret = inputs.some((input) => input.type === "secret" && values[input.name]);
   let displaySteps = compiled?.steps ?? workflow.steps;
   if (hasSecret && !showSecrets && compiled) {
-    try { displaySteps = compileWorkflow(workflow, { ...values, ...Object.fromEntries(inputs.filter((input) => input.type === "secret").map((input) => [input.name, "[hidden secret]"])) }).steps; } catch { displaySteps = workflow.steps; }
+    try { displaySteps = compileWorkflow(workflow, { ...values, ...Object.fromEntries(inputs.filter((input) => input.type === "secret").map((input) => [input.name, isCommand ? "hidden secret" : "[hidden secret]"])) }).steps; } catch { displaySteps = workflow.steps; }
   }
   const runActions = <div className="compact-actions wf-run-actions">
     <span className="wf-run-footer-note">Runs in the target shown above</span>
@@ -43,10 +45,10 @@ export function WorkflowRunner({ workflow, onClose, scriptPath, onOpenScript }: 
         setBusy(true); setError("");
         const run = scriptPath ? executeWorkflow(workflow, values, target, command, { localOnly: true }) : executeWorkflow(workflow, values, target, command);
         void run.then(onClose).catch((reason) => { setError(reason instanceof Error ? reason.message : String(reason)); }).finally(() => { submitting.current = false; setBusy(false); });
-      }}>{busy ? "Submitting…" : scriptPath ? "Run script" : "Run workflow"}</CompactButton>
+      }}>{busy ? "Submitting…" : runLabel}</CompactButton>
     </div>
   </div>;
-  return <WorkflowDialog title={(scriptPath ? "Run script · " : "Run workflow · ") + workflow.name} onClose={onClose} busy={busy} variant="run" footer={runActions}>
+  return <WorkflowDialog title={runLabel + " · " + workflow.name} onClose={onClose} busy={busy} variant="run" footer={runActions}>
     <CompactForm className="wf-form wf-run-form">
       <section className="wf-run-target" aria-label="Target terminal">
         <div className="wf-run-target-row">
@@ -56,6 +58,7 @@ export function WorkflowRunner({ workflow, onClose, scriptPath, onOpenScript }: 
         <code className="wf-run-directory">{target?.scope.cwd || "Directory unknown"}</code>
         {targetError && <p className="compact-help wf-warning" role="status">{targetError}</p>}
       </section>
+      {isCommand && <p className="compact-help wf-command-shell-notice">Runs directly in this terminal’s shell. Aliases and functions must already be loaded here. Commands such as cd or export can change this shell’s state.</p>}
       {scriptPath && <section className="wf-script-source" aria-label="Linked script">
         <h3>Linked local file</h3><code>{scriptPath}</code>
         <p className="compact-help">Runs the current file in the directory shown above. The file must be executable and use a valid shebang. Husk does not change permissions, copy its contents, or send it to AI.</p>
@@ -64,11 +67,11 @@ export function WorkflowRunner({ workflow, onClose, scriptPath, onOpenScript }: 
       {inputs.length > 0 && <section><h3>Runtime inputs</h3><div className="wf-input-grid">{inputs.map((input) => <CompactLabel key={input.name} className="compact-field wf-field"><span>{input.label}{input.required ? " *" : " (optional)"}</span>
         <CompactInput type={input.type === "secret" ? "password" : "text"} inputMode={input.type === "number" ? "decimal" : undefined} value={values[input.name] ?? ""} autoComplete="off" spellCheck={false} disabled={busy}
           onChange={(event) => { setValues((current) => ({ ...current, [input.name]: event.target.value })); setError(""); }} />
-      </CompactLabel>)}</div></section>}
+      </CompactLabel>)}</div>{isCommand && <p className="compact-help">Inputs use whole-argument placeholders and simple literal values. Quotes, escapes and shell expressions are not accepted here.</p>}</section>}
       <section aria-label="Workflow commands">
         <div className="wf-run-command-heading">
-          <h3>{compiled ? "Commands" : "Steps · complete inputs to preview"} <span className="wf-run-count">{displaySteps.length}</span></h3>
-          <span className="wf-run-policy">{workflow.stopOnError === false ? "Continues on error" : "Stops on error"}</span>
+          <h3>{compiled ? isCommand ? "Command" : "Commands" : "Complete inputs to preview"} {!isCommand && <span className="wf-run-count">{displaySteps.length}</span>}</h3>
+          {!isCommand && <span className="wf-run-policy">{workflow.stopOnError === false ? "Continues on error" : "Stops on error"}</span>}
         </div>
         {hasSecret && <><p className="compact-help wf-warning">Secret values are not saved in Husk workflow definitions, but the submitted command can appear in shell history, process arguments, and terminal output.</p><CompactLabel className="compact-check wf-check"><input type="checkbox" checked={showSecrets} onChange={(event) => setShowSecrets(event.target.checked)} />Reveal secrets in preview</CompactLabel></>}
         <ol className="wf-run-steps" role="list" aria-label="Steps in execution order">
@@ -80,7 +83,7 @@ export function WorkflowRunner({ workflow, onClose, scriptPath, onOpenScript }: 
       </section>
       {validation && <p role="alert" className="compact-error wf-error">{validation}</p>}{error && <p role="alert" className="compact-error wf-error">{error}</p>}
       <details className="wf-run-details"><summary>Execution details</summary>
-        <p className="compact-help">Runs in one POSIX sh process on the target. Directory/environment changes carry between steps, not back to your prompt. {workflow.stopOnError === false ? "Continues after a failed step." : "Stops when a step returns a nonzero exit status."} Each step’s final status determines success. Only run workflows you trust.</p>
+        <p className="compact-help">{isCommand ? "Sends exactly the reviewed command and Enter to the target shown above, without a child-shell wrapper. Husk does not load or discover aliases or shell configuration. Verify the command is appropriate for this shell and host. Only run commands you trust." : <>Runs in one POSIX sh process on the target. Directory/environment changes carry between steps, not back to your prompt. {workflow.stopOnError === false ? "Continues after a failed step." : "Stops when a step returns a nonzero exit status."} Each step’s final status determines success. Only run workflows you trust.</>}</p>
         {compiled && <><h3>Exact submitted command{hasSecret && !showSecrets ? " (hidden until secrets are revealed)" : ""}</h3>{(!hasSecret || showSecrets) && <pre>{compiled.command}</pre>}</>}
       </details>
     </CompactForm>

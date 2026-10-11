@@ -46,3 +46,33 @@ it("shares directory and environment across steps without affecting the parent s
 it("rejects inline defaults for explicitly secret inputs", () => {
   expect(() => getWorkflowInputs({ steps: ["echo {{token=unsafe}}"], inputs: [{ name: "token", label: "Token", type: "secret", required: true }] })).toThrow("inline defaults");
 });
+it("keeps saved command alias and function calls in the active shell without a child wrapper", () => {
+  const command = compileWorkflow({ kind: "command", steps: ["  saved_alias  "] }, {});
+  expect(command).toEqual({ steps: ["  saved_alias  "], command: "  saved_alias  " });
+  expect(run("alias saved_alias='printf alias-ready'\n" + command.command)).toBe("alias-ready");
+  expect(run("saved_function() { printf function-ready; }\n" + compileWorkflow({ kind: "command", steps: ["saved_function"] }, {}).command)).toBe("function-ready");
+  expect(compileWorkflow({ steps: ["saved_alias"] }, {}).command).toMatch(/^sh -c /);
+});
+it.each(["{{value}}", "'{{value}}'", '"{{value}}"'])("uses portable literal whole arguments in saved commands: %s", (placeholder) => {
+  const value = "Feature Branch/path_1.2:@+=,-";
+  const compiled = compileWorkflow({ kind: "command", steps: ["saved_alias " + placeholder] }, { value });
+  expect(compiled.command).toBe("saved_alias '" + value + "'");
+  expect(run("alias saved_alias='printf %s'\n" + compiled.command)).toBe(value);
+});
+it("expands command defaults and optional empty arguments without starting a subshell", () => {
+  expect(compileWorkflow({ kind: "command", steps: ["gco {{branch=main}}"] }, {}).command).toBe("gco 'main'");
+  expect(compileWorkflow({ kind: "command", steps: ["echo {{value=}}"] }, {}).command).toBe("echo ''");
+  expect(compileWorkflow({ kind: "command", steps: ["gs"], stopOnError: false }, {}).command).toBe("gs");
+});
+it.each(["O'Brien", "a\\b", "`whoami`", "$(whoami)", "a; echo bad", "a & whoami", "a|whoami", "%PATH%", "a\"b", "left‘right", "left’right", "left“right”,", "é", "a\nb", "a\tb"])("rejects command inputs needing unknown-shell escaping: %s", (value) => {
+  expect(() => compileWorkflow({ kind: "command", steps: ["saved_alias {{value}}"] }, { value })).toThrow();
+});
+it.each(["saved_alias prefix-{{value}}", "saved_alias --flag={{value}}", "saved_alias ~/{{value}}", "saved_alias $HOME {{value}}", "saved_alias {{value}}; echo next", "saved_alias {{value}} | cat", "saved_alias {{value}} > out", "saved_alias @args {{value}}", "saved_alias --% {{value}}", "{{value}}", "eval {{value}}", "sh -c {{value}}", "pwsh -Command {{value}}", "powershell.exe -Command {{value}}", "sh.exe -c {{value}}", "iex {{value}}"])("rejects ambiguous command input grammar: %s", (step) => {
+  expect(() => compileWorkflow({ kind: "command", steps: [step] }, { value: "literal" })).toThrow();
+});
+it("validates single-line command shape independently of import and permits authored non-parameter syntax unchanged", () => {
+  for (const steps of [[], ["first", "second"], ["first\nsecond"], ["echo \x85bad"], ["echo {{broken"]]) expect(() => compileWorkflow({ kind: "command", steps }, {})).toThrow();
+  const authored = "my_alias && cd ../project; echo $PWD";
+  expect(compileWorkflow({ kind: "command", steps: [authored] }, {}).command).toBe(authored);
+  expect(() => compileWorkflow({ kind: "command", steps: ["echo " + "{{value}} ".repeat(40)] }, { value: "x".repeat(2000) })).toThrow("64 KiB");
+});

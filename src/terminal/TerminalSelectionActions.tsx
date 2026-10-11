@@ -13,7 +13,7 @@ export function TerminalSelectionActions({ terminal, enabled, aiEnabled, onActio
   terminal: SelectionTerminal | null;
   enabled: boolean;
   aiEnabled: boolean;
-  onAction: (action: "peek" | "review" | "save" | "workflow", selection: TerminalSelectionSnapshot) => void;
+  onAction: (action: "peek" | "review" | "save" | "workflow" | "command", selection: TerminalSelectionSnapshot) => void;
 }) {
   const [selection, setSelection] = useState<TerminalSelectionSnapshot | null>(null);
   const [position, setPosition] = useState({ left: 8, top: 8 });
@@ -73,7 +73,7 @@ export function TerminalSelectionActions({ terminal, enabled, aiEnabled, onActio
   try { selectionLines(selection.text); explainable = true; } catch { /* Local saving has its own larger cap. */ }
   let reviewable = false;
   try { validateStagedCommand(selection.text); reviewable = true; } catch { /* Explain and save still work for multiline text. */ }
-  const choose = (action: "peek" | "review" | "save" | "workflow") => {
+  const choose = (action: "peek" | "review" | "save" | "workflow" | "command") => {
     // Never act on text that has changed underneath the toolbar.
     if (terminal?.getSelection() === selection.text) onAction(action, selection);
     setSelection(null);
@@ -84,6 +84,7 @@ export function TerminalSelectionActions({ terminal, enabled, aiEnabled, onActio
     {aiEnabled && explainable && <button type="button" onClick={() => choose("peek")}>Explain</button>}
     {aiEnabled && reviewable && <button type="button" title="Review this command without running it" onClick={() => choose("review")}>Review command</button>}
     <button type="button" title="Review and add this exact text to a workflow draft; nothing runs" onClick={() => choose("workflow")}>Add to workflow…</button>
+    <button type="button" title="Review and save this command; nothing runs" onClick={() => choose("command")}>Save command…</button>
     <button type="button" onClick={() => choose("save")}>Save to Vault</button>
     <span className="terminal-selection-key" aria-hidden="true">F6</span>
     <button type="button" aria-label="Dismiss selection actions" onClick={() => setSelection(null)}>×</button>

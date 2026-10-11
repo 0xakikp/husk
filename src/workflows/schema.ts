@@ -1,5 +1,5 @@
 export type WorkflowInput = { name: string; label: string; type: "text" | "number" | "path" | "secret"; defaultValue?: string; required: boolean };
-export type Workflow = { id: string; name: string; steps: string[]; description?: string; stopOnError?: boolean; stepTitles?: string[]; inputs?: WorkflowInput[] };
+export type Workflow = { id: string; name: string; steps: string[]; kind?: "command"; description?: string; stopOnError?: boolean; stepTitles?: string[]; inputs?: WorkflowInput[] };
 export const MAX_WORKFLOW_BYTES = 1024 * 1024;
 export const bytes = (text: string) => new TextEncoder().encode(text).length;
 export function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
@@ -11,10 +11,13 @@ export function validateWorkflow(raw: unknown): Workflow {
   if (!object(raw)) throw new Error("Each workflow must be an object.");
   const id = text(raw.id, 120, "Workflow ID");
   const name = text(raw.name, 160, "Workflow name").trim();
+  if (raw.kind !== undefined && raw.kind !== "command") throw new Error("Saved item kind must be command, or omitted for a workflow.");
   if (!Array.isArray(raw.steps) || !raw.steps.length || raw.steps.length > 100) throw new Error("A workflow needs 1–100 command steps.");
   const steps = raw.steps.map((step, i) => text(step, 8000, `Step ${i + 1}`));
+  if (raw.kind === "command" && (steps.length !== 1 || /[\r\n\t\x80-\x9f\u2028\u2029]/.test(steps[0]))) throw new Error("A saved command needs exactly one single-line command of at most 8,000 UTF-8 bytes.");
   if (raw.stopOnError !== undefined && typeof raw.stopOnError !== "boolean") throw new Error("stopOnError must be a boolean.");
   const result: Workflow = { id, name, steps, stopOnError: raw.stopOnError !== false };
+  if (raw.kind === "command") result.kind = "command";
   if (raw.description !== undefined) result.description = text(raw.description, 2000, "Description", true);
   if (raw.stepTitles !== undefined) {
     if (!Array.isArray(raw.stepTitles) || raw.stepTitles.length !== steps.length) throw new Error("Step titles must match the number of commands.");

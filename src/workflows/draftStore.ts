@@ -3,11 +3,12 @@ import { useSyncExternalStore } from "react";
 import type { WorkflowSuggestion } from "./suggestions";
 
 export type WorkflowDraft = {
+  kind?: "command";
   name: string;
   description: string;
   steps: string[];
   stopOnError: boolean;
-  source: "suggestion" | "evolution" | "timeline" | "recent" | "terminal-selection" | "ai-code" | "manual" | "edit";
+  source: "suggestion" | "evolution" | "timeline" | "recent" | "terminal-selection" | "terminal-history" | "ai-code" | "manual" | "edit";
   fingerprint?: string;
   occurrences?: number;
   targetWorkflowId?: string;
