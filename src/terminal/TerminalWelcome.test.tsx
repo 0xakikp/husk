@@ -5,8 +5,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { TerminalSessionStatus } from "./sessionLifecycle";
 
 const prefs = vi.hoisted(() => ({ terminalWelcomeEnabled: true, userName: "Aki", terminalTheme: "husk", theme: "dark", accentColor: "#11c700" }));
+const platform = vi.hoisted(() => ({ modKey: "⌘", separator: "" }));
 vi.mock("../settings/preferences", () => ({ usePrefs: () => prefs }));
-vi.mock("../lib/platform", () => ({ MOD_KEY: "⌘", fmtShortcut: (...parts: string[]) => parts.join("") }));
+vi.mock("../lib/platform", () => ({ get MOD_KEY() { return platform.modKey; }, fmtShortcut: (...parts: string[]) => parts.join(platform.separator) }));
 import { TerminalWelcome } from "./TerminalWelcome";
 import { dismissTerminalWelcome, disposeTerminalWelcome, getTerminalWelcome, initializeTerminalWelcome, noteTerminalWelcomeCommand, observeTerminalWelcomePrompt, scrollTerminalWelcome } from "./terminalWelcomeState";
 
@@ -16,6 +17,7 @@ const onDismiss = vi.fn();
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   prefs.terminalWelcomeEnabled = true; prefs.userName = "Aki"; prefs.theme = "dark";
+  platform.modKey = "⌘"; platform.separator = "";
   onDismiss.mockClear();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   initializeTerminalWelcome(1);
@@ -42,6 +44,22 @@ it("waits for verified prompt metadata rather than showing guessed local status"
   expect(host.textContent).toContain("⌘K");
   expect(host.textContent).toContain("Ctrl+R");
   expect(host.querySelector("pre")?.parentElement?.getAttribute("aria-hidden")).toBe("true");
+});
+
+it.each([
+  ["macOS", "⌘", "", "⌘K", "⌘T"],
+  ["Windows/Linux", "Ctrl", "+", "Ctrl+K", "Ctrl+T"],
+])("groups three non-interactive shortcut hints with the correct %s modifiers", async (_name, modKey, separator, search, newTab) => {
+  platform.modKey = modKey; platform.separator = separator;
+  await prompt(); await render();
+  const hints = host.querySelector(".terminal-welcome__hints")!;
+  const hintUnits = Array.from(hints.children);
+  expect(hintUnits.map((hint) => hint.tagName)).toEqual(["SPAN", "SPAN", "SPAN"]);
+  expect(hintUnits.map((hint) => hint.textContent)).toEqual([`${search} Search`, "Ctrl+R History", `${newTab} New tab`]);
+  expect(hintUnits.map((hint) => hint.querySelectorAll("kbd").length)).toEqual([1, 1, 1]);
+  const actions = host.querySelectorAll("button, a, [role='button']");
+  expect(actions).toHaveLength(1);
+  expect(actions[0].getAttribute("aria-label")).toBe("Dismiss terminal welcome");
 });
 
 it.each(["starting", "slow-start", "error", "disconnected", "unresponsive", "exited"] as const)("does not claim readiness during %s", async (state) => {

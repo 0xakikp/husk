@@ -5,6 +5,8 @@ greets you with **Hi, name**, using Settings → Workspace → profile (not the 
 login name). Blank names fall back to Welcome to HUSK. Short Latin names and digits use colorful block
 lettering; long or non-Latin names retain their original text. Colors follow the
 terminal theme, with darker tones for light mode.
+The compact status group includes platform-appropriate Search and New tab
+shortcuts alongside Ctrl+R History, without extra buttons or panels.
 
 The local status appears only after observed local prompt metadata; the working
 directory is not displayed. The greeting uses a gentle slant and shares the

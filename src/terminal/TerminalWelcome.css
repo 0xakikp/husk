@@ -36,7 +36,7 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 14px;
   min-width: 0;
   margin: 0 12px 0 0;
   padding: 14px 8px 18px;
@@ -49,11 +49,11 @@
 }
 
 .terminal-welcome__identity {
-  display: flex; align-items: center; gap: 12px; min-width: 0; max-width: 55%;
+  display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 55%;
   transform: skewX(-10deg);
   transform-origin: left center;
 }
-.terminal-welcome__salutation { flex: 0 0 auto; color: var(--welcome-tone); font-size: 18px; font-weight: 600; }
+.terminal-welcome__salutation { flex: 0 0 auto; color: var(--welcome-tone); font-size: 22px; font-weight: 600; line-height: 1.1; }
 .terminal-welcome__art { display: flex; gap: 3px; width: max-content; }
 .terminal-welcome__art pre {
   margin: 0;
@@ -84,7 +84,8 @@
 .terminal-welcome__local { color: color-mix(in srgb, var(--welcome-blue) var(--welcome-color-weight), var(--welcome-mode-ink)); }
 .terminal-welcome__ready { color: var(--welcome-tone); white-space: nowrap; }
 .terminal-welcome__ready > span { font-size: 8px; vertical-align: 1px; }
-.terminal-welcome__hints { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 3px; color: var(--text-muted); font-size: 11px; }
+.terminal-welcome__hints { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; color: var(--text-muted); font-size: 11px; }
+.terminal-welcome__hints > span { white-space: nowrap; }
 .terminal-welcome__hints kbd { font: inherit; color: var(--text); }
 .terminal-welcome__dismiss {
   flex: 0 0 24px;
@@ -104,6 +105,7 @@
 @container terminal-surface (width < 560px) {
   .terminal-welcome { gap: 14px; padding-block: 10px; }
   .terminal-welcome__identity { max-width: 40%; }
+  .terminal-welcome__salutation { font-size: 18px; }
   .terminal-welcome__art { display: none; }
   .terminal-welcome__name[data-has-art="true"] { display: block; font-size: 19px; }
   .terminal-welcome__hints { display: none; }

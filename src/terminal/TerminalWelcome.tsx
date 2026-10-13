@@ -72,6 +72,7 @@ export function TerminalWelcome({ leafId, restored, status, onDismiss, getRowHei
       <div className="terminal-welcome__hints">
         <span><kbd>{fmtShortcut(MOD_KEY, "K")}</kbd> Search</span>
         <span><kbd>Ctrl+R</kbd> History</span>
+        <span><kbd>{fmtShortcut(MOD_KEY, "T")}</kbd> New tab</span>
       </div>
     </div>
     <button
