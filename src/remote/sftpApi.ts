@@ -10,8 +10,11 @@ export interface SftpEntry {
 }
 
 export type SftpConnectionResult = { status: "connected" | "verify-host"; hostname: string; port: number; username: string; fingerprint: string };
-export const sftpConnect = (host: string, target: SftpTarget, credentials: { password?: string; passphrase?: string } = {}, expectedFingerprint?: string) =>
-  invoke<SftpConnectionResult>("sftp_connect", { host, target, credentials, expectedFingerprint });
+export type SftpTargetPreview = { hostname: string; port: number; username: string; authType: "auto" | "agent" | "key" | "password"; reviewKey: string };
+/** Reads bounded local config only: no SSH process, network, agent or key access. */
+export const sftpPreviewTarget = (target: SftpTarget) => invoke<SftpTargetPreview>("sftp_preview_target", { target });
+export const sftpConnect = (host: string, target: SftpTarget, credentials: { password?: string; passphrase?: string } = {}, expectedFingerprint?: string, expectedReviewKey?: string) =>
+  invoke<SftpConnectionResult>("sftp_connect", { host, target, credentials, expectedFingerprint, ...(expectedReviewKey ? { expectedReviewKey } : {}) });
 
 export const sftpListDir = (host: string, path: string) =>
   invoke<SftpEntry[]>("sftp_list_dir", { host, path });

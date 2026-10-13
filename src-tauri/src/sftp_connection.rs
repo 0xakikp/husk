@@ -3,6 +3,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+#[path = "sftp_algorithms.rs"]
+mod algorithms;
+pub use algorithms::AlgorithmPolicy;
+
 #[derive(Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SftpTarget {
@@ -33,10 +37,12 @@ pub struct ResolvedTarget {
     pub identity_files: Vec<String>,
     pub auth_type: Option<AuthType>,
     pub agent_socket: Option<String>,
+    pub algorithm_policy: AlgorithmPolicy,
 }
 
 impl ResolvedTarget {
     pub fn endpoint(&self) -> String { format!("[{}]:{}", self.hostname.to_ascii_lowercase(), self.port) }
+    pub fn apply_algorithm_policy(&self, config: &mut russh::client::Config) { self.algorithm_policy.apply(config); }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -297,11 +303,12 @@ fn resolve_with_sources(
             return Err(format!("SFTP does not support SSH config {key}. No direct connection was attempted"));
         }
     }
-    for key in ["hostkeyalgorithms", "casignaturealgorithms", "kexalgorithms", "ciphers", "macs", "requiredrsasize", "rekeylimit"] {
+    for key in ["casignaturealgorithms", "requiredrsasize", "rekeylimit"] {
         if values.scalar.contains_key(key) {
             return Err(format!("SFTP cannot enforce SSH config {key}. No connection was attempted"));
         }
     }
+    let algorithm_policy = AlgorithmPolicy::resolve(&values.scalar)?;
     for key in ["proxyusefdpass", "controlmaster", "gssapiauthentication", "hostbasedauthentication", "kbdinteractiveauthentication", "challengeresponseauthentication"] {
         if values.scalar.get(key).is_some_and(|value| !matches!(value.to_ascii_lowercase().as_str(), "no" | "false")) {
             return Err(format!("SFTP does not support SSH config {key}. No connection was attempted"));
@@ -358,7 +365,7 @@ fn resolve_with_sources(
         if value == "none" || value == "SSH_AUTH_SOCK" { Ok(value.to_string()) }
         else { expand_home(value, home).map(|p| p.to_string_lossy().into_owned()) }
     }).transpose()?;
-    Ok(ResolvedTarget { hostname, port, username, identity_files, auth_type: target.auth_type, agent_socket })
+    Ok(ResolvedTarget { hostname, port, username, identity_files, auth_type: target.auth_type, agent_socket, algorithm_policy })
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -400,6 +407,16 @@ mod tests {
         let mut t = target("alice@alias"); t.user = Some("bob".into()); t.port = Some(2200); t.identity_file = Some("/fixtures/special".into()); t.auth_type = Some(AuthType::Key);
         let result = resolve(t, "Host alias\n User ignored\n Port 999\n IdentityFile ignored").unwrap();
         assert_eq!(result.username, "bob"); assert_eq!(result.port, 2200); assert_eq!(result.identity_files, ["/fixtures/special"]); assert_eq!(result.auth_type, Some(AuthType::Key));
+    }
+    #[test] fn imported_alias_inherits_non_default_port_but_explicit_22_is_preserved() {
+        let config = "Host home-alias\nHostName home.example\nUser owner\nPort 1243\nKexAlgorithms curve25519-sha256";
+        let inherited = resolve(target("home-alias"), config).unwrap();
+        assert_eq!(inherited.hostname, "home.example");
+        assert_eq!(inherited.username, "owner");
+        assert_eq!(inherited.port, 1243);
+        assert_eq!(inherited.auth_type, None);
+        let mut manual = target("home-alias"); manual.port = Some(22);
+        assert_eq!(resolve(manual, config).unwrap().port, 22);
     }
     #[test] fn supports_bracketed_ipv6_and_user_targets() {
         let result = resolve(target("alice@[::1]"), "").unwrap(); assert_eq!(result.hostname, "::1"); assert_eq!(result.username, "alice"); assert_eq!(result.endpoint(), "[::1]:22");
@@ -479,7 +496,7 @@ mod tests {
     #[test] fn auth_and_transport_restrictions_fail_closed() {
         for config in ["PubkeyAuthentication no", "PreferredAuthentications password", "GSSAPIAuthentication yes",
             "KbdInteractiveAuthentication yes", "HostbasedAuthentication yes", "BindInterface utun0", "ControlPath ~/.ssh/socket",
-            "SecurityKeyProvider /fixture/provider", "HostKeyAlias trusted-alias", "Ciphers aes256-gcm@openssh.com"] {
+            "SecurityKeyProvider /fixture/provider", "HostKeyAlias trusted-alias", "CASignatureAlgorithms ssh-ed25519", "RequiredRSASize 4096", "RekeyLimit 1G"] {
             assert!(resolve(target("host"), config).is_err(), "{config}");
         }
         let mut password = target("host"); password.auth_type = Some(AuthType::Password);
@@ -487,6 +504,44 @@ mod tests {
         assert!(resolve(password.clone(), "PubkeyAuthentication no\nPreferredAuthentications password").is_ok());
         assert!(resolve(password, "PreferredAuthentications publickey").is_err());
         assert!(resolve(target("host"), "PreferredAuthentications publickey,password\nPubkeyAuthentication yes\nKbdInteractiveAuthentication no").is_ok());
+    }
+    #[test] fn algorithm_policy_matches_hosts_and_applies_to_client_configuration() {
+        let config = "Host unrelated\n KexAlgorithms unsupported-on-other-host\nHost prod\n KexAlgorithms curve25519-sha256\n Ciphers aes256-gcm@openssh.com\n MACs hmac-sha2-256\n HostKeyAlgorithms ssh-ed25519\nHost *\n KexAlgorithms +diffie-hellman-group1-sha1";
+        let resolved = resolve(target("prod"), config).unwrap();
+        let mut client = russh::client::Config::default();
+        resolved.apply_algorithm_policy(&mut client);
+        assert_eq!(client.preferred.kex.first(), Some(&russh::kex::CURVE25519));
+        assert!(!client.preferred.kex.contains(&russh::kex::DH_G1_SHA1));
+        assert_eq!(client.preferred.cipher.as_ref(), &[russh::cipher::AES_256_GCM]);
+        assert_eq!(client.preferred.mac.as_ref(), &[russh::mac::HMAC_SHA256]);
+        assert_eq!(client.preferred.key.as_ref(), &[russh::keys::Algorithm::Ed25519]);
+    }
+    #[test] fn included_and_system_algorithm_policy_is_enforced_without_reading_real_config() {
+        let sources = [("Include policy", Path::new("/fixture/user/.ssh")),
+            ("KexAlgorithms +diffie-hellman-group1-sha1\nCiphers -chacha*", Path::new("/fixture/system/ssh"))];
+        let resolved = resolve_with_sources(target("prod"), &sources, Path::new("/fixture/user"), "local", &mut |name, _| {
+            assert_eq!(name, "policy");
+            Ok(vec!["Host prod\nKexAlgorithms -diffie-hellman-*".into()])
+        }).unwrap();
+        let mut client = russh::client::Config::default();
+        resolved.apply_algorithm_policy(&mut client);
+        assert!(client.preferred.kex.iter().all(|name| !name.as_ref().starts_with("diffie-hellman-")));
+        assert!(!client.preferred.cipher.contains(&russh::cipher::CHACHA20_POLY1305));
+        assert!(client.preferred.cipher.contains(&russh::cipher::AES_256_GCM));
+    }
+    #[test] fn unsupported_algorithm_requests_and_empty_policies_stop_target_resolution() {
+        for config in ["KexAlgorithms curve25519-sha256,unknown-kex", "KexAlgorithms -*", "Ciphers +unsupported-cipher", "MACs none", "HostKeyAlgorithms ssh-ed25519-cert-v01@openssh.com", "KexAlgorithms +", "KexAlgorithms curve25519-sha256, curve25519-sha256"] {
+            assert!(resolve(target("prod"), config).is_err(), "{config}");
+        }
+    }
+    #[test] fn host_confirmation_identity_includes_deterministic_algorithm_policy() {
+        let initial = resolve(target("prod"), "KexAlgorithms curve25519-sha256\nCiphers aes128-ctr").unwrap();
+        let reordered_config = resolve(target("prod"), "Ciphers aes128-ctr\nKexAlgorithms curve25519-sha256").unwrap();
+        let changed = resolve(target("prod"), "KexAlgorithms curve25519-sha256\nCiphers aes256-ctr").unwrap();
+        assert_eq!(initial, reordered_config);
+        assert_eq!(format!("{initial:?}"), format!("{reordered_config:?}"));
+        assert_ne!(initial, changed);
+        assert_ne!(format!("{initial:?}"), format!("{changed:?}"));
     }
     #[test] fn include_filename_matching_is_case_sensitive_unlike_host_patterns() {
         assert!(pattern_matches("PROD-*", "prod-api"));

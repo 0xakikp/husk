@@ -10,6 +10,7 @@ vi.mock("../fs", () => ({ getHomeDir: vi.fn().mockResolvedValue("/fixture/home")
 vi.mock("../toast", () => ({ toast: vi.fn() }));
 vi.mock("../remote/sftpApi", () => ({
   sftpConnect: vi.fn(),
+  sftpPreviewTarget: vi.fn().mockResolvedValue({ hostname: "resolved.example", username: "engineer", port: 2200, authType: "auto", reviewKey: "fixture-review" }),
   sftpDisconnect: vi.fn().mockResolvedValue(undefined),
   sftpListDir: vi.fn().mockResolvedValue([]),
   sftpCopy: vi.fn(), sftpDelete: vi.fn(), sftpDeleteRecursive: vi.fn(), sftpMkdir: vi.fn(), sftpRename: vi.fn(),
@@ -21,7 +22,7 @@ vi.mock("../remote/sftpTransfers", () => ({
   removeSftpTransfer: vi.fn(), resumeSftpTransfer: vi.fn(), retrySftpTransfer: vi.fn(),
   useSftpTransfers: vi.fn(() => []),
 }));
-import { sftpConnect, sftpDisconnect, sftpListDir } from "../remote/sftpApi";
+import { sftpConnect, sftpDisconnect, sftpListDir, sftpPreviewTarget } from "../remote/sftpApi";
 import { activateSftpTransferQueue, enqueueSftpTransfer } from "../remote/sftpTransfers";
 import { markHostDisconnected } from "../remote/connectionStore";
 import { SftpView } from "./SftpView";
@@ -51,6 +52,7 @@ async function click(label: string) { await act(async () => button(label).click(
 it("does not connect, list directories or activate saved transfers when mounted", async () => {
   await render();
   expect(container.textContent).toContain("Browse remote files");
+  expect(sftpPreviewTarget).toHaveBeenCalledExactlyOnceWith(target);
   expect(sftpConnect).not.toHaveBeenCalled(); expect(sftpListDir).not.toHaveBeenCalled();
   expect(activateSftpTransferQueue).not.toHaveBeenCalled(); expect(enqueueSftpTransfer).not.toHaveBeenCalled();
 });
@@ -58,6 +60,7 @@ it("does not connect, list directories or activate saved transfers when mounted"
 it("restoring an inactive view stays disconnected and still needs approval after activation", async () => {
   await render(false);
   expect(button("Connect & browse").disabled).toBe(true);
+  expect(sftpPreviewTarget).not.toHaveBeenCalled();
   expect(sftpConnect).not.toHaveBeenCalled(); expect(sftpListDir).not.toHaveBeenCalled();
   await render(true);
   expect(button("Connect & browse").disabled).toBe(false);
@@ -69,7 +72,7 @@ it("lists only after approved connection and binds the stable queue to an opaque
   await render(); await click("Connect & browse");
   const session = vi.mocked(sftpConnect).mock.calls[0][0];
   expect(session).toMatch(/^sftp-session-/); expect(session).not.toBe(reference);
-  expect(sftpConnect).toHaveBeenCalledExactlyOnceWith(session, target, {}, undefined);
+  expect(sftpConnect).toHaveBeenCalledExactlyOnceWith(session, target, {}, undefined, "fixture-review");
   expect(sftpListDir).toHaveBeenCalledExactlyOnceWith(session, ".");
   expect(activateSftpTransferQueue).toHaveBeenCalledExactlyOnceWith(reference, session);
   expect(sftpDisconnect).not.toHaveBeenCalled();

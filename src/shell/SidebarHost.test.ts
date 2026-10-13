@@ -30,7 +30,8 @@ vi.mock("../tools-hub/ToolsHubView", () => ({ ToolsHubView: ({ active }: { activ
 vi.mock("../kubernetes/KubernetesView", () => ({ KubernetesView: () => createElement(Probe, { name: "kubernetes" }) }));
 vi.mock("../docker/DockerView", () => ({ DockerView: ({ active }: { active: boolean }) => createElement(Probe, { name: "docker", active }) }));
 vi.mock("../tailscale/TailscaleView", () => ({ TailscaleView: () => createElement(Probe, { name: "tailscale" }) }));
-vi.mock("../notes/NotesView", () => ({ NotesView: () => createElement(Probe, { name: "vault" }) }));
+vi.mock("../notes/NotesView", () => ({ NotesView: ({ onOpenNote, onOpenFile }: { onOpenNote?: (path: string, name: string, line?: number) => void; onOpenFile?: (path: string, name: string) => void }) => createElement("div", null,
+  createElement(Probe, { name: "vault" }), createElement("button", { "aria-label": "Open local note", onClick: () => onOpenNote ? onOpenNote("/notes/Test.md", "Test.md", 7) : onOpenFile?.("/notes/Test.md", "Test.md") }, "Open note")) }));
 vi.mock("../timeline/TimelineView", () => ({ TimelineView: () => createElement(Probe, { name: "timeline" }) }));
 
 import { SidebarHost } from "./SidebarHost";
@@ -130,5 +131,21 @@ it("opens linked scripts through the explicit local-file path even while SSH fil
   await render({ sidebarView: "workflows", remoteHost: "prod", openLocalFile });
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open linked local script"]')!.click());
   expect(openLocalFile).toHaveBeenCalledExactlyOnceWith("/project/check.sh", "check.sh");
+  expect(props.openFile).not.toHaveBeenCalled();
+});
+
+it("routes notes and search locations to their dock, independent of the selected SSH host", async () => {
+  const openNote = vi.fn(); const openLocalFile = vi.fn();
+  await render({ sidebarView: "vault", remoteHost: "prod", openNote, openLocalFile });
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open local note"]')!.click());
+  expect(openNote).toHaveBeenCalledExactlyOnceWith("/notes/Test.md", "Test.md", 7);
+  expect(openLocalFile).not.toHaveBeenCalled(); expect(props.openFile).not.toHaveBeenCalled();
+});
+
+it("uses a local file fallback when a dedicated Notes dock is not supplied", async () => {
+  const openLocalFile = vi.fn();
+  await render({ sidebarView: "vault", remoteHost: "prod", openLocalFile });
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open local note"]')!.click());
+  expect(openLocalFile).toHaveBeenCalledExactlyOnceWith("/notes/Test.md", "Test.md");
   expect(props.openFile).not.toHaveBeenCalled();
 });

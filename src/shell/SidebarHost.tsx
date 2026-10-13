@@ -45,6 +45,7 @@ export function SidebarHost({
   remoteHost,
   openFile,
   openLocalFile,
+  openNote,
   openGitGraph,
   openIssues,
   openSftp,
@@ -72,6 +73,7 @@ export function SidebarHost({
   remoteHost: string | null;
   openFile: (path: string, name: string) => void;
   openLocalFile?: (path: string, name: string) => void;
+  openNote?: (path: string, name: string, line?: number) => void;
   openGitGraph: () => void;
   openIssues: () => void;
   openSftp: (host: string) => void;
@@ -206,7 +208,7 @@ export function SidebarHost({
                   "Tailscale",
                 )
               ) : id === "vault" ? (
-                lazyPanel(<NotesView inline onOpenFile={(path, name) => openFile(path, name)} />, "Notes")
+                lazyPanel(<NotesView inline onOpenNote={openNote} onOpenFile={openLocalFile ?? openFile} />, "Notes")
               ) : id === "timeline" ? (
                 lazyPanel(<TimelineView inline />, "Timeline")
               ) : null}

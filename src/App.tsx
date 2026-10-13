@@ -38,6 +38,7 @@ import { captureLauncherTerminalTarget, stageLauncherCommand } from "./command-p
 import { assertLauncherFileSource } from "./command-palette/fileTargets";
 import { getNotesDirectory, pinNote, unpinNote } from "./notes/store";
 import { isVaultPathWithin, replaceVaultPath } from "./notes/vaultPaths";
+import { useNotesDock, type NotesOpeningMode } from "./notes/useNotesDock";
 import { isExplorerPathWithin, replaceExplorerPath } from "./explorer/pathOperations";
 import { useK8sNavigation } from "./kubernetes/useK8sNavigation";
 import { requestWorkflowRun } from "./workflows/runRequest";
@@ -525,6 +526,9 @@ function App() {
   const remoteHost = useActiveSshHost();
   const totpAccountCount = loadTotpAccounts().length;
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
+  const notesDock = useNotesDock();
+  const notesDockFilesRef = useRef(notesDock.files);
+  notesDockFilesRef.current = notesDock.files;
   const openFilesRef = useRef<OpenFile[]>(openFiles);
   openFilesRef.current = openFiles;
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -874,6 +878,14 @@ function App() {
   }, [term]);
 
   const openFile = useCallback((path: string, name: string, sourceHost: string | null = remoteHost) => {
+    // Retained local note drafts share Monaco's path namespace with file tabs.
+    // Never attach one to a same-named file from a remote host.
+    try {
+      assertLauncherFileSource([...openFilesRef.current, ...notesDockFilesRef.current], path, sourceHost ?? undefined);
+    } catch (error) {
+      toast({ title: "File already open from another source", message: String(error), variant: "error" });
+      return;
+    }
     setOpenFiles((prev) => {
       if (prev.some((f) => f.path === path)) return prev;
       return [...prev, { path, name, remoteHost: sourceHost, pinned: false }];
@@ -883,10 +895,21 @@ function App() {
   }, [remoteHost]);
 
   const openLauncherFile = useCallback((path: string, name: string, sourceHost?: string) => {
-    assertLauncherFileSource(openFilesRef.current, path, sourceHost);
+    assertLauncherFileSource([...openFilesRef.current, ...notesDockFilesRef.current], path, sourceHost);
     // Local workspace/vault searches stay local even when Remotes is selected.
     openFile(path, name, sourceHost ?? null);
   }, [openFile]);
+
+  const openNote = useCallback((path: string, name: string, line?: number, mode?: NotesOpeningMode) => {
+    try {
+      assertLauncherFileSource(openFilesRef.current, path);
+      const openingMode = notesDock.open(path, name, line, mode);
+      if (openingMode === "tab") openFile(path, name, null);
+      else setActiveKind("term");
+    } catch (error) {
+      toast({ title: "Could not open note", message: String(error), variant: "error" });
+    }
+  }, [notesDock.open, openFile]);
 
   /* Assistant replies can turn a verified workspace-relative `path:line`
      reference into a normal editor navigation. The composer validates the
@@ -924,7 +947,7 @@ function App() {
           const safePath = resolveWorkspacePath(path, root);
           if (!safePath || safePath === root) return;
           showSidebarView("vault");
-          openFile(safePath, safePath.split("/").pop() || safePath);
+          openNote(safePath, safePath.split("/").pop() || safePath);
         })
         .catch((error: unknown) => {
           toast({
@@ -936,7 +959,7 @@ function App() {
     };
     window.addEventListener("husk:open-vault-note", openCapturedNote);
     return () => window.removeEventListener("husk:open-vault-note", openCapturedNote);
-  }, [openFile, showSidebarView]);
+  }, [openNote, showSidebarView]);
 
   /* Vault rename/move/delete operations happen in the sidebar, while App owns
      editor tabs. Keep clean open notes attached to their new path and close
@@ -954,6 +977,7 @@ function App() {
       void Promise.all([validateVaultPath(detail.from), validateVaultPath(detail.to)])
         .then(([from, to]) => {
           if (!from || !to) return;
+          notesDock.movePath(from, to);
           const next = openFilesRef.current.map((file) => {
             if (!isVaultPathWithin(file.path, from)) return file;
             const path = replaceVaultPath(file.path, from, to);
@@ -976,6 +1000,7 @@ function App() {
       void validateVaultPath(requested)
         .then((path) => {
           if (!path) return;
+          notesDock.deletePath(path);
           const next = openFilesRef.current.filter((file) => !isVaultPathWithin(file.path, path));
           openFilesRef.current = next;
           setOpenFiles(next);
@@ -994,7 +1019,7 @@ function App() {
       window.removeEventListener("husk:vault-path-moved", onVaultPathMoved);
       window.removeEventListener("husk:vault-path-deleted", onVaultPathDeleted);
     };
-  }, []);
+  }, [notesDock.movePath, notesDock.deletePath]);
 
   /* Files can rename or move both local and SSH-backed paths. Keep editor tabs
      attached to the same item, and close tabs whose path was deleted. These
@@ -1008,6 +1033,7 @@ function App() {
     const onExplorerPathMoved = (event: Event) => {
       const detail = (event as CustomEvent<ExplorerPathDetail>).detail;
       if (!detail?.from || !detail.to) return;
+      if (!detail.remoteHost) notesDock.movePath(detail.from, detail.to);
       const next = openFilesRef.current.map((file) => {
         if (!sameLocation(file, detail.remoteHost) || !isExplorerPathWithin(file.path, detail.from!)) return file;
         const path = replaceExplorerPath(file.path, detail.from!, detail.to!);
@@ -1026,6 +1052,7 @@ function App() {
     const onExplorerPathDeleted = (event: Event) => {
       const detail = (event as CustomEvent<ExplorerPathDetail>).detail;
       if (!detail?.path) return;
+      if (!detail.remoteHost) notesDock.deletePath(detail.path);
       const removedActive = openFilesRef.current.some((file) => (
         file.path === activeFileRef.current
         && sameLocation(file, detail.remoteHost)
@@ -1048,7 +1075,7 @@ function App() {
       window.removeEventListener("husk:explorer-path-moved", onExplorerPathMoved);
       window.removeEventListener("husk:explorer-path-deleted", onExplorerPathDeleted);
     };
-  }, []);
+  }, [notesDock.movePath, notesDock.deletePath]);
 
   const selectFile = (path: string) => {
     setActiveFile(path);
@@ -1064,7 +1091,7 @@ function App() {
   const launcherCtx = useMemo<LauncherCtx>(
     () => ({
       openNote: (path, name) => {
-        openLauncherFile(path, name);
+        openNote(path, name);
         showSidebarView("vault");
       },
       pinNote: (path) => pinNote(path),
@@ -1106,7 +1133,7 @@ function App() {
       setQuery: (v) => setPaletteInput(v),
       openFiles: openFiles.map((f) => ({ path: f.path, name: f.name, remoteHost: f.remoteHost ?? undefined })),
     }),
-    [showSidebarView, openLauncherFile, openFiles, openAi, browseK8sContext, launcherTerminalTarget],
+    [showSidebarView, openLauncherFile, openNote, openFiles, openAi, browseK8sContext, launcherTerminalTarget],
   );
 
   const launcherItems = useLauncherItems(paletteOpen, paletteInput, commands, launcherCtx);
@@ -1249,6 +1276,7 @@ function App() {
             remoteHost={remoteHost}
             openFile={openFile}
             openLocalFile={openLauncherFile}
+            openNote={openNote}
             openGitGraph={openGitGraph}
             openIssues={openIssues}
             openSftp={openSftp}
@@ -1316,6 +1344,8 @@ function App() {
             bgDataUrl={bgDataUrl}
             openFiles={openFiles}
             activeFile={activeFile}
+            notesDock={notesDock}
+            onOpenNote={openNote}
             settingsOpen={settingsOpen}
             openPanel={openPanel}
             closeSettings={closeSettings}

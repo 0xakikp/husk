@@ -187,9 +187,11 @@ function VaultContextDivider() {
 export function NotesView({ 
   inline,
   onOpenFile,
+  onOpenNote,
 }: { 
   inline?: boolean;
   onOpenFile?: (path: string, name: string) => void;
+  onOpenNote?: (path: string, name: string, line?: number) => void;
 }) {
   const [tree, setTree] = useState<FileNode[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -350,7 +352,9 @@ export function NotesView({
     setActiveNotePath(path);
     touchRecentNote(path);
     loadLists();
-    if (onOpenFile) {
+    if (onOpenNote) {
+      onOpenNote(path, path.split("/").pop() || path, line);
+    } else if (onOpenFile) {
       const name = path.split("/").pop() || path;
       onOpenFile(path, name);
       if (line && line > 0) {

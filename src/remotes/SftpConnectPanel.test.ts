@@ -2,8 +2,8 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-vi.mock("../remote/sftpApi", () => ({ sftpConnect: vi.fn(), sftpDisconnect: vi.fn().mockResolvedValue(undefined) }));
-import { sftpConnect, sftpDisconnect, type SftpConnectionResult } from "../remote/sftpApi";
+vi.mock("../remote/sftpApi", () => ({ sftpConnect: vi.fn(), sftpDisconnect: vi.fn().mockResolvedValue(undefined), sftpPreviewTarget: vi.fn() }));
+import { sftpConnect, sftpDisconnect, sftpPreviewTarget, type SftpConnectionResult } from "../remote/sftpApi";
 import { SftpConnectPanel } from "./SftpConnectPanel";
 import { encodeSftpTarget } from "./sftpTarget";
 
@@ -14,10 +14,12 @@ const onClose = vi.fn();
 const target = { host: "prod-alias", user: "engineer", port: 2200, authType: "password" as const };
 const identity: SftpConnectionResult = { status: "verify-host", hostname: "resolved.example", username: "engineer", port: 2200, fingerprint: "SHA256:fixture-server-key" };
 const connected: SftpConnectionResult = { ...identity, status: "connected" };
+const preview = { hostname: identity.hostname, username: identity.username, port: identity.port, authType: "password" as const, reviewKey: "fixture-review" };
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.mocked(sftpConnect).mockReset(); vi.mocked(sftpDisconnect).mockClear(); onConnected.mockReset(); onClose.mockReset();
+  vi.mocked(sftpPreviewTarget).mockReset().mockResolvedValue(preview);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
@@ -39,7 +41,9 @@ async function enterSecret(value: string) {
 
 it("shows an honest connection preview without connecting on mount", async () => {
   await render();
-  expect(container.textContent).toContain("engineer@prod-alias:2200");
+  expect(container.textContent).toContain("engineer@resolved.example:2200");
+  expect(container.textContent).toContain("SSH alias: prod-alias");
+  expect(sftpPreviewTarget).toHaveBeenCalledExactlyOnceWith(target);
   expect(container.textContent).toContain("does not reuse your terminal login");
   expect(container.textContent).toContain("No automatic uploads, sync or AI sharing");
   expect(password().type).toBe("password"); expect(password().autocomplete).toBe("off");
@@ -50,7 +54,7 @@ it("shows an honest connection preview without connecting on mount", async () =>
 it("requires explicit independent fingerprint verification before authentication retry", async () => {
   vi.mocked(sftpConnect).mockResolvedValueOnce(identity).mockResolvedValueOnce(connected);
   await render(); await enterSecret("transient-password"); await click("Connect & browse");
-  expect(sftpConnect).toHaveBeenNthCalledWith(1, "session-fixture", target, { password: "transient-password" }, undefined);
+  expect(sftpConnect).toHaveBeenNthCalledWith(1, "session-fixture", target, { password: "transient-password" }, undefined, preview.reviewKey);
   expect(container.textContent).toContain("engineer@resolved.example:2200");
   expect(container.textContent).toContain(identity.fingerprint);
   expect(button("Trust verified key & connect").disabled).toBe(true);
@@ -58,7 +62,7 @@ it("requires explicit independent fingerprint verification before authentication
   expect(onConnected).not.toHaveBeenCalled();
   await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
   await click("Trust verified key & connect");
-  expect(sftpConnect).toHaveBeenNthCalledWith(2, "session-fixture", target, { password: "transient-password" }, identity.fingerprint);
+  expect(sftpConnect).toHaveBeenNthCalledWith(2, "session-fixture", target, { password: "transient-password" }, identity.fingerprint, preview.reviewKey);
   expect(onConnected).toHaveBeenCalledExactlyOnceWith(connected);
   expect(password().value).toBe("");
   await act(async () => root.render(null));
@@ -83,7 +87,7 @@ it("requires a fresh connection attempt after a verification challenge fails", a
   expect(onConnected).not.toHaveBeenCalled();
   vi.mocked(sftpConnect).mockResolvedValueOnce(identity);
   await click("Connect & browse");
-  expect(sftpConnect).toHaveBeenLastCalledWith("session-fixture", target, {}, undefined);
+  expect(sftpConnect).toHaveBeenLastCalledWith("session-fixture", target, {}, undefined, preview.reviewKey);
   expect(button("Trust verified key & connect").disabled).toBe(true);
 });
 
@@ -139,5 +143,78 @@ it("does not bypass a configured jump host", async () => {
 it("rejects invalid saved targets without invoking native connection code", async () => {
   await render(true, "husk-sftp:not-json");
   expect(container.querySelector('[role="alert"]')?.textContent).toContain("invalid");
+  expect(sftpPreviewTarget).not.toHaveBeenCalled();
   expect(sftpConnect).not.toHaveBeenCalled(); await click("Close"); expect(onClose).toHaveBeenCalledOnce();
+});
+
+it("does not ask for a password or passphrase with explicit agent authentication", async () => {
+  const agent = { host: "prod-alias", authType: "agent" as const };
+  vi.mocked(sftpPreviewTarget).mockResolvedValue({ ...preview, authType: "agent" });
+  vi.mocked(sftpConnect).mockResolvedValue(connected);
+  await render(true, encodeSftpTarget(agent));
+  expect(password()).toBeNull();
+  expect(container.textContent).toContain("Uses keys from the app’s SSH agent");
+  await click("Connect & browse");
+  expect(sftpConnect).toHaveBeenCalledExactlyOnceWith("session-fixture", agent, {}, undefined, preview.reviewKey);
+});
+
+it("resolves inherited aliases without a dummy port or a passphrase prompt", async () => {
+  vi.mocked(sftpPreviewTarget).mockResolvedValue({ ...preview, port: 1243, authType: "auto" });
+  await render(true, encodeSftpTarget({ host: "prod-alias" }));
+  expect(sftpPreviewTarget).toHaveBeenCalledExactlyOnceWith({ host: "prod-alias" });
+  expect(container.textContent).toContain("engineer@resolved.example:1243");
+  expect(container.textContent).not.toContain(":22");
+  expect(password()).toBeNull();
+  expect(sftpConnect).not.toHaveBeenCalled();
+  await click("Use an encrypted key…");
+  expect(password().type).toBe("password");
+  expect(container.textContent).toContain("Key passphrase (if required)");
+});
+
+it("retains optional transient passphrases for explicit private keys", async () => {
+  const key = { host: "prod-alias", authType: "key" as const, identityFile: "/fixture/key" };
+  vi.mocked(sftpPreviewTarget).mockResolvedValue({ ...preview, authType: "key" });
+  vi.mocked(sftpConnect).mockResolvedValue(connected);
+  await render(true, encodeSftpTarget(key)); await enterSecret("transient-key-passphrase"); await click("Connect & browse");
+  expect(sftpConnect).toHaveBeenCalledExactlyOnceWith("session-fixture", key, { passphrase: "transient-key-passphrase" }, undefined, preview.reviewKey);
+  expect(password().value).toBe("");
+});
+
+it("prevents connecting when local config preview fails", async () => {
+  vi.mocked(sftpPreviewTarget).mockRejectedValue(new Error("Unsupported SSH policy. No connection was attempted"));
+  await render(true, encodeSftpTarget({ host: "prod-alias" }));
+  expect(container.textContent).toContain("No connection was attempted");
+  expect(container.textContent).not.toContain(":22");
+  expect(button("Connect & browse").disabled).toBe(true);
+  await click("Connect & browse"); expect(sftpConnect).not.toHaveBeenCalled();
+});
+
+it("revokes fingerprint approval and credentials when the preview is refreshed", async () => {
+  vi.mocked(sftpConnect).mockResolvedValue(identity);
+  await render(); await enterSecret("temporary"); await click("Connect & browse");
+  await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+  vi.mocked(sftpPreviewTarget).mockResolvedValue({ ...preview, port: 1243, reviewKey: "new-review" });
+  await click("Refresh connection details");
+  expect(password().value).toBe("");
+  expect(container.querySelector('[aria-label="Verify server identity"]')).toBeNull();
+  expect(container.textContent).toContain("engineer@resolved.example:1243");
+  expect(sftpDisconnect).toHaveBeenCalledWith("session-fixture");
+  await click("Connect & browse");
+  expect(sftpConnect).toHaveBeenLastCalledWith("session-fixture", target, {}, undefined, "new-review");
+});
+
+it("cancels an old target attempt and ignores its late reply after the reference changes", async () => {
+  let resolveOld!: (result: SftpConnectionResult) => void;
+  vi.mocked(sftpConnect).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; })).mockResolvedValueOnce(connected);
+  await render(); await click("Connect & browse");
+  const other = { ...target, host: "other-alias" };
+  await render(true, encodeSftpTarget(other));
+  expect(sftpDisconnect).toHaveBeenCalledExactlyOnceWith("session-fixture");
+  expect(button("Connect & browse").disabled).toBe(false);
+  await act(async () => resolveOld(connected));
+  expect(onConnected).not.toHaveBeenCalled();
+  await click("Connect & browse");
+  expect(sftpConnect).toHaveBeenLastCalledWith("session-fixture", other, {}, undefined, preview.reviewKey);
+  expect(onConnected).toHaveBeenCalledExactlyOnceWith(connected);
+  expect(sftpDisconnect).toHaveBeenCalledTimes(1);
 });

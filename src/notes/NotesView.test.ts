@@ -11,6 +11,7 @@ vi.mock("./store", () => ({
   getLastViewedNote: () => null, getAllTemplates: () => [], getPinnedNotes: () => [],
   getRecentNoteEntries: () => [], isNotePinned: () => false, isNoteFile: () => true,
   searchNotesContent: vi.fn(async () => []),
+  setLastViewedNote: vi.fn(), touchRecentNote: vi.fn(),
 }));
 vi.mock("./notesAi", () => ({ expandVaultLensQuery: vi.fn(async () => []), organizeNoteWithAi: vi.fn() }));
 vi.mock("./NoteOrganizeReview", () => ({ NoteOrganizeReview: () => null }));
@@ -89,4 +90,14 @@ it("resets native input chrome and only suppresses the inner input focus ring", 
   expect(css).toMatch(/\.notes-search-field:focus-within\s*\{\s*border-color:/);
   expect(css).toMatch(/\.notes-search-lens\s*\{[^}]*flex-shrink: 0;[^}]*border: 1px solid transparent/);
   expect(css).not.toMatch(/\.notes-search-lens:focus-visible|\*:focus-visible/);
+});
+
+it("routes note selection to the dedicated dock callback instead of the generic file opener", async () => {
+  const onOpenNote = vi.fn(); const onOpenFile = vi.fn();
+  await act(async () => root.render(createElement(NotesView, { inline: true, onOpenNote, onOpenFile })));
+  const label = [...host.querySelectorAll("span")].find((node) => node.textContent === "Test")!;
+  expect(label).toBeTruthy();
+  await act(async () => label.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+  expect(onOpenNote).toHaveBeenCalledExactlyOnceWith("/notes/Test.md", "Test.md", undefined);
+  expect(onOpenFile).not.toHaveBeenCalled();
 });

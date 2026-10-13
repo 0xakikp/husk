@@ -181,6 +181,7 @@ pub fn run() {
             remote::ssh_delete_path,
             remote::ssh_home_dir,
             remote::ssh_pwd,
+            sftp::sftp_preview_target,
             sftp::sftp_connect,
             sftp::sftp_disconnect,
             sftp::sftp_transfer_cancel,

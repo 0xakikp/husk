@@ -1,6 +1,8 @@
 /** Track which editor files have unsaved modifications, are newly created, or are
  *  deleted-but-still-open, so the file explorer can show indicators. */
 
+import { useSyncExternalStore } from "react";
+
 export type FileState = "clean" | "modified" | "new" | "deleted";
 
 type DirtyEntry = {
@@ -30,16 +32,13 @@ export function getUnsavedPathWithin(path: string): string | null {
   return null;
 }
 
-export function markSaved(path: string, versionId?: number): void {
-  const entry = dirtyMap.get(path);
-  if (entry?.state === "new") {
-    // First save of a new file → clean
-    dirtyMap.set(path, { state: "clean", savedVersionId: versionId });
-  } else if (entry?.state === "modified") {
-    dirtyMap.set(path, { state: "clean", savedVersionId: versionId });
-  } else if (!entry && versionId != null) {
-    dirtyMap.set(path, { state: "clean", savedVersionId: versionId });
-  }
+/** Record the version actually written, without discarding edits made while
+ * persistence was pending. A successful save also recreates deleted files. */
+export function markSaved(path: string, versionId?: number, currentVersionId = versionId): void {
+  dirtyMap.set(path, {
+    state: currentVersionId !== versionId ? "modified" : "clean",
+    savedVersionId: versionId,
+  });
   emit();
 }
 
@@ -50,10 +49,11 @@ export function markModified(path: string, currentVersionId: number): void {
     emit();
     return;
   }
-  if (entry.state === "new") return; // new files stay "new" until saved
-  const saved = entry.savedVersionId ?? entry.savedVersionId;
-  if (saved == null || currentVersionId !== saved) {
-    dirtyMap.set(path, { state: "modified", savedVersionId: saved });
+  if (entry.state === "new" || entry.state === "deleted") return;
+  const saved = entry.savedVersionId;
+  const state = saved != null && currentVersionId === saved ? "clean" : "modified";
+  if (entry.state !== state) {
+    dirtyMap.set(path, { state, savedVersionId: saved });
     emit();
   }
 }
@@ -82,8 +82,5 @@ export function subscribeDirty(fn: () => void): () => void {
 }
 
 export function useFileState(path: string): FileState {
-  // Simple re-render trigger; consumer should call this in component
-  // and rely on external re-render triggers (useSyncExternalStore not needed
-  // for this simple case — we just need the parent FileExplorer to re-render).
-  return getFileState(path);
+  return useSyncExternalStore(subscribeDirty, () => getFileState(path), () => getFileState(path));
 }

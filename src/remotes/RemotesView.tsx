@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { runInActiveTerminal, readActiveTerminalCommand, getActiveRemoteTerminal } from "../ai/terminalContext";
@@ -14,7 +14,6 @@ import {
   FolderUploadIcon,
   Add01Icon,
   Settings02Icon,
-  ArrowRight01Icon,
   ClockIcon,
   Tag01Icon,
   CloudUploadIcon,
@@ -22,6 +21,7 @@ import {
   Copy01Icon,
   Delete02Icon,
   RepeatIcon,
+  AlertCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { encodeSftpTarget, parseSshFileTarget, sftpTargetFromConnection, type SftpTarget } from "./sftpTarget";
 import { useConnectedHosts } from "../remote/connectionStore";
@@ -32,11 +32,14 @@ import {
   addConnection,
   deleteConnection,
   removeRecentConnection,
+  connectionInheritsSshConfig,
   type SshConnection,
 } from "../remote/connectionManager";
 import { ConnectionDialog } from "./ConnectionDialog";
 import { PortForwardDialog } from "./PortForwardDialog";
 import { sshCommandForConnection, sshConnectionAddress } from "./sshCommand";
+import { useSftpTargetPreview } from "./useSftpTargetPreview";
+import "./RemotesView.css";
 import {
   HuskContextMenu,
   HuskContextMenuContent,
@@ -44,6 +47,27 @@ import {
   HuskContextMenuSeparator,
   HuskContextMenuTrigger,
 } from "../components/HuskContextMenu";
+
+function ConnectionSummary({ connection, descriptionId }: { connection: SshConnection; descriptionId: string }) {
+  const inherited = connectionInheritsSshConfig(connection);
+  const { preview, error } = useSftpTargetPreview(inherited ? { host: connection.host } : null);
+  const address = inherited
+    ? preview ? `${preview.username}@${preview.hostname}:${preview.port}` : connection.host
+    : `${connection.user ? `${connection.user}@` : ""}${connection.host}:${connection.port}`;
+  const details = [address, inherited ? `SSH config · Alias: ${connection.host}` : "",
+    !inherited && connection.jumpHost ? `Via ${connection.jumpHost}` : "", error ? `Preview unavailable: ${error}` : ""].filter(Boolean).join("\n");
+  return <span className="remote-connection-summary">
+    <span className="remote-connection-heading">
+      <span className="remote-connection-name" title={connection.name}>{connection.name}</span>
+      {inherited && <span className="remote-connection-source" title={error ? `Preview unavailable: ${error}` : "Settings inherited from SSH config"}>
+        SSH config
+        {error && <HugeiconsIcon icon={AlertCircleIcon} size={11} role="img" aria-label="Preview unavailable" />}
+      </span>}
+    </span>
+    <span className="remote-connection-address" title={details}>{address}</span>
+    <span id={descriptionId} className="sr-only">{details}</span>
+  </span>;
+}
 
 async function readSshHosts(): Promise<string[]> {
   try {
@@ -75,6 +99,7 @@ export function RemotesView({
   inline?: boolean;
   onSftp?: (host: string) => void;
 }) {
+  const descriptionPrefix = useId();
   const [sshConfigHosts, setSshConfigHosts] = useState<string[] | "loading">("loading");
   const connected = useConnectedHosts();
   const connectedSet = new Set(connected);
@@ -84,11 +109,15 @@ export function RemotesView({
   const [showPfDialog, setShowPfDialog] = useState<string | undefined>();
   const [importingHost, setImportingHost] = useState<string | undefined>();
   const [showSshConfig, setShowSshConfig] = useState(false);
+  const [previewVersion, setPreviewVersion] = useState(0);
 
-  const load = () => void readSshHosts().then(setSshConfigHosts);
+  const load = () => {
+    setPreviewVersion((version) => version + 1);
+    void readSshHosts().then(setSshConfigHosts);
+  };
 
   useEffect(() => {
-    load();
+    void readSshHosts().then(setSshConfigHosts);
   }, []);
 
   const importHost = (host: string) => {
@@ -106,6 +135,7 @@ export function RemotesView({
       port: 22,
       user: "",
       authType: "agent",
+      inheritSshConfig: true,
       tags: ["ssh-config"],
     });
     toast({ title: `Imported ${host}`, variant: "success" });
@@ -170,6 +200,7 @@ export function RemotesView({
       port: connection.port,
       user: connection.user,
       authType: connection.authType,
+      inheritSshConfig: connection.inheritSshConfig,
       password: connection.password,
       privateKeyPath: connection.privateKeyPath,
       passphrase: connection.passphrase,
@@ -238,15 +269,15 @@ export function RemotesView({
         {onSftp && <button type="button" onClick={browseActiveSsh} className="mb-3 w-full rounded border border-border px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground">Browse active SSH files…</button>}
         <HuskContextMenu>
           <HuskContextMenuTrigger asChild>
-            <div className="min-h-full">
+            <div className="min-h-full min-w-0">
         {/* Quick Connect — Recent */}
         {recentConns.length > 0 && (
-          <div className="mb-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+          <section className="remote-connection-section" aria-label="Recent connections">
+            <div className="remote-section-heading">
               <HugeiconsIcon icon={ClockIcon} size={12} />
               Recent
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="remote-connection-list">
               {recentConns.map((conn) => (
                 <HuskContextMenu key={conn.id}>
                   <HuskContextMenuTrigger asChild>
@@ -254,11 +285,13 @@ export function RemotesView({
                       type="button"
                       onContextMenu={(event) => event.stopPropagation()}
                       onClick={() => connectSaved(conn)}
-                      className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs bg-accent hover:bg-accent/80 transition-colors"
-                      style={conn.color ? { borderLeft: `3px solid ${conn.color}` } : undefined}
+                      aria-label={`Connect to ${conn.name}`}
+                      aria-describedby={`${descriptionPrefix}-recent-${conn.id}`}
+                      className="remote-connection-row remote-connection-trigger"
+                      data-section="recent"
+                      style={conn.color ? { borderInlineStartColor: conn.color } : undefined}
                     >
-                      <span className="truncate max-w-[120px]">{conn.name}</span>
-                      <span className="text-muted-foreground">{conn.user}@{conn.host}</span>
+                      <ConnectionSummary key={previewVersion} connection={conn} descriptionId={`${descriptionPrefix}-recent-${conn.id}`} />
                     </button>
                   </HuskContextMenuTrigger>
                   <HuskContextMenuContent title={conn.name}>
@@ -274,12 +307,12 @@ export function RemotesView({
                 </HuskContextMenu>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
         {/* Section: Saved Connections */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div className="remote-section-header">
+          <div className="remote-section-heading">
             <HugeiconsIcon icon={DatabaseIcon} size={12} />
             Saved ({savedConnections.length})
           </div>
@@ -318,39 +351,32 @@ export function RemotesView({
             </Button>
           </div>
         ) : (
-          <div className="space-y-1 mb-3">
+          <div className="remote-connection-list mb-3" role="group" aria-label="Saved connections">
             {savedConnections.map((conn) => (
               <HuskContextMenu key={conn.id}>
                 <HuskContextMenuTrigger asChild>
                   <div
-                    className="group flex items-center gap-2 rounded px-2 py-1.5 hover:bg-accent/50 transition-colors"
-                    style={conn.color ? { borderLeft: `3px solid ${conn.color}` } : undefined}
+                    className="remote-connection-row"
+                    data-section="saved"
+                    style={conn.color ? { borderInlineStartColor: conn.color } : undefined}
                     onContextMenu={(event) => event.stopPropagation()}
                   >
                     <button
                       type="button"
                       onClick={() => connectSaved(conn)}
-                      className="flex-1 flex items-center gap-2 min-w-0 text-left"
+                      aria-label={`Connect to ${conn.name}`}
+                      aria-describedby={`${descriptionPrefix}-saved-${conn.id}`}
+                      className="remote-connection-trigger"
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{conn.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {conn.user}@{conn.host}:{conn.port}
-                          {conn.jumpHost && ` via ${conn.jumpHost}`}
-                        </div>
-                      </div>
-                      <HugeiconsIcon
-                        icon={ArrowRight01Icon}
-                        size={14}
-                        className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                      />
+                      <ConnectionSummary key={previewVersion} connection={conn} descriptionId={`${descriptionPrefix}-saved-${conn.id}`} />
                     </button>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="remote-connection-actions">
                       {onSftp && (
                         <button
                           type="button"
                           onClick={() => openSavedSftp(conn)}
-                          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                          className="remote-connection-action"
+                          aria-label={`Open SFTP for ${conn.name}`}
                           title="Open SFTP"
                         >
                           <HugeiconsIcon icon={FolderUploadIcon} size={12} />
@@ -359,7 +385,8 @@ export function RemotesView({
                       <button
                         type="button"
                         onClick={() => editConnection(conn.id)}
-                        className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="remote-connection-action"
+                        aria-label={`Edit ${conn.name}`}
                         title="Edit"
                       >
                         <HugeiconsIcon icon={Settings02Icon} size={12} />
@@ -367,7 +394,8 @@ export function RemotesView({
                       <button
                         type="button"
                         onClick={() => setShowPfDialog(conn.id)}
-                        className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="remote-connection-action"
+                        aria-label={`Port forwards for ${conn.name}`}
                         title="Port Forwards"
                       >
                         <HugeiconsIcon icon={Tag01Icon} size={12} />
@@ -518,7 +546,7 @@ export function RemotesView({
               Import <strong>{importingHost}</strong> from SSH config to Saved connections?
             </p>
             <p className="text-xs text-muted-foreground">
-              You can then edit it to add port, username, authentication, and other settings.
+              The saved connection will follow this alias's SSH config, including its port, username and authentication. You can switch to manual settings later.
             </p>
             <div className="flex gap-2 justify-end">
               <Button

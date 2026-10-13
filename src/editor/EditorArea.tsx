@@ -13,8 +13,9 @@ import {
   registerEditorCloseFind,
   registerEditorDocument,
 } from "@/ai/editorStore";
-import { markSaved, markModified, markNew, clearState } from "./dirtyStore";
+import { markSaved, markModified, markNew, clearState, getFileState } from "./dirtyStore";
 import { EditorContextMenu } from "./EditorContextMenu";
+import { toast } from "../toast";
 
 /* ── External file change notifications ───────────────────────────── */
 
@@ -37,7 +38,7 @@ const monacoTheme = (p: Prefs) => {
     defineHuskTheme(p.editorWallpaperOpacity);
     return "husk-black";
   }
-  return "vs";
+  return "husk-light";
 };
 
 /** Editor options driven by preferences (theme handled separately). */
@@ -74,6 +75,7 @@ function editorOptions(p: Prefs): monaco.editor.IEditorOptions & monaco.editor.I
 }
 
 export type OpenFile = { path: string; name: string; remoteHost?: string | null; pinned?: boolean };
+export type EditorRevealTarget = { path: string; line: number; requestId: number | string };
 
 function languageFor(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
@@ -112,16 +114,29 @@ function languageFor(path: string): string {
 export function EditorArea({
   files,
   activePath,
+  visible = true,
+  placementKey,
+  revealTarget,
 }: {
   files: OpenFile[];
   activePath: string | null;
+  visible?: boolean;
+  /** Explicit view moves can blur Monaco even when the same model stays visible. */
+  placementKey?: string | number;
+  revealTarget?: EditorRevealTarget | null;
 }) {
   const prefs = usePrefs();
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const activePathRef = useRef<string | null>(activePath);
+  activePathRef.current = activePath;
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   const filesRef = useRef(files);
   filesRef.current = files;
+  const viewStatesRef = useRef(new Map<string, monaco.editor.ICodeEditorViewState>());
+  const trackedModelsRef = useRef(new Map<monaco.editor.ITextModel, monaco.IDisposable>());
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vimRef = useRef<{ dispose(): void } | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   /* Pending "reveal line N of file X" request, e.g. from a launcher grep hit.
@@ -132,16 +147,48 @@ export function EditorArea({
   const applyPendingReveal = useCallback(() => {
     const target = pendingRevealRef.current;
     const editor = editorRef.current;
-    if (!target || !editor) return;
+    if (!target || !editor || !visibleRef.current) return;
     if (activePathRef.current !== target.path) return;
     const model = editor.getModel();
     if (!model || model.uri.path !== monaco.Uri.file(target.path).path) return;
+    const rect = hostRef.current?.getBoundingClientRect();
+    if (!rect || rect.height < 50 || rect.width <= 0) return;
     pendingRevealRef.current = null;
     const line = Math.max(1, Math.min(target.line, model.getLineCount()));
     editor.revealLineInCenter(line);
     editor.setPosition({ lineNumber: line, column: 1 });
     editor.focus();
   }, []);
+
+  const trackModel = useCallback((model: monaco.editor.ITextModel) => {
+    if (trackedModelsRef.current.has(model)) return;
+    const path = model.uri.fsPath;
+    if (getFileState(path) === "clean") markSaved(path, model.getAlternativeVersionId());
+    trackedModelsRef.current.set(model, model.onDidChangeContent(() => {
+      markModified(path, model.getAlternativeVersionId());
+    }));
+  }, []);
+
+  const scheduleFocus = useCallback(() => {
+    if (focusTimerRef.current !== null) clearTimeout(focusTimerRef.current);
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model || !visibleRef.current) return;
+    const focus = (retry: boolean) => {
+      focusTimerRef.current = null;
+      if (!visibleRef.current || editorRef.current !== editor || editor.getModel() !== model
+        || activePathRef.current !== model.uri.fsPath || model.isDisposed()) return;
+      const rect = hostRef.current?.getBoundingClientRect();
+      if (!rect || rect.height < 50 || rect.width <= 0) {
+        if (retry) focusTimerRef.current = setTimeout(() => focus(false), 200);
+        return;
+      }
+      editor.layout({ width: rect.width, height: rect.height });
+      applyPendingReveal();
+      editor.focus();
+    };
+    focusTimerRef.current = setTimeout(() => focus(true), 100);
+  }, [applyPendingReveal]);
 
   useEffect(() => {
     const onReveal = (e: Event) => {
@@ -155,19 +202,26 @@ export function EditorArea({
   }, [applyPendingReveal]);
 
   useEffect(() => {
+    if (!revealTarget) return;
+    pendingRevealRef.current = { path: revealTarget.path, line: revealTarget.line };
+    applyPendingReveal();
+  }, [revealTarget?.path, revealTarget?.line, revealTarget?.requestId, applyPendingReveal]);
+
+  useEffect(() => {
     if (!hostRef.current) return;
     const p = getPrefs();
     const editor = monaco.editor.create(hostRef.current, {
       ...editorOptions(p),
       theme: monacoTheme(p),
-      automaticLayout: true,
+      // Explicit observation lets a collapsed dock remain completely dormant.
+      automaticLayout: false,
       fixedOverflowWidgets: true,
       padding: { top: 8, bottom: 8 },
     });
     editorRef.current = editor;
 
     // Force layout recalculation on container or window resize
-    const relayout = () => editor.layout();
+    const relayout = () => { if (visibleRef.current) editor.layout(); };
     const resizeObserver = new ResizeObserver(relayout);
     resizeObserver.observe(hostRef.current);
     window.addEventListener("resize", relayout);
@@ -176,51 +230,28 @@ export function EditorArea({
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       const path = activePathRef.current;
       const model = editor.getModel();
-      if (path && model) {
+      if (visibleRef.current && path && model && model.uri.fsPath === path) {
         const file = filesRef.current.find((f) => f.path === path);
-        const host = file?.remoteHost;
+        if (!file) return;
+        const host = file.remoteHost;
+        const savedVersion = model.getAlternativeVersionId();
         const save = host
           ? sshWriteFile(host, path, model.getValue())
           : writeFile(path, model.getValue());
         void save.then(() => {
-          markSaved(path, model.getAlternativeVersionId());
+          if (model.isDisposed() || monaco.editor.getModel(model.uri) !== model) return;
+          markSaved(path, savedVersion, model.getAlternativeVersionId());
           /* Timeline records the save event — path only, never contents. */
           recordTimelineEvent("file", `Edited ${path.split("/").pop() || path}`, { path });
+        }).catch((error) => {
+          toast({ title: "Failed to save file", message: String(error), variant: "error" });
         });
       }
     });
 
-    // Track dirty state via Monaco model changes
-    const dirtyDisposables: monaco.IDisposable[] = [];
-    const trackModelDirty = (m: monaco.editor.ITextModel | null) => {
-      if (!m) return;
-      const path = m.uri.fsPath;
-      const savedVersion = m.getAlternativeVersionId();
-      markSaved(path, savedVersion);
-      const d = m.onDidChangeContent(() => {
-        const current = m.getAlternativeVersionId();
-        if (current !== savedVersion) {
-          markModified(path, current);
-        }
-      });
-      dirtyDisposables.push(d);
-    };
-
-    // Track the initial model
-    trackModelDirty(editor.getModel());
-
-    // Track when model changes (user switches files)
-    const dModelChange = editor.onDidChangeModel(() => {
-      // Clean up old listeners
-      dirtyDisposables.forEach((d) => d.dispose());
-      dirtyDisposables.length = 0;
-      trackModelDirty(editor.getModel());
-    });
-    dirtyDisposables.push(dModelChange);
-
     const unsub = registerEditorApplyEdit((search, replace) => {
       const model = editor.getModel();
-      if (!model) return false;
+      if (!visibleRef.current || !model || model.uri.fsPath !== activePathRef.current) return false;
       const text = model.getValue();
       const idx = text.indexOf(search);
       if (idx < 0) return false;
@@ -240,9 +271,10 @@ export function EditorArea({
     });
 
     const unsubSel = registerEditorGetSelection(() => {
+      if (!visibleRef.current) return null;
       const sel = editor.getSelection();
       const model = editor.getModel();
-      if (!sel || !model || sel.isEmpty()) return null;
+      if (!sel || !model || model.uri.fsPath !== activePathRef.current || sel.isEmpty()) return null;
       const text = model.getValueInRange(sel);
       return {
         text,
@@ -252,14 +284,17 @@ export function EditorArea({
     });
 
     const unsubFile = registerEditorFile(() => {
-      return editor.getModel()?.uri.path ?? null;
+      const model = editor.getModel();
+      return visibleRef.current && model?.uri.fsPath === activePathRef.current ? model.uri.path : null;
     });
 
     const unsubDocument = registerEditorDocument(
       (requestedPath) => {
+        if (!requestedPath && !visibleRef.current) return null;
         const model = requestedPath
           ? monaco.editor.getModel(monaco.Uri.file(requestedPath))
           : editor.getModel();
+        if (!requestedPath && model?.uri.fsPath !== activePathRef.current) return null;
         return model ? { path: model.uri.fsPath, text: model.getValue() } : null;
       },
       async (path, expected, replacement) => {
@@ -281,7 +316,8 @@ export function EditorArea({
           /* If persistence fails and the user has not typed meanwhile, return
              the model to the exact text they reviewed rather than leaving a
              proposal that the UI reported as unapplied. */
-          if (model.getValue() === replacement) {
+          if (!model.isDisposed() && monaco.editor.getModel(model.uri) === model
+            && model.getAlternativeVersionId() === appliedVersion && model.getValue() === replacement) {
             model.pushEditOperations(
               [],
               [{ range: model.getFullModelRange(), text: expected }],
@@ -290,8 +326,9 @@ export function EditorArea({
           }
           throw error;
         }
-        if (model.getAlternativeVersionId() === appliedVersion) markSaved(path, appliedVersion);
-        else markModified(path, model.getAlternativeVersionId());
+        if (!model.isDisposed() && monaco.editor.getModel(model.uri) === model) {
+          markSaved(path, appliedVersion, model.getAlternativeVersionId());
+        }
         recordTimelineEvent("file", `Organized ${path.split("/").pop() || path}`, { path });
         return true;
       },
@@ -332,7 +369,9 @@ export function EditorArea({
       unsubFile();
       unsubDocument();
       unsubCloseFind();
-      dirtyDisposables.forEach((d) => d.dispose());
+      if (focusTimerRef.current !== null) clearTimeout(focusTimerRef.current);
+      for (const disposable of trackedModelsRef.current.values()) disposable.dispose();
+      trackedModelsRef.current.clear();
       vimRef.current?.dispose();
       vimRef.current = null;
       editor.dispose();
@@ -360,19 +399,26 @@ export function EditorArea({
       vimRef.current = null;
     }
   }, [prefs.vimMode]);
-
-
-
-  // Watch for external file changes and reload the model
+  // Only clean local models may absorb external writes. Check again after the
+  // read: the user can type, close, delete, or replace the model while it runs.
   useEffect(() => {
+    const requests = new Map<string, number>();
     const unsub = watchFileChanges((changedPath) => {
       const editor = editorRef.current;
       if (!editor) return;
-      const model = editor.getModel();
-      if (!model || model.uri.fsPath !== changedPath) return;
-      // File changed externally — reload from disk
+      const file = filesRef.current.find((candidate) => candidate.path === changedPath);
+      if (!file || file.remoteHost || getFileState(changedPath) !== "clean") return;
+      const model = monaco.editor.getModel(monaco.Uri.file(changedPath));
+      if (!model || !trackedModelsRef.current.has(model)) return;
+      const version = model.getVersionId();
+      const request = (requests.get(changedPath) ?? 0) + 1;
+      requests.set(changedPath, request);
       void readFile(changedPath).then((content) => {
-        if (editorRef.current !== editor) return;
+        const currentFile = filesRef.current.find((candidate) => candidate.path === changedPath);
+        if (editorRef.current !== editor || requests.get(changedPath) !== request
+          || !currentFile || currentFile.remoteHost || model.isDisposed()
+          || monaco.editor.getModel(model.uri) !== model
+          || getFileState(changedPath) !== "clean" || model.getVersionId() !== version) return;
         const current = model.getValue();
         if (current === content) return;
         /* pushEditOperations, not setValue. The old comment claimed setValue
@@ -386,28 +432,37 @@ export function EditorArea({
           () => null,
         );
         markSaved(changedPath, model.getAlternativeVersionId());
-      });
+      }).catch(() => { /* A renamed/deleted file may no longer be readable. */ });
     });
     return unsub;
   }, []);
 
   // Load + show the active file (one model per path, reused if already open).
   useEffect(() => {
-    activePathRef.current = activePath;
     const editor = editorRef.current;
-    if (!editor || !activePath) return;
+    if (!editor) return;
+    const previous = editor.getModel();
+    if (previous && previous.uri.fsPath !== activePath) {
+      const state = editor.saveViewState();
+      if (state) viewStatesRef.current.set(previous.uri.fsPath, state);
+      editor.setModel(null);
+    }
+    if (!activePath) return;
     let cancelled = false;
     void (async () => {
       const uri = monaco.Uri.file(activePath);
       let model = monaco.editor.getModel(uri);
       if (!model) {
-        const file = files.find((f) => f.path === activePath);
+        const file = filesRef.current.find((f) => f.path === activePath);
+        if (!file) return;
         const host = file?.remoteHost;
         const content = host
           ? await sshReadFile(host, activePath).catch((e) => `// could not open file\n// ${e}`)
           : await readFile(activePath).catch((e) => `// could not open file\n// ${e}`);
-        if (cancelled) return;
-        model = monaco.editor.createModel(content, languageFor(activePath), uri);
+        if (cancelled || editorRef.current !== editor
+          || !filesRef.current.some((candidate) => candidate.path === activePath)) return;
+        // Another explicit document operation may have created it during I/O.
+        model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(content, languageFor(activePath), uri);
         model.updateOptions({ tabSize: getPrefs().editorTabSize, insertSpaces: true });
         // Check if this file exists on disk; if not, mark as "new"
         const exists = content !== `// could not open file\n// Error: file not found`;
@@ -418,49 +473,41 @@ export function EditorArea({
       if (cancelled) return;
       // Ensure we're setting the model on the current editor instance
       if (editorRef.current === editor) {
+        trackModel(model);
         editor.setModel(model);
+        const state = viewStatesRef.current.get(activePath);
+        if (state) editor.restoreViewState(state);
         applyPendingReveal();
-        // Delay layout to allow container to reach full height after visibility change
-        setTimeout(() => {
-          if (editorRef.current === editor && !cancelled) {
-            const host = hostRef.current;
-            if (host) {
-              const rect = host.getBoundingClientRect();
-              if (rect.height < 50) {
-                // Container still too small, retry later
-                setTimeout(() => {
-                  if (editorRef.current === editor && !cancelled) {
-                    const host2 = hostRef.current;
-                    if (host2) {
-                      const r2 = host2.getBoundingClientRect();
-                      editor.layout({ width: r2.width, height: r2.height });
-                    } else {
-                      editor.layout();
-                    }
-                    editor.focus();
-                  }
-                }, 200);
-                return;
-              }
-              editor.layout({ width: rect.width, height: rect.height });
-            } else {
-              editor.layout();
-            }
-            editor.focus();
-          }
-        }, 100);
+        scheduleFocus();
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activePath]);
+  }, [activePath, applyPendingReveal, scheduleFocus, trackModel]);
+
+  // Moving the persistent editor between hosts does not switch models, but DOM
+  // reparenting can blur it. Explicit placement changes need a guarded focus
+  // pass just like opening the drawer; collapsing cancels old timers.
+  useEffect(() => {
+    if (visible) {
+      applyPendingReveal();
+      scheduleFocus();
+    } else if (focusTimerRef.current !== null) {
+      clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = null;
+    }
+  }, [visible, placementKey, applyPendingReveal, scheduleFocus]);
 
   // Dispose models for files that are no longer open.
   useEffect(() => {
     const open = new Set(files.map((f) => f.path));
     for (const model of monaco.editor.getModels()) {
       if (model.uri.scheme === "file" && !open.has(model.uri.fsPath)) {
+        if (editorRef.current?.getModel() === model) editorRef.current.setModel(null);
+        trackedModelsRef.current.get(model)?.dispose();
+        trackedModelsRef.current.delete(model);
+        viewStatesRef.current.delete(model.uri.fsPath);
         clearState(model.uri.fsPath);
         model.dispose();
       }

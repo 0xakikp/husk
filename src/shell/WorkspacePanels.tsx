@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,11 @@ import { TerminalLogs } from "../terminal/TerminalLogs";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { toast } from "../toast";
 import { lazyPanel } from "./lazy";
-import { Inspector } from "./Inspector";
+import { WorkspaceDock } from "./WorkspaceDock";
+import { PersistentEditor } from "./PersistentEditor";
+import { NotesEditorControls, NotesOpenTabs } from "../notes/NotesEditorChrome";
+import { getFileState } from "../editor/dirtyStore";
+import type { NotesDockApi, NotesOpeningMode } from "../notes/useNotesDock";
 import type { Prefs } from "../settings/preferences";
 import type { OpenFile } from "../editor/EditorArea";
 import type { TerminalTabsApi } from "../useTerminalTabs";
@@ -52,6 +56,8 @@ export function WorkspacePanels({
   bgDataUrl,
   openFiles,
   activeFile,
+  notesDock,
+  onOpenNote,
   settingsOpen,
   openPanel,
   closeSettings,
@@ -77,6 +83,8 @@ export function WorkspacePanels({
   bgDataUrl: string | null;
   openFiles: OpenFile[];
   activeFile: string | null;
+  notesDock: NotesDockApi;
+  onOpenNote: (path: string, name: string, line?: number, mode?: NotesOpeningMode) => void;
   settingsOpen: boolean;
   openPanel: OpenPanelKind;
   closeSettings: () => void;
@@ -96,18 +104,84 @@ export function WorkspacePanels({
 }) {
   const aiLeft = prefs.aiPanelDock === "left";
   const [logsLeafId, setLogsLeafId] = useState<number | null>(null);
+  const [dockTab, setDockTab] = useState<"notes" | "logs" | "details">("notes");
+  const [dockCollapsed, setDockCollapsed] = useState(false);
+  const [dockExpanded, setDockExpanded] = useState(false);
+  const terminalColumnRef = useRef<HTMLDivElement>(null);
+  const fileColumnRef = useRef<HTMLDivElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const terminalDockRef = useRef<HTMLDivElement>(null);
+  const fileDockRef = useRef<HTMLDivElement>(null);
+  const otherDockRef = useRef<HTMLDivElement>(null);
+  const parkingRef = useRef<HTMLDivElement>(null);
+  const noteEditorRef = useRef<HTMLDivElement>(null);
+  const fullEditorRef = useRef<HTMLDivElement>(null);
+  const activeRoot = term.tabs.find((tab) => tab.id === term.activeId)?.root;
+  const fileRoot = useMemo(() => ({ kind: "leaf" as const, id: -1 }), []);
+  const editorFiles = useMemo(() => {
+    const files = [...openFiles];
+    for (const file of notesDock.files) if (!files.some((item) => item.path === file.path)) files.push(file);
+    return files;
+  }, [openFiles, notesDock.files]);
+  // Let empty-files cleanup run on last close so no global Monaco model is orphaned.
+  const editorStarted = useRef(false);
+  if (editorFiles.length > 0) editorStarted.current = true;
+  const hasDetails = !!(selectedK8sResource || selectedDockerResource);
+  const hasDock = (!!notesDock.activePath && notesDock.panelRequestId > 0) || logsLeafId !== null || hasDetails;
+  // A closed tool falls back to another retained tool without clearing notes.
+  const activeDockTab = dockTab === "notes" && notesDock.activePath ? "notes"
+    : dockTab === "logs" && logsLeafId !== null ? "logs"
+      : dockTab === "details" && hasDetails ? "details"
+        : notesDock.activePath ? "notes" : logsLeafId !== null ? "logs" : "details";
+  const showDock = hasDock && (activeKind === "term" || activeDockTab !== "notes");
+  const dockContainerRef = activeKind === "term" ? terminalColumnRef : activeKind === "file" && openFiles.length ? fileColumnRef : workspaceRef;
+  const dockTargetRef = !showDock ? parkingRef : activeKind === "term" ? terminalDockRef : activeKind === "file" && openFiles.length ? fileDockRef : otherDockRef;
+  const editorVisible = activeKind === "file" || (hasDock && activeKind === "term" && activeDockTab === "notes" && dockExpanded && !dockCollapsed);
+  const editorPath = activeKind === "file" ? activeFile : notesDock.activePath;
+  const fullTabNote = activeKind === "file" ? notesDock.files.find((file) => file.path === activeFile) : undefined;
 
-  /* Inspector is intentionally one slot. Opening Kubernetes/Docker detail
-     replaces Logs rather than piling another pane beneath the terminal. */
+  /* One shared dock: switching tools never stacks panels or discards drafts. */
   useEffect(() => {
-    if (selectedK8sResource || selectedDockerResource) setLogsLeafId(null);
+    if (selectedK8sResource || selectedDockerResource) {
+      setDockTab("details");
+      setDockCollapsed(false);
+    }
   }, [selectedK8sResource, selectedDockerResource]);
 
   const openLogs = useCallback((leafId: number) => {
-    setSelectedK8sResource(null);
-    setSelectedDockerResource(null);
     setLogsLeafId(leafId);
-  }, [setSelectedDockerResource, setSelectedK8sResource]);
+    setDockTab("logs");
+    setDockCollapsed(false);
+  }, []);
+
+  useEffect(() => {
+    if (notesDock.panelRequestId === 0) return;
+    setDockTab("notes");
+    setDockCollapsed(false);
+  }, [notesDock.panelRequestId]);
+
+  useEffect(() => {
+    // A full-tab note should not also spring open below the terminal on return.
+    // The explicit "Move note below terminal" action issues a new panel request.
+    if (fullTabNote && activeDockTab === "notes") setDockCollapsed(true);
+  }, [fullTabNote?.path, activeDockTab]);
+
+  const selectDockTab = (tab: typeof dockTab) => {
+    if (tab === "notes" && notesDock.activePath) {
+      const file = notesDock.files.find((item) => item.path === notesDock.activePath)!;
+      onOpenNote(file.path, file.name, undefined, "panel");
+    }
+    setDockTab(tab);
+    setDockCollapsed(false);
+  };
+
+  const closeDockNote = (path: string) => {
+    if (getFileState(path) !== "clean") {
+      toast({ title: "This note has unsaved changes", message: "Save it with Cmd+S / Ctrl+S before closing. Collapsing the panel keeps your draft.", variant: "info" });
+      return;
+    }
+    notesDock.deletePath(path); // Removes the panel tab only; never deletes a file.
+  };
 
   const activeLeafId = term.tabs.find((tab) => tab.id === term.activeId)?.focused ?? null;
 
@@ -142,6 +216,7 @@ export function WorkspacePanels({
 
   return (
     <div
+      ref={workspaceRef}
       className={cn(
         "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg",
         prefs.panelShadows && "panel-shadow",
@@ -201,6 +276,7 @@ export function WorkspacePanels({
                 />
               </Suspense>
             )}
+            <div ref={terminalColumnRef} className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : "6px" }}>
             <div className={cn(
               "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)]",
               prefs.panelShadows && "panel-shadow",
@@ -217,6 +293,8 @@ export function WorkspacePanels({
               >
                 <TerminalStack term={term} viewActive={activeKind === "term"} onOpenLogs={openLogs} />
               </ErrorBoundary>
+            </div>
+            <div ref={terminalDockRef} style={{ display: "contents" }} />
             </div>
             {!aiLeft && (
               <Suspense fallback={null}>
@@ -283,10 +361,12 @@ export function WorkspacePanels({
                   />
                 </Suspense>
               )}
-              <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
-                <div className="flex-1 overflow-hidden">
-                  {lazyPanel(<EditorArea files={openFiles} activePath={activeFile} />, "Editor")}
+              <div ref={fileColumnRef} className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : "6px" }}>
+                <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background", prefs.neonBorderGlow && activeKind === "file" && "neon-glow", prefs.panelShadows && "panel-shadow", prefs.activePanelGlow && activeKind === "file" && "active-panel-glow active")}>
+                  {fullTabNote && <div className="notes-full-tab-header"><NotesEditorControls notes={notesDock} path={fullTabNote.path} fullTab onMove={() => onOpenNote(fullTabNote.path, fullTabNote.name, undefined, "panel")} /></div>}
+                  <div ref={fullEditorRef} className="min-h-0 flex-1 overflow-hidden" />
                 </div>
+                <div ref={fileDockRef} style={{ display: "contents" }} />
               </div>
               {!aiLeft && (
                 <Suspense fallback={null}>
@@ -426,24 +506,33 @@ export function WorkspacePanels({
         )}
       </div>
 
-      {/* Inspector — a row under the work area, not a fourth column and not an
-          overlay. Sits outside the layer stack above, so it stays put whichever
-          tab is active and never covers the terminal. */}
-      {(logsLeafId != null || inspected) && (
-        <Inspector>
-          <ErrorBoundary>
-            {logsLeafId != null ? (
-              <TerminalLogs
-                leafId={logsLeafId}
-                onClose={() => {
-                  setLogsLeafId(null);
-                  focusActiveTerminal();
-                }}
-              />
-            ) : inspected}
-          </ErrorBoundary>
-        </Inspector>
-      )}
+      <div ref={otherDockRef} style={{ display: "contents" }} />
+      <div ref={parkingRef} hidden inert />
+      {hasDock && <PersistentEditor targetRef={dockTargetRef} layout="contents">
+        <WorkspaceDock containerRef={dockContainerRef} terminalRoot={activeKind === "term" ? activeRoot ?? fileRoot : fileRoot} collapsed={dockCollapsed} onCollapsedChange={setDockCollapsed} onExpandedChange={setDockExpanded} onUserCollapse={() => { if (activeKind === "term") focusActiveTerminal(); }} header={({ cramped }) => <>
+          <div className="workspace-tool-tabs" data-with-note={activeDockTab === "notes"} role="group" aria-label="Workspace tools">
+          {notesDock.activePath && <button type="button" className="workspace-tool-tab" aria-pressed={activeDockTab === "notes"} onClick={() => selectDockTab("notes")}>Notes</button>}
+          {logsLeafId !== null && <button type="button" className="workspace-tool-tab" aria-pressed={activeDockTab === "logs"} onClick={() => selectDockTab("logs")}>Logs</button>}
+          {hasDetails && <button type="button" className="workspace-tool-tab" aria-pressed={activeDockTab === "details"} onClick={() => selectDockTab("details")}>{selectedK8sResource ? "Kubernetes" : "Docker"}</button>}
+          </div>
+          {activeDockTab === "notes" && notesDock.activePath && <NotesEditorControls notes={notesDock} path={notesDock.activePath} cramped={cramped} onClose={() => closeDockNote(notesDock.activePath!)} onMove={() => {
+            const file = notesDock.files.find((item) => item.path === notesDock.activePath)!;
+            onOpenNote(file.path, file.name, undefined, "tab");
+          }} />}
+        </>}>
+          <div className="workspace-dock-page" hidden={activeDockTab !== "notes"} inert={activeDockTab !== "notes"}>
+            <NotesOpenTabs notes={notesDock} onSelect={(path, name) => onOpenNote(path, name, undefined, "panel")} onClose={closeDockNote} />
+            <div ref={noteEditorRef} className="min-h-0 flex-1 overflow-hidden" />
+          </div>
+          <div className="workspace-dock-page" hidden={activeDockTab !== "logs"} inert={activeDockTab !== "logs"}>
+            {logsLeafId !== null && <ErrorBoundary><TerminalLogs leafId={logsLeafId} onClose={() => { setLogsLeafId(null); focusActiveTerminal(); }} /></ErrorBoundary>}
+          </div>
+          <div className="workspace-dock-page" hidden={activeDockTab !== "details"} inert={activeDockTab !== "details"}><ErrorBoundary>{inspected}</ErrorBoundary></div>
+        </WorkspaceDock>
+      </PersistentEditor>}
+      {editorStarted.current && <PersistentEditor targetRef={activeKind === "file" && openFiles.length ? fullEditorRef : hasDock ? noteEditorRef : parkingRef}>
+        {lazyPanel(<EditorArea files={editorFiles} activePath={editorPath} visible={editorVisible} revealTarget={notesDock.revealTarget} placementKey={activeKind === "file" ? "full-tab" : "panel"} />, "Editor")}
+      </PersistentEditor>}
     </div>
   );
 }

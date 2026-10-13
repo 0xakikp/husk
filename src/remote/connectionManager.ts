@@ -9,6 +9,8 @@ export interface SshConnection {
   port: number;
   user: string;
   authType: "password" | "key" | "agent";
+  /** Use this host as an SSH-config alias; stored manual fields do not override it. */
+  inheritSshConfig?: boolean;
   password?: string;
   privateKeyPath?: string;
   passphrase?: string;
@@ -17,6 +19,21 @@ export interface SshConnection {
   lastConnected?: number;
   connectCount: number;
   color?: string;
+}
+
+/** Older imports stored placeholders rather than resolved SSH settings. Only
+ * recognize untouched imports; an explicit false marker or any custom setting
+ * must retain the saved profile's behavior. */
+export function connectionInheritsSshConfig(connection: SshConnection): boolean {
+  if (connection.inheritSshConfig !== undefined) return connection.inheritSshConfig;
+  return connection.tags.includes("ssh-config")
+    && connection.port === 22
+    && !connection.user.trim()
+    && connection.authType === "agent"
+    && !connection.privateKeyPath?.trim()
+    && !connection.jumpHost?.trim()
+    && !connection.password
+    && !connection.passphrase;
 }
 
 export interface PortForward {

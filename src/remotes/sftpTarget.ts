@@ -1,4 +1,4 @@
-import type { SshConnection } from "../remote/connectionManager";
+import { connectionInheritsSshConfig, type SshConnection } from "../remote/connectionManager";
 
 export type SftpTarget = {
   host: string;
@@ -35,6 +35,7 @@ export function decodeSftpTarget(reference: string): SftpTarget {
   return validateSftpTarget(at >= 0 ? { host: reference.slice(at + 1), user: reference.slice(0, at) } : { host: reference });
 }
 export function sftpTargetFromConnection(connection: SshConnection): SftpTarget {
+  if (connectionInheritsSshConfig(connection)) return validateSftpTarget({ host: connection.host });
   return validateSftpTarget({ host: connection.host, user: connection.user || undefined, port: connection.port,
     authType: connection.authType, identityFile: connection.authType === "key" ? connection.privateKeyPath || undefined : undefined,
     jumpHost: connection.jumpHost || undefined });

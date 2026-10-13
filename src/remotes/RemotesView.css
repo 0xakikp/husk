@@ -1,0 +1,30 @@
+/* One stable two-line row in both lists. Actions occupy only the title line;
+   hidden controls must never steal space from the connection address. */
+.remote-connection-row, .remote-connection-trigger, .remote-connection-heading, .remote-connection-actions, .remote-connection-action { box-sizing: border-box; }
+.remote-connection-section { margin-bottom: 16px; }
+.remote-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.remote-section-heading { display: flex; align-items: center; gap: 6px; min-height: 24px; padding-inline: 8px; color: var(--muted-foreground); font-size: 10px; line-height: 16px; letter-spacing: .06em; text-transform: uppercase; }
+.remote-connection-list { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.remote-connection-row { position: relative; display: block; width: 100%; min-width: 0; border: 1px solid transparent; border-inline-start-width: 2px; border-radius: 6px; background: transparent; transition: background-color 120ms ease, border-color 120ms ease; }
+.remote-connection-row:is(:hover, :focus-within) { background: var(--muted); border-block-color: var(--border); border-inline-end-color: var(--border); }
+.remote-connection-trigger { display: block; width: 100%; min-width: 0; padding: 7px 8px; border-radius: 5px; color: var(--foreground); background: transparent; text-align: start; cursor: pointer; }
+.remote-connection-trigger:focus-visible, .remote-connection-action:focus-visible { outline: 1px solid var(--ring, var(--primary)); outline-offset: -1px; }
+.remote-connection-summary { display: block; min-width: 0; }
+.remote-connection-heading { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 24px; }
+.remote-connection-name { display: block; flex: 1; min-width: 0; overflow: hidden; color: var(--foreground); font-size: 12px; font-weight: 500; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.remote-connection-source { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; color: var(--muted-foreground); font-size: 10px; font-weight: 400; line-height: 20px; white-space: nowrap; }
+.remote-connection-address { display: block; width: 100%; min-width: 0; overflow: hidden; color: var(--muted-foreground); font-size: 11px; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.remote-connection-row[data-section="saved"] .remote-connection-heading { padding-inline-end: 84px; }
+.remote-connection-row[data-section="saved"] .remote-connection-source { position: absolute; inset-inline-end: 0; top: 2px; }
+.remote-connection-actions { position: absolute; inset-inline-end: 7px; top: 7px; display: flex; align-items: center; justify-content: flex-end; gap: 3px; opacity: 0; pointer-events: none; }
+.remote-connection-action { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 4px; color: var(--muted-foreground); background: transparent; cursor: pointer; }
+.remote-connection-action:hover { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+.remote-connection-row:is(:hover, :focus-within) .remote-connection-actions { opacity: 1; pointer-events: auto; }
+.remote-connection-row[data-section="saved"]:is(:hover, :focus-within) .remote-connection-source { visibility: hidden; }
+@media (hover: none) {
+  .remote-connection-actions { opacity: 1; pointer-events: auto; }
+  .remote-connection-row[data-section="saved"] .remote-connection-source { visibility: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .remote-connection-row { transition: none; }
+}

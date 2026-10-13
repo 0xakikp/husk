@@ -24,6 +24,33 @@ mod connection_config;
 pub use connection_config::{SftpConnectResult, SftpCredentials, SftpTarget};
 use connection_config::{AuthType, ResolvedTarget, VerifiedHosts, parse_verified_hosts, resolve_target, validate_session_key, verified_key};
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SftpTargetPreview {
+    hostname: String,
+    port: u16,
+    username: String,
+    auth_type: &'static str,
+    // Public connection settings only, including algorithm policy and key
+    // paths, never credentials/key bytes. Transient, not saved or logged.
+    review_key: String,
+}
+
+fn target_preview(target: &ResolvedTarget) -> SftpTargetPreview {
+    SftpTargetPreview {
+        hostname: target.hostname.clone(), port: target.port, username: target.username.clone(),
+        auth_type: match target.auth_type { Some(AuthType::Agent) => "agent", Some(AuthType::Key) => "key", Some(AuthType::Password) => "password", None => "auto" },
+        review_key: format!("{target:?}"),
+    }
+}
+
+fn check_reviewed_target(target: &ResolvedTarget, expected: Option<&str>) -> Result<(), String> {
+    if expected.is_some_and(|key| key != target_preview(target).review_key) {
+        return Err("SSH configuration changed since this preview. Refresh connection details and review the new target. No connection was attempted".into());
+    }
+    Ok(())
+}
+
 /// The callback never trusts an unknown key. It records evidence for the UI and
 /// rejects the first handshake before a username, password, or key is offered.
 pub struct SshClient {
@@ -178,7 +205,7 @@ impl SftpManager {
 
     pub async fn connect(
         &self, host: &str, target: Option<SftpTarget>, credentials: Option<SftpCredentials>,
-        expected_fingerprint: Option<String>,
+        expected_fingerprint: Option<String>, expected_review_key: Option<String>,
     ) -> Result<SftpConnectResult, String> {
         validate_session_key(host)?;
         if let Some(error) = &self.trust_error { return Err(error.clone()); }
@@ -194,6 +221,7 @@ impl SftpManager {
             let target = tokio::task::spawn_blocking(move || resolve_target(explicit)).await
                 .map_err(|_| "Could not resolve the SFTP target")??;
             Self::ensure_current(&cancelled)?;
+            check_reviewed_target(&target, expected_review_key.as_deref())?;
             Self::check_confirmation(&target, expected_fingerprint.as_deref(), verification.as_ref())?;
             {
                 let mut connections = self.connections.lock().await;
@@ -222,10 +250,12 @@ impl SftpManager {
         let stored = self.known_hosts.lock().await.get(&endpoint).cloned();
         let observed = Arc::new(Mutex::new(None));
         let handler = SshClient { stored: stored.clone(), confirmation: confirmation.clone(), observed: observed.clone() };
-        let config = Arc::new(client::Config {
+        let mut config = client::Config {
             keepalive_interval: Some(Duration::from_secs(30)), keepalive_max: 3,
             ..Default::default()
-        });
+        };
+        target.apply_algorithm_policy(&mut config);
+        let config = Arc::new(config);
         Self::ensure_current(cancelled)?;
         // Passing (hostname, port), rather than SocketAddr::parse, supports DNS
         // and IPv6 without treating an SSH alias as an address or shell command.
@@ -430,7 +460,25 @@ mod connection_lifecycle_tests {
         ResolvedTarget {
             hostname: "prod.example.test".into(), port: 22, username: "deploy".into(),
             identity_files: vec!["/fixture/key".into()], auth_type: Some(AuthType::Key), agent_socket: None,
+            algorithm_policy: Default::default(),
         }
+    }
+    #[test]
+    fn preview_contains_resolved_metadata_and_rejects_changed_targets_before_connecting() {
+        let target = fixture_target();
+        let preview = target_preview(&target);
+        assert_eq!(preview.hostname, "prod.example.test");
+        assert_eq!(preview.port, 22);
+        assert_eq!(preview.username, "deploy");
+        assert_eq!(preview.auth_type, "key");
+        assert!(check_reviewed_target(&target, Some(&preview.review_key)).is_ok());
+        let mut changed = target.clone(); changed.port = 1243;
+        assert!(check_reviewed_target(&changed, Some(&preview.review_key)).is_err());
+        let mut changed = target.clone(); changed.identity_files = vec!["/fixture/changed-key".into()];
+        assert!(check_reviewed_target(&changed, Some(&preview.review_key)).is_err());
+        let mut changed = target.clone(); changed.auth_type = Some(AuthType::Agent);
+        assert_eq!(target_preview(&changed).auth_type, "agent");
+        assert!(check_reviewed_target(&changed, Some(&preview.review_key)).is_err());
     }
     #[test]
     fn disconnect_revokes_pending_connection_before_it_can_install() {
@@ -1051,14 +1099,24 @@ async fn ensure_local_directory(path: &Path) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn sftp_preview_target(target: SftpTarget) -> Result<SftpTargetPreview, String> {
+    // Deliberately no manager, network connection, ssh -G, Match exec, private
+    // key reads or agent calls. The resolver reads local config metadata only.
+    let resolved = tokio::task::spawn_blocking(move || resolve_target(target)).await
+        .map_err(|_| "Could not preview the SSH configuration")??;
+    Ok(target_preview(&resolved))
+}
+
+#[tauri::command]
 pub async fn sftp_connect(
     host: String,
     target: Option<SftpTarget>,
     credentials: Option<SftpCredentials>,
     expected_fingerprint: Option<String>,
+    expected_review_key: Option<String>,
     manager: State<'_, SftpManager>,
 ) -> Result<SftpConnectResult, String> {
-    manager.connect(&host, target, credentials, expected_fingerprint).await
+    manager.connect(&host, target, credentials, expected_fingerprint, expected_review_key).await
 }
 
 #[tauri::command]

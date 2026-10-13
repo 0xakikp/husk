@@ -1,0 +1,94 @@
+.workspace-dock {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  /* Height must never animate: every intermediate frame would refit xterm. */
+  transition: none;
+  container-type: inline-size;
+}
+
+.workspace-dock__header {
+  display: flex;
+  flex: 0 0 30px;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  background: var(--bg-2);
+}
+
+.workspace-dock[data-expanded="true"] .workspace-dock__header {
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-dock__tabs {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.workspace-dock__toggle {
+  display: inline-flex;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.workspace-dock__toggle:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.workspace-dock__toggle:disabled { opacity: 0.45; cursor: default; }
+.workspace-dock__toggle:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+.workspace-dock__resize {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 auto;
+  height: 4px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.workspace-dock__resize:hover,
+.workspace-dock__resize:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.workspace-dock__content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-dock__content[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-dock,
+  .workspace-dock__resize,
+  .workspace-dock__toggle { animation: none; transition: none; }
+}

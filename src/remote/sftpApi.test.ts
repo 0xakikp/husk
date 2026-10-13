@@ -1,9 +1,16 @@
 import { beforeEach, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 import { invoke } from "@tauri-apps/api/core";
-import { sftpConnect, sftpCopy, sftpDownload, sftpDownloadDir, sftpRename, sftpUpload, sftpUploadDir } from "./sftpApi";
+import { sftpConnect, sftpCopy, sftpDownload, sftpDownloadDir, sftpPreviewTarget, sftpRename, sftpUpload, sftpUploadDir } from "./sftpApi";
 
 beforeEach(() => { vi.mocked(invoke).mockClear(); });
+
+it("requests only local metadata when previewing and pins that review when connecting", async () => {
+  await sftpPreviewTarget({ host: "alias" });
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("sftp_preview_target", { target: { host: "alias" } });
+  await sftpConnect("session", { host: "alias" }, {}, undefined, "reviewed-target");
+  expect(invoke).toHaveBeenLastCalledWith("sftp_connect", { host: "session", target: { host: "alias" }, credentials: {}, expectedFingerprint: undefined, expectedReviewKey: "reviewed-target" });
+});
 
 it("passes native connection identity, public target, transient credentials and verified fingerprint separately", async () => {
   const target = { host: "alias", user: "dev", port: 2200 };

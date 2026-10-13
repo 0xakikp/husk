@@ -5,11 +5,13 @@ import {
   updateConnection,
   deleteConnection,
   getConnectionById,
+  connectionInheritsSshConfig,
   type SshConnection,
 } from "../remote/connectionManager";
 import { Modal } from "../components/Modal";
 import { CompactForm, CompactInput, CompactButton, CompactLabel, CompactSelectTrigger, CompactSelectContent, CompactSelectItem } from "../components/compact-form";
 import { Select, SelectValue } from "../components/ui/select";
+import { useSftpTargetPreview } from "./useSftpTargetPreview";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   FolderOpenIcon,
@@ -33,6 +35,7 @@ export function ConnectionDialog({
 
   const [name, setName] = useState(existing?.name || "");
   const [host, setHost] = useState(existing?.host || "");
+  const [inheritSshConfig, setInheritSshConfig] = useState(() => existing ? connectionInheritsSshConfig(existing) : false);
   const [port, setPort] = useState(existing?.port?.toString() || "22");
   const [user, setUser] = useState(existing?.user || "");
   const [authType, setAuthType] = useState<
@@ -47,6 +50,16 @@ export function ConnectionDialog({
   const [tags, setTags] = useState(existing?.tags.join(", ") || "");
   const [color, setColor] = useState(existing?.color || "");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const { preview, error: previewError } = useSftpTargetPreview(inheritSshConfig && host.trim() ? { host: host.trim() } : null);
+
+  const toggleSshConfig = (inherit: boolean) => {
+    if (!inherit && preview) {
+      setPort(String(preview.port));
+      setUser(preview.username);
+    }
+    setInheritSshConfig(inherit);
+    setErrors({});
+  };
 
   const pickKeyFile = async () => {
     try {
@@ -63,12 +76,12 @@ export function ConnectionDialog({
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = "Name is required";
     if (!host.trim()) errs.host = "Host is required";
-    if (!user.trim()) errs.user = "Username is required";
+    if (!inheritSshConfig && !user.trim()) errs.user = "Username is required";
     const portNum = parseInt(port, 10);
-    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    if (!inheritSshConfig && (isNaN(portNum) || portNum < 1 || portNum > 65535)) {
       errs.port = "Port must be 1-65535";
     }
-    if (authType === "key" && !privateKeyPath.trim()) {
+    if (!inheritSshConfig && authType === "key" && !privateKeyPath.trim()) {
       errs.key = "Private key path is required";
     }
     setErrors(errs);
@@ -81,13 +94,14 @@ export function ConnectionDialog({
     const data = {
       name: name.trim(),
       host: host.trim(),
-      port: parseInt(port, 10),
-      user: user.trim(),
-      authType,
-      password: password || undefined,
-      privateKeyPath: privateKeyPath || undefined,
-      passphrase: passphrase || undefined,
-      jumpHost: jumpHost.trim() || undefined,
+      inheritSshConfig,
+      port: inheritSshConfig ? 22 : parseInt(port, 10),
+      user: inheritSshConfig ? "" : user.trim(),
+      authType: inheritSshConfig ? "agent" as const : authType,
+      password: inheritSshConfig ? undefined : password || undefined,
+      privateKeyPath: inheritSshConfig ? undefined : privateKeyPath || undefined,
+      passphrase: inheritSshConfig ? undefined : passphrase || undefined,
+      jumpHost: inheritSshConfig ? undefined : jumpHost.trim() || undefined,
       tags: tags
         .split(",")
         .map((t) => t.trim())
@@ -146,43 +160,53 @@ export function ConnectionDialog({
           {fieldError("name")}
         </div>
 
+        <div className="compact-field">
+          <label className="flex items-center gap-2 text-xs" htmlFor="conn-inherit-ssh-config">
+            <input id="conn-inherit-ssh-config" type="checkbox" checked={inheritSshConfig} onChange={(event) => toggleSshConfig(event.target.checked)} />
+            Use SSH config
+          </label>
+          <p className="compact-hint">Follow the host alias's port, username and authentication. Turn this off to enter manual settings.</p>
+          {inheritSshConfig && preview && <p className="compact-hint break-all">SSH config: {preview.username}@{preview.hostname}:{preview.port}</p>}
+          {inheritSshConfig && previewError && <p className="compact-hint" role="status">SSH config preview unavailable: {previewError}</p>}
+        </div>
+
         <div className="flex flex-wrap gap-3">
           <div className="compact-field min-w-0 flex-[1_1_180px]">
             <CompactLabel htmlFor="conn-host">Host</CompactLabel>
             <CompactInput id="conn-host" value={host} onChange={(event) => setHost(event.target.value)} placeholder="192.168.1.100 or server.com" {...errorProps("host")} />
             {fieldError("host")}
           </div>
-          <div className="compact-field w-20 shrink-0">
+          <div className={`compact-field ${inheritSshConfig ? "w-28" : "w-20"} shrink-0`}>
             <CompactLabel htmlFor="conn-port">Port</CompactLabel>
-            <CompactInput id="conn-port" inputMode="numeric" value={port} onChange={(event) => setPort(event.target.value)} {...errorProps("port")} />
+            <CompactInput id="conn-port" inputMode="numeric" value={inheritSshConfig ? preview ? String(preview.port) : "" : port} placeholder={inheritSshConfig ? "SSH config" : undefined} disabled={inheritSshConfig} onChange={(event) => setPort(event.target.value)} {...errorProps("port")} />
             {fieldError("port")}
           </div>
         </div>
 
         <div className="compact-field">
           <CompactLabel htmlFor="conn-user">Username</CompactLabel>
-          <CompactInput id="conn-user" value={user} onChange={(event) => setUser(event.target.value)} placeholder="root" autoComplete="username" {...errorProps("user")} />
+          <CompactInput id="conn-user" value={inheritSshConfig ? preview?.username || "" : user} disabled={inheritSshConfig} onChange={(event) => setUser(event.target.value)} placeholder={inheritSshConfig ? "SSH config" : "root"} autoComplete="username" {...errorProps("user")} />
           {fieldError("user")}
         </div>
 
         <div className="compact-field">
           <CompactLabel htmlFor="conn-auth">Authentication</CompactLabel>
-          <Select value={authType} onValueChange={(value: "password" | "key" | "agent") => setAuthType(value)}>
+          {inheritSshConfig ? <CompactInput id="conn-auth" value="SSH config" disabled /> : <Select value={authType} onValueChange={(value: "password" | "key" | "agent") => setAuthType(value)}>
             <CompactSelectTrigger id="conn-auth" aria-label="Authentication"><SelectValue /></CompactSelectTrigger>
             <CompactSelectContent>
               <CompactSelectItem value="agent">SSH Agent</CompactSelectItem>
               <CompactSelectItem value="key">Private Key</CompactSelectItem>
               <CompactSelectItem value="password">Password</CompactSelectItem>
             </CompactSelectContent>
-          </Select>
+          </Select>}
         </div>
 
-        {authType === "password" && <div className="compact-field">
+        {!inheritSshConfig && authType === "password" && <div className="compact-field">
           <CompactLabel htmlFor="conn-password">Password</CompactLabel>
           <CompactInput id="conn-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Optional — will prompt if empty" autoComplete="current-password" />
         </div>}
 
-        {authType === "key" && <>
+        {!inheritSshConfig && authType === "key" && <>
           <div className="compact-field">
             <CompactLabel htmlFor="conn-key">Private Key</CompactLabel>
             <div className="flex items-center gap-1.5">
@@ -199,7 +223,7 @@ export function ConnectionDialog({
 
         <div className="compact-field">
           <CompactLabel htmlFor="conn-jump">Jump Host / Bastion (optional)</CompactLabel>
-          <CompactInput id="conn-jump" value={jumpHost} onChange={(event) => setJumpHost(event.target.value)} placeholder="bastion.example.com" />
+          <CompactInput id="conn-jump" value={inheritSshConfig ? "" : jumpHost} disabled={inheritSshConfig} onChange={(event) => setJumpHost(event.target.value)} placeholder={inheritSshConfig ? "SSH config" : "bastion.example.com"} />
         </div>
 
         <div className="compact-field">

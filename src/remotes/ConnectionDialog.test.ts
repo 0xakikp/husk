@@ -4,9 +4,17 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SshConnection } from "../remote/connectionManager";
 
-const fixture = vi.hoisted(() => ({ existing: undefined as SshConnection | undefined }));
+const fixture = vi.hoisted(() => ({
+  existing: undefined as SshConnection | undefined,
+  preview: null as { hostname: string; username: string; port: number; authType: "auto"; reviewKey: string } | null,
+  previewError: "",
+}));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../remote/connectionManager", () => ({
+vi.mock("./useSftpTargetPreview", () => ({
+  useSftpTargetPreview: (target: unknown) => ({ preview: target ? fixture.preview : null, loading: false, error: target ? fixture.previewError : "", refresh: vi.fn() }),
+}));
+vi.mock("../remote/connectionManager", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../remote/connectionManager")>(),
   getConnectionById: () => fixture.existing,
   addConnection: vi.fn((data) => ({ ...data, id: "new", connectCount: 0 })),
   updateConnection: vi.fn((id, data) => ({ ...data, id, connectCount: 1 })),
@@ -23,6 +31,7 @@ const confirmDelete = vi.fn();
 const existing = (extra: Partial<SshConnection> = {}): SshConnection => ({ id: "existing", name: "Test host", host: "host.example", port: 22, user: "dev", authType: "agent", tags: ["dev"], connectCount: 1, ...extra });
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); fixture.existing = undefined;
+  fixture.preview = null; fixture.previewError = "";
   onClose.mockReset(); onSave.mockReset(); vi.mocked(invoke).mockReset();
   confirmDelete.mockReset(); vi.stubGlobal("confirm", confirmDelete);
   vi.mocked(addConnection).mockClear(); vi.mocked(updateConnection).mockClear(); vi.mocked(deleteConnection).mockClear();
@@ -85,7 +94,7 @@ it("preserves normalized save values and accessible color choices", async () => 
   await enter("conn-jump", " bastion.example "); await click("Color #3b82f6");
   expect(button("Color #3b82f6").getAttribute("aria-pressed")).toBe("true"); expect(button("No color").getAttribute("aria-pressed")).toBe("false");
   await click("Save");
-  expect(addConnection).toHaveBeenCalledExactlyOnceWith({ name: "Production", host: "host.example", port: 2222, user: "dev", authType: "agent", password: undefined, privateKeyPath: undefined, passphrase: undefined, jumpHost: "bastion.example", tags: ["prod", "aws"], color: "#3b82f6" });
+  expect(addConnection).toHaveBeenCalledExactlyOnceWith({ name: "Production", host: "host.example", inheritSshConfig: false, port: 2222, user: "dev", authType: "agent", password: undefined, privateKeyPath: undefined, passphrase: undefined, jumpHost: "bastion.example", tags: ["prod", "aws"], color: "#3b82f6" });
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: "new" })); expect(invoke).not.toHaveBeenCalled();
 });
 
@@ -121,4 +130,57 @@ it("preserves the chosen private key when file selection is cancelled", async ()
 it("cancel closes without saving or connecting", async () => {
   await render(); await enter("conn-name", "Unsaved"); await click("Cancel");
   expect(onClose).toHaveBeenCalledOnce(); expect(addConnection).not.toHaveBeenCalled(); expect(onSave).not.toHaveBeenCalled(); expect(invoke).not.toHaveBeenCalled();
+});
+
+it("lets an untouched imported alias be renamed without inventing a username or port", async () => {
+  fixture.existing = existing({ host: "houseofaki", user: "", tags: ["ssh-config"] });
+  await render();
+  expect(input("conn-inherit-ssh-config").checked).toBe(true);
+  expect(input("conn-port").disabled).toBe(true);
+  expect(input("conn-port").value).toBe("");
+  expect(input("conn-port").placeholder).toBe("SSH config");
+  expect(input("conn-user").disabled).toBe(true);
+  expect(input("conn-auth").value).toBe("SSH config");
+  expect(input("conn-jump").disabled).toBe(true);
+  await enter("conn-name", "Home server"); await click("Save");
+  expect(updateConnection).toHaveBeenCalledWith("existing", expect.objectContaining({ name: "Home server", host: "houseofaki", inheritSshConfig: true, user: "" }));
+  expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+  expect(invoke).not.toHaveBeenCalled();
+});
+
+it("shows resolved inherited values and seeds them when switching to manual settings", async () => {
+  fixture.existing = existing({ host: "houseofaki", user: "", tags: ["ssh-config"], inheritSshConfig: true });
+  fixture.preview = { hostname: "home.example", username: "owner", port: 1243, authType: "auto", reviewKey: "fixture" };
+  await render();
+  expect(input("conn-port").value).toBe("1243");
+  expect(input("conn-user").value).toBe("owner");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("owner@home.example:1243");
+  await act(async () => input("conn-inherit-ssh-config").click());
+  expect(input("conn-port").disabled).toBe(false);
+  expect(input("conn-port").value).toBe("1243");
+  expect(input("conn-user").value).toBe("owner");
+  await enter("conn-port", "22"); await click("Save");
+  expect(updateConnection).toHaveBeenCalledWith("existing", expect.objectContaining({ inheritSshConfig: false, port: 22, user: "owner" }));
+});
+
+it("allows opting into SSH config while keeping customized tagged profiles manual by default", async () => {
+  fixture.existing = existing({ tags: ["ssh-config"], authType: "key" });
+  await render();
+  expect(input("conn-inherit-ssh-config").checked).toBe(false);
+  expect(input("conn-user").disabled).toBe(false);
+  await act(async () => input("conn-inherit-ssh-config").click());
+  expect(document.getElementById("conn-key")).toBeNull();
+  await click("Save");
+  expect(updateConnection).toHaveBeenCalledWith("existing", expect.objectContaining({ inheritSshConfig: true, privateKeyPath: undefined }));
+});
+
+it("does not present placeholder port 22 when an inherited preview is unavailable", async () => {
+  fixture.existing = existing({ user: "", tags: ["ssh-config"] });
+  fixture.previewError = "Unsupported SSH config policy";
+  await render();
+  expect(input("conn-port").value).toBe("");
+  expect(input("conn-user").value).toBe("");
+  expect(document.querySelector('[role="status"]')?.textContent).toContain("preview unavailable");
+  await click("Save");
+  expect(updateConnection).toHaveBeenCalledWith("existing", expect.objectContaining({ inheritSshConfig: true }));
 });

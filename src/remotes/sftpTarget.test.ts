@@ -16,6 +16,15 @@ describe("SFTP public target metadata", () => {
     expect(sftpTargetFromConnection({ ...profile, authType: "password" })).not.toHaveProperty("identityFile");
   });
 
+  it("omits dummy port, username and authentication overrides for SSH-config imports", () => {
+    const profile: SshConnection = { id: "imported", name: "Home", host: "houseofaki", port: 22, user: "", authType: "agent", tags: ["ssh-config"], connectCount: 0 };
+    expect(sftpTargetFromConnection(profile)).toEqual({ host: "houseofaki" });
+    expect(sftpTargetFromConnection({ ...profile, inheritSshConfig: true })).toEqual({ host: "houseofaki" });
+    expect(sftpTargetFromConnection({ ...profile, inheritSshConfig: false })).toEqual({ host: "houseofaki", port: 22, authType: "agent" });
+    expect(sftpTargetFromConnection({ ...profile, user: "deploy" })).toEqual({ host: "houseofaki", port: 22, user: "deploy", authType: "agent" });
+    expect(sftpTargetFromConnection({ ...profile, port: 1243 })).toEqual({ host: "houseofaki", port: 1243, authType: "agent" });
+  });
+
   it("decodes existing aliases and literal user-host references", () => {
     expect(decodeSftpTarget("prod-alias")).toEqual({ host: "prod-alias" });
     expect(decodeSftpTarget("dev@host.example")).toEqual({ host: "host.example", user: "dev" });

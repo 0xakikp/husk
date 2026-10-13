@@ -17,10 +17,18 @@ function connection(overrides: Partial<SshConnection> = {}): SshConnection {
 }
 
 describe("SSH connection commands", () => {
-  it("uses the compact default-port form", () => {
+  it("passes a manual port 22 explicitly instead of inheriting another alias port", () => {
     const saved = connection();
-    expect(sshCommandForConnection(saved)).toBe("ssh 'deploy@example.com'");
+    expect(sshCommandForConnection(saved)).toBe("ssh -p 22 'deploy@example.com'");
     expect(sshConnectionAddress(saved)).toBe("deploy@example.com");
+  });
+
+  it("lets OpenSSH resolve both new and legacy SSH-config imports", () => {
+    const imported = connection({ host: "houseofaki", user: "", tags: ["ssh-config"] });
+    expect(sshCommandForConnection(imported)).toBe("ssh 'houseofaki'");
+    expect(sshConnectionAddress(imported)).toBe("houseofaki");
+    expect(sshCommandForConnection({ ...imported, inheritSshConfig: true })).toBe("ssh 'houseofaki'");
+    expect(sshCommandForConnection({ ...imported, inheritSshConfig: false })).toBe("ssh -p 22 'houseofaki'");
   });
 
   it("includes non-default port, key, and jump-host options safely", () => {

@@ -45,6 +45,9 @@ export function defineHuskTheme(wallpaperOpacity = 0): void {
       "editor.selectionBackground": "#264f7880",
       "editor.selectionForeground": "#ffffff",
       "editor.inactiveSelectionBackground": "#264f7840",
+      // Monaco inherits a full-width rectangle around the current line. Keep
+      // the cursor/selection and line-highlight preference, without that frame.
+      "editor.lineHighlightBorder": "#00000000",
       "editorGutter.background": bg,
       "editorLineNumber.background": bg,
       "editorLineNumber.foreground": "#888888",
@@ -63,5 +66,13 @@ export function defineHuskTheme(wallpaperOpacity = 0): void {
 }
 
 defineHuskTheme(0);
+
+// Apply the same quiet current-line treatment in the light editor theme.
+monaco.editor.defineTheme("husk-light", {
+  base: "vs",
+  inherit: true,
+  rules: [],
+  colors: { "editor.lineHighlightBorder": "#00000000" },
+});
 
 export { monaco };
