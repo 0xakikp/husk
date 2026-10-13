@@ -8,11 +8,14 @@ import {
 } from "./ai/terminalContext";
 import { getShellHistory, type HistoryRow } from "./shellHistory";
 import { usePrefs } from "./settings/preferences";
+import { buildTerminalTheme } from "./styles/terminalTheme";
 import { captureTerminalTarget } from "./ai/terminalTarget";
 import type { ScreenAiSelection } from "./ai/ScreenAiPopover";
 import { captureScreenCommandTarget, stageScreenCommand, type ScreenCommandTarget } from "./terminal/stageScreenCommand";
 import { TerminalSelectionActions, type TerminalSelectionSnapshot } from "./terminal/TerminalSelectionActions";
 import { TerminalSessionNotice } from "./terminal/TerminalSessionNotice";
+import { TerminalWelcome } from "./terminal/TerminalWelcome";
+import { dismissTerminalWelcome } from "./terminal/terminalWelcomeState";
 import { openSavedFixes } from "./terminal/savedFixesView";
 import { TerminalHistoryPanel } from "./TerminalHistory";
 import { useAutocomplete } from "./terminal/useAutocomplete";
@@ -86,6 +89,7 @@ export function TerminalView({
      dependency detached and reattached the running xterm at each directory
      change. Keep the value from this leaf's first render instead. */
   const initialCwdRef = useRef(initialCwd);
+  const restoredRef = useRef(restored);
   const [sessionReady, setSessionReady] = useState(false);
   const sessionStatus = useSyncExternalStore(
     (listener) => subscribeSessionStatus(leafId, listener),
@@ -131,6 +135,7 @@ export function TerminalView({
     void (async () => {
       try {
         await createSession(leafId, initialCwdRef.current);
+        if (restoredRef.current) dismissTerminalWelcome(leafId);
         if (cancelled) return;
 
         const container = containerRef.current;
@@ -587,6 +592,7 @@ export function TerminalView({
     <div
       ref={hostRef}
       className="terminal-host-wrap"
+      style={{ backgroundColor: buildTerminalTheme(prefs.terminalTheme, prefs.theme === "dark", prefs.background?.enabled, prefs.accentColor).background }}
       onMouseDown={(e) => {
         handleTerminalMouseDown(e);
         onFocus?.();
@@ -601,7 +607,12 @@ export function TerminalView({
       }}
       onContextMenu={handleContextMenu}
     >
-      <div ref={containerRef} className="terminal-host" />
+      <div className="terminal-surface">
+        <TerminalWelcome leafId={leafId} restored={restored} status={sessionStatus}
+          getRowHeight={() => containerRef.current?.querySelector<HTMLElement>(".xterm-rows > div")?.getBoundingClientRect().height || prefs.terminalFontSize * 1.2}
+          onDismiss={() => { onFocus?.(); handleRef.current?.focus(); }} />
+        <div ref={containerRef} className="terminal-host" />
+      </div>
       {active && <TerminalSessionNotice
         key={leafId}
         status={sessionStatus}

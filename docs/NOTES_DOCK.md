@@ -8,6 +8,9 @@ tool tabs, so panels do not stack.
 - Open several notes from the sidebar: each gets a switchable tab within Notes.
 - Drag the dock's top edge to resize it, or focus the separator and use Up/Down.
 - Collapse keeps all drafts. It returns keyboard focus to the terminal.
+- Double-click the header's title or empty space to collapse or restore the
+  dock. Drafts and the previous height are preserved. Header buttons keep their
+  own actions; the expand/collapse arrow also works with the keyboard.
 - Use **Open note in full tab** to promote a note; each promoted note gets a
   normal top-level file tab. **Move note below terminal** returns to the dock.
 - The **…** menu chooses the default opening mode. A one-off promotion does not
@@ -30,6 +33,9 @@ does not automatically expand the dock or rearrange terminal splits.
 1. Open two notes, edit both without saving, switch between them, collapse and
    expand, promote each to a full tab, then return below the terminal. Verify
    both drafts, selection, scroll and undo remain intact.
+   Double-click the header's empty space and note title to collapse and restore;
+   confirm its height is retained, collapsing returns focus to the terminal,
+   and the menu/full-tab buttons remain independent.
 2. Save a note, edit again, switch notes, undo back to the saved content, and
    check the save indicator. Verify a failed save stays unsaved.
 3. Test horizontal, vertical and uneven terminal splits. Resize the window and

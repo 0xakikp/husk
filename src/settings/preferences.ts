@@ -59,6 +59,8 @@ export type Prefs = {
   terminalBoldFont: boolean;
   terminalTheme: TerminalThemePreset;
   terminalScrollback: number;
+  /** App-rendered welcome for fresh local shells; never injected into the PTY. */
+  terminalWelcomeEnabled: boolean;
 
   // Editor
   editorFontSize: number;
@@ -178,6 +180,7 @@ const DEFAULT: Prefs = {
   terminalBoldFont: false,
   terminalTheme: "husk",
   terminalScrollback: 1000,
+  terminalWelcomeEnabled: true,
 
   editorFontSize: 13,
   editorTabSize: 2,
@@ -313,6 +316,9 @@ function mergePrefs(saved: Partial<Prefs> & { aiTtsVoice?: unknown }): Prefs {
   // carrying a dead setting forward into localStorage or config.toml.
   const { aiTtsVoice: _legacyTtsVoice, ...current } = saved;
   const merged = { ...DEFAULT, ...current };
+  merged.terminalWelcomeEnabled = typeof current.terminalWelcomeEnabled === "boolean"
+    ? current.terminalWelcomeEnabled
+    : DEFAULT.terminalWelcomeEnabled;
   /* Before this mode existed, 11px was Husk's shipped AI size. Treat that
      untouched legacy value as the new readable follow-terminal default, while
      preserving every value a user had deliberately changed as Custom. */

@@ -29,7 +29,8 @@ vi.mock("./sessionLifecycle", async importOriginal => {
   };
 });
 
-import { checkSessionHealth, createSession, disposeSession, getSessionHandle, restartSession, setSessionActive, setSessionVisible, submitTrackedTerminalCommand } from "./registry";
+import { checkSessionHealth, createSession, detachSession, disposeSession, getSessionHandle, restartSession, setSessionActive, setSessionVisible, submitTrackedTerminalCommand } from "./registry";
+import { getTerminalWelcome, subscribeTerminalWelcome } from "./terminalWelcomeState";
 import { invoke } from "@tauri-apps/api/core";
 import { captureScreenCommandTarget, stageScreenCommand } from "./stageScreenCommand";
 import {
@@ -67,6 +68,148 @@ async function setup() {
 }
 
 describe("registry receipt integration without native shell processes", () => {
+  it("shows the welcome from observed local prompt metadata without any native write or output mutation", async () => {
+    const leaf = ++nextLeaf;
+    leaves.push(leaf);
+    const session = await createSession(leaf, "/initial/guess");
+    const write = (text: string) => new Promise<void>(resolve => session.term.write(text, resolve));
+    expect(getTerminalWelcome(leaf)).toEqual({ cwd: "", visible: false, atPrompt: false });
+    await write(osc(133, "B"));
+    expect(getTerminalWelcome(leaf)?.visible).toBe(false);
+    await write(osc(7, "file://local/observed/path"));
+    expect(getTerminalWelcome(leaf)).toEqual({ cwd: "/observed/path", visible: false, atPrompt: false });
+    await write("prompt> " + osc(133, "B"));
+    expect(getTerminalWelcome(leaf)).toEqual({ cwd: "/observed/path", visible: true, atPrompt: true });
+    expect(getSessionHandle(leaf)!.getBuffer()).toBe("prompt> ");
+    expect(nativeWrites()).toEqual([]);
+    expect(fixture.writes).toEqual([]);
+    expect(vi.mocked(invoke).mock.calls.every(([command]) => command === "pty_resize")).toBe(true);
+  });
+
+  it.each(["\r", "\n", "\x03", "\x04", "pasted\ncommand"])("keeps welcome while %j crosses the input boundary unchanged", async data => {
+    const { leaf, session, write } = await setup();
+    const changed = vi.fn(() => expect(fixture.writes).toEqual([]));
+    const unsubscribe = subscribeTerminalWelcome(leaf, changed);
+    subscriptions.push(unsubscribe);
+    expect(getTerminalWelcome(leaf)?.visible).toBe(true);
+    getSessionHandle(leaf)!.write(data);
+    expect(getTerminalWelcome(leaf)).toMatchObject({ visible: true, atPrompt: false });
+    expect(changed).toHaveBeenCalledOnce();
+    expect(fixture.writes).toEqual([{ ptyId: session.ptyId, data }]);
+    unsubscribe();
+    await write(osc(133, "B"));
+    expect(getTerminalWelcome(leaf)).toMatchObject({ visible: true, atPrompt: true });
+  });
+
+  it("preserves the welcome while typing and running an app command", async () => {
+    const { leaf, write } = await setup();
+    getSessionHandle(leaf)!.write("git status");
+    expect(getTerminalWelcome(leaf)?.visible).toBe(true);
+    fixture.writes = [];
+    // A separate verified fresh prompt is required after manual draft editing.
+    await write("\r❯ " + osc(133, "B"));
+    const result = runInActiveTerminalResult("git status");
+    expect(result.ok).toBe(true);
+    expect(getTerminalWelcome(leaf)).toMatchObject({ visible: true, atPrompt: false });
+  });
+
+  it("keeps the greeting but clears the Ready badge for tracked workflow writes", async () => {
+    const { leaf } = await setup();
+    const target = captureScreenCommandTarget(leaf)!;
+    vi.mocked(invoke).mockImplementation(async command => {
+      if (command === "pty_write") expect(getTerminalWelcome(leaf)).toMatchObject({ visible: true, atPrompt: false });
+      return undefined;
+    });
+    await submitTrackedTerminalCommand(leaf, { ...target, ptyId: target.ptyId! }, "git status", () => {});
+    expect(getTerminalWelcome(leaf)).toMatchObject({ visible: true, atPrompt: false });
+  });
+
+  it.each([osc(778, "husk;cmd;ssh example.com"), osc(777, "husk;remote;1"), osc(7, "file://remote/project"), "\x1b[?1049h"])(
+    "retires the welcome on remote or alternate-screen evidence %j", async evidence => {
+      const { leaf, write } = await setup();
+      await write(evidence);
+      expect(getTerminalWelcome(leaf)?.visible).toBe(false);
+      await write("\x1b[?1049l" + osc(777, "husk;remote;0") + osc(7, "file://local/project") + osc(133, "B"));
+      expect(getTerminalWelcome(leaf)?.visible).toBe(false);
+    },
+  );
+
+  it("keeps the greeting through a short command's start, output and completion", async () => {
+    const { leaf, start, finish } = await setup();
+    await start("git status");
+    expect(getTerminalWelcome(leaf)).toMatchObject({ visible: true, atPrompt: false });
+    await finish();
+    expect(getTerminalWelcome(leaf)).toMatchObject({ visible: true, atPrompt: true });
+  });
+
+  it.each(["\x1b[2J", "\x1b[3J", "\x1bc"])("retires welcome on an actual clear/reset %j without consuming the sequence", async sequence => {
+    const { leaf, write } = await setup();
+    await write("old output\r\n");
+    await write(sequence);
+    expect(getTerminalWelcome(leaf)?.visible).toBe(false);
+    await write(osc(7, "file://local/project") + osc(133, "B"));
+    expect(getTerminalWelcome(leaf)?.visible).toBe(false);
+    expect(fixture.writes).toEqual([]);
+    expect(nativeWrites()).toEqual([]);
+    if (sequence !== "\x1b[3J") expect(getSessionHandle(leaf)!.getBuffer()).not.toContain("old output");
+  });
+
+  it("retires on Ctrl+L and the context-menu Clear action, not ordinary input", async () => {
+    const first = await setup();
+    getSessionHandle(first.leaf)!.write("\x0c");
+    expect(getTerminalWelcome(first.leaf)?.visible).toBe(false);
+    expect(fixture.writes).toEqual([{ ptyId: first.session.ptyId, data: "\x0c" }]);
+    const second = await setup();
+    getSessionHandle(second.leaf)!.clear();
+    expect(getTerminalWelcome(second.leaf)?.visible).toBe(false);
+  });
+
+  it("scrolls the greeting with output after the first page fills, preserving output across refits", async () => {
+    const { leaf, session, write } = await setup();
+    session.term.resize(80, 8);
+    await write("first\r\nsecond\r\nthird\r\n");
+    expect(getTerminalWelcome(leaf)?.visible).toBe(true);
+    await write("fourth\r\nfifth\r\nsixth\r\nseventh\r\neighth\r\n");
+    expect(getTerminalWelcome(leaf)?.visible).toBe(true);
+    const scrollRows = getTerminalWelcome(leaf)?.scrollRows ?? 0;
+    expect(scrollRows).toBeGreaterThan(0);
+    session.term.resize(80, 10);
+    await write("more\r\n");
+    expect(getTerminalWelcome(leaf)?.scrollRows).toBeGreaterThanOrEqual(scrollRows);
+    expect(getSessionHandle(leaf)!.getBuffer()).toContain("first");
+    expect(getSessionHandle(leaf)!.getBuffer()).toContain("eighth");
+    expect(fixture.writes).toEqual([]);
+    expect(nativeWrites()).toEqual([]);
+  });
+
+  it("never shows a local welcome if remote evidence preceded the first prompt", async () => {
+    const leaf = ++nextLeaf;
+    leaves.push(leaf);
+    const session = await createSession(leaf, "/project");
+    await new Promise<void>(resolve => session.term.write(
+      osc(777, "husk;remote;1") + osc(7, "file://remote/project") + osc(133, "B"), resolve));
+    expect(getTerminalWelcome(leaf)?.visible).toBe(false);
+    expect(fixture.writes).toEqual([]);
+    expect(nativeWrites()).toEqual([]);
+  });
+
+  it("preserves welcome identity on detach and tab changes, but not on restart or disposal", async () => {
+    const { leaf, session, write } = await setup();
+    const welcome = getTerminalWelcome(leaf);
+    detachSession(leaf);
+    setSessionVisible(leaf, false);
+    setSessionActive(leaf, false);
+    expect(await createSession(leaf, "/other")).toBe(session);
+    setSessionVisible(leaf, true);
+    setSessionActive(leaf, true);
+    expect(getTerminalWelcome(leaf)).toBe(welcome);
+    await restartSession(leaf);
+    await write(osc(7, "file://local/project") + osc(133, "B"));
+    expect(getTerminalWelcome(leaf)?.visible).toBe(false);
+    disposeSession(leaf);
+    expect(getTerminalWelcome(leaf)).toBeNull();
+  });
+
   it("preserves actual scrollback across tiny wake/layout measurements, then resumes ordinary resizing", async () => {
     const { leaf, session, write } = await setup();
     session.term.resize(120, 30);

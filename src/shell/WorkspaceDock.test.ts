@@ -2,6 +2,8 @@
 import { act, createElement, useEffect, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { WorkspaceDock } from "./WorkspaceDock";
 import { WORKSPACE_DOCK_HEIGHT_KEY } from "./workspaceDockLayout";
 
@@ -59,9 +61,28 @@ const dock = () => host.querySelector<HTMLElement>(".workspace-dock")!;
 const content = () => host.querySelector<HTMLElement>(".workspace-dock__content")!;
 const separator = () => host.querySelector<HTMLElement>('[role="separator"]')!;
 const toggle = () => host.querySelector<HTMLButtonElement>(".workspace-dock__toggle")!;
+const header = () => host.querySelector<HTMLElement>(".workspace-dock__header")!;
 async function render(changes: Partial<typeof props> = {}) {
   props = { ...props, ...changes };
   await act(async () => root.render(createElement(WorkspaceDock, props)));
+}
+async function renderControlled(changes: Partial<typeof props> = {}) {
+  props = { ...props, ...changes };
+  function Controlled() {
+    const [collapsed, setCollapsed] = useState(props.collapsed);
+    return createElement(WorkspaceDock, {
+      ...props,
+      collapsed,
+      onCollapsedChange: (next: boolean) => {
+        props.onCollapsedChange(next);
+        setCollapsed(next);
+      },
+    });
+  }
+  await act(async () => root.render(createElement(Controlled)));
+}
+async function doubleClick(target: HTMLElement) {
+  await act(async () => target.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0, detail: 2 })));
 }
 async function resize(nextHeight: number, nextWidth = width) {
   height = nextHeight; width = nextWidth;
@@ -73,6 +94,16 @@ async function pointer(target: EventTarget, type: string, clientY: number, point
 async function key(value: string) {
   await act(async () => separator().dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: value })));
 }
+
+it("reuses the sidebar's compact resize seam in the horizontal orientation", async () => {
+  await render();
+  const handle = separator();
+  expect(handle.classList.contains("husk-resize-seam")).toBe(true);
+  expect(handle.classList.contains("husk-resize-seam-horizontal")).toBe(true);
+  expect(handle.classList.contains("absolute")).toBe(true);
+  expect(handle.tabIndex).toBe(0);
+  expect(handle.getAttribute("aria-orientation")).toBe("horizontal");
+});
 
 it("measures the actual terminal-only container, not window height", async () => {
   container.style.paddingTop = "10px";
@@ -107,6 +138,113 @@ it("keeps draft identity and scroll while collapsed, with an always-visible head
   expect(content().hidden).toBe(false);
   expect(content().textContent).toBe("edited draft");
   expect(content().scrollTop).toBe(48);
+});
+
+it.each(["blank area", "nested title"])("double-clicking the header's %s collapses and restores without resetting its size or contents", async (target) => {
+  localStorage.setItem(WORKSPACE_DOCK_HEIGHT_KEY, "344");
+  const onUserCollapse = vi.fn();
+  await renderControlled({
+    onUserCollapse,
+    header: () => createElement("span", null, "Notes ", createElement("strong", null, "Test.md")),
+  });
+  const child = content().querySelector("button")!;
+  await act(async () => child.click());
+  content().scrollTop = 48;
+  const doubleClickHeader = () => doubleClick(target === "blank area" ? header() : header().querySelector("strong")!);
+  await doubleClickHeader();
+  expect(props.onCollapsedChange).toHaveBeenCalledExactlyOnceWith(true);
+  expect(onUserCollapse).toHaveBeenCalledTimes(1);
+  expect(content().hidden).toBe(true);
+  expect(content().hasAttribute("inert")).toBe(true);
+  expect(content().querySelector("button")).toBe(child);
+  expect(dock().style.height).toBe("32px");
+  expect(localStorage.getItem(WORKSPACE_DOCK_HEIGHT_KEY)).toBe("344");
+  vi.mocked(props.onCollapsedChange).mockClear();
+  onUserCollapse.mockClear();
+
+  await doubleClickHeader();
+
+  expect(props.onCollapsedChange).toHaveBeenCalledExactlyOnceWith(false);
+  expect(onUserCollapse).not.toHaveBeenCalled();
+  expect(dock().style.height).toBe("344px");
+  expect(localStorage.getItem(WORKSPACE_DOCK_HEIGHT_KEY)).toBe("344");
+  expect(content().hidden).toBe(false);
+  expect(content().hasAttribute("inert")).toBe(false);
+  expect(content().querySelector("button")).toBe(child);
+  expect(content().textContent).toBe("edited draft");
+  expect(content().scrollTop).toBe(48);
+  expect(unmounted).not.toHaveBeenCalled();
+});
+
+it.each([true, false])("does not toggle a dock with collapsed=%s on a single click in blank header space", async (collapsed) => {
+  await render({ collapsed });
+  const initialHeight = dock().style.height;
+  await act(async () => header().click());
+  expect(props.onCollapsedChange).not.toHaveBeenCalled();
+  expect(dock().style.height).toBe(initialHeight);
+  expect(content().hidden).toBe(collapsed);
+});
+
+it("does not restore on header double-click when terminal geometry is cramped", async () => {
+  height = 280;
+  await render({ collapsed: true });
+  await doubleClick(header());
+  expect(props.onCollapsedChange).not.toHaveBeenCalled();
+  expect(toggle().disabled).toBe(true);
+  expect(dock().dataset.cramped).toBe("true");
+  expect(dock().style.height).toBe("32px");
+  expect(content().hidden).toBe(true);
+});
+
+it.each([
+  ["button", "button", {}],
+  ["link", "a", { href: "#note" }],
+  ["input", "input", {}],
+  ["select", "select", {}],
+  ["textarea", "textarea", {}],
+  ["custom button", "span", { role: "button" }],
+  ["tab", "span", { role: "tab" }],
+] as const)("ignores double-clicks from a header %s so controls keep their own behavior", async (_name, tag, attributes) => {
+  const onUserCollapse = vi.fn();
+  for (const collapsed of [true, false]) {
+    await render({
+      collapsed,
+      onUserCollapse,
+      header: () => createElement(tag, { ...attributes, "data-header-control": "true" }),
+    });
+    await doubleClick(header().querySelector<HTMLElement>("[data-header-control]")!);
+    expect(props.onCollapsedChange).not.toHaveBeenCalled();
+    expect(onUserCollapse).not.toHaveBeenCalled();
+    expect(content().hidden).toBe(collapsed);
+  }
+});
+
+it.each(["button", "tab"])("also ignores nested text inside a header %s", async (role) => {
+  for (const collapsed of [true, false]) {
+    await render({
+      collapsed,
+      header: () => role === "button"
+        ? createElement("button", null, createElement("span", null, "Open in tab"))
+        : createElement("div", { role: "tab" }, createElement("span", null, "Notes")),
+    });
+    await doubleClick(header().querySelector<HTMLElement>(".workspace-dock__tabs span")!);
+    expect(props.onCollapsedChange).not.toHaveBeenCalled();
+    expect(content().hidden).toBe(collapsed);
+  }
+});
+
+it("does not undo the toggle button's own action in either direction when its double-click bubbles", async () => {
+  await renderControlled();
+  await act(async () => toggle().click());
+  expect(props.onCollapsedChange).toHaveBeenCalledExactlyOnceWith(true);
+  await doubleClick(toggle());
+  expect(props.onCollapsedChange).toHaveBeenCalledTimes(1);
+  expect(content().hidden).toBe(true);
+  await act(async () => toggle().click());
+  expect(props.onCollapsedChange).toHaveBeenNthCalledWith(2, false);
+  await doubleClick(toggle());
+  expect(props.onCollapsedChange).toHaveBeenCalledTimes(2);
+  expect(content().hidden).toBe(false);
 });
 
 it("uses a compact header on short containers without automatic reopening on resize", async () => {
@@ -255,4 +393,16 @@ it("also measures on window resize when the containing layout changes", async ()
   height = 600;
   await act(async () => window.dispatchEvent(new Event("resize")));
   expect(dock().style.height).toBe("168px");
+});
+
+it("keeps the broad resize target transparent and draws keyboard focus on the grip only", () => {
+  const css = readFileSync(resolve("src/shell/WorkspaceDock.css"), "utf8");
+  const hitArea = css.match(/\.workspace-dock__resize\s*\{([^}]+)\}/)![1];
+  const focus = css.match(/\.workspace-dock__resize:focus-visible\s*\{([^}]+)\}/)![1];
+  const grip = css.match(/\.workspace-dock__resize:focus-visible::after\s*\{([^}]+)\}/)![1];
+  expect(hitArea).toContain("height: 6px");
+  expect(hitArea).toContain("background: transparent");
+  expect(focus).toContain("box-shadow: none !important");
+  expect(grip).toContain("width: 72px");
+  expect(css).not.toMatch(/\.workspace-dock__resize:hover\s*[,\{]/);
 });

@@ -169,11 +169,17 @@ export function WorkspaceDock({ containerRef, terminalRoot, collapsed, onCollaps
     persistHeight(height);
   };
 
+  const toggleCollapsed = () => {
+    if (geometry.cramped) return;
+    onCollapsedChange(expanded);
+    if (expanded) onUserCollapse?.();
+  };
+
   return (
     <div ref={paneRef} className="workspace-dock" style={{ height: renderedHeight }} data-expanded={expanded} data-cramped={geometry.cramped}>
       {expanded && <div
         ref={handleRef}
-        className="workspace-dock__resize"
+        className="workspace-dock__resize husk-resize-seam husk-resize-seam-horizontal absolute"
         role="separator"
         tabIndex={0}
         aria-label="Resize workspace dock"
@@ -187,7 +193,20 @@ export function WorkspaceDock({ containerRef, terminalRoot, collapsed, onCollaps
         onLostPointerCapture={() => finishDrag(false)}
         onKeyDown={onKeyDown}
       />}
-      <div className="workspace-dock__header">
+      <div
+        className="workspace-dock__header"
+        title={geometry.cramped ? undefined : expanded ? "Double-click to collapse workspace dock" : "Double-click to expand workspace dock"}
+        onDoubleClick={(event) => {
+          if (geometry.cramped || event.defaultPrevented) return;
+          const target = event.target;
+          // Keep tab, menu and full-tab actions independent of this shortcut,
+          // including events bubbling through React portals.
+          if (!(target instanceof Element) || !event.currentTarget.contains(target)
+            || target.closest("button, a, input, select, textarea, [role='button'], [role='tab'], [role^='menuitem'], [contenteditable]:not([contenteditable='false'])")) return;
+          event.preventDefault();
+          toggleCollapsed();
+        }}
+      >
         <div className="workspace-dock__tabs">{header({ cramped: geometry.cramped, expanded })}</div>
         <button
           type="button"
@@ -197,7 +216,7 @@ export function WorkspaceDock({ containerRef, terminalRoot, collapsed, onCollaps
           aria-controls={contentId}
           disabled={geometry.cramped}
           title={geometry.cramped ? "More vertical space is needed to open the workspace dock" : expanded ? "Collapse workspace dock" : "Expand workspace dock"}
-          onClick={() => { onCollapsedChange(expanded); if (expanded) onUserCollapse?.(); }}
+          onClick={toggleCollapsed}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path d={expanded ? "M3 4.5 6 7.5 9 4.5" : "M3 7.5 6 4.5 9 7.5"} stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />

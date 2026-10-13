@@ -65,6 +65,10 @@ import { KUBECONFIG_OSC, KubeconfigOutputFilter, TerminalKubeconfigCapture, type
 import { STARTING_TERMINAL, TerminalSessionConnection, boundedTerminalRequest, type NativeTerminalStatus, type TerminalSessionStatus } from "./sessionLifecycle";
 import { installTerminalWakeChecks, mayRestoreTerminalFocus } from "./sessionWake";
 import { buildPtySpawnArgs, resolveTerminalLaunchCwd } from "./launchOptions";
+import {
+  dismissTerminalWelcome, disposeTerminalWelcome, getTerminalWelcome, initializeTerminalWelcome,
+  noteTerminalWelcomeCommand, observeTerminalWelcomeCwd, observeTerminalWelcomePrompt, scrollTerminalWelcome,
+} from "./terminalWelcomeState";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -210,6 +214,8 @@ function queuePtyResize(session: Session, cols: number, rows: number): void {
 
 function writeSessionInput(session: Session, data: string, preserveRunReceipt = false): boolean {
   session.promptTracker.noteInput();
+  if (data.includes("\x0c")) dismissTerminalWelcome(session.leafId);
+  if (/[\r\n\x03\x04]/.test(data)) noteTerminalWelcomeCommand(session.leafId);
   if (session.ptyId == null) return false;
   // Manual input can edit/cancel queued input or steer an interactive command.
   // Neither case may authorize automatic continuation from an app receipt.
@@ -291,6 +297,7 @@ export async function submitTrackedTerminalCommand(
     session.promptTracker.noteInput();
     session.promptTracker.clear();
     session.kubeconfigCapture.invalidate();
+    noteTerminalWelcomeCommand(leafId);
     await invoke("pty_write", { id: expected.ptyId, data: command + "\r" });
     return runId;
   } catch (error) {
@@ -340,6 +347,7 @@ export async function checkSessionHealth(leafId: number): Promise<void> {
 export async function restartSession(leafId: number): Promise<void> {
   const session = sessions.get(leafId);
   if (!session || session.disposed || !session.connection) return;
+  dismissTerminalWelcome(leafId);
   // Only called after an explicit UI confirmation. Keep the xterm buffer, but
   // discard prompt/command identity from the previous process.
   await session.connection.restart(() => {
@@ -570,8 +578,39 @@ export async function createSession(
     liveOutputTail: "",
   };
   sessions.set(leafId, session);
+  initializeTerminalWelcome(leafId);
   setTerminalRunInterrupter(interruptSessionRun);
   startWakeChecks();
+  const welcomeBufferListener = term.buffer.onBufferChange((buffer) => {
+    if (buffer.type !== "normal") dismissTerminalWelcome(leafId);
+  });
+  session.unlisteners.push(() => welcomeBufferListener.dispose());
+  let welcomePageEnd: number | null = null;
+  const scrollWelcomeWithOutput = () => {
+    const buffer = term.buffer.active;
+    const welcome = getTerminalWelcome(leafId);
+    if (buffer.type !== "normal" || !welcome?.visible) return;
+    // Before scrolling, resize can change the first page's capacity. Once it
+    // begins, pin the boundary so enlarging xterm by the space freed above it
+    // cannot pull the greeting back down. Absolute cursor rows survive refits.
+    if (welcomePageEnd === null || (!welcome.scrollRows && buffer.baseY === 0)) {
+      welcomePageEnd = term.rows - 1;
+    }
+    scrollTerminalWelcome(leafId, buffer.baseY + buffer.cursorY - welcomePageEnd);
+  };
+  const welcomeOutputListener = term.onWriteParsed(scrollWelcomeWithOutput);
+  // Observe real clear/reset sequences without consuming them or changing
+  // xterm's normal behavior. Shell startup clears must not retire a welcome
+  // that has not reached its first verified prompt yet.
+  const welcomeClearListener = term.parser.registerCsiHandler({ final: "J" }, (params) => {
+    if ((params[0] === 2 || params[0] === 3) && getTerminalWelcome(leafId)?.visible) dismissTerminalWelcome(leafId);
+    return false;
+  });
+  const welcomeResetListener = term.parser.registerEscHandler({ final: "c" }, () => {
+    if (getTerminalWelcome(leafId)?.visible) dismissTerminalWelcome(leafId);
+    return false;
+  });
+  session.unlisteners.push(() => welcomeOutputListener.dispose(), () => welcomeClearListener.dispose(), () => welcomeResetListener.dispose());
 
   // ── OSC Handlers ──────────────────────────────────────────────────────────
   term.parser.registerOscHandler(7, (data) => {
@@ -580,6 +619,7 @@ export async function createSession(
       const previousCwd = session.cwd;
       session.cwd = cwd;
       const hostChanged = session.comparisonScope.observeCwd(data, session.isRemoteShell);
+      observeTerminalWelcomeCwd(leafId, cwd, session.comparisonScope.target(session.isRemoteShell) === null);
       if (hostChanged) clearRunComparisons(session.leafId);
       if (hostChanged || previousCwd !== cwd) clearFixRuns(session.leafId);
       if (session.active) setActiveTerminalCwd(cwd);
@@ -601,6 +641,10 @@ export async function createSession(
       session.runReceipts.clear();
       session.promptTracker.capture();
       session.kubeconfigCapture.completePrompt();
+      // A shell whose startup output already filled the page is not empty.
+      if (!getTerminalWelcome(leafId)?.visible && term.buffer.active.baseY > 0) dismissTerminalWelcome(leafId);
+      observeTerminalWelcomePrompt(leafId, session.cwd,
+        term.buffer.active.type === "normal" && session.comparisonScope.target(session.isRemoteShell) === null);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.
@@ -750,6 +794,7 @@ export async function createSession(
       if (session.active) setActiveRemoteTerminal({ isRemote: false });
     }
     if (data.startsWith("C")) {
+      noteTerminalWelcomeCommand(leafId);
       session.promptTracker.clear();
       session.kubeconfigCapture.invalidate();
       const b = term.buffer.active;
@@ -779,6 +824,7 @@ export async function createSession(
 
   term.parser.registerOscHandler(778, (data) => {
     if (!data.startsWith("husk;cmd;")) return true;
+    noteTerminalWelcomeCommand(leafId);
     session.shellCommandMarkers.announceCommand();
     session.kubeconfigCapture.invalidate();
     const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";").trim();
@@ -797,6 +843,7 @@ export async function createSession(
     // only reliable signal is the local command that started it.
     const remoteTarget = parseRemoteShellTarget(cmd);
     if (remoteTarget) {
+      dismissTerminalWelcome(leafId);
       session.comparisonScope.enterRemote();
       clearRunComparisons(session.leafId);
       clearFixRuns(session.leafId);
@@ -816,6 +863,7 @@ export async function createSession(
     const cmd = parseBridgeOsc(data);
     if (!cmd) return true;
     if (cmd.kind === "remote") {
+      if (cmd.isRemote) dismissTerminalWelcome(leafId);
       if (cmd.isRemote) session.comparisonScope.enterRemote();
       else session.comparisonScope.leaveRemote();
       clearRunComparisons(session.leafId);
@@ -1242,7 +1290,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       return sel.length > 0 ? sel : null;
     },
     getLastCommandRun: () => session.lastCompletedRun ? { ...session.lastCompletedRun } : null,
-    clear: () => { session.promptTracker.clear(); session.term.clear(); },
+    clear: () => { dismissTerminalWelcome(leafId); session.promptTracker.clear(); session.term.clear(); },
     selectAll: () => session.term.selectAll(),
     hasSelection: () => session.term.hasSelection(),
     clearSelection: () => session.term.clearSelection(),
@@ -1296,6 +1344,7 @@ export function disposeSession(leafId: number): void {
   if (!session) return;
 
   session.disposed = true;
+  disposeTerminalWelcome(leafId);
 
   if (session.resizeObserver) {
     session.resizeObserver.disconnect();

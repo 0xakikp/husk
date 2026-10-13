@@ -43,7 +43,7 @@ export function GeneralFile() {
       <CfgBlank />
 
       <CfgSection name="profile" />
-      <CfgRow name="name" comment="Optional. Husk AI uses it sparingly in replies. Stored locally; sent only with AI requests when set. Clear the field to remove it.">
+      <CfgRow name="name" comment="Optional. Personalizes the terminal welcome; Husk AI uses it sparingly in replies. Stored locally; sent only with AI requests when set. Clear the field to remove it.">
         <CfgText
           value={p.userName}
           onChange={(userName) => setPrefs({ userName })}
@@ -196,6 +196,9 @@ export function GeneralFile() {
       <CfgBlank />
 
       <CfgSection name="terminal" />
+      <CfgRow name="welcomeBanner" comment="Show a small welcome using your profile name (or HUSK) in fresh local terminals. Stays visible until you clear the terminal or output fills the screen; restored sessions and SSH logins are excluded. No commands or shell probes are run.">
+        <CfgBool value={p.terminalWelcomeEnabled} onChange={(terminalWelcomeEnabled) => setPrefs({ terminalWelcomeEnabled })} />
+      </CfgRow>
       <CfgRow name="cursorBlink" comment="Blink the terminal cursor.">
         <CfgBool value={p.cursorBlink} onChange={(v) => setPrefs({ cursorBlink: v })} />
       </CfgRow>
@@ -206,7 +209,7 @@ export function GeneralFile() {
           options={px([11, 12, 13, 14, 16, 18])}
         />
       </CfgRow>
-      <CfgRow name="theme" comment="Terminal colour palette. Applies to output only, not the app chrome.">
+      <CfgRow name="theme" comment="Colour palette for terminal output and its welcome greeting; other app chrome stays unchanged.">
         <CfgEnum<TerminalThemePreset>
           value={p.terminalTheme}
           onChange={(terminalTheme) => setPrefs({ terminalTheme })}

@@ -1,0 +1,119 @@
+/* Keep the welcome outside xterm's measured host. No height animation: each
+   intermediate frame would resize the PTY and reflow terminal scrollback. */
+.terminal-host-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Containment belongs only to the welcome/terminal body. Keeping overlays as
+   siblings preserves viewport coordinates for fixed autocomplete and menus. */
+.terminal-surface {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container: terminal-surface / size;
+}
+
+.terminal-surface > .terminal-host { flex: 1; height: auto; }
+
+/* One continuous CRT tint for greeting and shell. A separate xterm vignette
+   creates a dark horizontal band at the boundary even without a border. */
+[data-theme="dark"] .terminal-surface .xterm::after { content: none; }
+[data-theme="dark"] .terminal-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+.terminal-welcome-slot { flex: 0 0 auto; min-width: 0; overflow: clip; }
+.terminal-welcome {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+  margin: 0 12px 0 0;
+  padding: 14px 8px 18px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  --welcome-tone: color-mix(in srgb, var(--welcome-accent) var(--welcome-color-weight), var(--welcome-mode-ink));
+}
+
+.terminal-welcome__identity {
+  display: flex; align-items: center; gap: 12px; min-width: 0; max-width: 55%;
+  transform: skewX(-10deg);
+  transform-origin: left center;
+}
+.terminal-welcome__salutation { flex: 0 0 auto; color: var(--welcome-tone); font-size: 18px; font-weight: 600; }
+.terminal-welcome__art { display: flex; gap: 3px; width: max-content; }
+.terminal-welcome__art pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 10px;
+  letter-spacing: 0;
+  white-space: pre;
+  color: color-mix(in srgb, var(--welcome-accent) var(--welcome-color-weight), var(--welcome-mode-ink));
+}
+.terminal-welcome__art [data-color="1"] { --welcome-accent: var(--welcome-blue); }
+.terminal-welcome__art [data-color="2"] { --welcome-accent: var(--welcome-magenta); }
+.terminal-welcome__art [data-color="3"] { --welcome-accent: var(--welcome-cyan); }
+.terminal-welcome__name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--welcome-tone);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.terminal-welcome__name[data-has-art="true"] { display: none; }
+.terminal-welcome__details { flex: 1; min-width: 0; font-size: 12px; line-height: 1.5; }
+.terminal-welcome__status { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 12px; }
+.terminal-welcome__local { color: color-mix(in srgb, var(--welcome-blue) var(--welcome-color-weight), var(--welcome-mode-ink)); }
+.terminal-welcome__ready { color: var(--welcome-tone); white-space: nowrap; }
+.terminal-welcome__ready > span { font-size: 8px; vertical-align: 1px; }
+.terminal-welcome__hints { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 3px; color: var(--text-muted); font-size: 11px; }
+.terminal-welcome__hints kbd { font: inherit; color: var(--text); }
+.terminal-welcome__dismiss {
+  flex: 0 0 24px;
+  align-self: flex-start;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+.terminal-welcome__dismiss:hover { color: var(--text); background: var(--hover); }
+
+@container terminal-surface (width < 560px) {
+  .terminal-welcome { gap: 14px; padding-block: 10px; }
+  .terminal-welcome__identity { max-width: 40%; }
+  .terminal-welcome__art { display: none; }
+  .terminal-welcome__name[data-has-art="true"] { display: block; font-size: 19px; }
+  .terminal-welcome__hints { display: none; }
+}
+
+@container terminal-surface (width < 280px) {
+  .terminal-welcome { gap: 8px; margin-right: 4px; }
+  .terminal-welcome__identity { display: none; }
+}
+
+@container terminal-surface (height < 280px) {
+  .terminal-welcome-slot { display: none; }
+}

@@ -65,15 +65,25 @@
   position: absolute;
   z-index: 2;
   inset: 0 0 auto;
-  height: 4px;
+  /* A forgiving invisible hit area; the shared sidebar seam paints only a
+     short, centered 2px grip instead of highlighting the entire panel edge. */
+  height: 6px;
   cursor: ns-resize;
   touch-action: none;
+  background: transparent;
 }
 
-.workspace-dock__resize:hover,
 .workspace-dock__resize:focus-visible {
   outline: none;
-  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  /* The centered grip provides the focus cue; suppress the app-wide ring
+     around the otherwise invisible full-width pointer target. */
+  box-shadow: none !important;
+}
+
+.workspace-dock__resize:focus-visible::after {
+  width: 72px;
+  background: color-mix(in srgb, var(--primary) 78%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 
 .workspace-dock__content {
@@ -90,5 +100,6 @@
 @media (prefers-reduced-motion: reduce) {
   .workspace-dock,
   .workspace-dock__resize,
+  .workspace-dock__resize::after,
   .workspace-dock__toggle { animation: none; transition: none; }
 }

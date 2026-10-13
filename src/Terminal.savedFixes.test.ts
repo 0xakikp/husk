@@ -5,7 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { TerminalSessionStatus } from "./terminal/sessionLifecycle";
 
 const state = vi.hoisted(() => ({ aiEnabled: false, selected: "", activePtyId: 420, status: { state: "ready" } as TerminalSessionStatus, statusListeners: new Set<() => void>(), handles: new Map<number, Record<string, ReturnType<typeof vi.fn>>>() }));
-vi.mock("./settings/preferences", () => ({ usePrefs: () => ({ aiEnabled: state.aiEnabled }) }));
+vi.mock("./settings/preferences", () => ({ usePrefs: () => ({
+  aiEnabled: state.aiEnabled, terminalWelcomeEnabled: true, userName: "Aki",
+  terminalTheme: "husk", theme: "dark", accentColor: "#11c700",
+}) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ readText: vi.fn(async () => ""), writeText: vi.fn(async () => {}) }));
 vi.mock("./ai/terminalContext", () => ({ getPromptPosition: () => null, isCommandRunning: () => false, getActiveTerminalDraft: () => "" }));
@@ -22,7 +25,7 @@ vi.mock("./notes/aiCapture", () => ({ createAiNote: vi.fn() }));
 vi.mock("./notes/captureToast", () => ({ showVaultCaptureToast: vi.fn() }));
 vi.mock("./toast", () => ({ toast: vi.fn() }));
 vi.mock("./terminal/registry", () => ({
-  createSession: vi.fn(async () => {}), attachSession: vi.fn(), detachSession: vi.fn(),
+  createSession: vi.fn(async (leafId: number) => { initializeTerminalWelcome(leafId); }), attachSession: vi.fn(), detachSession: vi.fn(),
   setSessionVisible: vi.fn(), setSessionFocused: vi.fn(), setSessionActive: vi.fn(), setSessionCallbacks: vi.fn(),
   registerTerminalLogsOpener: vi.fn(() => () => {}), getSessionHandle: vi.fn((leafId: number) => state.handles.get(leafId)),
   getSessionStatus: vi.fn(() => state.status), subscribeSessionStatus: vi.fn((_leafId: number, listener: () => void) => {
@@ -39,6 +42,7 @@ import { getShellHistory } from "./shellHistory";
 import { stageScreenCommand } from "./terminal/stageScreenCommand";
 import { clearWorkflowCaptureRequest, getWorkflowCaptureRequest } from "./workflows/captureRequest";
 import { checkSessionHealth, restartSession } from "./terminal/registry";
+import { disposeTerminalWelcome, getTerminalWelcome, initializeTerminalWelcome, observeTerminalWelcomePrompt } from "./terminal/terminalWelcomeState";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -58,7 +62,10 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+afterEach(async () => {
+  await act(async () => root.unmount()); container.remove();
+  for (const leafId of state.handles.keys()) disposeTerminalWelcome(leafId);
+});
 
 async function render(leafIds = [73]) {
   leafIds.forEach(handle);
@@ -80,6 +87,48 @@ function expectNoShellMutation() {
     expect(terminal.write).not.toHaveBeenCalled(); expect(terminal.typeText).not.toHaveBeenCalled(); expect(terminal.clear).not.toHaveBeenCalled();
   }
 }
+
+it("activates an inactive split before focusing its terminal when its welcome is dismissed", async () => {
+  const inactive = handle(91);
+  const active = handle(42);
+  const order: string[] = [];
+  const onFocus = vi.fn(() => { order.push("activate"); });
+  inactive.focus.mockImplementation(() => { order.push("focus"); });
+  await act(async () => root.render(createElement("div", {},
+    createElement(TerminalView, { leafId: 91, active: false, onFocus }),
+    createElement(TerminalView, { leafId: 42, active: true }),
+  )));
+  await act(async () => {
+    observeTerminalWelcomePrompt(91, "/first", true);
+    observeTerminalWelcomePrompt(42, "/second", true);
+  });
+  const dismiss = container.querySelectorAll<HTMLButtonElement>('[aria-label="Dismiss terminal welcome"]');
+  expect(dismiss).toHaveLength(2);
+  await act(async () => {
+    dismiss[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    dismiss[0].click();
+  });
+  expect(order).toEqual(["activate", "focus"]);
+  expect(onFocus).toHaveBeenCalledOnce();
+  expect(inactive.focus).toHaveBeenCalledOnce();
+  expect(active.focus).not.toHaveBeenCalled();
+  expect(getTerminalWelcome(91)?.visible).toBe(false);
+  expect(getTerminalWelcome(42)?.visible).toBe(true);
+  expectNoShellMutation();
+});
+
+it("permanently excludes a restored terminal even when its summary prop is later removed", async () => {
+  handle(91);
+  await act(async () => root.render(createElement(TerminalView, { leafId: 91, restored: true })));
+  await act(async () => observeTerminalWelcomePrompt(91, "/restored", true));
+  expect(getTerminalWelcome(91)?.visible).toBe(false);
+  expect(container.querySelector(".terminal-welcome")).toBeNull();
+  await act(async () => root.render(createElement(TerminalView, { leafId: 91, restored: false })));
+  await act(async () => observeTerminalWelcomePrompt(91, "/restored", true));
+  expect(getTerminalWelcome(91)?.visible).toBe(false);
+  expect(container.querySelector(".terminal-welcome")).toBeNull();
+  expectNoShellMutation();
+});
 
 it("opens Saved fixes without terminal selection or AI permission, and closes the context menu", async () => {
   await render(); await openMenu();
