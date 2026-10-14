@@ -278,8 +278,11 @@ export function WorkspacePanels({
             )}
             <div ref={terminalColumnRef} className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ gap: prefs.panelGaps > 0 ? `var(--panel-gaps)` : "6px" }}>
             <div className={cn(
-              "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)]",
-              prefs.panelShadows && "panel-shadow",
+              "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+              /* Split leaves own their frames. An outer frame would join them
+                 back into one box and double the border on the outer edges. */
+              activeRoot?.kind !== "split" && "rounded-lg border border-[var(--border)]",
+              prefs.panelShadows && activeRoot?.kind !== "split" && "panel-shadow",
             )}>
               <ErrorBoundary
                 fallback={

@@ -41,7 +41,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getShellHistory } from "./shellHistory";
 import { stageScreenCommand } from "./terminal/stageScreenCommand";
 import { clearWorkflowCaptureRequest, getWorkflowCaptureRequest } from "./workflows/captureRequest";
-import { checkSessionHealth, restartSession } from "./terminal/registry";
+import { checkSessionHealth, createSession, restartSession, setSessionActive, setSessionCallbacks, setSessionFocused } from "./terminal/registry";
 import { disposeTerminalWelcome, getTerminalWelcome, initializeTerminalWelcome, observeTerminalWelcomePrompt } from "./terminal/terminalWelcomeState";
 
 let root: Root;
@@ -87,6 +87,46 @@ function expectNoShellMutation() {
     expect(terminal.write).not.toHaveBeenCalled(); expect(terminal.typeText).not.toHaveBeenCalled(); expect(terminal.clear).not.toHaveBeenCalled();
   }
 }
+
+it("refreshes parent callbacks without stealing focus from pane resize controls", async () => {
+  handle(73);
+  const firstFocus = vi.fn();
+  const renderTerminal = async (onFocus: () => void, onCwd: (cwd: string) => void) => {
+    await act(async () => root.render(createElement("div", {},
+      createElement("button", { type: "button", "data-resize-control": true }, "Resize panes"),
+      createElement(TerminalView, { leafId: 73, active: true, onFocus, onCwd }),
+    )));
+  };
+  await renderTerminal(firstFocus, vi.fn());
+  expect(setSessionFocused).toHaveBeenCalledExactlyOnceWith(73, true);
+  vi.mocked(setSessionFocused).mockClear(); vi.mocked(setSessionActive).mockClear();
+  const control = container.querySelector<HTMLButtonElement>("[data-resize-control]")!;
+  control.focus();
+  const latestFocus = vi.fn(); const latestCwd = vi.fn();
+  await renderTerminal(latestFocus, latestCwd);
+  expect(document.activeElement).toBe(control);
+  expect(setSessionFocused).not.toHaveBeenCalled();
+  expect(setSessionActive).not.toHaveBeenCalled();
+  expect(createSession).toHaveBeenCalledOnce();
+  const calls = vi.mocked(setSessionCallbacks).mock.calls;
+  const callbacks = calls[calls.length - 1][1];
+  callbacks.onFocus?.(); callbacks.onCwd?.("/new-directory");
+  expect(latestFocus).toHaveBeenCalledOnce(); expect(firstFocus).not.toHaveBeenCalled();
+  expect(latestCwd).toHaveBeenCalledExactlyOnceWith("/new-directory");
+});
+
+it("still updates registry focus and active state when a terminal is genuinely activated", async () => {
+  handle(73);
+  const onFocus = vi.fn();
+  await act(async () => root.render(createElement(TerminalView, { leafId: 73, active: false, onFocus })));
+  expect(setSessionFocused).toHaveBeenCalledExactlyOnceWith(73, false);
+  expect(setSessionActive).toHaveBeenCalledExactlyOnceWith(73, false);
+  vi.mocked(setSessionFocused).mockClear(); vi.mocked(setSessionActive).mockClear();
+  await act(async () => root.render(createElement(TerminalView, { leafId: 73, active: true, onFocus })));
+  expect(setSessionFocused).toHaveBeenCalledExactlyOnceWith(73, true);
+  expect(setSessionActive).toHaveBeenCalledExactlyOnceWith(73, true);
+  expect(createSession).toHaveBeenCalledOnce();
+});
 
 it("activates an inactive split before focusing its terminal when its welcome is dismissed", async () => {
   const inactive = handle(91);

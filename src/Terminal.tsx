@@ -175,6 +175,15 @@ export function TerminalView({
     setSessionVisible(leafId, active);
   }, [leafId, active, sessionReady]);
 
+  // Layout updates replace the parent callbacks without changing the active
+  // terminal. Only an actual activation should move DOM focus; otherwise a
+  // keyboard resize would steal focus from its separator after every step.
+  useEffect(() => {
+    if (!sessionReady) return;
+    setSessionFocused(leafId, active);
+    setSessionActive(leafId, active);
+  }, [leafId, active, sessionReady]);
+
   // True while the user is cycling shell history with arrow keys; used to
   // suppress the autocomplete dropdown so it doesn't block history navigation.
   const historyNavigatingRef = useRef(false);
@@ -183,8 +192,6 @@ export function TerminalView({
   useEffect(() => {
     if (!sessionReady) return;
     if (active) {
-      setSessionFocused(leafId, true);
-      setSessionActive(leafId, true);
       setSessionCallbacks(leafId, {
         onCwd,
         onCommandComplete,
@@ -259,11 +266,8 @@ export function TerminalView({
           return undefined;
         },
       });
-    } else {
-      setSessionFocused(leafId, false);
-      setSessionActive(leafId, false);
     }
-  }, [leafId, active, onFocus, onCwd, onCommandComplete, sessionReady]);
+  }, [leafId, active, onFocus, onCwd, onCommandComplete, onSplit, _onFocusDirection, sessionReady]);
 
   useEffect(() => {
     if (!active || !prefs.aiEnabled) { setScreenSelection(null); screenOpenRef.current = false; }

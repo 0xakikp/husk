@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 /* Pane helpers are pure. Mock the rendered terminal so this test does not need
    xterm or the app-only Vite alias chain. */
 vi.mock("./Terminal", () => ({ TerminalView: () => null }));
+vi.mock("./terminal/registry", () => ({ getSessionHandle: vi.fn() }));
 
 import { hydratePane, newLeaf, setLeafCheckpoint, setLeafCwd, type Pane } from "./terminalPanes";
 import { leafIds } from "./terminal/paneUtils";

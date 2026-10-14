@@ -47,7 +47,7 @@ let height: number;
 const observers = new Set<ResizeObserverCallback>();
 let api: { open: (path: string, name: string, line?: number, mode?: NotesOpeningMode) => void; notes: NotesDockApi; fullFiles: OpenFile[]; selectDetails: () => void; returnToTerm: () => void };
 
-function Harness() {
+function Harness({ split = false }: { split?: boolean }) {
   const notes = useNotesDock();
   const [kind, setKind] = useState<ActiveKind>("term");
   const [files, setFiles] = useState<OpenFile[]>([]);
@@ -61,7 +61,9 @@ function Harness() {
     } else setKind("term");
   };
   api = { open, notes, fullFiles: files, selectDetails: () => setSelection({ kind: "pod", name: "api" } as Props["selectedK8sResource"]), returnToTerm: () => setKind("term") };
-  return <WorkspacePanels term={{ tabs: [{ id: 1, focused: 1, root: { kind: "leaf", id: 1 } }], activeId: 1 } as Props["term"]}
+  return <WorkspacePanels term={{ tabs: [{ id: 1, focused: 1, root: split
+    ? { kind: "split", id: 3, dir: "row", ratio: 0.5, a: { kind: "leaf", id: 1 }, b: { kind: "leaf", id: 2 } }
+    : { kind: "leaf", id: 1 } }], activeId: 1 } as Props["term"]}
     activeKind={kind} selectedK8sResource={selection} setSelectedK8sResource={setSelection} selectedDockerResource={null} setSelectedDockerResource={() => {}}
     prefs={{ aiPanelDock: "left", panelGaps: 8 } as Props["prefs"]} bgDataUrl={null} openFiles={files} activeFile={activeFile} notesDock={notes} onOpenNote={open}
     settingsOpen={false} openPanel={null} closeSettings={() => {}} closeGitGraph={() => {}} closeIssues={() => {}} closeSftp={() => {}} closeBrowser={() => {}}
@@ -90,6 +92,22 @@ async function clickText(text: string) {
 }
 async function start() { await act(async () => root.render(<Harness />)); }
 async function open(path = "/notes/A.md", name = "A.md") { await act(async () => api.open(path, name)); }
+
+it("lets split leaves own their borders without replacing the terminal stack", async () => {
+  await start();
+  const terminal = host.querySelector("[data-terminal]")!;
+  const frame = terminal.parentElement!;
+  expect(frame.classList.contains("border")).toBe(true);
+  expect(frame.classList.contains("rounded-lg")).toBe(true);
+  await act(async () => root.render(<Harness split />));
+  expect(host.querySelector("[data-terminal]")).toBe(terminal);
+  expect(frame.classList.contains("border")).toBe(false);
+  expect(frame.classList.contains("rounded-lg")).toBe(false);
+  await act(async () => root.render(<Harness />));
+  expect(frame.classList.contains("border")).toBe(true);
+  expect(life.terminalMount).toHaveBeenCalledOnce();
+  expect(life.terminalUnmount).not.toHaveBeenCalled();
+});
 
 it("keeps one editor and all note drafts when switching notes, full tabs, and collapse", async () => {
   await start(); await open();
