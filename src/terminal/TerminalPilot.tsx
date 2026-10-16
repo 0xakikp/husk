@@ -198,7 +198,7 @@ export function TerminalPilot({
         return;
       }
 
-      const safety = assessTerminalPilotCommand(decision.command, [...protectedTargets(), ...(targetHostRef.current && /prod|production|live/i.test(targetHostRef.current) ? [`SSH/${targetHostRef.current}`] : [])]);
+      const safety = assessTerminalPilotCommand(decision.command, protectedTargets(decision.command, targetHostRef.current));
       const nextStep: PilotStep = {
         id: stepId(),
         command: decision.command,

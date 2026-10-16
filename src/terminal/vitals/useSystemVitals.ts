@@ -9,17 +9,24 @@ export type SystemVitals = {
   load_1: number;
 };
 
-export function useSystemVitals() {
+export function useSystemVitals(enabled = true) {
   const [vitals, setVitals] = useState<SystemVitals | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
+    let pending = false;
+    setVitals(null);
     const tick = async () => {
+      if (pending) return;
+      pending = true;
       try {
         const v = await invoke<SystemVitals>("system_vitals");
         if (!cancelled) setVitals(v);
       } catch {
-        // ignore on platforms where the command isn't available
+        if (!cancelled) setVitals(null);
+      } finally {
+        pending = false;
       }
     };
     tick();
@@ -28,7 +35,7 @@ export function useSystemVitals() {
       cancelled = true;
       clearInterval(t);
     };
-  }, []);
+  }, [enabled]);
 
   return vitals;
 }

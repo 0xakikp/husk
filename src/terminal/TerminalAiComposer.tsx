@@ -67,7 +67,7 @@ import {
 } from "../ai/subscriptionAutoApply";
 import { getTerminalContextSize } from "../ai/useTerminalContextSize";
 import { getProjectMemory } from "../ai/projectMemory";
-import { isEnvDestructive, protectedTargets } from "./envSignals";
+import { environmentRunReview } from "./envSignals";
 import { recordTimelineEvent } from "../timeline/store";
 import { buildHuskAssistantContext } from "../ai/huskContext";
 import { ContextInspector } from "../ai/ContextInspector";
@@ -750,7 +750,7 @@ export function TerminalAiComposer({
   const [tick, setTick] = useState(0);
   const [height, setHeight] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [pendingRun, setPendingRun] = useState<{ sessionId: string; taskId?: string; command: string; productionTarget: string | null; target: TerminalTarget } | null>(null);
+  const [pendingRun, setPendingRun] = useState<{ sessionId: string; taskId?: string; command: string; productionTarget: string | null; environmentReview?: string; target: TerminalTarget } | null>(null);
   const [pendingWorkspaceRun, setPendingWorkspaceRun] = useState<{
     sessionId: string;
     taskId?: string;
@@ -2606,12 +2606,12 @@ export function TerminalAiComposer({
     if (!cmd) return;
     setPilotRequest(null);
     setPendingWorkspaceRun(null);
-    /* Production gate: a command that mutates shared infrastructure, while a
-       protected target is active, always stops for an explicit approval that
-       names the target — even when the command itself looks "safe". */
-    const protectedHits = protectedTargets();
-    if (protectedHits.length > 0 && isEnvDestructive(cmd)) {
-      setPendingRun({ sessionId, taskId: activeTask?.id, command: cmd, productionTarget: protectedHits[0], target: captureTerminalTarget() });
+    /* Missing terminal-local target evidence is not a safety signal. Review
+       infrastructure mutations independently of status bar visibility. */
+    const remote = getActiveRemoteTerminal();
+    const environmentReview = environmentRunReview(cmd, remote.isRemote ? remote.host ?? null : null);
+    if (environmentReview) {
+      setPendingRun({ sessionId, taskId: activeTask?.id, command: cmd, productionTarget: environmentReview.productionTarget, environmentReview: environmentReview.message, target: captureTerminalTarget() });
       return;
     }
     if (isDangerousCommand(cmd)) {
@@ -3676,10 +3676,10 @@ export function TerminalAiComposer({
       {pendingRun?.sessionId === sessionId && (
         <div className="composer-pending-run" tabIndex={-1} data-review-item="run" data-review-kind="terminal" data-review-session={sessionId}>
           <div className="composer-pending-run-copy flex flex-col gap-0.5">
-            {pendingRun.productionTarget ? (
+            {pendingRun.environmentReview ? (
               <>
                 <span className="text-[10px] font-medium text-amber-400">
-                  ⚠️ You are targeting {pendingRun.productionTarget} — approve to run
+                  ⚠️ {pendingRun.environmentReview}
                 </span>
                 <code className="text-[10px] text-foreground/80" title={pendingRun.command}>{pendingRun.command}</code>
               </>

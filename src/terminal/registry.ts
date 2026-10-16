@@ -39,7 +39,6 @@ import { extractLocalDevUrls, recordPorts } from "./portStore";
 import { recordSensitiveOutput } from "./sensitiveOutputStore";
 import { completeTask, startTask } from "./taskStore";
 import { clearEnvironmentWarning, recordEnvironmentWarning } from "./environmentWarnings";
-import { getEnvSignals } from "./envSignals";
 import { recordTimelineEvent } from "../timeline/store";
 import { safeTimelineCommand } from "../timeline/commandMetadata";
 import { refreshWorkflowSuggestion } from "../workflows/suggestions";
@@ -69,6 +68,10 @@ import {
   dismissTerminalWelcome, disposeTerminalWelcome, getTerminalWelcome, initializeTerminalWelcome,
   noteTerminalWelcomeCommand, observeTerminalWelcomeCwd, observeTerminalWelcomePrompt, scrollTerminalWelcome,
 } from "./terminalWelcomeState";
+import {
+  clearTerminalStatusActivity, completeTerminalStatusCommand, disposeTerminalStatus, getTerminalStatus, initializeTerminalStatus,
+  observeTerminalStatusPrompt, observeTerminalStatusScope, startTerminalStatusCommand,
+} from "./statusBarState";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -216,6 +219,7 @@ function writeSessionInput(session: Session, data: string, preserveRunReceipt = 
   session.promptTracker.noteInput();
   if (data.includes("\x0c")) dismissTerminalWelcome(session.leafId);
   if (/[\r\n\x03\x04]/.test(data)) noteTerminalWelcomeCommand(session.leafId);
+  if (/[\r\n\x03\x04]/.test(data)) observeTerminalStatusPrompt(session.leafId, false);
   if (session.ptyId == null) return false;
   // Manual input can edit/cancel queued input or steer an interactive command.
   // Neither case may authorize automatic continuation from an app receipt.
@@ -261,6 +265,17 @@ function fitAttachedSession(session: Session): void {
 
 const sessions = new Map<number, Session>();
 
+/** Status UI consumes only terminal observations, never active-tab globals. */
+function observeStatusScope(session: Session, cwd?: string, boundary = false): void {
+  observeTerminalStatusScope(session.leafId, {
+    observedHost: session.comparisonScope.target(session.isRemoteShell),
+    isRemote: session.isRemoteShell,
+    remoteTarget: session.remoteTarget,
+    cwd,
+    boundary,
+  });
+}
+
 function runTarget(session: Session): TerminalRunTarget | null {
   if (session.ptyId === null) return null;
   return {
@@ -298,6 +313,7 @@ export async function submitTrackedTerminalCommand(
     session.promptTracker.clear();
     session.kubeconfigCapture.invalidate();
     noteTerminalWelcomeCommand(leafId);
+    observeTerminalStatusPrompt(leafId, false);
     await invoke("pty_write", { id: expected.ptyId, data: command + "\r" });
     return runId;
   } catch (error) {
@@ -359,6 +375,7 @@ export async function restartSession(leafId: number): Promise<void> {
     session.currentCommand = "";
     session.lastCompletedRun = null;
     session.workflowSessionId = `term_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+    initializeTerminalStatus(leafId, session.workflowSessionId);
     session.commandStartedAt = 0;
     if (session.isRemoteShell) session.cwd = session.initialCwd ?? "";
     session.isRemoteShell = false;
@@ -432,7 +449,11 @@ export function registerTerminalLogsOpener(leafId: number, opener: TerminalLogsO
 
 export function openActiveTerminalLogs(): boolean {
   if (activeLeafId == null) return false;
-  const opener = logsOpeners.get(activeLeafId);
+  return openTerminalLogs(activeLeafId);
+}
+
+export function openTerminalLogs(leafId: number): boolean {
+  const opener = logsOpeners.get(leafId);
   if (!opener) return false;
   opener();
   return true;
@@ -579,10 +600,12 @@ export async function createSession(
   };
   sessions.set(leafId, session);
   initializeTerminalWelcome(leafId);
+  initializeTerminalStatus(leafId, session.workflowSessionId);
   setTerminalRunInterrupter(interruptSessionRun);
   startWakeChecks();
   const welcomeBufferListener = term.buffer.onBufferChange((buffer) => {
     if (buffer.type !== "normal") dismissTerminalWelcome(leafId);
+    if (buffer.type !== "normal") observeTerminalStatusPrompt(leafId, false);
   });
   session.unlisteners.push(() => welcomeBufferListener.dispose());
   let welcomePageEnd: number | null = null;
@@ -619,6 +642,7 @@ export async function createSession(
       const previousCwd = session.cwd;
       session.cwd = cwd;
       const hostChanged = session.comparisonScope.observeCwd(data, session.isRemoteShell);
+      observeStatusScope(session, cwd);
       observeTerminalWelcomeCwd(leafId, cwd, session.comparisonScope.target(session.isRemoteShell) === null);
       if (hostChanged) clearRunComparisons(session.leafId);
       if (hostChanged || previousCwd !== cwd) clearFixRuns(session.leafId);
@@ -640,6 +664,12 @@ export async function createSession(
     if (data.startsWith("B")) {
       session.runReceipts.clear();
       session.promptTracker.capture();
+      // An observed remote prompt finishes the connection phase, not the SSH
+      // process itself. Do not leave `ssh host` looking like a running remote
+      // command merely because its alias equals the reported remote hostname.
+      if (typeof session.comparisonScope.target(session.isRemoteShell) === "string"
+        && parseRemoteShellTarget(getTerminalStatus(leafId)?.command ?? "")) clearTerminalStatusActivity(leafId);
+      observeTerminalStatusPrompt(leafId, session.promptTracker.position() !== null);
       session.kubeconfigCapture.completePrompt();
       // A shell whose startup output already filled the page is not empty.
       if (!getTerminalWelcome(leafId)?.visible && term.buffer.active.baseY > 0) dismissTerminalWelcome(leafId);
@@ -654,6 +684,7 @@ export async function createSession(
       session.kubeconfigCapture.invalidate();
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
       const exitCode = Number.isNaN(code) ? null : code;
+      completeTerminalStatusCommand(leafId, exitCode, Date.now());
       if (session.active) setActiveTerminalExit(exitCode);
       const comparisonStart = session.comparisonStart;
       session.comparisonStart = null;
@@ -778,7 +809,8 @@ export async function createSession(
         }
         session.cmdStartRow = null;
       }
-      if (parseRemoteShellTarget(session.currentCommand)) {
+      const endedRemoteShell = Boolean(parseRemoteShellTarget(session.currentCommand));
+      if (endedRemoteShell) {
         session.comparisonScope.leaveRemote();
         clearRunComparisons(session.leafId);
         clearFixRuns(session.leafId);
@@ -791,6 +823,7 @@ export async function createSession(
       // shell. When the session ends, the shell is local again.
       session.isRemoteShell = false;
       session.remoteTarget = null;
+      observeStatusScope(session, undefined, endedRemoteShell);
       if (session.active) setActiveRemoteTerminal({ isRemote: false });
     }
     if (data.startsWith("C")) {
@@ -812,6 +845,7 @@ export async function createSession(
       }
       session.liveOutputTail = "";
       if (!session.commandStartedAt) session.commandStartedAt = Date.now();
+      startTerminalStatusCommand(leafId, session.currentCommand, session.commandStartedAt);
       startTask(session.leafId, {
         command: session.currentCommand || (session.active ? getCurrentCommand() : ""),
         cwd: session.cwd,
@@ -834,7 +868,6 @@ export async function createSession(
     recordEnvironmentWarning(session.leafId, {
       command: cmd,
       cwd: session.cwd,
-      env: getEnvSignals(),
       at: session.commandStartedAt,
     });
     if (session.active) setCurrentCommand(cmd);
@@ -851,6 +884,8 @@ export async function createSession(
       session.remoteTarget = remoteTarget;
       if (session.active) setActiveRemoteTerminal({ isRemote: true, host: remoteTarget });
     }
+    observeStatusScope(session, undefined, Boolean(remoteTarget));
+    startTerminalStatusCommand(leafId, cmd, session.commandStartedAt);
     return true;
   });
 
@@ -870,6 +905,7 @@ export async function createSession(
       clearFixRuns(session.leafId);
       session.isRemoteShell = cmd.isRemote;
       if (!cmd.isRemote) session.remoteTarget = null;
+      observeStatusScope(session, undefined, true);
       if (session.active) setActiveRemoteTerminal({ isRemote: cmd.isRemote, ...(session.remoteTarget ? { host: session.remoteTarget } : {}) });
       return true;
     }
@@ -1018,6 +1054,7 @@ export async function createSession(
     session.ptyOpening = connection.id === null && ["starting", "slow-start"].includes(connection.status.state);
     term.options.disableStdin = session.ptyId === null;
     if (!connected) session.kubeconfigCapture.invalidate();
+    if (!connected) clearTerminalStatusActivity(leafId);
     if (session.active) setActiveTerminalPtyId(session.ptyId);
     if (session.ptyId !== null && wasPtyId !== session.ptyId) queuePtyResize(session, term.cols || 80, term.rows || 24);
     for (const callback of statusListeners.get(leafId) ?? []) callback();
@@ -1345,6 +1382,7 @@ export function disposeSession(leafId: number): void {
 
   session.disposed = true;
   disposeTerminalWelcome(leafId);
+  disposeTerminalStatus(leafId);
 
   if (session.resizeObserver) {
     session.resizeObserver.disconnect();

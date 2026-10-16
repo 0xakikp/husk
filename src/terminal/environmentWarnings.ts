@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 
-import { type EnvSignals, isProtectedTarget } from "./envSignals";
+import { shq } from "../lib/shellQuote";
+import { isProtectedTarget, isStatusToolMutation } from "./envSignals";
+import { detectStatusToolSignals } from "./statusBarTools";
 
 export type EnvironmentKind = "kubernetes" | "aws" | "terraform" | "docker";
 
@@ -25,59 +27,40 @@ function emit(): void {
   for (const listener of subscribers) listener();
 }
 
-const KUBERNETES_MUTATION_RE =
-  /\b(?:kubectl\s+(?:apply|replace|delete|patch|edit|scale|set\s+(?:image|resources|env)|rollout\s+(?:restart|undo))|helm\s+(?:install|upgrade|uninstall|delete))\b/i;
-const AWS_MUTATION_RE =
-  /\baws\s+\S+\s+(?:create|update|put|delete|terminate|stop|start|reboot|attach|detach|modify|set)-?\S*/i;
-const TERRAFORM_MUTATION_RE = /\bterraform\s+(?:apply|destroy|import)\b/i;
-const DOCKER_MUTATION_RE = /\bdocker\s+(?:rm|rmi|system\s+prune|volume\s+rm|container\s+rm)\b/i;
-const DEPLOY_SCRIPT_RE = /\b(?:deploy|release|ship)\b/i;
-
 function target(kind: EnvironmentKind, value: string): EnvironmentTarget {
   switch (kind) {
     case "kubernetes":
-      return { kind, value, inspectCommand: "kubectl config current-context" };
+      return { kind, value, inspectCommand: `kubectl config get-contexts ${shq(value)}` };
     case "aws":
-      return { kind, value, inspectCommand: "aws configure list" };
+      return { kind, value, inspectCommand: `aws --profile ${shq(value)} configure list` };
     case "terraform":
-      return { kind, value, inspectCommand: "terraform workspace show" };
+      return { kind, value, inspectCommand: `TF_WORKSPACE=${shq(value)} terraform workspace show` };
     case "docker":
-      return { kind, value, inspectCommand: "docker context show" };
+      return { kind, value, inspectCommand: `docker context inspect ${shq(value)}` };
   }
 }
 
 /**
- * A warning is deliberately command-aware. Seeing a production context in the
- * status bar is useful context; an interrupting warning is earned only when a
- * command is likely to change that target.
+ * The post-submission warning names only a target explicit in that command.
+ * App-local defaults must not be attributed to a terminal or an SSH session.
+ * Unknown targets still require approval in the AI command execution gate.
  */
-export function protectedTargetsForCommand(command: string, env: EnvSignals): EnvironmentTarget[] {
-  const normalized = command.trim().replace(/\s+/g, " ");
-  if (!normalized) return [];
+export function protectedTargetsForCommand(command: string): EnvironmentTarget[] {
   const targets: EnvironmentTarget[] = [];
-  const deployScript = DEPLOY_SCRIPT_RE.test(normalized);
-
-  if (env.kubeContext && isProtectedTarget(env.kubeContext) && (KUBERNETES_MUTATION_RE.test(normalized) || deployScript)) {
-    targets.push(target("kubernetes", env.kubeContext));
+  for (const signal of detectStatusToolSignals(command)) {
+    if (!signal.override || !isProtectedTarget(signal.override.value) || !isStatusToolMutation(signal)) continue;
+    const value = signal.override.value;
+    if (targets.some((item) => item.kind === signal.tool && item.value === value)) continue;
+    targets.push(target(signal.tool, value));
   }
-  if (env.awsProfile && isProtectedTarget(env.awsProfile) && (AWS_MUTATION_RE.test(normalized) || TERRAFORM_MUTATION_RE.test(normalized) || deployScript)) {
-    targets.push(target("aws", env.awsProfile));
-  }
-  if (env.terraformWorkspace && isProtectedTarget(env.terraformWorkspace) && (TERRAFORM_MUTATION_RE.test(normalized) || deployScript)) {
-    targets.push(target("terraform", env.terraformWorkspace));
-  }
-  if (env.dockerContext && isProtectedTarget(env.dockerContext) && (DOCKER_MUTATION_RE.test(normalized) || deployScript)) {
-    targets.push(target("docker", env.dockerContext));
-  }
-
   return targets;
 }
 
 export function recordEnvironmentWarning(
   leafId: number,
-  fields: { command: string; cwd: string; env: EnvSignals; at?: number },
+  fields: { command: string; cwd: string; at?: number },
 ): void {
-  const targets = protectedTargetsForCommand(fields.command, fields.env);
+  const targets = protectedTargetsForCommand(fields.command);
   if (targets.length === 0) {
     clearEnvironmentWarning(leafId);
     return;

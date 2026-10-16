@@ -1,0 +1,106 @@
+.terminal-status {
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  flex: 0 0 28px;
+  min-height: 28px;
+  gap: 6px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 25%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 50%, transparent);
+  color: var(--text-muted);
+  font: 10.5px var(--font-mono);
+}
+.terminal-status__main { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
+.terminal-status button {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+  padding: 3px 4px; border: 0; border-radius: 4px;
+  background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap;
+}
+.terminal-status button:hover { background: var(--hover); color: var(--text); }
+.terminal-status__state { flex: 0 1 auto; max-width: 36%; }
+.terminal-status__state-label, .terminal-status__duration { flex: 0 0 auto; }
+.terminal-status__dot { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--text-muted); }
+.terminal-status__state[data-state="running"] .terminal-status__dot { background: var(--accent); }
+.terminal-status__state[data-state="failed"] { color: #f87171; }
+.terminal-status__state[data-state="failed"] .terminal-status__dot { background: #f87171; }
+.terminal-status__state[data-state="unavailable"] .terminal-status__dot { background: #d9a83f; }
+.terminal-status__command { overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.terminal-status__target { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 48px; max-width: 190px; }
+.terminal-status__target svg { flex-shrink: 0; }
+.terminal-status__target span, .terminal-status__directory span, .terminal-status__branch { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-status__target[data-scope="remote"] { color: #38bdf8; }
+.terminal-status__target[data-scope="unknown"] { color: var(--text-muted); }
+.terminal-status__directory { max-width: 145px; flex: 0 1 auto; }
+.terminal-status__directory svg { flex-shrink: 0; }
+.terminal-status__git { max-width: 235px; flex: 0 1 auto; }
+.terminal-status__warning { color: #d9a83f; }
+.terminal-status__tools { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+.terminal-status__tool { display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; max-width: 280px; white-space: nowrap; cursor: default; }
+.terminal-status__tool > span:not(.terminal-status__override) { flex-shrink: 0; }
+.terminal-status__override { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.terminal-status__machine { flex-shrink: 0; margin-left: auto; font-size: 10px; }
+.terminal-status__more { flex: 0 0 24px; justify-content: center; font-weight: 700 !important; letter-spacing: 1px; }
+.terminal-status-menu {
+  box-sizing: border-box; width: 280px; max-width: calc(100vw - 24px);
+  padding: 4px; border: 1px solid var(--border-2); border-radius: 8px;
+  background: var(--bg-elev); color: var(--text); box-shadow: var(--elev-2);
+  font: 11px/1.4 var(--font-mono);
+}
+.terminal-status-menu [data-slot="dropdown-menu-item"],
+.terminal-status-menu [data-slot="dropdown-menu-checkbox-item"] {
+  box-sizing: border-box; min-height: 27px; padding: 5px 9px; gap: 7px;
+  border-radius: 5px; background: transparent; color: var(--text);
+  font: inherit; cursor: pointer;
+}
+.terminal-status-menu [data-slot="dropdown-menu-checkbox-item"] { padding-right: 27px; }
+.terminal-status-menu [role^="menuitem"]:is(:hover, :focus, [data-highlighted]) {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev));
+  color: var(--text-strong); outline: none;
+}
+.terminal-status-menu [role^="menuitem"]:is(:hover, :focus, [data-highlighted]) * { color: inherit; }
+.terminal-status-menu [role^="menuitem"] svg { width: 12px; height: 12px; color: var(--text-muted); }
+.terminal-status-menu [role^="menuitem"]:is(:hover, :focus, [data-highlighted]) svg,
+.terminal-status-menu [data-slot="dropdown-menu-checkbox-item-indicator"] svg { color: var(--accent); }
+.terminal-status-menu [data-slot="dropdown-menu-label"] {
+  display: flex; align-items: center; gap: 6px; padding: 6px 9px 4px;
+  color: var(--text-muted); font-size: 10px; font-weight: 500; overflow-wrap: anywhere;
+}
+.terminal-status-menu [data-slot="dropdown-menu-label"].terminal-status-menu__heading { color: var(--text); }
+.terminal-status-menu__heading > svg { flex-shrink: 0; color: var(--accent); }
+.terminal-status-menu__scope { margin-left: auto; min-width: 0; max-width: 45%; color: var(--accent); text-align: right; }
+.terminal-status-menu__scope[data-scope="remote"] { color: #38bdf8; }
+.terminal-status-menu__scope[data-scope="unknown"] { color: var(--text-muted); }
+.terminal-status-menu__label-hint { margin-left: auto; font-size: 9px; font-weight: 400; }
+.terminal-status-menu [data-slot="dropdown-menu-separator"] { height: 1px; margin: 4px 5px; background: var(--border); }
+.terminal-status-menu__detail { margin: 0 9px 5px; color: var(--text-muted); font-size: 10px; overflow-wrap: anywhere; line-height: 1.4; }
+.terminal-status-menu__git { min-width: 0; overflow-wrap: anywhere; }
+.terminal-status-menu__tool-row { display: grid; grid-template-columns: minmax(85px, 1fr) minmax(0, 1.3fr); align-items: baseline; gap: 8px; width: 100%; }
+.terminal-status-menu__tool-name { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.terminal-status-menu__tool-dot { width: 4px; height: 4px; flex: 0 0 4px; border-radius: 50%; background: var(--accent); }
+.terminal-status-menu__tool-dot[data-tool="kubernetes"] { background: #a78bfa; }
+.terminal-status-menu__tool-dot[data-tool="docker"] { background: #38bdf8; }
+.terminal-status-menu__tool-dot[data-tool="aws"] { background: #e7ac59; }
+.terminal-status-menu__tool-dot[data-tool="terraform"] { background: #c084fc; }
+.terminal-status-menu .terminal-status-menu__hint,
+.terminal-status-menu [role^="menuitem"]:is(:hover, :focus, [data-highlighted]) .terminal-status-menu__hint {
+  color: var(--text-muted); font-size: 9px; font-weight: 400; line-height: 1.4; overflow-wrap: anywhere; text-align: right;
+}
+.terminal-status-menu__note { margin: 5px 9px; color: var(--text-muted); font-size: 9px; line-height: 1.45; }
+.terminal-status-menu__metrics { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; margin: 2px 9px 4px; font-size: 9px; line-height: 1.5; }
+.terminal-status-menu__metrics time { margin-left: auto; color: var(--text-muted); }
+@container (width < 760px) {
+  .terminal-status__tools, .terminal-status__machine { display: none; }
+  .terminal-status__state { max-width: 42%; }
+}
+@container (width < 460px) {
+  .terminal-status__directory, .terminal-status__git, .terminal-status__command { display: none; }
+  .terminal-status__state { max-width: none; flex-shrink: 0; }
+  .terminal-status__target { max-width: none; }
+}
+@container (width < 320px) {
+  .terminal-status__duration { display: none; }
+}

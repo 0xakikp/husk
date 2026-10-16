@@ -329,6 +329,7 @@ export function WorkspacePanels({
             aiEnabled={prefs.aiEnabled}
           />
           <TerminalBottomBar
+            leafId={activeLeafId}
             onSendToTerminal={(text: string) => runInActiveTerminal(text)}
             onOpenSourceControl={onOpenSourceControl}
           />
