@@ -1,3 +1,6 @@
+import { safeTimelineCommand } from "../timeline/commandMetadata";
+import { canonicalStatusToolId, detectCommandToolActivities, detectStatusToolSignals, type CommandToolId, type StatusTool } from "./statusBarTools";
+
 /** Read-only UI observations, isolated by terminal leaf and fresh shell session.
  * No terminal writes, native requests, polling, persistence, or global context. */
 export type TerminalStatusRun = Readonly<{
@@ -17,7 +20,25 @@ export type TerminalStatusSnapshot = Readonly<{
   command: string;
   startedAt: number | null;
   lastRun: TerminalStatusRun | null;
+  /** In-memory names only. Never persist commands, targets, or credentials. */
+  recentTools?: readonly Readonly<{ id: StatusTool | CommandToolId; seenAt: number }>[];
 }>;
+
+export const MAX_RECENT_STATUS_TOOLS = 12;
+
+function recentToolsForCommand(snapshot: TerminalStatusSnapshot, command: string, at: number) {
+  const previous = snapshot.recentTools ?? [];
+  if (command.length > 480 || safeTimelineCommand(command).sensitive) return previous;
+  const ids = new Set<StatusTool | CommandToolId>([
+    ...detectStatusToolSignals(command).map((signal) => signal.tool),
+    ...detectCommandToolActivities(command).map((activity) => canonicalStatusToolId(activity.id)),
+  ]);
+  if (!ids.size) return previous;
+  return Object.freeze([
+    ...[...ids].map((id) => Object.freeze({ id, seenAt: at })),
+    ...previous.filter((entry) => !ids.has(entry.id)),
+  ].slice(0, MAX_RECENT_STATUS_TOOLS));
+}
 
 type StatusState = { sessionKey: string; generation: number; snapshot: TerminalStatusSnapshot };
 const states = new Map<number, StatusState>();
@@ -57,7 +78,7 @@ export function initializeTerminalStatus(leafId: number, sessionKey: string): vo
     generation: 0,
     snapshot: Object.freeze({
       leafId, scopeKey: `${sessionKey}:0`, scope: "unknown", host: null, cwd: null,
-      atPrompt: false, command: "", startedAt: null, lastRun: null,
+      atPrompt: false, command: "", startedAt: null, lastRun: null, recentTools: [],
     }),
   });
   emit(leafId);
@@ -95,7 +116,7 @@ export function observeTerminalStatusScope(leafId: number, observation: Terminal
     : observation.cwd || (changed ? null : previous.cwd);
   publish(state, {
     scopeKey: `${state.sessionKey}:${state.generation}`, scope, host, cwd,
-    ...(changed ? { atPrompt: false, command: "", startedAt: null, lastRun: null } : {}),
+    ...(changed ? { atPrompt: false, command: "", startedAt: null, lastRun: null, recentTools: [] } : {}),
   });
 }
 
@@ -108,7 +129,7 @@ export function observeTerminalStatusPrompt(leafId: number, atPrompt: boolean): 
 export function startTerminalStatusCommand(leafId: number, command: string, startedAt: number): void {
   const state = states.get(leafId);
   if (!state) return;
-  publish(state, { command, startedAt, atPrompt: false });
+  publish(state, { command, startedAt, atPrompt: false, recentTools: recentToolsForCommand(state.snapshot, command, startedAt) });
 }
 
 export function completeTerminalStatusCommand(leafId: number, exitCode: number | null, at: number): void {

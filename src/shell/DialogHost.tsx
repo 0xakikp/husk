@@ -34,6 +34,7 @@ type Setter<T> = React.Dispatch<React.SetStateAction<T>>;
 export function DialogHost({
   aiEnabled,
   welcomeOpen,
+  welcomeWorkspacePath,
   onWelcomeOpenFolder,
   onWelcomeOpenTerminal,
   onWelcomeAskHusk,
@@ -84,7 +85,8 @@ export function DialogHost({
 }: {
   aiEnabled: boolean;
   welcomeOpen: boolean;
-  onWelcomeOpenFolder: () => void;
+  welcomeWorkspacePath?: string;
+  onWelcomeOpenFolder: () => void | Promise<void>;
   onWelcomeOpenTerminal: () => void;
   onWelcomeAskHusk: () => void;
   onWelcomeOpenSettings: () => void;
@@ -196,6 +198,8 @@ export function DialogHost({
       </DialogLayer>
       {welcomeOpen ? (
         <WelcomeDialog
+          workspacePath={welcomeWorkspacePath}
+          terminalCount={term.tabs.length}
           onOpenFolder={onWelcomeOpenFolder}
           onOpenTerminal={onWelcomeOpenTerminal}
           onAskHusk={onWelcomeAskHusk}

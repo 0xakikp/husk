@@ -2,14 +2,14 @@ import { useSyncExternalStore } from "react";
 
 import { shq } from "../lib/shellQuote";
 import { isProtectedTarget, isStatusToolMutation } from "./envSignals";
-import { detectStatusToolSignals } from "./statusBarTools";
+import { detectStatusToolSignals, statusToolOverrides, type StatusTool } from "./statusBarTools";
 
-export type EnvironmentKind = "kubernetes" | "aws" | "terraform" | "docker";
+export type EnvironmentKind = StatusTool;
 
 export type EnvironmentTarget = {
   kind: EnvironmentKind;
   value: string;
-  inspectCommand: string;
+  inspectCommand: string | null;
 };
 
 export type EnvironmentWarningRecord = {
@@ -37,6 +37,10 @@ function target(kind: EnvironmentKind, value: string): EnvironmentTarget {
       return { kind, value, inspectCommand: `TF_WORKSPACE=${shq(value)} terraform workspace show` };
     case "docker":
       return { kind, value, inspectCommand: `docker context inspect ${shq(value)}` };
+    default:
+      // Do not invent an inspection command (or query accounts) for a selector
+      // whose CLI-specific inspection has not been implemented.
+      return { kind, value, inspectCommand: null };
   }
 }
 
@@ -48,10 +52,11 @@ function target(kind: EnvironmentKind, value: string): EnvironmentTarget {
 export function protectedTargetsForCommand(command: string): EnvironmentTarget[] {
   const targets: EnvironmentTarget[] = [];
   for (const signal of detectStatusToolSignals(command)) {
-    if (!signal.override || !isProtectedTarget(signal.override.value) || !isStatusToolMutation(signal)) continue;
-    const value = signal.override.value;
-    if (targets.some((item) => item.kind === signal.tool && item.value === value)) continue;
-    targets.push(target(signal.tool, value));
+    if (!isStatusToolMutation(signal)) continue;
+    for (const { value } of statusToolOverrides(signal)) {
+      if (!isProtectedTarget(value) || targets.some((item) => item.kind === signal.tool && item.value === value)) continue;
+      targets.push(target(signal.tool, value));
+    }
   }
   return targets;
 }

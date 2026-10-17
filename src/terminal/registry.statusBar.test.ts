@@ -82,6 +82,8 @@ describe("registry status bar observations without native probes", () => {
     expect(getTerminalStatus(two.leaf)).toBe(other);
     expect(getTerminalStatus(one.leaf)).toMatchObject({ command: "", startedAt: null, atPrompt: true, cwd: "/one" });
     expect(getTerminalStatus(one.leaf)?.lastRun).toMatchObject({ command: "npm test", exitCode: 2 });
+    expect(getTerminalStatus(one.leaf)?.recentTools).toEqual([{ id: "cli:npm", seenAt: startedAt }]);
+    expect(getTerminalStatus(two.leaf)?.recentTools).toEqual([]);
     const run = getTerminalStatus(one.leaf)!.lastRun!;
     expect(run.durationMs).toBe(run.at - startedAt);
     const complete = getTerminalStatus(one.leaf);
@@ -100,6 +102,7 @@ describe("registry status bar observations without native probes", () => {
     expect(getTerminalStatus(leaf)).toMatchObject({ scope: "remote", host: "server", cwd: "/remote", lastRun: { command: "kubectl get pods", exitCode: 0 } });
     await prompt("/restored-local");
     expect(getTerminalStatus(leaf)).toMatchObject({ scope: "local", host: null, cwd: "/restored-local", lastRun: null });
+    expect(getTerminalStatus(leaf)?.recentTools).toEqual([]);
     expect(fixture.writes).toEqual([]);
   });
 
@@ -135,6 +138,7 @@ describe("registry status bar observations without native probes", () => {
     const before = getTerminalStatus(leaf);
     await restartSession(leaf);
     expect(getTerminalStatus(leaf)).toMatchObject({ scope: "unknown", cwd: null, lastRun: null, command: "", startedAt: null });
+    expect(getTerminalStatus(leaf)?.recentTools).toEqual([]);
     expect(getTerminalStatus(leaf)?.scopeKey).not.toBe(before?.scopeKey);
     disposeSession(leaf);
     expect(getTerminalStatus(leaf)).toBeNull();

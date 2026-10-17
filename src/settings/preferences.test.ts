@@ -88,3 +88,104 @@ describe("terminal welcome preference", () => {
     expect(getPrefs().terminalWelcomeEnabled).toBe(true);
   });
 });
+
+describe("startup welcome preference", () => {
+  const originalPrefs = getPrefs();
+  let storage: Map<string, string>;
+
+  beforeEach(() => {
+    storage = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    });
+    hydratePrefsFromNative({}, originalPrefs.aiAgents);
+    vi.mocked(persistNativeConfigSection).mockClear();
+  });
+
+  afterEach(() => {
+    hydratePrefsFromNative(originalPrefs, originalPrefs.aiAgents);
+    vi.unstubAllGlobals();
+  });
+
+  it("defaults on for a new installation", () => {
+    expect(getPrefs().showWelcomeOnStartup).toBe(true);
+    expect(preferencesForNativeConfig().showWelcomeOnStartup).toBe(true);
+    expect(getPrefs().hasSeenWelcome).toBe(false);
+  });
+
+  it("enables startup welcome when migrating an existing native configuration", () => {
+    hydratePrefsFromNative({
+      hasSeenWelcome: true,
+      sessionRestoreEnabled: false,
+      terminalWelcomeEnabled: false,
+      userName: "Alex",
+    }, originalPrefs.aiAgents);
+    expect(getPrefs()).toMatchObject({
+      showWelcomeOnStartup: true,
+      hasSeenWelcome: true,
+      sessionRestoreEnabled: false,
+      terminalWelcomeEnabled: false,
+      userName: "Alex",
+    });
+    expect(persistNativeConfigSection).not.toHaveBeenCalled();
+  });
+
+  it("enables startup welcome when migrating the browser fallback", async () => {
+    storage.set(PREFS_STORAGE_KEY, JSON.stringify({ hasSeenWelcome: true, terminalWelcomeEnabled: false }));
+    vi.resetModules();
+    const reloaded = await import("./preferences");
+    expect(reloaded.getPrefs()).toMatchObject({
+      showWelcomeOnStartup: true,
+      hasSeenWelcome: true,
+      terminalWelcomeEnabled: false,
+    });
+  });
+
+  it("persists an opt-out to native config and the browser fallback, including reload", async () => {
+    setPrefs({ showWelcomeOnStartup: false });
+    expect(getPrefs().showWelcomeOnStartup).toBe(false);
+    expect(JSON.parse(storage.get(PREFS_STORAGE_KEY)!).showWelcomeOnStartup).toBe(false);
+    expect(persistNativeConfigSection).toHaveBeenCalledWith(
+      "preferences",
+      expect.objectContaining({ showWelcomeOnStartup: false }),
+    );
+    hydratePrefsFromNative(preferencesForNativeConfig(), originalPrefs.aiAgents);
+    expect(getPrefs().showWelcomeOnStartup).toBe(false);
+    vi.resetModules();
+    const reloaded = await import("./preferences");
+    expect(reloaded.getPrefs().showWelcomeOnStartup).toBe(false);
+  });
+
+  it("can be re-enabled without changing onboarding, session restore, or terminal greeting", () => {
+    hydratePrefsFromNative({
+      showWelcomeOnStartup: false,
+      hasSeenWelcome: true,
+      sessionRestoreEnabled: false,
+      terminalWelcomeEnabled: false,
+    }, originalPrefs.aiAgents);
+    setPrefs({ showWelcomeOnStartup: true });
+    expect(getPrefs()).toMatchObject({
+      showWelcomeOnStartup: true,
+      hasSeenWelcome: true,
+      sessionRestoreEnabled: false,
+      terminalWelcomeEnabled: false,
+    });
+  });
+
+  it.each([undefined, null, "false", 0, {}, []])("defaults safely for invalid native value %j", (value) => {
+    hydratePrefsFromNative(
+      { showWelcomeOnStartup: value } as unknown as Partial<Prefs>,
+      originalPrefs.aiAgents,
+    );
+    expect(getPrefs().showWelcomeOnStartup).toBe(true);
+  });
+
+  it.each([null, "false", 0, {}, []])("defaults safely for invalid browser value %j", async (value) => {
+    storage.set(PREFS_STORAGE_KEY, JSON.stringify({ showWelcomeOnStartup: value, hasSeenWelcome: true }));
+    vi.resetModules();
+    const reloaded = await import("./preferences");
+    expect(reloaded.getPrefs().showWelcomeOnStartup).toBe(true);
+    expect(reloaded.getPrefs().hasSeenWelcome).toBe(true);
+  });
+});

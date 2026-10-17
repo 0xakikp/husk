@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  commandToolLabel, detectCommandToolActivities, detectStatusToolSignals, isCommandToolId,
-  STATUS_TOOL_LABELS, STATUS_TOOLS,
+  canonicalStatusToolId, commandToolLabel, detectCommandToolActivities, detectStatusToolSignals, isCommandToolId,
+  literalStatusValue, statusCommandInvocations, statusToolOverrides,
+  STATUS_TOOL_CATALOG, STATUS_TOOL_LABELS, STATUS_TOOLS,
 } from "./statusBarTools";
 
 function onlySignal(command: string) {
@@ -13,10 +14,13 @@ function onlySignal(command: string) {
 
 describe("terminal-local status tools", () => {
   it("provides stable preference IDs independently of observed command data", () => {
-    expect(STATUS_TOOLS).toEqual(["kubernetes", "docker", "aws", "terraform"]);
-    expect(STATUS_TOOLS.map((tool) => STATUS_TOOL_LABELS[tool])).toEqual([
+    expect(STATUS_TOOLS.slice(0, 4)).toEqual(["kubernetes", "docker", "aws", "terraform"]);
+    expect(STATUS_TOOLS.slice(0, 4).map((tool) => STATUS_TOOL_LABELS[tool])).toEqual([
       "Kubernetes", "Docker", "AWS", "Terraform",
     ]);
+    expect(STATUS_TOOLS).toEqual(expect.arrayContaining([
+      "oci", "azure", "gcloud", "orbstack", "podman", "colima", "python", "conda", "ssh",
+    ]));
   });
 
   it.each([
@@ -34,13 +38,18 @@ describe("terminal-local status tools", () => {
     "", "git status", "echo kubectl get pods", "printf 'aws --profile prod sts get-caller-identity'",
     "# terraform apply", "echo hello # docker ps", "echo 'kubectl'; # aws sts get-caller-identity",
     "'kubectl get pods'", "sh -c 'kubectl --context prod get pods'",
-    "bash -lc 'aws --profile prod sts get-caller-identity'", "ssh prod 'docker ps'",
-    "ssh prod kubectl --context prod get pods", "mosh host -- aws sts get-caller-identity",
+    "bash -lc 'aws --profile prod sts get-caller-identity'", "mosh host -- aws sts get-caller-identity",
     "k get pods", "tf plan", "make terraform", "npm run docker", "watch kubectl get pods",
     "command -v aws", "env -S 'aws --profile prod sts get-caller-identity'",
     "sudo -i aws sts get-caller-identity",
   ])("does not infer executable tools from aliases, text, or payloads: %s", (command) => {
     expect(detectStatusToolSignals(command)).toEqual([]);
+  });
+
+  it("reports SSH as the outer invocation without parsing its remote command", () => {
+    for (const command of ["ssh prod 'docker ps'", "ssh prod kubectl --context prod get pods"]) {
+      expect(onlySignal(command)).toMatchObject({ tool: "ssh", override: { kind: "host", value: "prod" } });
+    }
   });
 
   it.each([
@@ -152,9 +161,9 @@ describe("terminal-local status tools", () => {
 
 describe("generic terminal command activity", () => {
   it.each([
-    ["az account show", "az", "Azure"],
-    ["gcloud projects list", "gcloud", "Google Cloud"],
-    ["podman ps", "podman", "Podman"],
+    ["doctl account get", "doctl", "DigitalOcean"],
+    ["gsutil ls", "gsutil", "Google Cloud Storage"],
+    ["nerdctl ps", "nerdctl", "nerdctl"],
     ["tofu plan", "tofu", "OpenTofu"],
     ["ansible-playbook deploy.yml", "ansible-playbook", "Ansible Playbook"],
     ["psql --dbname development", "psql", "PostgreSQL"],
@@ -162,14 +171,15 @@ describe("generic terminal command activity", () => {
     ["gh pr list", "gh", "GitHub CLI"],
     ["my-company-cli status", "my-company-cli", "my-company-cli"],
     ["./scripts/check-environment.sh", "check-environment.sh", "check-environment.sh"],
-    ["/opt/homebrew/bin/gcloud config list", "gcloud", "Google Cloud"],
+    ["/opt/homebrew/bin/node --version", "node", "Node.js"],
+    ["mosh host -- psql", "mosh", "Mosh"],
   ])("identifies direct executable activity without inferring a target: %s", (command, executable, label) => {
     expect(detectCommandToolActivities(command)).toEqual([{ id: `cli:${executable}`, label, executable }]);
   });
 
   it("supports only the existing understood wrappers and literal executable names", () => {
-    expect(detectCommandToolActivities("CLOUD_PROFILE=$PROFILE env -i command -p -- /usr/bin/az account show"))
-      .toEqual([{ id: "cli:az", label: "Azure", executable: "az" }]);
+    expect(detectCommandToolActivities("CLOUD_PROFILE=$PROFILE env -i command -p -- /usr/bin/doctl account get"))
+      .toEqual([{ id: "cli:doctl", label: "DigitalOcean", executable: "doctl" }]);
     expect(detectCommandToolActivities("sudo -n -u deploy env --unset SECRET command -- tofu plan"))
       .toEqual([{ id: "cli:tofu", label: "OpenTofu", executable: "tofu" }]);
     expect(detectCommandToolActivities("'my-cli' --profile '$PROFILE'"))
@@ -177,26 +187,26 @@ describe("generic terminal command activity", () => {
   });
 
   it("does not leak arguments or assignments into an activity or infer provider state", () => {
-    const result = detectCommandToolActivities("TOKEN=secret az login --password do-not-display --tenant customer-prod");
-    expect(result).toEqual([{ id: "cli:az", label: "Azure", executable: "az" }]);
+    const result = detectCommandToolActivities("TOKEN=secret my-cli login --password do-not-display --tenant customer-prod");
+    expect(result).toEqual([{ id: "cli:my-cli", label: "my-cli", executable: "my-cli" }]);
     expect(JSON.stringify(result)).not.toMatch(/secret|password|customer-prod|TOKEN|login/);
-    expect(detectCommandToolActivities("az account show $OPTIONS")).toEqual(result);
+    expect(detectCommandToolActivities("my-cli account show $OPTIONS")).toEqual(result);
   });
 
   it("deduplicates by literal executable, ordered by its last direct occurrence", () => {
-    expect(detectCommandToolActivities("az account show && npm test; gcloud projects list; /usr/bin/az version"))
+    expect(detectCommandToolActivities("doctl account get && npm test; gsutil ls; /usr/bin/doctl version"))
       .toEqual([
         { id: "cli:npm", label: "npm", executable: "npm" },
-        { id: "cli:gcloud", label: "Google Cloud", executable: "gcloud" },
-        { id: "cli:az", label: "Azure", executable: "az" },
+        { id: "cli:gsutil", label: "Google Cloud Storage", executable: "gsutil" },
+        { id: "cli:doctl", label: "DigitalOcean", executable: "doctl" },
       ]);
   });
 
   it("does not duplicate the richer specialized tools, even without target overrides", () => {
-    const command = "kubectl get pods; helm list; docker ps; aws sts get-caller-identity; terraform plan";
+    const command = "kubectl get pods; helm list; docker ps; aws sts get-caller-identity; terraform plan; oci iam region list; az account show; gcloud projects list; orb list; podman ps; colima status; uv run python; python3 --version; conda info; ssh host";
     expect(detectCommandToolActivities(command)).toEqual([]);
     expect(detectStatusToolSignals(command).map(({ tool }) => tool))
-      .toEqual(["kubernetes", "kubernetes", "docker", "aws", "terraform"]);
+      .toEqual(["kubernetes", "kubernetes", "docker", "aws", "terraform", "oci", "azure", "gcloud", "orbstack", "podman", "colima", "python", "python", "conda", "ssh"]);
   });
 
   it.each([
@@ -204,7 +214,7 @@ describe("generic terminal command activity", () => {
     "echo hello # npm test", "cd project && pwd; ls -la | head", "true && clear",
     "git_alias=git", "alias gcp='gcloud projects list'", "export CLOUD=az",
     "command -v az", "type gcloud", "which podman", "builtin command az account show",
-    "ssh prod az account show", "ssh prod 'gcloud projects list'", "mosh host -- psql",
+    "ssh prod az account show", "ssh prod 'gcloud projects list'",
     "sh -c 'az account show'", "bash -lc 'npm test'", "zsh -ic 'tofu plan'",
     "eval 'az account show'", "exec gcloud projects list", "source ./scripts/check-environment.sh",
     ". ./scripts/check-environment.sh", "watch podman ps", "timeout 5 az account show",
@@ -218,9 +228,9 @@ describe("generic terminal command activity", () => {
     expect(detectCommandToolActivities("npm run docker; python -c 'az account show'; k get pods"))
       .toEqual([
         { id: "cli:npm", label: "npm", executable: "npm" },
-        { id: "cli:python", label: "python", executable: "python" },
         { id: "cli:k", label: "k", executable: "k" },
       ]);
+    expect(detectStatusToolSignals("python -c 'az account show'").map((signal) => signal.tool)).toEqual(["python"]);
   });
 
   it.each([
@@ -258,5 +268,57 @@ describe("generic terminal command activity", () => {
     expect(commandToolLabel("cli:constructor")).toBe("constructor");
     expect(commandToolLabel("cli:toString")).toBe("toString");
     expect(commandToolLabel("cli:Azure-Helper")).toBe("Azure-Helper");
+  });
+});
+
+describe("status integration catalog and parser interface", () => {
+  it("catalogs rich tools and useful generic tools without duplicate IDs", () => {
+    const ids = STATUS_TOOL_CATALOG.map((entry) => entry.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const tool of STATUS_TOOLS) {
+      expect(STATUS_TOOL_CATALOG.find((entry) => entry.id === tool)).toMatchObject({
+        label: STATUS_TOOL_LABELS[tool], executables: expect.any(Array),
+      });
+    }
+    expect(STATUS_TOOL_CATALOG).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "oci", category: "cloud", executables: ["oci"] }),
+      expect.objectContaining({ id: "orbstack", category: "containers", executables: ["orb", "orbctl"] }),
+      expect.objectContaining({ id: "python", category: "development", executables: ["uv", "python", "python3"] }),
+      expect.objectContaining({ id: "ssh", category: "connections" }),
+      expect.objectContaining({ id: "cli:psql", category: "databases" }),
+      expect.objectContaining({ id: "cli:node", label: "Node.js" }),
+      expect.objectContaining({ id: "cli:tailscale", category: "connections" }),
+    ]));
+  });
+
+  it.each([
+    ["cli:az", "azure"], ["cli:oci", "oci"], ["cli:gcloud", "gcloud"],
+    ["cli:orb", "orbstack"], ["cli:orbctl", "orbstack"], ["cli:podman", "podman"],
+    ["cli:colima", "colima"], ["cli:uv", "python"], ["cli:python3", "python"],
+    ["cli:conda", "conda"], ["cli:ssh", "ssh"], ["cli:helm", "kubernetes"],
+    ["aws", "aws"], ["cli:my-cli", "cli:my-cli"], ["cli:constructor", "cli:constructor"],
+  ] as const)("canonicalizes stored integration ID %s", (id, expected) => {
+    expect(canonicalStatusToolId(id)).toBe(expected);
+  });
+
+  it("exports token provenance without expanding or executing shell values", () => {
+    const invocation = statusCommandInvocations('env -i PROFILE="$PROFILE" command -- /opt/bin/oci --profile dev')?.[0];
+    expect(invocation).toMatchObject({ executable: "oci", program: "/opt/bin/oci", args: [
+      { value: "--profile", dynamic: false }, { value: "dev", dynamic: false },
+    ] });
+    expect(invocation?.env.get("PROFILE")).toEqual({ value: "$PROFILE", dynamic: true });
+    expect(statusCommandInvocations("echo $(oci iam region list)")).toBeNull();
+    expect(statusCommandInvocations("sudo -i oci iam region list")).toEqual([]);
+  });
+
+  it("exports bounded literal values and backward-compatible override lists", () => {
+    expect(literalStatusValue({ value: "team-prod", dynamic: false })).toBe("team-prod");
+    expect(literalStatusValue({ value: "$PROFILE", dynamic: true })).toBeNull();
+    expect(literalStatusValue({ value: "<script>", dynamic: false })).toBeNull();
+    expect(literalStatusValue({ value: "x".repeat(161), dynamic: false })).toBeNull();
+    const signal = onlySignal("aws --profile dev sts get-caller-identity");
+    const { overrides: _overrides, ...legacy } = signal;
+    expect(statusToolOverrides(legacy)).toEqual([signal.override]);
+    expect(statusToolOverrides(onlySignal("docker ps"))).toEqual([]);
   });
 });

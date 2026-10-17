@@ -13,9 +13,15 @@ it("accepts known tools and a real boolean, with no duplicates", () => {
 it("round-trips safe directly used CLI IDs, but not paths or command arguments", () => {
   const pinned = ["cli:az", "cli:teamctl", "cli:az", "cli:/opt/bin/tool", "cli:az account show", "cli:$TOOL", "cli:", "cli:bad\n", "docker"];
   updateStatusBarPreferences({ pinned, machineMetrics: false } as Parameters<typeof updateStatusBarPreferences>[0]);
-  const parsed = { pinned: ["docker", "cli:az", "cli:teamctl"], machineMetrics: false };
+  const parsed = { pinned: ["docker", "azure", "cli:teamctl"], machineMetrics: false };
   expect(getStatusBarPreferences()).toEqual(parsed);
   expect(parseStatusBarPreferences(localStorage.getItem("husk.terminal.statusbar.v1"))).toEqual(parsed);
+});
+it("migrates legacy activity pins into richer adapters without duplicates", () => {
+  const pinned = ["cli:az", "azure", "cli:oci", "oci", "cli:orb", "cli:orbctl", "orbstack", "cli:uv", "cli:python3", "python", "cli:psql"];
+  expect(parseStatusBarPreferences(JSON.stringify({ pinned }))).toEqual({
+    pinned: ["oci", "azure", "orbstack", "python", "cli:psql"], machineMetrics: false,
+  });
 });
 it("persists display choices only, never arbitrary host, command, or target data", () => {
   updateStatusBarPreferences({ pinned: ["terraform"], machineMetrics: true, host: "secret-host", command: "secret command" } as Parameters<typeof updateStatusBarPreferences>[0]);

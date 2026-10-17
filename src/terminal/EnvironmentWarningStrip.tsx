@@ -1,9 +1,11 @@
+import { useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 
-import { typeInActiveTerminal } from "../ai/terminalContext";
+import { safeTimelineCommand } from "../timeline/commandMetadata";
 import { toast } from "../toast";
 import { clearEnvironmentWarning, useEnvironmentWarning } from "./environmentWarnings";
+import { captureScreenCommandTarget, stageScreenCommand } from "./stageScreenCommand";
 
 function commandLabel(command: string): string {
   const compact = command.trim().replace(/\s+/g, " ");
@@ -15,17 +17,37 @@ function commandLabel(command: string): string {
  * check that is staged for review. */
 export function EnvironmentWarningStrip({ leafId }: { leafId: number | null }) {
   const record = useEnvironmentWarning(leafId);
+  const primary = record?.targets[0];
+  // Capture when this warning is presented, not after the user clicks. A new
+  // shell/SSH scope must not silently inherit a prior warning's inspection.
+  const target = useMemo(() => leafId != null && primary?.inspectCommand
+    ? captureScreenCommandTarget(leafId) : null, [leafId, record]);
+  const [isStaging, setIsStaging] = useState(false);
+  const staging = useRef(false);
+  const currentRecord = useRef(record);
+  currentRecord.current = record;
   if (!record || leafId == null) return null;
-  const primary = record.targets[0];
   if (!primary) return null;
   const label = `${primary.kind} / ${primary.value}`;
+  const displayedCommand = safeTimelineCommand(record.command).display;
 
-  const stageInspection = () => {
-    if (!typeInActiveTerminal(primary.inspectCommand)) {
-      toast({ title: "No active terminal", message: "Focus this terminal to stage the context check.", variant: "error" });
-      return;
+  const stageInspection = async () => {
+    if (!primary.inspectCommand || staging.current) return;
+    staging.current = true;
+    setIsStaging(true);
+    try {
+      await stageScreenCommand(leafId, target, primary.inspectCommand);
+      if (currentRecord.current === record) {
+        toast({ title: "Context check staged", message: "Review it in the terminal, then press Enter to run.", variant: "info" });
+      }
+    } catch (error) {
+      if (currentRecord.current === record) {
+        toast({ title: "Could not stage context check", message: error instanceof Error ? error.message : "Return to a verified empty prompt in this terminal and try again.", variant: "error" });
+      }
+    } finally {
+      staging.current = false;
+      setIsStaging(false);
     }
-    toast({ title: "Context check staged", message: "Review it in the terminal, then press Enter to run.", variant: "info" });
   };
 
   return (
@@ -34,18 +56,19 @@ export function EnvironmentWarningStrip({ leafId }: { leafId: number | null }) {
       <span className="shrink-0 font-semibold uppercase tracking-[0.12em] text-amber-300">environment</span>
       <span className="min-w-0 truncate text-foreground/90" title={label}>{label}</span>
       {record.targets.length > 1 ? <span className="shrink-0 text-amber-300/80">+{record.targets.length - 1}</span> : null}
-      <span className="min-w-0 shrink truncate text-muted-foreground" title={record.command}>· {commandLabel(record.command)}</span>
+      <span className="min-w-0 shrink truncate text-muted-foreground" title={displayedCommand}>· {commandLabel(displayedCommand)}</span>
 
       <div className="min-w-1 flex-1" />
 
-      <button
+      {primary.inspectCommand ? <button
         type="button"
-        onClick={stageInspection}
-        className="shrink-0 rounded-md px-1.5 py-0.5 text-amber-300/90 transition-colors hover:bg-amber-400/10 hover:text-amber-200"
+        onClick={() => { void stageInspection(); }}
+        disabled={isStaging}
+        className="shrink-0 rounded-md px-1.5 py-0.5 text-amber-300/90 transition-colors hover:bg-amber-400/10 hover:text-amber-200 disabled:opacity-50"
         title={`Stage: ${primary.inspectCommand}`}
       >
         verify context
-      </button>
+      </button> : null}
       <button
         type="button"
         onClick={() => clearEnvironmentWarning(leafId)}

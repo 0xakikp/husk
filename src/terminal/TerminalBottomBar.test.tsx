@@ -20,10 +20,11 @@ vi.mock("../components/ui/dropdown-menu", async () => {
   return {
     DropdownMenu: ({ children, open, onOpenChange }: any) => <Context.Provider value={{ open, onOpenChange }}>{children}</Context.Provider>,
     DropdownMenuTrigger: ({ children }: any) => { const c = React.useContext(Context); return React.cloneElement(children, { onClick: () => c.onOpenChange(!c.open) }); },
-    DropdownMenuContent: ({ children, className }: any) => React.useContext(Context).open ? <div role="menu" className={className}>{children}</div> : null,
-    DropdownMenuLabel: ({ children }: any) => <div>{children}</div>,
+    DropdownMenuContent: ({ children, className, ref, onEscapeKeyDown, onPointerMoveCapture, "aria-label": label }: any) => React.useContext(Context).open ? <div ref={ref} role="menu" className={className} aria-label={label} onPointerMoveCapture={onPointerMoveCapture}
+      onKeyDown={(event) => { if (event.key === "Escape") onEscapeKeyDown?.(event); }}>{children}</div> : null,
+    DropdownMenuLabel: ({ children, ...props }: any) => <div {...props} data-slot="dropdown-menu-label">{children}</div>,
     DropdownMenuSeparator: () => <hr />,
-    DropdownMenuItem: ({ children, onSelect }: any) => <button role="menuitem" onClick={onSelect}>{children}</button>,
+    DropdownMenuItem: ({ children, onSelect, ...props }: any) => <button {...props} role="menuitem" onClick={onSelect}>{children}</button>,
     DropdownMenuCheckboxItem: ({ children, checked, onCheckedChange, onSelect: _onSelect, ...props }: any) => <button {...props} role="menuitemcheckbox" aria-checked={checked} onClick={() => onCheckedChange(!checked)}>{children}</button>,
   };
 });
@@ -50,6 +51,31 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); disposeTerminalStatus(1); disposeTerminalStatus(2); });
 async function render(leafId: number | null = 1) { await act(async () => root.render(<TerminalBottomBar leafId={leafId} onSendToTerminal={fixtures.send} onOpenSourceControl={fixtures.sourceControl} />)); }
 async function click(selector: string) { const button = host.querySelector<HTMLButtonElement>(selector)!; expect(button).not.toBeNull(); await act(async () => button.click()); }
+async function search(value: string) {
+  const input = host.querySelector<HTMLInputElement>('[aria-label="Search integrations"]')!;
+  expect(input).not.toBeNull();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+it("preserves search focus against menu hover without blocking result clicks", async () => {
+  await render(); await click(".terminal-status__more"); await click(".terminal-status-menu__add");
+  const input = host.querySelector<HTMLInputElement>('[aria-label="Search integrations"]')!;
+  input.focus();
+  const row = host.querySelector<HTMLElement>('[data-catalog-tool="oci"]')!;
+  const hover = new PointerEvent("pointermove", { bubbles: true, cancelable: true, pointerType: "mouse" });
+  row.dispatchEvent(hover);
+  expect(hover.defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(input);
+  await click('[data-catalog-tool="oci"]');
+  expect(row.getAttribute("aria-checked")).toBe("true");
+  row.focus();
+  const navigationHover = new PointerEvent("pointermove", { bubbles: true, cancelable: true, pointerType: "mouse" });
+  row.dispatchEvent(navigationHover);
+  expect(navigationHover.defaultPrevented).toBe(false);
+});
 
 it("shows local prompt, folder and Git without unrelated installed tools", async () => {
   await render(); expect(host.textContent).toContain("Ready"); expect(host.textContent).toContain("Local");
@@ -101,10 +127,13 @@ it("shows a meaningful target only while its command is running, with last detai
 });
 it("keeps pins in the menu without adding empty bar labels or querying a target", async () => {
   await render(); await click(".terminal-status__more");
-  expect(host.textContent).not.toContain("Pinned by you");
-  expect(host.textContent).toContain("Unverified");
+  expect(host.textContent).toContain("Tools appear as you use them here");
+  expect(host.querySelector('[aria-label="Pin Docker"]')).toBeNull();
+  await click(".terminal-status-menu__add");
   const pin = host.querySelector<HTMLButtonElement>('[aria-label="Pin Docker"]')!;
-  await act(async () => pin.click()); expect(pin.getAttribute("title")).toContain("target unverified");
+  await act(async () => pin.click()); expect(pin.getAttribute("title")).toContain("does not install, connect to or run");
+  await click(".terminal-status-menu__back");
+  expect(host.querySelector('[aria-label="Pin Docker"]')?.textContent).toContain("Not observed here");
   expect(host.querySelector(".terminal-status__tools")).toBeNull();
   await render(2); expect(host.querySelector(".terminal-status__tools")).toBeNull();
   await click(".terminal-status__more");
@@ -116,7 +145,7 @@ it("keeps pins in the menu without adding empty bar labels or querying a target"
 it("starts machine metrics only on explicit display and clearly labels the computer", async () => {
   remote(1); await render(); expect(fixtures.vitals).toHaveBeenLastCalledWith(false);
   await click(".terminal-status__more"); expect(fixtures.vitals).toHaveBeenLastCalledWith(true);
-  expect(host.textContent).toContain("This computer"); expect(host.textContent).toContain("Not the remote host");
+  expect(host.textContent).toContain("This computer"); expect(host.textContent).toContain("not the remote host");
   await click(".terminal-status__more"); expect(fixtures.vitals).toHaveBeenLastCalledWith(false);
 });
 it("opens logs for the displayed leaf and copies only the observed directory", async () => {
@@ -136,13 +165,14 @@ it("does not expose sensitive command arguments in visible labels or tooltips", 
   expect(host.innerHTML).not.toContain("super-secret"); expect(host.innerHTML).not.toContain("Current command profile: prod");
   expect(host.querySelector(".terminal-status__tools")).toBeNull();
 });
-it("keeps other cloud CLI activity in the menu without bare labels or guessed targets", async () => {
+it("shows explicitly selected Azure subscriptions without claiming a verified connection", async () => {
   startTerminalStatusCommand(1, "az account show --subscription private-subscription", Date.now()); await render();
-  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  expect(host.querySelector('.terminal-status__tool[data-tool="azure"]')?.textContent).toBe("Azure·subscription: private-subscription");
   await click(".terminal-status__more");
-  expect(host.querySelector('[aria-label="Pin Azure"]')?.textContent).toContain("Current command · activity only");
-  expect(host.querySelector('[role="menu"]')?.textContent).not.toContain("private-subscription");
+  expect(host.querySelector('[aria-label="Pin Azure"]')?.textContent).toContain("Current subscription: private-subscription");
+  expect(host.querySelector('[aria-label="Pin Azure"]')?.getAttribute("title")).toContain("not a verified connection target");
   await render(2); expect(host.querySelector('[data-tool="cli:az"]')).toBeNull();
+  expect(host.innerHTML).not.toContain("private-subscription");
   expect(fixtures.send).not.toHaveBeenCalled();
 });
 it("pins a directly used custom CLI across panes without persisting its arguments", async () => {
@@ -152,7 +182,7 @@ it("pins a directly used custom CLI across panes without persisting its argument
   expect(localStorage.getItem("husk.terminal.statusbar.v1")).not.toMatch(/internal-cluster|MODE|\/opt/);
   await render(2); expect(host.querySelector(".terminal-status__tools")).toBeNull();
   await click(".terminal-status__more");
-  expect(host.querySelector('[aria-label="Pin teamctl"]')?.textContent).toContain("Pinned · activity only");
+  expect(host.querySelector('[aria-label="Pin teamctl"]')?.textContent).toContain("Not observed here");
   await click('[aria-label="Pin teamctl"]'); expect(host.querySelector('[aria-label="Pin teamctl"]')).toBeNull();
 });
 it("does not add generic tools from a redacted command to the menu", async () => {
@@ -164,7 +194,8 @@ it("does not add generic tools from a redacted command to the menu", async () =>
 it("renders MiB native memory measurements as GiB, not thousands of GB", async () => {
   fixtures.vitals.mockReturnValue({ cpu_percent: 22, mem_used_mb: 22528, mem_total_mb: 32768 });
   await render(); await click(".terminal-status__more");
-  expect(host.textContent).toContain("CPU 22% · RAM 22.0 / 32.0 GiB");
+  expect(host.querySelector(".terminal-status-menu__metrics")?.getAttribute("aria-label")).toBe("CPU 22% · RAM 22.0 / 32.0 GiB");
+  expect(host.querySelector(".terminal-status-menu__metrics")?.textContent).toContain("22.0 / 32.0 GiB");
 });
 it("does not show pinned tools at idle or for bare running commands", async () => {
   updateStatusBarPreferences({ pinned: ["kubernetes", "docker", "aws", "terraform", "cli:az"], machineMetrics: false });
@@ -209,4 +240,232 @@ it("does not derive tool values beyond the command redaction limit", async () =>
   await click(".terminal-status__more");
   expect(host.querySelector(".terminal-status__tools")).toBeNull();
   expect(host.innerHTML).not.toMatch(/hidden-value|secret-value/);
+});
+
+it("does not populate an unused terminal with a fixed four-tool list", async () => {
+  await render(); await click(".terminal-status__more");
+  expect(host.textContent).toContain("Observed here");
+  expect(host.textContent).toContain("Tools appear as you use them here");
+  for (const label of ["Kubernetes", "Docker", "AWS", "Terraform"]) {
+    expect(host.querySelector(`[aria-label="Pin ${label}"]`)).toBeNull();
+  }
+  expect(host.textContent).not.toContain("Unverified");
+});
+
+it("keeps only names from earlier activity and clears them when terminal scope changes", async () => {
+  startTerminalStatusCommand(1, "oci --profile dev --region us-ashburn-1 compute instance list", Date.now());
+  completeTerminalStatusCommand(1, 0, Date.now());
+  startTerminalStatusCommand(1, "teamctl list --target internal-cluster", Date.now());
+  completeTerminalStatusCommand(1, 0, Date.now());
+  startTerminalStatusCommand(1, "ls", Date.now());
+  await render(); await click(".terminal-status__more");
+  expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.textContent).toContain("Earlier activity");
+  expect(host.querySelector('[aria-label="Pin teamctl"]')?.textContent).toContain("Earlier activity");
+  expect(host.innerHTML).not.toMatch(/us-ashburn-1|internal-cluster|profile: dev/);
+  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  await act(async () => remote(1));
+  expect(host.querySelector('[role="menu"]')).toBeNull();
+  await click(".terminal-status__more");
+  expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Pin teamctl"]')).toBeNull();
+});
+
+it("lists pinned tools once and keeps observed generic tools separate", async () => {
+  updateStatusBarPreferences({ pinned: ["cli:az"], machineMetrics: false });
+  startTerminalStatusCommand(1, "az account show && pnpm test", Date.now());
+  await render(); await click(".terminal-status__more");
+  expect(host.textContent).toContain("Pinned"); expect(host.textContent).toContain("Observed here");
+  expect(host.querySelectorAll('[aria-label="Pin Azure"]')).toHaveLength(1);
+  expect(host.querySelector('[aria-label="Pin Azure"]')?.getAttribute("aria-checked")).toBe("true");
+  expect(host.querySelector('[aria-label="Pin pnpm"]')?.textContent).toContain("Current command · activity only");
+  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+});
+
+it("searches the catalog by executable and category while retaining selected pins", async () => {
+  await render(); await click(".terminal-status__more"); await click(".terminal-status-menu__add");
+  expect(document.activeElement).toBe(host.querySelector('[aria-label="Search integrations"]'));
+  await search("oci");
+  expect(host.querySelector('[data-catalog-tool="oci"]')).not.toBeNull();
+  expect(host.querySelector('[data-catalog-tool="docker"]')).toBeNull();
+  await click('[aria-label="Pin Oracle Cloud"]');
+  expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.getAttribute("aria-checked")).toBe("true");
+  await search("cloud");
+  for (const id of ["oci", "aws", "azure", "gcloud"]) expect(host.querySelector(`[data-catalog-tool="${id}"]`)).not.toBeNull();
+  expect(host.querySelector('[data-catalog-tool="docker"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.getAttribute("aria-checked")).toBe("true");
+  await click(".terminal-status-menu__back");
+  expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.textContent).toContain("Not observed here");
+  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  expect(fixtures.send).not.toHaveBeenCalled();
+  expect(fixtures.isRepo).toHaveBeenCalledTimes(1);
+});
+
+it("shows a useful empty search and restores the catalog after clearing it", async () => {
+  await render(); await click(".terminal-status__more"); await click(".terminal-status-menu__add");
+  await search("no-such-integration-123");
+  expect(host.querySelector('[role="status"]')?.textContent).toContain("No matching integrations");
+  expect(host.querySelectorAll("[data-catalog-tool]")).toHaveLength(0);
+  await search("orb");
+  expect(host.querySelector('[data-catalog-tool="orbstack"]')).not.toBeNull();
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  await search(""); expect(host.querySelectorAll("[data-catalog-tool]").length).toBeGreaterThan(10);
+});
+
+it("keeps search typing out of menu typeahead and supports arrows and Escape", async () => {
+  await render(); await click(".terminal-status__more"); await click(".terminal-status-menu__add");
+  const input = host.querySelector<HTMLInputElement>('[aria-label="Search integrations"]')!;
+  const bubbled = vi.fn();
+  document.addEventListener("keydown", bubbled);
+  try {
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "o", bubbles: true, cancelable: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
+    });
+    expect(bubbled).not.toHaveBeenCalled();
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
+    expect(document.activeElement).toBe(host.querySelector("[data-catalog-tool]"));
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true })));
+    expect(document.activeElement).toBe(input);
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(host.querySelector('[aria-label="Search integrations"]')).toBeNull();
+    expect(host.querySelector('[role="menu"]')?.getAttribute("aria-label")).toBe("Terminal environment");
+  } finally { document.removeEventListener("keydown", bubbled); }
+});
+
+it("keeps all explicit cloud fields in details but limits the bar to two tools", async () => {
+  startTerminalStatusCommand(1, "oci --profile dev --region us-ashburn-1 compute instance list && az account show --subscription team && gcloud --project sample projects list", Date.now());
+  await render();
+  expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(2);
+  const oracle = host.querySelector<HTMLSpanElement>('.terminal-status__tool[data-tool="oci"]')!;
+  expect(oracle.textContent).toContain("+1"); expect(oracle.title).toContain("region: us-ashburn-1");
+  await click(".terminal-status__more");
+  expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.textContent).toContain("profile: dev · region: us-ashburn-1");
+  expect(host.querySelector('[aria-label="Pin Google Cloud"]')?.textContent).toContain("project: sample");
+  expect(fixtures.send).not.toHaveBeenCalled();
+});
+
+it("does not infer a coherent cloud target when secondary fields differ", async () => {
+  startTerminalStatusCommand(1, "oci --profile dev --region us-ashburn-1 compute instance list && oci --profile dev --region us-phoenix-1 compute instance list", Date.now());
+  await render(); expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  await click(".terminal-status__more");
+  expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.textContent).toContain("Mixed / unknown targets");
+});
+
+it.each([
+  ["orb -m dev uname", "OrbStack", "machine: dev"],
+  ["podman --connection work ps", "Podman", "connection: work"],
+  ["colima --profile dev status", "Colima", "profile: dev"],
+])("renders command-selected container details for %s without account probes", async (command, label, expected) => {
+  startTerminalStatusCommand(1, command, Date.now()); await render();
+  expect(host.querySelector(".terminal-status__tool")?.textContent).toContain(expected);
+  await click(".terminal-status__more");
+  expect(host.querySelector(`[aria-label="Pin ${label}"]`)?.textContent).toContain(expected);
+  expect(fixtures.send).not.toHaveBeenCalled(); expect(fixtures.isRepo).not.toHaveBeenCalled();
+});
+
+it("groups terminal actions, integrations and local metrics into distinct sections", async () => {
+  await render(); await click(".terminal-status__more");
+  const menu = host.querySelector('[role="menu"]')!;
+  const actions = menu.querySelector(".terminal-status-menu__actions")!;
+  const integrations = menu.querySelector(".terminal-status-menu__integrations")!;
+  const machine = menu.querySelector(".terminal-status-menu__machine")!;
+  expect(actions).not.toBeNull(); expect(integrations).not.toBeNull(); expect(machine).not.toBeNull();
+  const actionItems = actions.querySelectorAll('[role="menuitem"]');
+  expect(actionItems).toHaveLength(2);
+  expect(actionItems[0].parentElement).toBe(actionItems[1].parentElement);
+  expect(actionItems[0].textContent).toContain("Logs");
+  expect(actionItems[1].textContent).toContain("Copy");
+  expect(actions.querySelector('[role="menuitem"] [role="button"], [role="menuitem"] button')).toBeNull();
+  expect(integrations.textContent).toContain("Observed here");
+  expect(integrations.textContent).toContain("Add integration");
+  expect(machine.textContent).toContain("This computer");
+  expect(machine.querySelector('[aria-label="Show local machine metrics in bar"]')?.textContent).toContain("Show in status bar");
+});
+
+it("uses paired menu actions for the focused terminal without writing commands", async () => {
+  await render(2); await click(".terminal-status__more");
+  const actions = host.querySelectorAll<HTMLButtonElement>('.terminal-status-menu__actions [role="menuitem"]');
+  expect(actions).toHaveLength(2);
+  await act(async () => actions[0].click()); expect(fixtures.logs).toHaveBeenCalledWith(2);
+  await act(async () => actions[1].click()); expect(fixtures.copy).toHaveBeenCalledWith("/other");
+  expect(fixtures.send).not.toHaveBeenCalled();
+});
+
+it("does not offer a stale copy-path action when a remote folder is unknown", async () => {
+  remote(1); await render(); await click(".terminal-status__more");
+  const actions = host.querySelectorAll<HTMLButtonElement>('.terminal-status-menu__actions [role="menuitem"]');
+  expect(actions).toHaveLength(1); expect(actions[0].textContent).toContain("Logs");
+  expect(host.querySelector('[role="menu"]')?.textContent).toContain("Remote folder not reported");
+  expect(fixtures.copy).not.toHaveBeenCalled(); expect(fixtures.isRepo).not.toHaveBeenCalled();
+});
+
+it("exposes complete tool summaries as accessible descriptions instead of title-only text", async () => {
+  startTerminalStatusCommand(1, "oci --profile dev --region us-ashburn-1 compute instance list", Date.now());
+  updateStatusBarPreferences({ pinned: ["docker"], machineMetrics: false });
+  await render(); await click(".terminal-status__more");
+  const oracle = host.querySelector('[data-status-tool="oci"]')!;
+  const docker = host.querySelector('[data-status-tool="docker"]')!;
+  for (const row of [oracle, docker]) {
+    expect(row).not.toBeNull();
+    const descriptionId = row.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    const description = document.getElementById(descriptionId!);
+    expect(description).not.toBeNull(); expect(row.contains(description)).toBe(true);
+  }
+  expect(document.getElementById(oracle.getAttribute("aria-describedby")!)?.textContent).toBe("Current profile: dev · region: us-ashburn-1");
+  expect(document.getElementById(docker.getAttribute("aria-describedby")!)?.textContent).toBe("Not observed here");
+});
+
+it("does not repeat an empty observed section when all visible tools are pinned", async () => {
+  updateStatusBarPreferences({ pinned: ["docker", "aws"], machineMetrics: false });
+  await render(); await click(".terminal-status__more");
+  const section = host.querySelector(".terminal-status-menu__integrations")!;
+  expect(section.textContent).toContain("Pinned");
+  expect(section.textContent).not.toContain("Observed here");
+  expect(section.textContent).not.toContain("Observed tools are pinned above");
+  expect(section.querySelectorAll("[data-status-tool]")).toHaveLength(2);
+  await click('[aria-label="Pin Docker"]'); await click('[aria-label="Pin AWS"]');
+  expect(section.textContent).toContain("Observed here");
+  expect(section.textContent).toContain("Tools appear as you use them here");
+  expect(section.textContent).not.toContain("Pinned");
+});
+
+it("restores focus to a tool after pinning moves it between observed and pinned groups", async () => {
+  startTerminalStatusCommand(1, "docker ps", Date.now());
+  await render(); await click(".terminal-status__more");
+  host.querySelector<HTMLElement>('[data-status-tool="docker"]')!.focus();
+  await click('[aria-label="Pin Docker"]');
+  await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+  expect(document.activeElement).toBe(host.querySelector('[data-status-tool="docker"]'));
+  expect(document.activeElement?.getAttribute("aria-checked")).toBe("true");
+  await click('[aria-label="Pin Docker"]');
+  await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+  expect(document.activeElement).toBe(host.querySelector('[data-status-tool="docker"]'));
+  expect(document.activeElement?.getAttribute("aria-checked")).toBe("false");
+});
+
+it("returns focus to Add integration when unpinning removes an unobserved tool", async () => {
+  updateStatusBarPreferences({ pinned: ["docker"], machineMetrics: false });
+  await render(); await click(".terminal-status__more");
+  host.querySelector<HTMLElement>('[data-status-tool="docker"]')!.focus();
+  await click('[aria-label="Pin Docker"]');
+  await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+  expect(host.querySelector('[data-status-tool="docker"]')).toBeNull();
+  expect(document.activeElement).toBe(host.querySelector(".terminal-status-menu__add"));
+});
+
+it("keeps local metrics attribution and accessible toggle state in the footer", async () => {
+  fixtures.vitals.mockReturnValue({ cpu_percent: 22, mem_used_mb: 22528, mem_total_mb: 32768 });
+  remote(1); await render(); await click(".terminal-status__more");
+  const footer = host.querySelector(".terminal-status-menu__machine")!;
+  expect(footer.textContent).toContain("This computer"); expect(footer.textContent).toContain("not the remote host");
+  expect(footer.textContent).toContain("CPU"); expect(footer.textContent).toContain("22%");
+  expect(footer.textContent).toContain("Memory"); expect(footer.textContent).toContain("22.0 / 32.0");
+  expect(footer.textContent).toContain("GiB");
+  const toggle = footer.querySelector<HTMLButtonElement>('[aria-label="Show local machine metrics in bar"]')!;
+  expect(toggle.getAttribute("aria-checked")).toBe("false");
+  await act(async () => toggle.click());
+  expect(toggle.getAttribute("aria-checked")).toBe("true");
+  expect(host.querySelector(".terminal-status__machine")?.textContent).toContain("This computer");
+  expect(fixtures.send).not.toHaveBeenCalled(); expect(fixtures.isRepo).not.toHaveBeenCalled();
 });

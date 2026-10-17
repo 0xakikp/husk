@@ -46,6 +46,9 @@ export type Prefs = {
   theme: "dark" | "light";
   zoomLevel: number;
   hasSeenWelcome: boolean;
+  /** Show the workspace welcome once per main-app launch, independently of
+   * onboarding completion, session restore, and the terminal greeting. */
+  showWelcomeOnStartup: boolean;
   /** Optional local name used sparingly by Husk AI. */
   userName: string;
   /** Monospace family shared by the terminal and editor. */
@@ -171,6 +174,7 @@ const DEFAULT: Prefs = {
   theme: "dark",
   zoomLevel: 1,
   hasSeenWelcome: false,
+  showWelcomeOnStartup: true,
   userName: "",
   fontFamily: "iosevka",
 
@@ -316,6 +320,9 @@ function mergePrefs(saved: Partial<Prefs> & { aiTtsVoice?: unknown }): Prefs {
   // carrying a dead setting forward into localStorage or config.toml.
   const { aiTtsVoice: _legacyTtsVoice, ...current } = saved;
   const merged = { ...DEFAULT, ...current };
+  merged.showWelcomeOnStartup = typeof current.showWelcomeOnStartup === "boolean"
+    ? current.showWelcomeOnStartup
+    : DEFAULT.showWelcomeOnStartup;
   merged.terminalWelcomeEnabled = typeof current.terminalWelcomeEnabled === "boolean"
     ? current.terminalWelcomeEnabled
     : DEFAULT.terminalWelcomeEnabled;

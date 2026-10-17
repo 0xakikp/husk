@@ -1,8 +1,13 @@
+import { adapterOverrides } from "./statusBarAdapters";
+
 /**
  * Terminal-local tool relevance, derived only from command text. This module
  * never reads app-global configuration, runs probes, or infers shell state.
  */
-export const STATUS_TOOLS = ["kubernetes", "docker", "aws", "terraform"] as const;
+export const STATUS_TOOLS = [
+  "kubernetes", "docker", "aws", "terraform", "oci", "azure", "gcloud",
+  "orbstack", "podman", "colima", "python", "conda", "ssh",
+] as const;
 
 export type StatusTool = (typeof STATUS_TOOLS)[number];
 
@@ -11,10 +16,20 @@ export const STATUS_TOOL_LABELS: Record<StatusTool, string> = {
   docker: "Docker",
   aws: "AWS",
   terraform: "Terraform",
+  oci: "Oracle Cloud",
+  azure: "Azure",
+  gcloud: "Google Cloud",
+  orbstack: "OrbStack",
+  podman: "Podman",
+  colima: "Colima",
+  python: "Python",
+  conda: "Conda",
+  ssh: "SSH",
 };
 
 export type StatusToolOverride = {
-  kind: "context" | "profile" | "workspace";
+  kind: "context" | "profile" | "workspace" | "region" | "project" | "subscription"
+    | "configuration" | "machine" | "connection" | "environment" | "host" | "port" | "runtime";
   value: string;
   provenance: "command override";
 };
@@ -22,14 +37,26 @@ export type StatusToolOverride = {
 export type StatusToolSignal = {
   tool: StatusTool;
   command: string;
-  executable: "kubectl" | "helm" | "docker" | "aws" | "terraform";
+  executable: "kubectl" | "helm" | "docker" | "aws" | "terraform"
+    | "oci" | "az" | "gcloud" | "orb" | "orbctl" | "podman" | "colima"
+    | "uv" | "python" | "python3" | "conda" | "ssh";
   /** Arguments with literal shell quoting removed, excluding wrappers. */
   args: string[];
   /** A literal override in this command, not a verified or persistent target. */
   override: StatusToolOverride | null;
+  /** All literal selectors, in stable display order. Never resolved targets. */
+  overrides?: StatusToolOverride[];
 };
 
-type Token = { value: string; dynamic: boolean };
+export type StatusCommandToken = { value: string; dynamic: boolean };
+export type StatusCommandInvocation = {
+  executable: string;
+  /** Literal original program token, including its path when supplied. */
+  program: string;
+  args: StatusCommandToken[];
+  env: Map<string, StatusCommandToken>;
+};
+type Token = StatusCommandToken;
 type Environment = Map<string, Token>;
 
 const SHELL_SYNTAX = new Set([
@@ -129,7 +156,7 @@ function executableName(token: Token | undefined): string {
 }
 
 /** Only wrappers with understood execution semantics are unwrapped. */
-function unwrap(tokens: Token[]): { executable: string; args: Token[]; env: Environment } | null {
+function unwrap(tokens: Token[]): StatusCommandInvocation | null {
   const env: Environment = new Map();
   let at = 0;
   const takeAssignments = () => {
@@ -188,14 +215,29 @@ function unwrap(tokens: Token[]): { executable: string; args: Token[]; env: Envi
       takeAssignments();
       continue;
     }
-    return { executable: name, args: tokens.slice(at + 1), env };
+    return { executable: name, program: tokens[at].value, args: tokens.slice(at + 1), env };
   }
   return null;
 }
 
-function literalValue(token: Token | undefined): string | null {
+export function literalStatusValue(token: Token | undefined): string | null {
   if (!token || token.dynamic || !/^[A-Za-z0-9][A-Za-z0-9_.:/@+-]{0,159}$/.test(token.value)) return null;
   return token.value;
+}
+
+const literalValue = literalStatusValue;
+
+/** Parse only supported direct invocations; never execute or expand shell data. */
+export function statusCommandInvocations(command: string): StatusCommandInvocation[] | null {
+  const commands = simpleCommands(command);
+  return commands?.flatMap((tokens) => {
+    const invocation = unwrap(tokens);
+    return invocation ? [invocation] : [];
+  }) ?? null;
+}
+
+export function statusToolOverrides(signal: StatusToolSignal): StatusToolOverride[] {
+  return signal.overrides ?? (signal.override ? [signal.override] : []);
 }
 
 const BOOLEAN_FLAGS = new Set([
@@ -266,14 +308,18 @@ export function detectStatusToolSignals(command: string): StatusToolSignal[] {
     const invocation = unwrap(tokens);
     if (!invocation) continue;
     const { executable, args, env } = invocation;
-    if (executable !== "kubectl" && executable !== "helm" && executable !== "docker"
-      && executable !== "aws" && executable !== "terraform") continue;
+    if (!Object.prototype.hasOwnProperty.call(EXECUTABLE_TO_TOOL, executable)) continue;
+    const typedExecutable = executable as StatusToolSignal["executable"];
+    const oldOverride = ["kubectl", "helm", "docker", "aws", "terraform"].includes(executable)
+      ? commandOverride(typedExecutable, args, env) : null;
+    const overrides = oldOverride ? [oldOverride] : ["kubectl", "helm", "docker", "aws", "terraform"].includes(executable) ? [] : adapterOverrides(invocation);
     result.push({
-      tool: executable === "kubectl" || executable === "helm" ? "kubernetes" : executable,
+      tool: EXECUTABLE_TO_TOOL[typedExecutable],
       command,
-      executable,
+      executable: typedExecutable,
       args: args.map((arg) => arg.value),
-      override: commandOverride(executable, args, env),
+      override: overrides[0] ?? null,
+      overrides,
     });
   }
   return result;
@@ -329,7 +375,48 @@ const COMMAND_TOOL_LABELS: Readonly<Record<string, string>> = {
   pip: "pip",
   pip3: "pip",
   brew: "Homebrew",
+  node: "Node.js",
+  deno: "Deno",
+  mise: "mise",
+  asdf: "asdf",
+  mosh: "Mosh",
+  tailscale: "Tailscale",
+  cloudflared: "Cloudflare Tunnel",
+  ngrok: "ngrok",
 };
+
+const EXECUTABLE_TO_TOOL: Record<StatusToolSignal["executable"], StatusTool> = {
+  kubectl: "kubernetes", helm: "kubernetes", docker: "docker", aws: "aws", terraform: "terraform",
+  oci: "oci", az: "azure", gcloud: "gcloud", orb: "orbstack", orbctl: "orbstack",
+  podman: "podman", colima: "colima", uv: "python", python: "python", python3: "python", conda: "conda", ssh: "ssh",
+};
+
+export function canonicalStatusToolId(id: StatusTool | CommandToolId): StatusTool | CommandToolId {
+  const executable = id.startsWith("cli:") ? id.slice(4) : "";
+  return Object.prototype.hasOwnProperty.call(EXECUTABLE_TO_TOOL, executable)
+    ? EXECUTABLE_TO_TOOL[executable as StatusToolSignal["executable"]] : id;
+}
+
+export type StatusToolCategory = "cloud" | "containers" | "infrastructure" | "development" | "connections" | "databases" | "tools";
+export type StatusToolCatalogEntry = { id: StatusTool | CommandToolId; label: string; category: StatusToolCategory; executables: readonly string[] };
+function categoryFor(id: string): StatusToolCategory {
+  if (["aws", "oci", "azure", "gcloud", "gsutil", "bq", "doctl", "hcloud", "ibmcloud"].includes(id)) return "cloud";
+  if (["docker", "orbstack", "podman", "colima", "nerdctl"].includes(id)) return "containers";
+  if (["kubernetes", "terraform", "tofu", "pulumi", "ansible", "ansible-playbook", "packer", "vault", "nomad", "consul"].includes(id)) return "infrastructure";
+  if (["ssh", "mosh", "tailscale", "cloudflared", "ngrok"].includes(id)) return "connections";
+  if (["psql", "mysql", "mariadb", "mongosh", "redis-cli", "sqlite3"].includes(id)) return "databases";
+  if (["python", "conda", "node", "deno", "npm", "pnpm", "yarn", "bun", "cargo", "go", "poetry", "pip", "pip3", "mise", "asdf"].includes(id)) return "development";
+  return "tools";
+}
+
+/** A visibility catalog, not an installed-tool or authenticated-account list. */
+export const STATUS_TOOL_CATALOG: readonly StatusToolCatalogEntry[] = [
+  ...STATUS_TOOLS.map((id) => ({ id, label: STATUS_TOOL_LABELS[id], category: categoryFor(id),
+    executables: Object.keys(EXECUTABLE_TO_TOOL).filter((name) => EXECUTABLE_TO_TOOL[name as StatusToolSignal["executable"]] === id),
+  })),
+  ...Object.entries(COMMAND_TOOL_LABELS).filter(([name]) => !Object.prototype.hasOwnProperty.call(EXECUTABLE_TO_TOOL, name))
+    .map(([name, label]): StatusToolCatalogEntry => ({ id: `cli:${name}`, label, category: categoryFor(name), executables: [name] })),
+];
 
 export function commandToolLabel(id: CommandToolId): string {
   const executable = id.slice(4);
@@ -355,7 +442,7 @@ const NON_ACTIVITY_COMMANDS = new Set([
   // Do not infer commands hidden inside shells, remote payloads, or wrappers
   // whose argument grammar this detector does not understand.
   "sh", "bash", "zsh", "fish", "dash", "ash", "ksh", "csh", "tcsh", "nu",
-  "pwsh", "powershell", "cmd", "cmd.exe", "wsl", "ssh", "mosh", "telnet", "rlogin",
+  "pwsh", "powershell", "cmd", "cmd.exe", "wsl", "ssh", "telnet", "rlogin",
   "eval", "exec", "source", "time", "coproc", "watch", "timeout", "nohup", "nice",
   "ionice", "xargs", "parallel", "script", "scriptreplay", "login", "su", "chroot",
   "nsenter", "env", "command", "sudo",
@@ -378,7 +465,7 @@ export function detectCommandToolActivities(command: string): {
     if (!invocation) continue;
     const { executable } = invocation;
     const id = `cli:${executable}`;
-    if (!isCommandToolId(id) || NON_ACTIVITY_COMMANDS.has(executable)) continue;
+    if (!isCommandToolId(id) || NON_ACTIVITY_COMMANDS.has(executable) || Object.prototype.hasOwnProperty.call(EXECUTABLE_TO_TOOL, executable)) continue;
     activities.delete(id);
     activities.set(id, { id, label: commandToolLabel(id), executable });
   }

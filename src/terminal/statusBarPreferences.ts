@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { STATUS_TOOLS, isCommandToolId, type StatusTool, type CommandToolId } from "./statusBarTools";
+import { STATUS_TOOLS, canonicalStatusToolId, isCommandToolId, type StatusTool, type CommandToolId } from "./statusBarTools";
 
 const KEY = "husk.terminal.statusbar.v1";
 export type PinnedStatusTool = StatusTool | CommandToolId;
@@ -8,11 +8,11 @@ const DEFAULTS: StatusBarPreferences = { pinned: [], machineMetrics: false };
 export function parseStatusBarPreferences(raw: string | null): StatusBarPreferences {
   try {
     const value = JSON.parse(raw ?? "null");
+    const pins: PinnedStatusTool[] = Array.isArray(value?.pinned)
+      ? value.pinned.filter((id: unknown) => isCommandToolId(id) || STATUS_TOOLS.includes(id as StatusTool)).map(canonicalStatusToolId)
+      : [];
     return {
-      pinned: Array.isArray(value?.pinned) ? [
-        ...STATUS_TOOLS.filter((tool) => value.pinned.includes(tool)),
-        ...new Set<CommandToolId>(value.pinned.filter(isCommandToolId)),
-      ] : [],
+      pinned: [...STATUS_TOOLS.filter((tool) => pins.includes(tool)), ...new Set<CommandToolId>(pins.filter(isCommandToolId))],
       machineMetrics: value?.machineMetrics === true,
     };
   } catch { return DEFAULTS; }

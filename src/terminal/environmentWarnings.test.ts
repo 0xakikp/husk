@@ -70,4 +70,19 @@ describe("environment mismatch warning", () => {
     recordEnvironmentWarning(leaf, { command: "pwd", cwd: "/work" });
     expect(getEnvironmentWarning(leaf)).toBeNull();
   });
+
+  it("covers secondary selectors and new adapters without inventing inspection commands", () => {
+    expect(protectedTargetsForCommand("gcloud --project demo --configuration production compute instances delete old")).toEqual([
+      { kind: "gcloud", value: "production", inspectCommand: null },
+    ]);
+    expect(protectedTargetsForCommand("az --subscription prod vm delete --name old")).toEqual([
+      { kind: "azure", value: "prod", inspectCommand: null },
+    ]);
+    expect(protectedTargetsForCommand("oci --profile dev --region prod-region compute instance terminate")).toEqual([
+      { kind: "oci", value: "prod-region", inspectCommand: null },
+    ]);
+    expect(protectedTargetsForCommand("podman --connection live rm old")).toEqual([
+      { kind: "podman", value: "live", inspectCommand: null },
+    ]);
+  });
 });

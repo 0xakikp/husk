@@ -53,6 +53,12 @@ export function GeneralFile() {
       </CfgRow>
       <CfgBlank />
 
+      <CfgSection name="startup" />
+      <CfgRow name="showWelcomeOnStartup" comment="Show the workspace welcome once when you launch the main app—not when opening tabs or waking your laptop. Independent of session restore and the terminal greeting.">
+        <CfgBool value={p.showWelcomeOnStartup} onChange={(showWelcomeOnStartup) => setPrefs({ showWelcomeOnStartup })} />
+      </CfgRow>
+      <CfgBlank />
+
       <CfgSection name="ai" />
       <CfgRow name="enabled" comment="Toggle all AI features. Hides chat, traces, and shortcuts.">
         <CfgBool value={p.aiEnabled} onChange={(v) => setPrefs({ aiEnabled: v })} />

@@ -25,7 +25,8 @@ import { setBridgeHandler } from "./bridge";
 import { openSettingsWindow } from "./settingsWindow";
 import type { Command } from "./command-palette/CommandPalette";
 import { useClipboardListener } from "./clipboard/useClipboardListener";
-import { getWorkspaceRoot, pickWorkspaceFolder } from "./workspace/store";
+import { getWorkspaceRoot, pickWorkspaceFolder, useWorkspaceRoot } from "./workspace/store";
+import { useStartupWelcome } from "./welcome/useStartupWelcome";
 import { normalizeWorkspacePath, resolveWorkspacePath } from "./ai/workspaceScope";
 import { useActiveSshHost, setActiveSshHost } from "./remote/store";
 import { StatusBar } from "./statusbar/StatusBar";
@@ -197,7 +198,8 @@ function App() {
   /* ── Dialog state (unchanged from huskv2) ── */
   const [totpOpen, setTotpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const { isOpen: welcomeOpen, show: showWelcome, dismiss: dismissWelcome } = useStartupWelcome();
+  const welcomeWorkspacePath = useWorkspaceRoot();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInput, setPaletteInput] = useState("");
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -492,6 +494,7 @@ function App() {
       e.key.toLowerCase() === key || e.code === code;
 
     const onKey = (e: KeyboardEvent) => {
+      if (welcomeOpen) return;
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && hit(e, "b", "KeyB")) {
         /* Cmd/Ctrl+B for the sidebar — VS Code, Zed, Cursor and Sublime all use
            it, and until now the sidebar had no shortcut at all: the title-bar
@@ -521,7 +524,7 @@ function App() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [prefs.aiEnabled]);
+  }, [prefs.aiEnabled, welcomeOpen]);
 
   const remoteHost = useActiveSshHost();
   const totpAccountCount = loadTotpAccounts().length;
@@ -622,7 +625,7 @@ function App() {
       },
       { id: "browser", label: "Open browser", keywords: "web internet page url chrome", run: () => openBrowser() },
       { id: "open-folder", label: "Open folder…", run: async () => { await pickWorkspaceFolder(); } },
-      { id: "welcome", label: "Welcome to Husk", keywords: "getting started onboarding first launch help", run: () => setWelcomeOpen(true) },
+      { id: "welcome", label: "Welcome to Husk", keywords: "getting started onboarding first launch startup help", run: showWelcome },
       { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
       { id: "settings-window", label: "Open settings (new window)", run: () => openSettingsWindow() },
       { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
@@ -717,12 +720,13 @@ function App() {
     ],
     // The tab API object changes on each render. Only actual tab state should
     // rebuild source items; handlers use its latest methods through the ref.
-    [prefs.aiEnabled, prefs.theme, term.tabs, term.activeId, totpAccountCount, showSidebarView, cycleSidebarView],
+    [prefs.aiEnabled, prefs.theme, term.tabs, term.activeId, totpAccountCount, showSidebarView, cycleSidebarView, showWelcome],
   );
 
   // ── Terminal tab universal shortcuts ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (welcomeOpen) return;
       if (!(e.metaKey || e.ctrlKey)) return;
       // e.target is not always an Element — a programmatically dispatched event
       // targets window, and reading .tagName off that threw out of a
@@ -790,7 +794,7 @@ function App() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [term, activeKind, openFiles]);
+  }, [term, activeKind, openFiles, welcomeOpen]);
 
   // Listen for internal "open settings" events from panels like the AI tab
   useEffect(() => {
@@ -810,10 +814,12 @@ function App() {
     setSettingsOpen(false);
     setActiveKind((k) => (k === "settings" ? "term" : k));
   };
-  const dismissWelcome = useCallback(() => {
-    setPrefs({ hasSeenWelcome: true });
-    setWelcomeOpen(false);
-  }, []);
+  const continueWelcomeWorkspace = useCallback(() => {
+    dismissWelcome();
+    // On startup there may be no previous focused element for the dialog to
+    // restore. Resume typing in the existing terminal, without creating one.
+    if (activeKind === "term") requestAnimationFrame(() => focusActiveTerminal());
+  }, [activeKind, dismissWelcome]);
   const openWelcomeFolder = useCallback(async () => {
     const path = await pickWorkspaceFolder();
     if (path) dismissWelcome();
@@ -1359,7 +1365,7 @@ function App() {
             onOpenAi={openAi}
             onReturnFromAi={returnFromAi}
             onCloseAi={closeAi}
-            chromeOccluded={paletteOpen || switcherOpen || !!workflowCapture}
+            chromeOccluded={welcomeOpen || paletteOpen || switcherOpen || !!workflowCapture}
           />
           </div></WorkflowWorkspace>
         </main>
@@ -1379,12 +1385,13 @@ function App() {
 
         <DialogHost
           aiEnabled={prefs.aiEnabled}
-          welcomeOpen={!prefs.hasSeenWelcome || welcomeOpen}
+          welcomeOpen={welcomeOpen}
+          welcomeWorkspacePath={welcomeWorkspacePath || undefined}
           onWelcomeOpenFolder={openWelcomeFolder}
           onWelcomeOpenTerminal={openWelcomeTerminal}
           onWelcomeAskHusk={openWelcomeAskHusk}
           onWelcomeOpenSettings={openWelcomeSettings}
-          onWelcomeDismiss={dismissWelcome}
+          onWelcomeDismiss={continueWelcomeWorkspace}
           gitHistoryOpen={gitHistoryOpen}
           setGitHistoryOpen={setGitHistoryOpen}
           shortcutsOpen={shortcutsOpen}

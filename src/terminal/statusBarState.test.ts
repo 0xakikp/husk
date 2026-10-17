@@ -3,12 +3,64 @@ import {
   clearTerminalStatusActivity, completeTerminalStatusCommand, disposeTerminalStatus, getTerminalStatus,
   initializeTerminalStatus, observeTerminalStatusPrompt, observeTerminalStatusScope,
   startTerminalStatusCommand, subscribeTerminalStatus,
+  MAX_RECENT_STATUS_TOOLS,
 } from "./statusBarState";
 
 const local = (cwd?: string) => ({ observedHost: null, isRemote: false, remoteTarget: null, cwd });
 afterEach(() => { disposeTerminalStatus(1); disposeTerminalStatus(2); });
 
 describe("per-terminal status observations", () => {
+  it("keeps only observed tool names in bounded, terminal-local recent activity", () => {
+    initializeTerminalStatus(1, "one"); initializeTerminalStatus(2, "two");
+    observeTerminalStatusScope(1, local("/one"));
+    startTerminalStatusCommand(1, "oci --profile private-account compute instance list", 10);
+    completeTerminalStatusCommand(1, 0, 20);
+    startTerminalStatusCommand(1, "pnpm test", 30);
+    completeTerminalStatusCommand(1, 0, 40);
+    const recent = getTerminalStatus(1)!.recentTools!;
+    expect(recent).toEqual([{ id: "cli:pnpm", seenAt: 30 }, { id: "oci", seenAt: 10 }]);
+    expect(Object.isFrozen(recent)).toBe(true);
+    expect(Object.isFrozen(recent[0])).toBe(true);
+    expect(JSON.stringify(recent)).not.toContain("private-account");
+    expect(getTerminalStatus(2)?.recentTools).toEqual([]);
+    startTerminalStatusCommand(1, "pwd", 50);
+    expect(getTerminalStatus(1)?.recentTools).toBe(recent);
+    startTerminalStatusCommand(1, "oci --profile other compute instance list", 60);
+    expect(getTerminalStatus(1)?.recentTools).toEqual([{ id: "oci", seenAt: 60 }, { id: "cli:pnpm", seenAt: 30 }]);
+    for (let index = 0; index < 20; index++) startTerminalStatusCommand(1, `teamtool${index} list`, 70 + index);
+    expect(getTerminalStatus(1)?.recentTools).toHaveLength(MAX_RECENT_STATUS_TOOLS);
+    expect(getTerminalStatus(1)?.recentTools?.[0]).toEqual({ id: "cli:teamtool19", seenAt: 89 });
+  });
+
+  it("excludes sensitive or overlong commands from recent tool metadata", () => {
+    initializeTerminalStatus(1, "one");
+    const initial = getTerminalStatus(1)?.recentTools;
+    for (const command of [
+      "az login --password dont-display-this", "SECRET_TOKEN=private gcloud compute instances list",
+      "teamtool --token private", `oci compute instance list ${"x".repeat(481)}`,
+    ]) {
+      startTerminalStatusCommand(1, command, 1);
+      expect(getTerminalStatus(1)?.recentTools).toBe(initial);
+    }
+  });
+
+  it("clears recent tools across SSH boundaries, same-host reconnects, and new shells", () => {
+    initializeTerminalStatus(1, "one"); observeTerminalStatusScope(1, local("/one"));
+    startTerminalStatusCommand(1, "docker ps", 1);
+    observeTerminalStatusScope(1, { observedHost: "server", isRemote: true, remoteTarget: "server", boundary: true });
+    expect(getTerminalStatus(1)?.recentTools).toEqual([]);
+    startTerminalStatusCommand(1, "oci compute instance list", 2);
+    expect(getTerminalStatus(1)?.recentTools).toHaveLength(1);
+    observeTerminalStatusScope(1, { observedHost: "server", isRemote: true, remoteTarget: "server", boundary: true });
+    expect(getTerminalStatus(1)?.recentTools).toEqual([]);
+    startTerminalStatusCommand(1, "podman ps", 3);
+    observeTerminalStatusScope(1, { ...local("/one"), boundary: true });
+    expect(getTerminalStatus(1)?.recentTools).toEqual([]);
+    startTerminalStatusCommand(1, "pnpm test", 4);
+    initializeTerminalStatus(1, "two");
+    expect(getTerminalStatus(1)?.recentTools).toEqual([]);
+  });
+
   it("starts unknown, is stable on no-op updates, and only notifies that leaf", () => {
     const one = vi.fn(); const two = vi.fn(); const none = vi.fn();
     const unsubscribe = [subscribeTerminalStatus(1, one), subscribeTerminalStatus(2, two), subscribeTerminalStatus(null, none)];
