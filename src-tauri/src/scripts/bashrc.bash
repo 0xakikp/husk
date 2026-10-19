@@ -112,6 +112,40 @@ if [ -z "$__HUSK_HOOKS_LOADED" ]; then
     return "$__husk_previous"
   }
 
+  # Capture only explicitly exported selectors. Never emit a Docker host URL.
+  __husk_report_context() {
+    local __husk_previous=$?
+    local LC_ALL=C __husk_kube='' __husk_default='' __husk_docker='' __husk_context='' __husk_host=0 __husk_home='' __husk_name __husk_attr
+    if [ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-}" ]; then
+      printf '\e]781;husk;context;1;unavailable\e\\'
+      return "$__husk_previous"
+    fi
+    # User prompt hooks can cd after the initial OSC7. Bind relative selectors
+    # to their final cwd, retaining this shell's host provenance.
+    printf '\e]7;file://%s%s\e\\' "${HOSTNAME-}" "$(_husk_urlencode "$PWD")"
+    for __husk_name in HOME KUBECONFIG DOCKER_CONFIG DOCKER_CONTEXT DOCKER_HOST; do
+      __husk_attr="$(declare -p "$__husk_name" 2>/dev/null)" || __husk_attr=''
+      # Arrays are not process environment values, even when marked for export.
+      if [[ "$__husk_attr" =~ ^declare\ -[^[:space:]]*x[^[:space:]]*\  && ! "$__husk_attr" =~ ^declare\ -[^[:space:]]*[aA][^[:space:]]*\  ]]; then
+        case "$__husk_name" in
+          HOME) [[ "${HOME-}" == /* ]] && __husk_home="${HOME}" ;;
+          KUBECONFIG) __husk_kube="${KUBECONFIG-}" ;;
+          DOCKER_CONFIG) __husk_docker="${DOCKER_CONFIG-}" ;;
+          DOCKER_CONTEXT) __husk_context="${DOCKER_CONTEXT-}" ;;
+          DOCKER_HOST) [ -n "${DOCKER_HOST-}" ] && __husk_host=1 ;;
+        esac
+      fi
+    done
+    [[ -z "$__husk_kube" && -n "$__husk_home" ]] && __husk_default="${__husk_home%/}/.kube/config"
+    [[ -z "$__husk_docker" && -n "$__husk_home" ]] && __husk_docker="${__husk_home%/}/.docker"
+    if (( ${#__husk_kube} > 8192 || ${#__husk_default} > 8192 || ${#__husk_docker} > 8192 || ${#__husk_context} > 1024 || ${#__husk_kube} + ${#__husk_default} + ${#__husk_docker} + ${#__husk_context} + 5 > 24576 )); then
+      printf '\e]781;husk;context;1;unavailable\e\\'
+    else
+      printf '\e]781;husk;context;1;%s;%s;%s;%s;%s\e\\' "$(_husk_urlencode "$__husk_kube")" "$(_husk_urlencode "$__husk_default")" "$(_husk_urlencode "$__husk_docker")" "$(_husk_urlencode "$__husk_context")" "$__husk_host"
+    fi
+    return "$__husk_previous"
+  }
+
   _husk_precmd() {
     local _husk_ret=$?
     printf '\e]133;D;%s\e\\' "$_husk_ret"
@@ -152,7 +186,7 @@ if [ -z "$__HUSK_HOOKS_LOADED" ]; then
   case ":${PROMPT_COMMAND:-}:" in
     *":_husk_precmd:"*) ;;
     # Keep existing hook order, then capture after direnv/user prompt hooks.
-    *) PROMPT_COMMAND="_husk_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND};__husk_report_kubeconfig" ;;
+    *) PROMPT_COMMAND="_husk_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND};__husk_report_kubeconfig;__husk_report_context" ;;
   esac
 
   # Pre-exec marker + command capture via PS0 (bash 4.4+).

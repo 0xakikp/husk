@@ -61,6 +61,7 @@ import { ComparisonScopeTracker, captureComparisonOutput, clearRunComparisons, d
 import { clearFixRuns, recordCompletedFixRun } from "./fixMemory";
 import type { IMarker } from "@xterm/xterm";
 import { KUBECONFIG_OSC, KubeconfigOutputFilter, TerminalKubeconfigCapture, type TerminalKubeconfigSnapshot } from "./kubeconfigCapture";
+import { CONTEXT_OSC, TerminalContextCapture, type TerminalContextSnapshot } from "./contextCapture";
 import { STARTING_TERMINAL, TerminalSessionConnection, boundedTerminalRequest, type NativeTerminalStatus, type TerminalSessionStatus } from "./sessionLifecycle";
 import { installTerminalWakeChecks, mayRestoreTerminalFocus } from "./sessionWake";
 import { buildPtySpawnArgs, resolveTerminalLaunchCwd } from "./launchOptions";
@@ -140,6 +141,7 @@ type Session = {
   cwd: string;
   comparisonScope: ComparisonScopeTracker;
   kubeconfigCapture: TerminalKubeconfigCapture;
+  contextCapture: TerminalContextCapture;
   kubeconfigOutputFilter: KubeconfigOutputFilter;
   initialCwd: string | undefined;
   callbacks: TerminalCallbacks;
@@ -215,6 +217,11 @@ function queuePtyResize(session: Session, cols: number, rows: number): void {
   flushPtyResize(session);
 }
 
+function invalidateTerminalConfig(session: Session): void {
+  session.kubeconfigCapture.invalidate();
+  session.contextCapture.invalidate();
+}
+
 function writeSessionInput(session: Session, data: string, preserveRunReceipt = false): boolean {
   session.promptTracker.noteInput();
   if (data.includes("\x0c")) dismissTerminalWelcome(session.leafId);
@@ -226,7 +233,7 @@ function writeSessionInput(session: Session, data: string, preserveRunReceipt = 
   if (!preserveRunReceipt) session.runReceipts.clear();
   // Invalidate before crossing IPC, not only once the next command OSC arrives.
   // This closes a selection race with app-run commands, pasted newlines or exit.
-  if (/[\r\n\x03\x04]/.test(data)) session.kubeconfigCapture.invalidate();
+  if (/[\r\n\x03\x04]/.test(data)) invalidateTerminalConfig(session);
   return session.connection?.write(data) ?? false;
 }
 
@@ -267,6 +274,7 @@ const sessions = new Map<number, Session>();
 
 /** Status UI consumes only terminal observations, never active-tab globals. */
 function observeStatusScope(session: Session, cwd?: string, boundary = false): void {
+  const previous = getTerminalStatus(session.leafId)?.scopeKey;
   observeTerminalStatusScope(session.leafId, {
     observedHost: session.comparisonScope.target(session.isRemoteShell),
     isRemote: session.isRemoteShell,
@@ -274,6 +282,7 @@ function observeStatusScope(session: Session, cwd?: string, boundary = false): v
     cwd,
     boundary,
   });
+  if (previous !== getTerminalStatus(session.leafId)?.scopeKey) invalidateTerminalConfig(session);
 }
 
 function runTarget(session: Session): TerminalRunTarget | null {
@@ -311,7 +320,7 @@ export async function submitTrackedTerminalCommand(
     onQueued(runId);
     session.promptTracker.noteInput();
     session.promptTracker.clear();
-    session.kubeconfigCapture.invalidate();
+    invalidateTerminalConfig(session);
     noteTerminalWelcomeCommand(leafId);
     observeTerminalStatusPrompt(leafId, false);
     await invoke("pty_write", { id: expected.ptyId, data: command + "\r" });
@@ -367,7 +376,7 @@ export async function restartSession(leafId: number): Promise<void> {
   // Only called after an explicit UI confirmation. Keep the xterm buffer, but
   // discard prompt/command identity from the previous process.
   await session.connection.restart(() => {
-    session.kubeconfigCapture.invalidate();
+    invalidateTerminalConfig(session);
     session.promptTracker.clear();
     session.runReceipts.clear();
     session.shellCommandMarkers.reset();
@@ -424,6 +433,25 @@ export function getActiveTerminalKubeconfigSnapshot(): TerminalKubeconfigSnapsho
     remoteHost: session.comparisonScope.target(session.isRemoteShell),
     active: session.active,
     ready: getSessionHandle(session.leafId)?.getPromptReadiness() ?? { ready: false, reason: "Return to an empty shell prompt first." },
+  });
+}
+
+/** Read-only metadata for this exact local terminal. A typed draft does not
+ * change its exported environment; unlike command staging, this needs no empty
+ * prompt. Enter/preexec, scope changes and PTY restarts invalidate the capture. */
+export function getTerminalContextSnapshot(leafId: number | null): TerminalContextSnapshot {
+  const session = leafId === null ? undefined : sessions.get(leafId);
+  if (!session || session.disposed || session.ptyOpening || session.connection?.status.state !== "ready") {
+    return { available: false, reason: "Terminal context is unavailable." };
+  }
+  const status = getTerminalStatus(session.leafId);
+  const ready = status?.atPrompt === true && !status.command && status.startedAt === null;
+  return session.contextCapture.snapshot({
+    leafId: session.leafId, ptyId: session.ptyId, cwd: session.cwd,
+    generation: session.comparisonScope.getGeneration(),
+    remoteHost: session.comparisonScope.target(session.isRemoteShell),
+    active: session.active,
+    ready: ready ? { ready: true } : { ready: false, reason: "Waiting for a local shell prompt." },
   });
 }
 /* Output listeners deliberately live beside sessions rather than in React.
@@ -566,6 +594,7 @@ export async function createSession(
     cwd: "",
     comparisonScope: new ComparisonScopeTracker(),
     kubeconfigCapture: new TerminalKubeconfigCapture(),
+    contextCapture: new TerminalContextCapture(),
     kubeconfigOutputFilter: new KubeconfigOutputFilter(),
     initialCwd: resolveTerminalLaunchCwd(initialCwd),
     callbacks: {},
@@ -671,6 +700,7 @@ export async function createSession(
         && parseRemoteShellTarget(getTerminalStatus(leafId)?.command ?? "")) clearTerminalStatusActivity(leafId);
       observeTerminalStatusPrompt(leafId, session.promptTracker.position() !== null);
       session.kubeconfigCapture.completePrompt();
+      session.contextCapture.completePrompt();
       // A shell whose startup output already filled the page is not empty.
       if (!getTerminalWelcome(leafId)?.visible && term.buffer.active.baseY > 0) dismissTerminalWelcome(leafId);
       observeTerminalWelcomePrompt(leafId, session.cwd,
@@ -681,7 +711,7 @@ export async function createSession(
     if (data.startsWith("D")) {
       const receipt = session.runReceipts.complete(session.currentCommand, runTarget(session));
       session.promptTracker.clear();
-      session.kubeconfigCapture.invalidate();
+      invalidateTerminalConfig(session);
       const code = Number.parseInt(data.split(";")[1] ?? "", 10);
       const exitCode = Number.isNaN(code) ? null : code;
       completeTerminalStatusCommand(leafId, exitCode, Date.now());
@@ -829,7 +859,7 @@ export async function createSession(
     if (data.startsWith("C")) {
       noteTerminalWelcomeCommand(leafId);
       session.promptTracker.clear();
-      session.kubeconfigCapture.invalidate();
+      invalidateTerminalConfig(session);
       const b = term.buffer.active;
       session.cmdStartRow = b.baseY + b.cursorY;
       session.comparisonStart?.marker.dispose();
@@ -860,7 +890,7 @@ export async function createSession(
     if (!data.startsWith("husk;cmd;")) return true;
     noteTerminalWelcomeCommand(leafId);
     session.shellCommandMarkers.announceCommand();
-    session.kubeconfigCapture.invalidate();
+    invalidateTerminalConfig(session);
     const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";").trim();
     session.runReceipts.preexec(cmd, runTarget(session), Date.now());
     session.currentCommand = cmd;
@@ -891,6 +921,11 @@ export async function createSession(
 
   term.parser.registerOscHandler(KUBECONFIG_OSC, (data) => {
     session.kubeconfigCapture.observe(data, session.comparisonScope.getGeneration(), session.cwd);
+    return true;
+  });
+
+  term.parser.registerOscHandler(CONTEXT_OSC, (data) => {
+    session.contextCapture.observe(data, session.comparisonScope.getGeneration(), session.cwd);
     return true;
   });
 
@@ -1053,7 +1088,7 @@ export async function createSession(
     if (!connected || wasPtyId !== session.ptyId) session.runReceipts.clear();
     session.ptyOpening = connection.id === null && ["starting", "slow-start"].includes(connection.status.state);
     term.options.disableStdin = session.ptyId === null;
-    if (!connected) session.kubeconfigCapture.invalidate();
+    if (!connected || wasPtyId !== session.ptyId) invalidateTerminalConfig(session);
     if (!connected) clearTerminalStatusActivity(leafId);
     if (session.active) setActiveTerminalPtyId(session.ptyId);
     if (session.ptyId !== null && wasPtyId !== session.ptyId) queuePtyResize(session, term.cols || 80, term.rows || 24);

@@ -50,6 +50,73 @@ function __husk_report_kubeconfig
     printf '\e]779;husk;kubeconfig;1;value;%s\e\\' (string escape --style=url -- "$KUBECONFIG")
 end
 
+# Only selected exported paths/names; Docker host is a boolean, never its URL.
+function __husk_report_context
+    set -l __husk_previous $status
+    if test -n "$SSH_CONNECTION$SSH_CLIENT$SSH_TTY"
+        printf '\e]781;husk;context;1;unavailable\e\\'
+        return $__husk_previous
+    end
+    # The user prompt may have changed cwd since the first OSC7.
+    printf '\e]7;file://%s%s\e\\' "$__HUSK_HOST" (__husk_urlencode_path "$PWD")
+    set -l __husk_home ''
+    set -l __husk_kube ''
+    set -l __husk_default ''
+    set -l __husk_docker ''
+    set -l __husk_context ''
+    set -l __husk_host 0
+    if set -q -x HOME; and string match -q '/*' -- "$HOME"
+        set __husk_home "$HOME"
+    end
+    if set -q -x KUBECONFIG
+        set __husk_kube "$KUBECONFIG"
+    end
+    if test -z "$__husk_kube"; and test -n "$__husk_home"
+        set -l __husk_base (string replace -r '/$' '' -- "$__husk_home")
+        set __husk_default "$__husk_base/.kube/config"
+    end
+    if set -q -x DOCKER_CONFIG
+        set __husk_docker "$DOCKER_CONFIG"
+    end
+    if test -z "$__husk_docker"; and test -n "$__husk_home"
+        set -l __husk_base (string replace -r '/$' '' -- "$__husk_home")
+        set __husk_docker "$__husk_base/.docker"
+    end
+    if set -q -x DOCKER_CONTEXT
+        set __husk_context "$DOCKER_CONTEXT"
+    end
+    if set -q -x DOCKER_HOST; and test -n "$DOCKER_HOST"
+        set __husk_host 1
+    end
+    # Bound work before encoding, then enforce UTF-8 byte limits without a CLI.
+    if test (string length -- "$__husk_kube") -gt 8192; or test (string length -- "$__husk_default") -gt 8192; or test (string length -- "$__husk_docker") -gt 8192; or test (string length -- "$__husk_context") -gt 1024
+        printf '\e]781;husk;context;1;unavailable\e\\'
+    else
+        set -l __husk_encoded
+        set -l __husk_index 0
+        set -l __husk_total 5
+        for __husk_value in "$__husk_kube" "$__husk_default" "$__husk_docker" "$__husk_context"
+            set __husk_index (math $__husk_index + 1)
+            set -l __husk_part (string escape --style=url -- "$__husk_value")
+            # Keep empty fields as one argument instead of an empty substitution.
+            set -l __husk_byte_markers (string replace -ar '%[0-9A-Fa-f]{2}' 'x' -- "$__husk_part")
+            set -l __husk_bytes (string length -- "$__husk_byte_markers")
+            set -l __husk_max 8192
+            if test $__husk_index -eq 4
+                set __husk_max 1024
+            end
+            set __husk_total (math $__husk_total + $__husk_bytes)
+            if test $__husk_bytes -gt $__husk_max; or test $__husk_total -gt 24576
+                printf '\e]781;husk;context;1;unavailable\e\\'
+                return $__husk_previous
+            end
+            set -a __husk_encoded "$__husk_part"
+        end
+        printf '\e]781;husk;context;1;%s;%s;%s;%s;%s\e\\' "$__husk_encoded[1]" "$__husk_encoded[2]" "$__husk_encoded[3]" "$__husk_encoded[4]" "$__husk_host"
+    end
+    return $__husk_previous
+end
+
 if functions -q fish_prompt
     functions -c fish_prompt __husk_user_prompt
 end
@@ -67,6 +134,7 @@ function fish_prompt
     end
     # User prompt hooks may change exports; capture only once they are done.
     __husk_report_kubeconfig
+    __husk_report_context
     printf '\e]133;B\e\\'
 end
 

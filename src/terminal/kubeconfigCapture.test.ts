@@ -81,7 +81,7 @@ describe.each([{ shell: "/bin/zsh", file: "zshrc.zsh", args: ["-f"] }, { shell: 
   // Extract only our two pure functions. Never source the user's shell config,
   // run the complete integration file, or inherit real credentials/environment.
   const source = readFileSync(new URL(`../../src-tauri/src/scripts/${file}`, import.meta.url), "utf8");
-  const helpers = ["_husk_urlencode", "__husk_report_kubeconfig"].map((name) => {
+  const helpers = ["_husk_urlencode", "__husk_report_kubeconfig", "__husk_report_context"].map((name) => {
     const match = source.match(new RegExp(`^  ${name}\\(\\) \\{[\\s\\S]*?^  \\}`, "m"));
     if (!match) throw new Error(`Missing ${name} helper`);
     return match[0];
@@ -125,7 +125,7 @@ describe.each([{ shell: "/bin/zsh", file: "zshrc.zsh", args: ["-f"] }, { shell: 
     const assignment = source.match(/\*\) (PROMPT_COMMAND="_husk_precmd[^"\n]+") ;;/)?.[1];
     expect(assignment).toBeTruthy();
     const output = runIsolated(`_husk_precmd() { :; }\nPROMPT_COMMAND='export KUBECONFIG=/fixture/late.yaml; false'\n${assignment}\neval "$PROMPT_COMMAND"\nprintf '\\nstatus=%s' "$?"`);
-    expect(output).toBe("\x1b]779;" + prefix + "value;/fixture/late.yaml\x1b\\\nstatus=1");
+    expect(output.replace(/\x1b\]7;[^\x1b]*\x1b\\/g, "")).toBe("\x1b]779;" + prefix + "value;/fixture/late.yaml\x1b\\\x1b]781;husk;context;1;/fixture/late.yaml;;/fixture/home/.docker;;0\x1b\\\nstatus=1");
   });
 });
 

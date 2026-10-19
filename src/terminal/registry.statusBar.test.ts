@@ -29,6 +29,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   createSession, detachSession, disposeSession, openTerminalLogs, registerTerminalLogsOpener,
   restartSession, setSessionActive, setSessionVisible,
+  getTerminalContextSnapshot, getSessionHandle,
 } from "./registry";
 import { getTerminalStatus, subscribeTerminalStatus } from "./statusBarState";
 
@@ -54,6 +55,48 @@ async function setup(cwd = "/project") {
 }
 
 describe("registry status bar observations without native probes", () => {
+  const context = (dockerContext = "orbstack") => osc(781, `husk;context;1;${[
+    "/fixture/team.yaml", "", "/fixture/docker", dockerContext, "0",
+  ].map(encodeURIComponent).join(";")}`);
+
+  it("publishes private config metadata only after a fresh local prompt, retaining it while typing", async () => {
+    const { leaf, write, prompt } = await setup();
+    setSessionActive(leaf, true); await prompt();
+    expect(getTerminalContextSnapshot(leaf).available).toBe(false);
+    await write(context()); expect(getTerminalContextSnapshot(leaf).available).toBe(false);
+    await write(osc(133, "B"));
+    expect(getTerminalContextSnapshot(leaf)).toMatchObject({ available: true, leafId: leaf,
+      cwd: "/project", kubeconfig: "/fixture/team.yaml", dockerContext: "orbstack", dockerHost: false });
+    getSessionHandle(leaf)!.typeText("draft");
+    expect(getTerminalContextSnapshot(leaf).available).toBe(true);
+    getSessionHandle(leaf)!.write("\r");
+    expect(getTerminalContextSnapshot(leaf).available).toBe(false);
+    expect(vi.mocked(invoke).mock.calls.every(([command]) => command === "pty_resize")).toBe(true);
+  });
+
+  it("never reuses metadata across SSH, active panes, directories or restarted shells", async () => {
+    const one = await setup(); const two = await setup();
+    setSessionActive(one.leaf, true); await one.prompt(); await one.write(context() + osc(133, "B"));
+    expect(getTerminalContextSnapshot(one.leaf).available).toBe(true);
+    setSessionActive(one.leaf, false); setSessionActive(two.leaf, true);
+    expect(getTerminalContextSnapshot(one.leaf).available).toBe(false);
+    expect(getTerminalContextSnapshot(two.leaf).available).toBe(false);
+    setSessionActive(one.leaf, true); await one.start("ssh deploy@server");
+    await one.write(osc(7, "file://server/remote") + context() + osc(133, "B"));
+    expect(getTerminalContextSnapshot(one.leaf).available).toBe(false);
+    await one.finish();
+    await one.prompt("/restored-local");
+    expect(getTerminalContextSnapshot(one.leaf).available).toBe(false);
+    await one.write(context() + osc(133, "B"));
+    expect(getTerminalContextSnapshot(one.leaf).available).toBe(true);
+    await one.prompt("/different-directory");
+    expect(getTerminalContextSnapshot(one.leaf).available).toBe(false);
+    await one.write(context() + osc(133, "B"));
+    await restartSession(one.leaf);
+    expect(getTerminalContextSnapshot(one.leaf).available).toBe(false);
+    expect(getTerminalContextSnapshot(null).available).toBe(false);
+    expect(fixture.writes).toEqual([]);
+  });
   it("does not infer a local scope or cwd from launch options and does not emit for output", async () => {
     const { leaf, write, prompt } = await setup();
     expect(getTerminalStatus(leaf)).toMatchObject({ scope: "unknown", cwd: null, atPrompt: false });

@@ -10,6 +10,15 @@ const local = (cwd?: string) => ({ observedHost: null, isRemote: false, remoteTa
 afterEach(() => { disposeTerminalStatus(1); disposeTerminalStatus(2); });
 
 describe("per-terminal status observations", () => {
+  it("revisions completed prompts even when an empty Enter has no command result", () => {
+    initializeTerminalStatus(1, "one");
+    observeTerminalStatusPrompt(1, true);
+    const before = getTerminalStatus(1)!;
+    observeTerminalStatusPrompt(1, false);
+    observeTerminalStatusPrompt(1, true);
+    expect(getTerminalStatus(1)?.promptRevision).toBe(before.promptRevision + 1);
+    expect(getTerminalStatus(1)?.lastRun).toBeNull();
+  });
   it("keeps only observed tool names in bounded, terminal-local recent activity", () => {
     initializeTerminalStatus(1, "one"); initializeTerminalStatus(2, "two");
     observeTerminalStatusScope(1, local("/one"));

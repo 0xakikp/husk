@@ -17,6 +17,8 @@ export type TerminalStatusSnapshot = Readonly<{
   host: string | null;
   cwd: string | null;
   atPrompt: boolean;
+  /** Increments on an observed completed prompt, including an empty Enter. */
+  promptRevision: number;
   command: string;
   startedAt: number | null;
   lastRun: TerminalStatusRun | null;
@@ -78,7 +80,7 @@ export function initializeTerminalStatus(leafId: number, sessionKey: string): vo
     generation: 0,
     snapshot: Object.freeze({
       leafId, scopeKey: `${sessionKey}:0`, scope: "unknown", host: null, cwd: null,
-      atPrompt: false, command: "", startedAt: null, lastRun: null, recentTools: [],
+      atPrompt: false, promptRevision: 0, command: "", startedAt: null, lastRun: null, recentTools: [],
     }),
   });
   emit(leafId);
@@ -122,7 +124,7 @@ export function observeTerminalStatusScope(leafId: number, observation: Terminal
 
 export function observeTerminalStatusPrompt(leafId: number, atPrompt: boolean): void {
   const state = states.get(leafId);
-  if (state) publish(state, { atPrompt });
+  if (state) publish(state, { atPrompt, ...(atPrompt ? { promptRevision: state.snapshot.promptRevision + 1 } : {}) });
 }
 
 /** An observed preexec/C boundary, never a guessed start from a submitted key. */

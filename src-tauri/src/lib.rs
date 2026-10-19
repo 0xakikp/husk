@@ -15,6 +15,7 @@ mod shell;
 mod shell_history;
 mod shell_init;
 mod tailscale;
+mod terminal_context;
 mod timeline;
 mod vitals;
 
@@ -136,6 +137,7 @@ pub fn run() {
             pty::pty_resize,
             pty::pty_kill,
             pty::pty_capture,
+            terminal_context::terminal_resolve_contexts,
             fs::read_dir,
             fs::read_file,
             fs::read_file_base64,

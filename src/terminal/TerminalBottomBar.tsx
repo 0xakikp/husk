@@ -1,11 +1,13 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Folder01Icon, Globe02Icon, CommandIcon, Copy01Icon, GitBranchIcon } from "@hugeicons/core-free-icons";
+import { Folder01Icon, Globe02Icon, CommandIcon, Copy01Icon, GitBranchIcon, CloudIcon, ContainerIcon, ComputerTerminal02Icon } from "@hugeicons/core-free-icons";
+import { SiKubernetes, SiDocker, SiGooglecloud, SiTerraform, SiPython, SiAnaconda, SiPodman } from "@icons-pack/react-simple-icons";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel,
   DropdownMenuCheckboxItem, DropdownMenuItem,
 } from "../components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { isRepo, status as gitStatus, currentBranch, branchAheadBehind } from "../git/client";
 import { safeTimelineCommand } from "../timeline/commandMetadata";
 import { usePrefs } from "../settings/preferences";
@@ -16,6 +18,8 @@ import { STATUS_TOOLS, STATUS_TOOL_LABELS, STATUS_TOOL_CATALOG, canonicalStatusT
 import { useStatusBarPreferences, updateStatusBarPreferences, type PinnedStatusTool } from "./statusBarPreferences";
 import { useSystemVitals } from "./vitals/useSystemVitals";
 import { STARTING_TERMINAL, type TerminalSessionStatus } from "./sessionLifecycle";
+import { useTerminalContexts } from "./useTerminalContexts";
+import { fitStatusTools } from "./fitStatusTools";
 import "./TerminalBottomBar.css";
 
 function formatDuration(ms: number): string {
@@ -26,6 +30,76 @@ function formatDuration(ms: number): string {
 }
 
 type GitSummary = { key: string; branch: string; changed: number; ahead: number; behind: number };
+type BarTool = { tool: PinnedStatusTool; label: string; value: string; detail: string; kind: "current" | "configured" };
+
+function ToolIcon({ tool }: { tool: PinnedStatusTool }) {
+  const Brand = ({ kubernetes: SiKubernetes, docker: SiDocker, gcloud: SiGooglecloud, terraform: SiTerraform,
+    python: SiPython, conda: SiAnaconda, podman: SiPodman } as Record<string, typeof SiDocker | undefined>)[tool];
+  if (Brand) return <Brand size={12} title="" aria-hidden="true" />;
+  return <HugeiconsIcon icon={tool === "ssh" ? ComputerTerminal02Icon
+    : tool === "orbstack" || tool === "colima" ? ContainerIcon : CloudIcon} size={12} strokeWidth={1.75} aria-hidden="true" />;
+}
+
+function ToolInformation({ entries }: { entries: BarTool[] }) {
+  const container = useRef<HTMLDivElement>(null);
+  const measurer = useRef<HTMLDivElement>(null);
+  const [capacity, setCapacity] = useState(entries.length);
+  // A clock tick or menu toggle must not restart the observer. Labels can change
+  // with an environment update; font loading and container resizing also refit.
+  const signature = JSON.stringify(entries.map(({ tool, value }) => [tool, value]));
+  useLayoutEffect(() => {
+    const region = container.current, measure = measurer.current;
+    if (!region || !measure) return;
+    let disposed = false;
+    const fit = () => {
+      if (disposed) return;
+      const available = region.getBoundingClientRect().width;
+      const widths = Array.from(measure.querySelectorAll<HTMLElement>("[data-tool-measure]")).map((item) => item.getBoundingClientRect().width);
+      // Hidden/unmounted panes have no layout yet. ResizeObserver will refit on
+      // reveal; keep all entries available in non-layout test/SSR environments.
+      if (!available || widths.some((width) => !width)) return;
+      const overflowWidths = Array.from(measure.querySelectorAll<HTMLElement>("[data-overflow-measure]")).map((item) => item.getBoundingClientRect().width);
+      const gap = parseFloat(getComputedStyle(region).columnGap) || 0;
+      const next = fitStatusTools(widths, available, gap, overflowWidths);
+      setCapacity((previous) => previous === next ? previous : next);
+    };
+    fit();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    observer?.observe(region); observer?.observe(measure);
+    document.fonts?.addEventListener("loadingdone", fit);
+    void document.fonts?.ready.then(fit);
+    return () => { disposed = true; observer?.disconnect(); document.fonts?.removeEventListener("loadingdone", fit); };
+  }, [signature]);
+  const visible = entries.slice(0, capacity), overflow = entries.slice(capacity);
+  const contents = (entry: BarTool) => <><ToolIcon tool={entry.tool} /><span className="terminal-status__override">{entry.value}</span></>;
+  return <div ref={container} className="terminal-status__tools" role="group" aria-label="Terminal environments">
+    <TooltipProvider delayDuration={350}>
+      {visible.map((entry) => <Tooltip key={entry.tool}>
+        <TooltipTrigger asChild><span className="terminal-status__tool" data-tool={entry.tool} data-evidence={entry.kind}
+          tabIndex={0} aria-label={`${entry.label} · ${entry.detail}`}>
+          {contents(entry)}
+        </span></TooltipTrigger>
+        <TooltipContent side="top" sideOffset={8} className="terminal-status-tooltip">
+          <span className="terminal-status-tooltip__name">{entry.label}</span><span>{entry.detail}</span>
+        </TooltipContent>
+      </Tooltip>)}
+      {overflow.length > 0 && <Tooltip>
+        <TooltipTrigger asChild><span className="terminal-status__tool-overflow" tabIndex={0}
+          aria-label={`${overflow.length} more environments: ${overflow.map(({ label, value }) => `${label}: ${value}`).join("; ")}. Open terminal status details.`}>
+          +{overflow.length}
+        </span></TooltipTrigger>
+        <TooltipContent side="top" sideOffset={8} className="terminal-status-tooltip">
+          {overflow.map(({ tool, label, value }) => <span key={tool}>{label}: {value}</span>)}
+          <span className="terminal-status-tooltip__hint">All environments are in terminal status details.</span>
+        </TooltipContent>
+      </Tooltip>}
+    </TooltipProvider>
+    <div ref={measurer} className="terminal-status__tool-measurer" aria-hidden="true">
+      {entries.map((entry) => <span key={entry.tool} className="terminal-status__tool-measure" data-tool-measure>{contents(entry)}</span>)}
+      {entries.map((entry, index) => <span key={entry.tool} className="terminal-status__tool-overflow-measure" data-overflow-measure>+{index + 1}</span>)}
+    </div>
+  </div>;
+}
 
 /** Local reads are bound to the pane, provenance and cwd that requested them. */
 function useLocalGit(snapshot: TerminalStatusSnapshot | null, connected: boolean) {
@@ -108,8 +182,17 @@ function StatusBarContents({ leafId, snapshot, connection, onSendToTerminal, onO
   const currentTools = [...new Set<PinnedStatusTool>([
     ...signals.map((signal) => signal.tool), ...activities.map((activity) => canonicalStatusToolId(activity.id)),
   ])];
-  const observedTools = [...new Set<PinnedStatusTool>([
+  const observedToolIds = [...new Set<PinnedStatusTool>([
     ...currentTools, ...(snapshot?.recentTools ?? []).map((tool) => canonicalStatusToolId(tool.id)),
+  ])];
+  const relevantTools = [...pinned, ...observedToolIds];
+  const contexts = useTerminalContexts(snapshot, connected, {
+    kubernetes: relevantTools.includes("kubernetes"),
+    docker: relevantTools.includes("docker") || relevantTools.includes("orbstack"),
+  });
+  const configured = connected && !running && snapshot?.atPrompt && scope === "local" ? contexts : null;
+  const observedTools = [...new Set<PinnedStatusTool>([
+    ...observedToolIds, ...(configured?.kubernetes ? ["kubernetes" as const] : []), ...(configured?.docker ? ["docker" as const] : []),
   ])].filter((tool) => !pinned.includes(tool));
   const toolEvidence = STATUS_TOOLS.map((tool) => {
     const invocations = signals.filter((signal) => signal.tool === tool);
@@ -121,7 +204,6 @@ function StatusBarContents({ leafId, snapshot, connection, onSendToTerminal, onO
       ? candidate : [];
     return { tool, overrides, hasActivity: invocations.length > 0, ambiguous: invocations.length > 1 && overrides.length === 0 };
   });
-  const visibleTools = running ? toolEvidence.filter(({ overrides }) => overrides.length > 0).slice(0, 2) : [];
   const vitals = useSystemVitals(detailsOpen || display.machineMetrics);
 
   useEffect(() => {
@@ -151,19 +233,42 @@ function StatusBarContents({ leafId, snapshot, connection, onSendToTerminal, onO
       .catch(() => toast({ title: "Could not copy folder", variant: "error" }));
   };
   const toolLabel = (tool: PinnedStatusTool) => isCommandToolId(tool) ? commandToolLabel(tool) : STATUS_TOOL_LABELS[tool];
+  const configuredValue = (tool: PinnedStatusTool) => tool === "kubernetes" && configured?.kubernetes
+    ? `${configured.kubernetes.context}${configured.kubernetes.namespace ? ` / ${configured.kubernetes.namespace}` : ""}`
+    : tool === "docker" && configured?.docker ? configured.docker.context : null;
+  const configuredDetail = (tool: PinnedStatusTool) => tool === "kubernetes" && configured?.kubernetes
+    ? `Configured context: ${configured.kubernetes.context}${configured.kubernetes.namespace ? ` · namespace: ${configured.kubernetes.namespace}` : ""}. Read from this terminal's local configuration at the prompt. Configured does not mean connected; command flags can override it.`
+    : tool === "docker" && configured?.docker
+      ? `Selected context: ${configured.docker.context}. Read from this terminal's ${configured.docker.source === "shell" ? "shell selection" : "local configuration"} at the prompt. Configured does not mean connected; command flags can override it.` : null;
+  const unavailableReason = (tool: PinnedStatusTool) => tool === "kubernetes" ? contexts.kubernetesReason : tool === "docker" ? contexts.dockerReason : null;
   const toolDetail = (tool: PinnedStatusTool) => {
+    const configuration = configuredDetail(tool);
+    if (configuration) return configuration;
     const evidence = toolEvidence.find((item) => item.tool === tool);
     if (evidence?.overrides.length) return `${running ? "Current" : "Last"} command-selected ${evidence.overrides.map(({ kind, value }) => `${kind}: ${value}`).join(" · ")}. These overrides apply to that command, not necessarily the next one. This is not a verified connection target.`;
     if (evidence?.ambiguous) return `${toolLabel(tool)} has multiple invocations with different or unknown overrides in this command. No single current target can be inferred.`;
-    return `${toolLabel(tool)} · ${currentTools.includes(tool) ? `${running ? "Current" : "Last"} command activity` : (snapshot?.recentTools ?? []).some((recent) => canonicalStatusToolId(recent.id) === tool) ? "Earlier activity in this terminal scope" : "Not observed here. Pinned in this menu"}. Activity only; no account, installation or connection checks. Husk has not queried the host or reused local app defaults.`;
+    return `${toolLabel(tool)} · ${currentTools.includes(tool) ? `${running ? "Current" : "Last"} command activity` : (snapshot?.recentTools ?? []).some((recent) => canonicalStatusToolId(recent.id) === tool) ? "Earlier activity in this terminal scope" : "Not observed here"}. ${unavailableReason(tool) || "No reliable current target; kept in the menu until one is known."} No account, installation or connection checks. Remote terminals never inherit local defaults.`;
   };
   const toolSummary = (tool: PinnedStatusTool) => {
+    const value = configuredValue(tool);
+    if (value) return `Configured · ${value}`;
     const evidence = toolEvidence.find((item) => item.tool === tool);
     if (evidence?.overrides.length) return `${running ? "Current" : "Last"} ${evidence.overrides.map(({ kind, value }) => `${kind}: ${value}`).join(" · ")}`;
     if (evidence?.ambiguous) return "Mixed / unknown targets";
     if (currentTools.includes(tool)) return `${running ? "Current" : "Last"} command · activity only`;
-    return (snapshot?.recentTools ?? []).some((recent) => canonicalStatusToolId(recent.id) === tool) ? "Earlier activity" : "Not observed here";
+    return (snapshot?.recentTools ?? []).some((recent) => canonicalStatusToolId(recent.id) === tool) ? "Earlier activity" : unavailableReason(tool) || "Not observed here · no target to show";
   };
+  // The bar is an environment summary, not an installed-tool inventory. Only
+  // current command selectors or relevant, resolved idle configurations qualify.
+  // Last-command values stay in details, even when their tool is pinned.
+  const barEntries: BarTool[] = running ? toolEvidence.filter(({ overrides }) => overrides.length > 0).map(({ tool, overrides }) => ({
+    tool, label: toolLabel(tool), value: overrides.map(({ value }) => value).join(" / "), detail: toolDetail(tool), kind: "current",
+  })) : (["kubernetes", "docker"] as const).flatMap((tool) => {
+    const value = configuredValue(tool);
+    return value ? [{ tool, label: toolLabel(tool), value, detail: configuredDetail(tool)!, kind: "configured" as const }] : [];
+  });
+  const isPriority = (tool: PinnedStatusTool) => pinned.includes(tool) || (tool === "docker" && pinned.includes("orbstack"));
+  barEntries.sort((left, right) => Number(isPriority(right.tool)) - Number(isPriority(left.tool)));
   const setPinned = (tool: PinnedStatusTool, checked: boolean) => {
     const restoreFocus = document.activeElement?.getAttribute("data-status-tool") === tool;
     updateStatusBarPreferences({ ...display,
@@ -225,11 +330,7 @@ function StatusBarContents({ leafId, snapshot, connection, onSendToTerminal, onO
         {git.changed > 0 && <span className="terminal-status__warning">{git.changed} changes</span>}
         {git.ahead > 0 && <span>↑{git.ahead}</span>}{git.behind > 0 && <span>↓{git.behind}</span>}
       </button>}
-      {visibleTools.length > 0 && <div className="terminal-status__tools">
-        {visibleTools.map(({ tool, overrides }) => <span className="terminal-status__tool" data-tool={tool} key={tool} title={toolDetail(tool)}>
-          <span className="terminal-status-menu__tool-dot" data-tool={tool} aria-hidden="true" /><span>{tool === "kubernetes" ? "K8s" : toolLabel(tool)}</span><span aria-hidden="true">·</span><span className="terminal-status__override">{overrides[0].kind}: {overrides[0].value}{overrides.length > 1 ? ` +${overrides.length - 1}` : ""}</span>
-        </span>)}
-      </div>}
+      {barEntries.length > 0 && <ToolInformation entries={barEntries} />}
     </div>
     {display.machineMetrics && <span className="terminal-status__machine" title={`This computer (not the remote host) · ${machineText}`}>
       This computer{vitals ? ` · ${Math.round(vitals.cpu_percent)}% CPU` : " · —"}
@@ -246,7 +347,7 @@ function StatusBarContents({ leafId, snapshot, connection, onSendToTerminal, onO
         onEscapeKeyDown={(event) => { if (catalogOpen) { event.preventDefault(); backToDetails(); } }}>
         {catalogOpen ? <>
           <DropdownMenuItem className="husk-context-menu-item terminal-status-menu__back" onSelect={(event) => { event.preventDefault(); backToDetails(); }}>← Terminal environment</DropdownMenuItem>
-          <DropdownMenuLabel>Add integration<span className="terminal-status-menu__label-hint">Pin visibility only</span></DropdownMenuLabel>
+          <DropdownMenuLabel>Add integration<span className="terminal-status-menu__label-hint">Prioritize context</span></DropdownMenuLabel>
           <div className="terminal-status-menu__search-wrap"><input ref={catalogInput} className="terminal-status-menu__search" type="search"
             aria-label="Search integrations" placeholder="Search tools, CLIs, categories…" value={catalogQuery}
             onChange={(event) => setCatalogQuery(event.target.value)}
@@ -268,7 +369,7 @@ function StatusBarContents({ leafId, snapshot, connection, onSendToTerminal, onO
                 <DropdownMenuLabel>{label}</DropdownMenuLabel>
                 {entries.map((entry) => <DropdownMenuCheckboxItem key={entry.id} data-catalog-tool={entry.id} checked={pinned.includes(entry.id)}
                   className="husk-context-menu-item terminal-status-menu__tool" aria-label={`Pin ${entry.label}`}
-                  title={`Pin ${entry.label} in this menu. This does not install, connect to or run the tool.`}
+                  title={`Keep ${entry.label} in this menu and prioritize its known context in the bar. Kubernetes and Docker can read this terminal's local configuration. This does not install, connect to or run the tool.`}
                   onPointerLeave={(event) => { if (document.activeElement === catalogInput.current) event.preventDefault(); }}
                   onKeyDown={(event) => {
                     if (event.key === "ArrowUp" && event.currentTarget === menuContent.current?.querySelector("[data-catalog-tool]")) {
@@ -281,19 +382,19 @@ function StatusBarContents({ leafId, snapshot, connection, onSendToTerminal, onO
               </div> : null;
             })}
           </div>
-          <p className="terminal-status-menu__note">Pinning keeps a row in this menu. It does not run commands or check accounts.</p>
+          <p className="terminal-status-menu__note">Pins prioritize known contexts. Unknown targets stay in this menu. Local configuration reads only; no commands or account checks.</p>
         </> : <>
         <div className="terminal-status-menu__identity">
           <div className="terminal-status-menu__heading">
             <span className="terminal-status-menu__emblem" aria-hidden="true"><HugeiconsIcon icon={Globe02Icon} size={14} /></span>
-            <span>Focused terminal</span>
+            <span className="terminal-status-menu__title">Focused terminal</span>
             <span className="terminal-status-menu__scope" data-scope={scope} title={target}>{scope === "local" ? "Local" : scope === "remote" ? "Remote" : "Unknown"}</span>
           </div>
-          {scope === "remote" && snapshot?.host && <p className="terminal-status-menu__host">{snapshot.host}</p>}
-          <p className="terminal-status-menu__detail">{directory || (scope === "remote" ? "Remote folder not reported by this shell." : "Folder not reported by this shell.")}</p>
+          {scope === "remote" && snapshot?.host && <p className="terminal-status-menu__host" title={snapshot.host}>{snapshot.host}</p>}
+          <p className="terminal-status-menu__detail" title={directory ?? undefined}>{directory || (scope === "remote" ? "Remote folder not reported by this shell." : "Folder not reported by this shell.")}</p>
           <div className="terminal-status-menu__actions">
             <DropdownMenuItem className="husk-context-menu-item terminal-status-menu__quick-action" aria-label="View terminal logs" onSelect={openLogs}><HugeiconsIcon icon={CommandIcon} size={12} />Logs</DropdownMenuItem>
-            {directory && <DropdownMenuItem className="husk-context-menu-item terminal-status-menu__quick-action" aria-label="Copy folder path" onSelect={copyDirectory}><HugeiconsIcon icon={Copy01Icon} size={12} />Copy path</DropdownMenuItem>}
+            {directory && <DropdownMenuItem className="husk-context-menu-item terminal-status-menu__quick-action" aria-label="Copy folder path" title={directory} onSelect={copyDirectory}><HugeiconsIcon icon={Copy01Icon} size={12} />Copy path</DropdownMenuItem>}
           </div>
           {git?.branch && <DropdownMenuItem className="husk-context-menu-item terminal-status-menu__git" aria-label="Open Source Control"
             title={`${git.branch} · ${git.changed} changes · ↑${git.ahead} ↓${git.behind}`} onSelect={onOpenSourceControl}>
@@ -302,14 +403,16 @@ function StatusBarContents({ leafId, snapshot, connection, onSendToTerminal, onO
           </DropdownMenuItem>}
         </div>
         <div className="terminal-status-menu__integrations">
-          {pinned.length > 0 && <><DropdownMenuLabel>Pinned<span className="terminal-status-menu__count">{pinned.length}</span></DropdownMenuLabel>{pinned.map(toolRow)}</>}
-          {(observedTools.length > 0 || pinned.length === 0) && <>
-            <DropdownMenuLabel>Observed here<span className="terminal-status-menu__label-hint">This terminal</span></DropdownMenuLabel>
-            {observedTools.length > 0 ? observedTools.map(toolRow) : <p className="terminal-status-menu__empty">Tools appear as you use them here.</p>}
-          </>}
+          <div className="terminal-status-menu__tool-list" role="group" aria-label="Terminal tools">
+            {pinned.length > 0 && <><DropdownMenuLabel>Pinned<span className="terminal-status-menu__label-hint">Context priority · {pinned.length}</span></DropdownMenuLabel>{pinned.map(toolRow)}</>}
+            {(observedTools.length > 0 || pinned.length === 0) && <>
+              <DropdownMenuLabel>Observed here<span className="terminal-status-menu__label-hint">Not pinned</span></DropdownMenuLabel>
+              {observedTools.length > 0 ? observedTools.map(toolRow) : <p className="terminal-status-menu__empty">Tools appear as you use them here.</p>}
+            </>}
+          </div>
           <DropdownMenuItem ref={addIntegration} className="husk-context-menu-item terminal-status-menu__add" onSelect={(event) => { event.preventDefault(); setCatalogOpen(true); }}><span aria-hidden="true">＋</span>Add integration<span className="terminal-status-menu__add-arrow" aria-hidden="true">›</span></DropdownMenuItem>
         </div>
-        <p className="terminal-status-menu__note" title="Command evidence only—not installed or connected status. The bar shows current command overrides, not persistent environments.">Command evidence only. No account or host queries.</p>
+        <p className="terminal-status-menu__note" title="Local configuration and command selections—not installed or connected status. Last-command values stay in this menu; remote terminals never inherit local configuration.">Known contexts in the bar. No account or host queries.</p>
         <div className="terminal-status-menu__machine">
           <DropdownMenuLabel>This computer<time className="terminal-status-menu__label-hint">{new Date(clock).toLocaleTimeString([], { hour12: false })}</time></DropdownMenuLabel>
           <p className="terminal-status-menu__machine-note">Local metrics · not the remote host</p>

@@ -32,6 +32,35 @@ function global:__husk_urlencode {
     $sb.ToString()
 }
 
+function global:__husk_report_context {
+    $esc = [char]27
+    if ($env:SSH_CONNECTION -or $env:SSH_CLIENT -or $env:SSH_TTY -or (Get-Location).Provider.Name -ne 'FileSystem') {
+        return "$esc]781;husk;context;1;unavailable$esc\"
+    }
+    # Read the process environment, never PowerShell's non-exported $HOME.
+    $kube = [string]$env:KUBECONFIG
+    $defaultKube = ''
+    $docker = [string]$env:DOCKER_CONFIG
+    $context = [string]$env:DOCKER_CONTEXT
+    $dockerHostSet = if ($env:DOCKER_HOST) { '1' } else { '0' }
+    $exportedHome = [string]$env:HOME
+    if ($exportedHome -match '^(?:/|[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+)') {
+        if (-not $kube) { $defaultKube = $exportedHome.TrimEnd('/','\') + '/.kube/config' }
+        if (-not $docker) { $docker = $exportedHome.TrimEnd('/','\') + '/.docker' }
+    }
+    $values = @($kube, $defaultKube, $docker, $context)
+    $total = 5
+    for ($index = 0; $index -lt $values.Length; $index++) {
+        $length = [System.Text.Encoding]::UTF8.GetByteCount($values[$index])
+        $maximum = if ($index -eq 3) { 1024 } else { 8192 }
+        if ($length -gt $maximum) { return "$esc]781;husk;context;1;unavailable$esc\" }
+        $total += $length
+    }
+    if ($total -gt 24576) { return "$esc]781;husk;context;1;unavailable$esc\" }
+    $encoded = @($values | ForEach-Object { __husk_urlencode $_ })
+    return "$esc]781;husk;context;1;$($encoded -join ';');$dockerHostSet$esc\"
+}
+
 function global:prompt {
     $lec = $LASTEXITCODE
     if ($null -eq $lec) { $lec = if ($?) { 0 } else { 1 } }
@@ -41,6 +70,13 @@ function global:prompt {
     $oscA = "$esc]133;A$esc\"
     $oscB = "$esc]133;B$esc\"
 
+    $original = if (Test-Path Function:__husk_user_prompt) {
+        try { & __husk_user_prompt } catch { "PS $((Get-Location).Path)> " }
+    } else {
+        "PS $((Get-Location).Path)> "
+    }
+
+    # Capture final cwd after the user prompt has run (including prompt-time cd).
     $loc = Get-Location
     $osc7 = ''
     if ($loc.Provider.Name -eq 'FileSystem') {
@@ -51,12 +87,8 @@ function global:prompt {
         $osc7 = "$esc]7;file://$hostName$cwdEnc$esc\"
     }
 
-    $original = if (Test-Path Function:__husk_user_prompt) {
-        try { & __husk_user_prompt } catch { "PS $((Get-Location).Path)> " }
-    } else {
-        "PS $((Get-Location).Path)> "
-    }
-
+    # User prompt hooks may update exported selectors before the next command.
+    $contextMetadata = __husk_report_context
     $global:LASTEXITCODE = $lec
-    "$oscD$oscA$osc7${original}${oscB}"
+    "$oscD$oscA$osc7${original}${contextMetadata}${oscB}"
 }

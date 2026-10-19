@@ -292,6 +292,33 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
     fi
   }
 
+  # Private context selectors only. No CLI execution, config reads or env dump.
+  __husk_report_context() {
+    local __husk_previous=$?
+    emulate -L zsh
+    setopt localoptions no_multibyte
+    local LC_ALL=C __husk_kube='' __husk_default='' __husk_docker='' __husk_context='' __husk_host=0 __husk_home=''
+    if [[ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-}" ]]; then
+      printf '\e]781;husk;context;1;unavailable\e\\'
+      return "$__husk_previous"
+    fi
+    # Re-capture cwd after user hooks; never use app-process cwd for relatives.
+    printf '\e]7;file://%s%s\e\\' "${HOST-}" "$(_husk_urlencode "$PWD")"
+    [[ ${(t)HOME-} == *scalar*export* && "${HOME-}" == /* ]] && __husk_home="${HOME}"
+    [[ ${(t)KUBECONFIG-} == *scalar*export* ]] && __husk_kube="${KUBECONFIG-}"
+    [[ -z "$__husk_kube" && -n "$__husk_home" ]] && __husk_default="${__husk_home%/}/.kube/config"
+    [[ ${(t)DOCKER_CONFIG-} == *scalar*export* ]] && __husk_docker="${DOCKER_CONFIG-}"
+    [[ -z "$__husk_docker" && -n "$__husk_home" ]] && __husk_docker="${__husk_home%/}/.docker"
+    [[ ${(t)DOCKER_CONTEXT-} == *export* && ${(t)DOCKER_CONTEXT-} != *array* && ${(t)DOCKER_CONTEXT-} != *association* ]] && __husk_context="${DOCKER_CONTEXT-}"
+    [[ ${(t)DOCKER_HOST-} == *scalar*export* && -n "${DOCKER_HOST-}" ]] && __husk_host=1
+    if (( ${#__husk_kube} > 8192 || ${#__husk_default} > 8192 || ${#__husk_docker} > 8192 || ${#__husk_context} > 1024 || ${#__husk_kube} + ${#__husk_default} + ${#__husk_docker} + ${#__husk_context} + 5 > 24576 )); then
+      printf '\e]781;husk;context;1;unavailable\e\\'
+    else
+      printf '\e]781;husk;context;1;%s;%s;%s;%s;%s\e\\' "$(_husk_urlencode "$__husk_kube")" "$(_husk_urlencode "$__husk_default")" "$(_husk_urlencode "$__husk_docker")" "$(_husk_urlencode "$__husk_context")" "$__husk_host"
+    fi
+    return "$__husk_previous"
+  }
+
   _husk_precmd() {
     local _husk_ret=$?
     printf '\e]133;D;%s\e\\' "$_husk_ret"
@@ -344,6 +371,9 @@ if [[ -z "$__HUSK_HOOKS_LOADED" ]]; then
 
   if (( $+functions[add-zsh-hook] )); then
     add-zsh-hook precmd _husk_precmd
+    # User hooks (including direnv) are registered before Husk's integration.
+    # Capture their final exports before the rendered prompt-end marker.
+    add-zsh-hook precmd __husk_report_context
     add-zsh-hook preexec _husk_preexec
   fi
 

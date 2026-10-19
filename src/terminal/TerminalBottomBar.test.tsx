@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const fixtures = vi.hoisted(() => ({
   status: { state: "ready" } as { state: string }, logs: vi.fn(() => true), copy: vi.fn(), vitals: vi.fn(),
-  isRepo: vi.fn(), statusFiles: vi.fn(), branch: vi.fn(), counts: vi.fn(), send: vi.fn(), sourceControl: vi.fn(),
+  isRepo: vi.fn(), statusFiles: vi.fn(), branch: vi.fn(), counts: vi.fn(), send: vi.fn(), sourceControl: vi.fn(), contexts: vi.fn(),
 }));
 vi.mock("./registry", () => ({ getSessionStatus: () => fixtures.status, subscribeSessionStatus: () => () => {}, openTerminalLogs: fixtures.logs }));
 vi.mock("../settings/preferences", () => ({ usePrefs: () => ({ panelShadows: false }) }));
@@ -13,6 +13,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: fixtures.cop
 vi.mock("@hugeicons/react", () => ({ HugeiconsIcon: () => null }));
 vi.mock("../toast", () => ({ toast: vi.fn() }));
 vi.mock("./vitals/useSystemVitals", () => ({ useSystemVitals: (enabled: boolean) => fixtures.vitals(enabled) }));
+vi.mock("./useTerminalContexts", () => ({ useTerminalContexts: (...args: unknown[]) => fixtures.contexts(...args) }));
 // Test bar decisions independently from Radix positioning, checked in browser.
 vi.mock("../components/ui/dropdown-menu", async () => {
   const React = await import("react");
@@ -43,6 +44,7 @@ function remote(leaf: number, cwd?: string) {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks();
   fixtures.vitals.mockReturnValue(null);
+  fixtures.contexts.mockReturnValue({ kubernetes: null, docker: null, kubernetesReason: null, dockerReason: null });
   fixtures.status = { state: "ready" }; fixtures.isRepo.mockResolvedValue(true); fixtures.statusFiles.mockResolvedValue([{}]);
   fixtures.branch.mockResolvedValue("main"); fixtures.counts.mockResolvedValue({ ahead: 2, behind: 0 }); fixtures.copy.mockResolvedValue(undefined);
   updateStatusBarPreferences({ pinned: [], machineMetrics: false }); local(1); local(2, "/other");
@@ -116,8 +118,9 @@ it("shows a meaningful target only while its command is running, with last detai
   startTerminalStatusCommand(1, "kubectl --context staging get pods", Date.now()); await render();
   expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(1);
   const tool = host.querySelector<HTMLSpanElement>('.terminal-status__tool[data-tool="kubernetes"]')!;
-  expect(tool.textContent).toContain("K8s·context: staging");
-  expect(tool.title).toContain("staging"); expect(tool.title).toContain("not necessarily the next one");
+  expect(tool.querySelector(".terminal-status__override")?.textContent).toBe("staging");
+  expect(tool.getAttribute("aria-label")).toContain("Kubernetes");
+  expect(tool.getAttribute("aria-label")).toContain("staging"); expect(tool.getAttribute("aria-label")).toContain("not necessarily the next one");
   expect(tool.tagName).toBe("SPAN");
   await act(async () => { completeTerminalStatusCommand(1, 0, Date.now()); observeTerminalStatusPrompt(1, true); });
   expect(host.querySelector(".terminal-status__tools")).toBeNull();
@@ -125,7 +128,7 @@ it("shows a meaningful target only while its command is running, with last detai
   expect(host.querySelector('[aria-label="Pin Kubernetes"]')?.textContent).toContain("Last context: staging");
   await act(async () => startTerminalStatusCommand(1, "ls", Date.now())); expect(host.querySelector(".terminal-status__tool")).toBeNull();
 });
-it("keeps pins in the menu without adding empty bar labels or querying a target", async () => {
+it("keeps unresolved pins in the menu without placeholder information or buttons", async () => {
   await render(); await click(".terminal-status__more");
   expect(host.textContent).toContain("Tools appear as you use them here");
   expect(host.querySelector('[aria-label="Pin Docker"]')).toBeNull();
@@ -134,8 +137,9 @@ it("keeps pins in the menu without adding empty bar labels or querying a target"
   await act(async () => pin.click()); expect(pin.getAttribute("title")).toContain("does not install, connect to or run");
   await click(".terminal-status-menu__back");
   expect(host.querySelector('[aria-label="Pin Docker"]')?.textContent).toContain("Not observed here");
-  expect(host.querySelector(".terminal-status__tools")).toBeNull();
-  await render(2); expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  expect(host.querySelector('.terminal-status__tool[data-tool="docker"]')).toBeNull();
+  expect(host.querySelector('.terminal-status__tool-overflow')).toBeNull();
+  await render(2); expect(host.querySelector('.terminal-status__tool[data-tool="docker"]')).toBeNull();
   await click(".terminal-status__more");
   expect(host.querySelector('[aria-label="Pin Docker"]')?.getAttribute("aria-checked")).toBe("true");
   expect(host.querySelector('[role="menuitemcheckbox"]')?.getAttribute("aria-label")).toBe("Pin Docker");
@@ -167,7 +171,7 @@ it("does not expose sensitive command arguments in visible labels or tooltips", 
 });
 it("shows explicitly selected Azure subscriptions without claiming a verified connection", async () => {
   startTerminalStatusCommand(1, "az account show --subscription private-subscription", Date.now()); await render();
-  expect(host.querySelector('.terminal-status__tool[data-tool="azure"]')?.textContent).toBe("Azure·subscription: private-subscription");
+  expect(host.querySelector('.terminal-status__tool[data-tool="azure"] .terminal-status__override')?.textContent).toBe("private-subscription");
   await click(".terminal-status__more");
   expect(host.querySelector('[aria-label="Pin Azure"]')?.textContent).toContain("Current subscription: private-subscription");
   expect(host.querySelector('[aria-label="Pin Azure"]')?.getAttribute("title")).toContain("not a verified connection target");
@@ -180,7 +184,9 @@ it("pins a directly used custom CLI across panes without persisting its argument
   await click(".terminal-status__more"); await click('[aria-label="Pin teamctl"]');
   expect(localStorage.getItem("husk.terminal.statusbar.v1")).toContain("cli:teamctl");
   expect(localStorage.getItem("husk.terminal.statusbar.v1")).not.toMatch(/internal-cluster|MODE|\/opt/);
-  await render(2); expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  expect(host.querySelector('.terminal-status__tool[data-tool="cli:teamctl"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Pin teamctl"]')?.getAttribute("title")).toContain("Current command activity");
+  await render(2); expect(host.querySelector('.terminal-status__tool[data-tool="cli:teamctl"]')).toBeNull();
   await click(".terminal-status__more");
   expect(host.querySelector('[aria-label="Pin teamctl"]')?.textContent).toContain("Not observed here");
   await click('[aria-label="Pin teamctl"]'); expect(host.querySelector('[aria-label="Pin teamctl"]')).toBeNull();
@@ -197,23 +203,25 @@ it("renders MiB native memory measurements as GiB, not thousands of GB", async (
   expect(host.querySelector(".terminal-status-menu__metrics")?.getAttribute("aria-label")).toBe("CPU 22% · RAM 22.0 / 32.0 GiB");
   expect(host.querySelector(".terminal-status-menu__metrics")?.textContent).toContain("22.0 / 32.0 GiB");
 });
-it("does not show pinned tools at idle or for bare running commands", async () => {
+it("keeps unresolved pinned tools out of the bar at idle and during activity-only commands", async () => {
   updateStatusBarPreferences({ pinned: ["kubernetes", "docker", "aws", "terraform", "cli:az"], machineMetrics: false });
-  await render(); expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  await render(); expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(0);
+  expect(host.querySelector(".terminal-status__tool-overflow")).toBeNull();
   for (const command of ["kubectl get pods", "docker ps", "aws sts get-caller-identity", "terraform plan", "az account show"]) {
     await act(async () => startTerminalStatusCommand(1, command, Date.now()));
     expect(host.querySelector(".terminal-status__tools")).toBeNull();
   }
+  expect(fixtures.send).not.toHaveBeenCalled();
 });
 it.each([
-  ["aws --profile dev sts get-caller-identity", "AWS·profile: dev"],
-  ["AWS_PROFILE=dev aws sts get-caller-identity", "AWS·profile: dev"],
-  ["DOCKER_CONTEXT=staging docker ps", "Docker·context: staging"],
-  ["TF_WORKSPACE=stage terraform plan", "Terraform·workspace: stage"],
-  ["helm --kube-context dev list", "K8s·context: dev"],
+  ["aws --profile dev sts get-caller-identity", "dev"],
+  ["AWS_PROFILE=dev aws sts get-caller-identity", "dev"],
+  ["DOCKER_CONTEXT=staging docker ps", "staging"],
+  ["TF_WORKSPACE=stage terraform plan", "stage"],
+  ["helm --kube-context dev list", "dev"],
 ])("shows explicit values without inventing flag provenance for %s", async (command, label) => {
   startTerminalStatusCommand(1, command, Date.now()); await render();
-  expect(host.querySelector(".terminal-status__tool")?.textContent).toBe(label);
+  expect(host.querySelector(".terminal-status__tool .terminal-status__override")?.textContent).toBe(label);
   expect(fixtures.send).not.toHaveBeenCalled();
 });
 it.each([
@@ -228,7 +236,7 @@ it.each([
 it("shows one badge for repeated consistent overrides in a compound command", async () => {
   startTerminalStatusCommand(1, "kubectl --context dev get pods && kubectl --context dev get svc", Date.now()); await render();
   expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(1);
-  expect(host.querySelector(".terminal-status__tool")?.textContent).toContain("context: dev");
+  expect(host.querySelector(".terminal-status__tool .terminal-status__override")?.textContent).toBe("dev");
 });
 it("does not keep a target badge when disconnected even if its command was running", async () => {
   startTerminalStatusCommand(1, "aws --profile prod sts get-caller-identity", Date.now());
@@ -278,7 +286,7 @@ it("lists pinned tools once and keeps observed generic tools separate", async ()
   expect(host.querySelectorAll('[aria-label="Pin Azure"]')).toHaveLength(1);
   expect(host.querySelector('[aria-label="Pin Azure"]')?.getAttribute("aria-checked")).toBe("true");
   expect(host.querySelector('[aria-label="Pin pnpm"]')?.textContent).toContain("Current command · activity only");
-  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(0);
 });
 
 it("searches the catalog by executable and category while retaining selected pins", async () => {
@@ -295,7 +303,7 @@ it("searches the catalog by executable and category while retaining selected pin
   expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.getAttribute("aria-checked")).toBe("true");
   await click(".terminal-status-menu__back");
   expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.textContent).toContain("Not observed here");
-  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  expect(host.querySelector('.terminal-status__tool[data-tool="oci"]')).toBeNull();
   expect(fixtures.send).not.toHaveBeenCalled();
   expect(fixtures.isRepo).toHaveBeenCalledTimes(1);
 });
@@ -332,12 +340,13 @@ it("keeps search typing out of menu typeahead and supports arrows and Escape", a
   } finally { document.removeEventListener("keydown", bubbled); }
 });
 
-it("keeps all explicit cloud fields in details but limits the bar to two tools", async () => {
+it("shows all explicit cloud targets without a fixed two-tool cap", async () => {
   startTerminalStatusCommand(1, "oci --profile dev --region us-ashburn-1 compute instance list && az account show --subscription team && gcloud --project sample projects list", Date.now());
   await render();
-  expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(2);
+  expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(3);
   const oracle = host.querySelector<HTMLSpanElement>('.terminal-status__tool[data-tool="oci"]')!;
-  expect(oracle.textContent).toContain("+1"); expect(oracle.title).toContain("region: us-ashburn-1");
+  expect(oracle.querySelector(".terminal-status__override")?.textContent).toBe("dev / us-ashburn-1"); expect(oracle.getAttribute("aria-label")).toContain("region: us-ashburn-1");
+  expect(host.querySelector(".terminal-status__tool-overflow")).toBeNull();
   await click(".terminal-status__more");
   expect(host.querySelector('[aria-label="Pin Oracle Cloud"]')?.textContent).toContain("profile: dev · region: us-ashburn-1");
   expect(host.querySelector('[aria-label="Pin Google Cloud"]')?.textContent).toContain("project: sample");
@@ -357,7 +366,7 @@ it.each([
   ["colima --profile dev status", "Colima", "profile: dev"],
 ])("renders command-selected container details for %s without account probes", async (command, label, expected) => {
   startTerminalStatusCommand(1, command, Date.now()); await render();
-  expect(host.querySelector(".terminal-status__tool")?.textContent).toContain(expected);
+  expect(host.querySelector(".terminal-status__tool .terminal-status__override")?.textContent).toBe(expected.split(": ")[1]);
   await click(".terminal-status__more");
   expect(host.querySelector(`[aria-label="Pin ${label}"]`)?.textContent).toContain(expected);
   expect(fixtures.send).not.toHaveBeenCalled(); expect(fixtures.isRepo).not.toHaveBeenCalled();
@@ -378,6 +387,11 @@ it("groups terminal actions, integrations and local metrics into distinct sectio
   expect(actions.querySelector('[role="menuitem"] [role="button"], [role="menuitem"] button')).toBeNull();
   expect(integrations.textContent).toContain("Observed here");
   expect(integrations.textContent).toContain("Add integration");
+  const toolList = integrations.querySelector('.terminal-status-menu__tool-list')!;
+  expect(toolList).not.toBeNull();
+  expect(toolList.contains(menu.querySelector('.terminal-status-menu__add'))).toBe(false);
+  expect(toolList.contains(machine)).toBe(false);
+  expect(toolList.contains(menu.querySelector('.terminal-status-menu__identity'))).toBe(false);
   expect(machine.textContent).toContain("This computer");
   expect(machine.querySelector('[aria-label="Show local machine metrics in bar"]')?.textContent).toContain("Show in status bar");
 });
@@ -413,7 +427,7 @@ it("exposes complete tool summaries as accessible descriptions instead of title-
     expect(description).not.toBeNull(); expect(row.contains(description)).toBe(true);
   }
   expect(document.getElementById(oracle.getAttribute("aria-describedby")!)?.textContent).toBe("Current profile: dev · region: us-ashburn-1");
-  expect(document.getElementById(docker.getAttribute("aria-describedby")!)?.textContent).toBe("Not observed here");
+  expect(document.getElementById(docker.getAttribute("aria-describedby")!)?.textContent).toBe("Not observed here · no target to show");
 });
 
 it("does not repeat an empty observed section when all visible tools are pinned", async () => {
@@ -468,4 +482,209 @@ it("keeps local metrics attribution and accessible toggle state in the footer", 
   expect(toggle.getAttribute("aria-checked")).toBe("true");
   expect(host.querySelector(".terminal-status__machine")?.textContent).toContain("This computer");
   expect(fixtures.send).not.toHaveBeenCalled(); expect(fixtures.isRepo).not.toHaveBeenCalled();
+});
+
+it.each([0, 1, null])("keeps a completed pinned selector in details only (%s), then drops stale values", async (exitCode) => {
+  updateStatusBarPreferences({ pinned: ["aws"], machineMetrics: false });
+  startTerminalStatusCommand(1, "aws --profile staging sts get-caller-identity", Date.now());
+  await render();
+  expect(host.querySelectorAll('.terminal-status__tool[data-tool="aws"]')).toHaveLength(1);
+  expect(host.querySelector(".terminal-status__tool .terminal-status__override")?.textContent).toBe("staging");
+  await act(async () => completeTerminalStatusCommand(1, exitCode, Date.now()));
+  expect(host.querySelector(".terminal-status__tool")).toBeNull();
+  await click(".terminal-status__more");
+  const row = host.querySelector('[data-status-tool="aws"]')!;
+  expect(row.textContent).toContain("Last profile: staging");
+  expect(row.getAttribute("title")).toContain("not a verified connection target");
+  await act(async () => startTerminalStatusCommand(1, "ls", Date.now()));
+  expect(host.querySelector(".terminal-status__tool")).toBeNull();
+  expect(row.getAttribute("title")).toContain("Earlier activity");
+  expect(host.innerHTML).not.toContain("staging");
+  expect(localStorage.getItem("husk.terminal.statusbar.v1")).not.toContain("staging");
+});
+
+it("clears pinned tool evidence across panes and SSH boundaries while keeping pins", async () => {
+  updateStatusBarPreferences({ pinned: ["docker"], machineMetrics: false });
+  startTerminalStatusCommand(1, "docker --context dev ps", Date.now()); await render();
+  expect(host.querySelector(".terminal-status__tool .terminal-status__override")?.textContent).toBe("dev");
+  await render(2); expect(host.querySelector(".terminal-status__tool")).toBeNull();
+  await render(1); await act(async () => remote(1));
+  expect(host.querySelector(".terminal-status__tool")).toBeNull();
+  await click(".terminal-status__more");
+  expect(host.querySelector('[data-status-tool="docker"]')?.getAttribute("title")).toContain("Not observed here");
+  expect(host.innerHTML).not.toContain("context: dev");
+  expect(fixtures.send).not.toHaveBeenCalled();
+});
+
+it("does not treat a disconnected pinned tool as live or reuse the last successful target", async () => {
+  updateStatusBarPreferences({ pinned: ["aws"], machineMetrics: false });
+  startTerminalStatusCommand(1, "aws --profile previous sts get-caller-identity", Date.now());
+  completeTerminalStatusCommand(1, 0, Date.now());
+  startTerminalStatusCommand(1, "aws --profile new sts get-caller-identity", Date.now());
+  fixtures.status = { state: "disconnected" }; await render();
+  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+});
+
+it.each([
+  "aws --profile hidden configure --password secret-value",
+  `echo ${"a".repeat(480)}; aws --profile hidden sts get-caller-identity`,
+  "aws --profile $DYNAMIC_PROFILE sts get-caller-identity",
+])("never exposes a pinned tool selector from sensitive, long or dynamic commands: %s", async (command) => {
+  updateStatusBarPreferences({ pinned: ["aws"], machineMetrics: false });
+  startTerminalStatusCommand(1, command, Date.now()); await render();
+  expect(host.querySelector(".terminal-status__tool")).toBeNull();
+  expect(host.innerHTML).not.toMatch(/secret-value|profile: hidden/);
+  expect(fixtures.send).not.toHaveBeenCalled();
+});
+
+it("keeps ambiguous pinned targets explicitly unknown", async () => {
+  updateStatusBarPreferences({ pinned: ["kubernetes"], machineMetrics: false });
+  startTerminalStatusCommand(1, "kubectl --context a get pods && kubectl --context b get pods", Date.now()); await render();
+  expect(host.querySelector(".terminal-status__tool")).toBeNull();
+  await click(".terminal-status__more");
+  expect(host.querySelector('[data-status-tool="kubernetes"]')?.getAttribute("title")).toContain("No single current target");
+});
+
+it("fits actual target widths and available space, counting only meaningful overflow entries", async () => {
+  let resize!: ResizeObserverCallback;
+  const disconnect = vi.fn();
+  const observe = vi.fn();
+  let available = 500;
+  const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+    return { width: this.classList.contains("terminal-status__tools") ? available
+      : this.hasAttribute("data-tool-measure") ? 75 : this.hasAttribute("data-overflow-measure") ? 20 : 0 } as DOMRect;
+  });
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: ResizeObserverCallback) { resize = callback; }
+    observe = observe;
+    disconnect = disconnect;
+  });
+  try {
+    updateStatusBarPreferences({ pinned: ["kubernetes", "docker", "aws", "cli:az", "azure"], machineMetrics: false });
+    startTerminalStatusCommand(1, "aws --profile dev sts get-caller-identity && az --subscription test account show && gcloud --project sample projects list", Date.now()); await render();
+    expect(observe).toHaveBeenCalledWith(host.querySelector(".terminal-status__tools"));
+    expect(observe).toHaveBeenCalledWith(host.querySelector(".terminal-status__tool-measurer"));
+    for (const [width, count] of [[500, 3], [200, 2], [100, 1], [30, 0], [500, 3]]) {
+      available = width;
+      await act(async () => resize([], {} as ResizeObserver));
+      expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(count);
+      const overflow = host.querySelector<HTMLElement>(".terminal-status__tool-overflow");
+      if (count === 3) expect(overflow).toBeNull();
+      else {
+        expect(overflow?.textContent).toBe(`+${3 - count}`);
+        expect(overflow?.getAttribute("aria-label")).toContain("Google Cloud: sample");
+        expect(overflow?.getAttribute("aria-label")).not.toMatch(/Docker|Kubernetes/);
+      }
+      if (count) expect(host.querySelector(".terminal-status__tool")?.getAttribute("data-tool")).toBe("aws");
+      expect(host.querySelector(".terminal-status__tools button")).toBeNull();
+    }
+    await render(2); expect(disconnect).toHaveBeenCalledTimes(1);
+  } finally { bounds.mockRestore(); vi.unstubAllGlobals(); }
+});
+
+it("shows configured context and namespace directly with accessible tool names, not inventory labels", async () => {
+  updateStatusBarPreferences({ pinned: ["kubernetes", "docker", "aws"], machineMetrics: false });
+  fixtures.contexts.mockReturnValue({ kubernetes: { context: "staging", namespace: "payments", source: "config" },
+    docker: { context: "orbstack", source: "config" }, kubernetesReason: null, dockerReason: null });
+  await render();
+  const kube = host.querySelector<HTMLElement>('.terminal-status__tool[data-tool="kubernetes"]')!;
+  const docker = host.querySelector<HTMLElement>('.terminal-status__tool[data-tool="docker"]')!;
+  expect(kube.querySelector(".terminal-status__override")?.textContent).toBe("staging / payments");
+  expect(docker.querySelector(".terminal-status__override")?.textContent).toBe("orbstack");
+  expect(kube.getAttribute("aria-label")).toContain("Kubernetes");
+  expect(kube.getAttribute("aria-label")).toContain("Configured does not mean connected");
+  expect(kube.tagName).toBe("SPAN"); expect(kube.tabIndex).toBe(0); expect(kube.getAttribute("role")).not.toBe("button");
+  expect(host.querySelector(".terminal-status__tool-overflow")).toBeNull();
+  expect(host.querySelector('.terminal-status__tool[data-tool="aws"]')).toBeNull();
+  await click(".terminal-status__more");
+  expect(host.querySelector('[data-status-tool="kubernetes"]')?.textContent).toContain("Configured · staging / payments");
+  expect(host.querySelector('[data-status-tool="docker"]')?.textContent).toContain("Configured · orbstack");
+  expect(fixtures.contexts).toHaveBeenLastCalledWith(expect.objectContaining({ leafId: 1 }), true, { kubernetes: true, docker: true });
+  expect(fixtures.send).not.toHaveBeenCalled();
+});
+
+it("enables configuration reads only for pinned or observed Kubernetes/Docker integrations", async () => {
+  await render();
+  expect(fixtures.contexts).toHaveBeenLastCalledWith(expect.anything(), true, { kubernetes: false, docker: false });
+  await act(async () => startTerminalStatusCommand(1, "kubectl get pods", Date.now()));
+  expect(fixtures.contexts).toHaveBeenLastCalledWith(expect.anything(), true, { kubernetes: true, docker: false });
+  await act(async () => {
+    completeTerminalStatusCommand(1, 0, Date.now());
+    startTerminalStatusCommand(1, "ls", Date.now());
+  });
+  expect(fixtures.contexts).toHaveBeenLastCalledWith(expect.anything(), true, { kubernetes: true, docker: false });
+  await act(async () => updateStatusBarPreferences({ pinned: ["orbstack"], machineMetrics: false }));
+  expect(fixtures.contexts).toHaveBeenLastCalledWith(expect.anything(), true, { kubernetes: true, docker: true });
+});
+
+it("does not invent OrbStack as Docker's selected context merely because OrbStack is pinned", async () => {
+  updateStatusBarPreferences({ pinned: ["orbstack"], machineMetrics: false });
+  fixtures.contexts.mockReturnValue({ kubernetes: null, docker: { context: "remote-team", source: "shell" }, kubernetesReason: null, dockerReason: null });
+  await render();
+  expect(host.querySelector('.terminal-status__tool[data-tool="docker"] .terminal-status__override')?.textContent).toBe("remote-team");
+  expect(host.querySelector('.terminal-status__tool[data-tool="orbstack"]')).toBeNull();
+  await click(".terminal-status__more");
+  expect(host.querySelector('[data-status-tool="docker"]')?.textContent).toContain("Configured · remote-team");
+  expect(host.querySelector('[data-status-tool="orbstack"]')?.textContent).toContain("Not observed here");
+});
+
+it("prioritizes resolved pinned contexts while leaving other relevant configured contexts automatic", async () => {
+  updateStatusBarPreferences({ pinned: ["docker"], machineMetrics: false });
+  startTerminalStatusCommand(1, "kubectl get pods", Date.now()); completeTerminalStatusCommand(1, 0, Date.now()); observeTerminalStatusPrompt(1, true);
+  fixtures.contexts.mockReturnValue({ kubernetes: { context: "dev", namespace: null, source: "config" },
+    docker: { context: "work", source: "shell" }, kubernetesReason: null, dockerReason: null });
+  await render();
+  expect(Array.from(host.querySelectorAll(".terminal-status__tool"), (node) => node.getAttribute("data-tool"))).toEqual(["docker", "kubernetes"]);
+  expect(host.querySelector('.terminal-status__tool[data-tool="kubernetes"] .terminal-status__override')?.textContent).toBe("dev");
+});
+
+it("never falls back to configured defaults while a command is running, ambiguous or sensitive", async () => {
+  updateStatusBarPreferences({ pinned: ["kubernetes", "docker"], machineMetrics: false });
+  fixtures.contexts.mockReturnValue({ kubernetes: { context: "local-dev", namespace: "default", source: "config" },
+    docker: { context: "orbstack", source: "config" }, kubernetesReason: null, dockerReason: null });
+  startTerminalStatusCommand(1, "kubectl --context staging get pods", Date.now()); await render();
+  expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(1);
+  expect(host.querySelector(".terminal-status__tool .terminal-status__override")?.textContent).toBe("staging");
+  for (const command of ["kubectl get pods", "kubectl --context a get pods && kubectl --context b get pods", "kubectl --context hidden --token secret-value get pods"]) {
+    await act(async () => startTerminalStatusCommand(1, command, Date.now()));
+    expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  }
+  expect(host.innerHTML).not.toMatch(/local-dev|orbstack|secret-value/);
+});
+
+it("hides stale configured results on remote, disconnected and unverified prompts", async () => {
+  updateStatusBarPreferences({ pinned: ["kubernetes", "docker"], machineMetrics: false });
+  fixtures.contexts.mockReturnValue({ kubernetes: { context: "private-local", namespace: "default", source: "config" },
+    docker: { context: "orbstack", source: "config" }, kubernetesReason: null, dockerReason: null });
+  await render(); expect(host.querySelectorAll(".terminal-status__tool")).toHaveLength(2);
+  await act(async () => observeTerminalStatusPrompt(1, false));
+  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  await act(async () => remote(1));
+  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+  await click(".terminal-status__more"); expect(host.innerHTML).not.toMatch(/private-local|orbstack/);
+  local(2); fixtures.status = { state: "disconnected" }; await render(2);
+  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+});
+
+it("explains unresolved configuration in the menu without empty targets in the bar", async () => {
+  updateStatusBarPreferences({ pinned: ["kubernetes", "docker"], machineMetrics: false });
+  fixtures.contexts.mockReturnValue({ kubernetes: null, docker: null,
+    kubernetesReason: "Shell configuration has not been reported.", dockerReason: "Docker host override has no named context." });
+  await render(); await click(".terminal-status__more");
+  expect(host.querySelector('[data-status-tool="kubernetes"]')?.textContent).toContain("Shell configuration has not been reported");
+  expect(host.querySelector('[data-status-tool="docker"]')?.textContent).toContain("Docker host override has no named context");
+  expect(host.querySelector(".terminal-status__tools")).toBeNull();
+});
+
+it("shows the full target and provenance on keyboard focus without becoming a button", async () => {
+  startTerminalStatusCommand(1, "kubectl --context staging get pods", Date.now()); await render();
+  const entry = host.querySelector<HTMLElement>('.terminal-status__tool[data-tool="kubernetes"]')!;
+  await act(async () => entry.focus());
+  const tooltip = document.querySelector('[role="tooltip"]');
+  expect(tooltip?.textContent).toContain("Kubernetes");
+  expect(tooltip?.textContent).toContain("context: staging");
+  expect(tooltip?.textContent).toContain("not necessarily the next one");
+  expect(entry.tagName).toBe("SPAN");
+  expect(host.querySelector(".terminal-status__tools button")).toBeNull();
+  expect(fixtures.send).not.toHaveBeenCalled();
 });
