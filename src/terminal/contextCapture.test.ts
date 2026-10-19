@@ -134,7 +134,7 @@ describe.each([{ shell: "/bin/zsh", file: "zshrc.zsh", args: ["-f"] }, { shell: 
 
 it("captures fish and PowerShell exports after user prompts and before prompt-ready", () => {
   const fish = readFileSync(new URL("../../src-tauri/src/scripts/init.fish", import.meta.url), "utf8");
-  const fishPrompt = fish.match(/function fish_prompt\n([\s\S]+?)\nend/)?.[1] ?? "";
+  const fishPrompt = fish.match(/function fish_prompt\r?\n([\s\S]+?)\r?\nend/)?.[1] ?? "";
   expect(fishPrompt.indexOf("__husk_report_context")).toBeGreaterThan(fishPrompt.indexOf("        __husk_user_prompt\n"));
   expect(fishPrompt.indexOf("__husk_report_context")).toBeLessThan(fishPrompt.indexOf("printf '\\e]133;B"));
   const powershell = readFileSync(new URL("../../src-tauri/src/scripts/profile.ps1", import.meta.url), "utf8");
