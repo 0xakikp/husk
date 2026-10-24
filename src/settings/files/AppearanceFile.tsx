@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { readFileBase64 } from "../../fs";
 import { resolveAiConversationFontSize, usePrefs, setPrefs, type AiFontSizeMode } from "../preferences";
 import {
   allPresets,
@@ -16,6 +17,7 @@ import {
   CfgColor,
   CfgEnum,
   CfgSlider,
+  SettingsFieldContext,
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
 import {
@@ -45,21 +47,26 @@ function AppearanceControl({
   children,
   wide = false,
   className = "",
+  searchId,
 }: {
   label: string;
   description: string;
   children: ReactNode;
   wide?: boolean;
   className?: string;
+  searchId?: string;
 }) {
+  const id = useId();
   return (
-    <div className={`appearance-control${wide ? " is-wide" : ""}${className ? ` ${className}` : ""}`}>
+    <SettingsFieldContext.Provider value={{ label, labelId: `${id}-label`, descriptionId: `${id}-hint` }}>
+    <div data-setting-key={`appearance.${searchId ?? label}`} tabIndex={-1} className={`appearance-control${wide ? " is-wide" : ""}${className ? ` ${className}` : ""}`}>
       <div className="appearance-control-copy">
-        <strong>{label}</strong>
-        <small>{description}</small>
+        <strong id={`${id}-label`}>{label}</strong>
+        <small id={`${id}-hint`}>{description}</small>
       </div>
       <div className="appearance-control-value">{children}</div>
     </div>
+    </SettingsFieldContext.Provider>
   );
 }
 
@@ -106,7 +113,20 @@ export function AppearanceFile() {
 
   const selectedBuiltIn = getBuiltInWallpaper(bg.path);
   const fileName = bg.path ? wallpaperName(bg.path) : null;
-  const previewImage = selectedBuiltIn?.src ?? (bg.path || undefined);
+  const [localPreview, setLocalPreview] = useState<{ path: string; url: string } | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLocalPreview(null);
+    setPreviewError(false);
+    if (bg.path && !selectedBuiltIn) {
+      readFileBase64(bg.path).then(url => {
+        if (!cancelled) setLocalPreview({ path: bg.path, url });
+      }).catch(() => { if (!cancelled) setPreviewError(true); });
+    }
+    return () => { cancelled = true; };
+  }, [bg.path, selectedBuiltIn]);
+  const previewImage = selectedBuiltIn?.src ?? (localPreview?.path === bg.path ? localPreview.url : undefined);
   const currentLook = [
     p.frostedGlass ? "frosted panels" : "solid panels",
     `${p.panelGaps}px gaps`,
@@ -120,7 +140,7 @@ export function AppearanceFile() {
         <section className="appearance-current-look" aria-label="Current appearance">
           <div
             className="appearance-current-preview"
-            style={previewImage ? { backgroundImage: `url("${previewImage}")` } : undefined}
+            style={bg.enabled && previewImage ? { backgroundImage: `url("${previewImage}")` } : undefined}
             aria-hidden="true"
           >
             <span>live look</span>
@@ -129,6 +149,7 @@ export function AppearanceFile() {
             <p className="appearance-section-kicker">CURRENT LOOK</p>
             <h2>{bg.enabled ? fileName ?? "Husk default" : "Wallpaper off"}</h2>
             <p>{currentLook}</p>
+            {previewError && <p role="status">Wallpaper preview unavailable. Choose the image again if it has moved.</p>}
             <span className="appearance-current-accent"><i style={{ background: p.accentColor }} />{p.accentColor}</span>
           </div>
         </section>
@@ -289,7 +310,7 @@ export function AppearanceFile() {
           </header>
           <div className="appearance-control-grid">
             <AppearanceControl label="Dock" description="Which side the AI panel sits on, in both the terminal and editor."><CfgEnum<"left" | "right"> value={p.aiPanelDock} onChange={(aiPanelDock) => setPrefs({ aiPanelDock })} options={[{ value: "left", label: "Left" }, { value: "right", label: "Right" }]} /></AppearanceControl>
-            <AppearanceControl label="Opacity" description="Composer background transparency."><CfgSlider value={p.aiMiniOpacity} min={10} max={100} step={5} onChange={(aiMiniOpacity) => setPrefs({ aiMiniOpacity })} /></AppearanceControl>
+            <AppearanceControl label="Opacity" searchId="AI opacity" description="Composer background transparency."><CfgSlider value={p.aiMiniOpacity} min={10} max={100} step={5} onChange={(aiMiniOpacity) => setPrefs({ aiMiniOpacity })} /></AppearanceControl>
             <AppearanceControl
               label="Conversation text"
               description={p.aiFontSizeMode === "terminal"
@@ -321,7 +342,9 @@ export function AppearanceFile() {
           <summary><span>Custom CSS</span><small>Global overrides for advanced customisation</small></summary>
           <div>
             <p>Inject custom CSS rules. Applied globally — use with care.</p>
-            <CfgBlock value={p.customCSS || ""} onChange={(customCSS) => setPrefs({ customCSS })} placeholder={"/* Example: make terminal text larger */\n.terminal-host { font-size: 14px; }"} rows={6} />
+            <AppearanceControl label="Custom CSS" description="Stylesheet overrides. Changes apply automatically." wide>
+              <CfgBlock value={p.customCSS || ""} onChange={(customCSS) => setPrefs({ customCSS })} placeholder={"/* Example: make terminal text larger */\n.terminal-host { font-size: 14px; }"} rows={6} />
+            </AppearanceControl>
           </div>
         </details>
       </div>

@@ -131,7 +131,7 @@ function ProviderBlock({ provider }: { provider: Provider }) {
         </CfgRow>
       ) : provider.keyless ? (
         <CfgRow name="keyless" comment="This provider needs no API key.">
-          <CfgBool value={true} onChange={() => {}} />
+          <CfgBool value={true} disabled onChange={() => {}} />
         </CfgRow>
       ) : editing ? (
         <>
@@ -159,7 +159,7 @@ function ProviderBlock({ provider }: { provider: Provider }) {
             : "Whether a key is stored for this provider in your OS keychain."
         }
       >
-        <CfgBool value={isCli ? cliReady : provider.keyless || !!apiKey} onChange={() => {}} />
+        <CfgBool value={isCli ? cliReady : provider.keyless || !!apiKey} disabled onChange={() => {}} />
       </CfgRow>
       {isCli ? (
         <CfgComment>Signed-in CLI models propose actions; Husk validates and runs enabled workspace and integration actions under the same review rules as API models.</CfgComment>

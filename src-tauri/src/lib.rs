@@ -158,6 +158,7 @@ pub fn run() {
             fs::delete_path,
             config::config_load,
             config::config_save,
+            config::config_patch,
             config::config_location,
             config::agents_load,
             config::agent_write,

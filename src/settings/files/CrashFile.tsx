@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { getSentryEnabled, setSentryEnabled } from "../crashReporting";
+import { setSentryEnabled, useSentryEnabled } from "../crashReporting";
+import { toast } from "../../toast";
 import {
   ConfigEditor,
   CfgArt,
@@ -11,11 +11,7 @@ import {
 import { BANNERS } from "../config/banners";
 
 export function CrashFile() {
-  const [enabled, setEnabled] = useState(getSentryEnabled());
-
-  useEffect(() => {
-    setSentryEnabled(enabled);
-  }, [enabled]);
+  const enabled = useSentryEnabled();
 
   return (
     <ConfigEditor>
@@ -25,9 +21,11 @@ export function CrashFile() {
       <CfgSection name="telemetry" />
       <CfgRow
         name="crashReporting"
-        comment="Automatically send error reports to help improve Husk. No personal data or commands are included."
+        comment="Send error messages, stack traces, and app/version details to help improve Husk. Error text can contain diagnostic information. Changes take effect immediately in every open window."
       >
-        <CfgBool value={enabled} onChange={setEnabled} />
+        <CfgBool value={enabled} onChange={(value) => {
+          if (!setSentryEnabled(value)) toast({ variant: "error", title: "Privacy choice could not be saved", message: "Reporting is off in this window. Retry to save the choice for other windows and future launches." });
+        }} />
       </CfgRow>
     </ConfigEditor>
   );

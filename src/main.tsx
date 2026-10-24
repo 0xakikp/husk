@@ -1,17 +1,16 @@
-import React, { useEffect } from "react";
+import React from "react";
 import ReactDOM from "react-dom/client";
 import {
   getPrefs,
   hydratePrefsFromNative,
   preferencesForNativeConfig,
 } from "./settings/preferences";
-import { fontStack } from "./styles/fonts";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { getSentryEnabled } from "./settings/crashReporting";
+import { applyWindowChrome } from "./settings/windowChrome";
+import { initialiseCrashReporting } from "./settings/crashReporting";
 import { loadConfig, hydrateAiConfigFromNative, initKeys, initialiseAiSync } from "./ai/store";
 import { loadMcpServers, hydrateMcpServersFromNative, saveMcpServers } from "./mcp/store";
 import { getCustomPresets, hydrateAppearancePresetsFromNative } from "./settings/appearancePresets";
-import { initialiseNativeConfig, readNativeConfig } from "./settings/nativeConfig";
+import { initialiseNativeConfig, readNativeConfig, subscribeNativeConfigDocument } from "./settings/nativeConfig";
 import { loadAiAgentsFromFiles, migrateLegacyAiAgents } from "./ai/agentFiles";
 import { initialiseWorkflowStore } from "./workflows/store";
 /* No ?v=N cache-busting queries on these imports: the query becomes part of
@@ -23,72 +22,17 @@ import "./styles/fonts.css";
 import "./styles/code-highlight.css";
 import "./App.css";
 
-// Crash reporting is optional and comparatively heavy. Load it only after the
-// saved consent bit says yes; opted-out launches never download or parse it.
-if (getSentryEnabled()) {
-  const startCrashReporting = () => {
-    void import("@sentry/react").then((Sentry) => {
-      Sentry.init({
-        dsn: "https://0db29941cc9d5b5e72f11f40773f76e9@o4511596996067328.ingest.de.sentry.io/4511597291765840",
-        environment: import.meta.env.MODE,
-        release: "husk@" + __APP_VERSION__,
-        sampleRate: 1.0,
-      });
-    }).catch((error) => console.error("Crash reporting could not start", error));
-  };
-  if ("requestIdleCallback" in window) {
-    window.requestIdleCallback(startCrashReporting, { timeout: 3000 });
-  } else {
-    globalThis.setTimeout(startCrashReporting, 1500);
-  }
-}
+// Opted-out launches never load the SDK. The live controller also handles
+// consent changes made in this or another window, including startup races.
+const stopCrashReporting = initialiseCrashReporting();
+if (import.meta.hot) import.meta.hot.dispose(stopCrashReporting);
 
 const App = React.lazy(() => import("./App"));
-const SettingsPage = React.lazy(() =>
-  import("./settings/SettingsPage").then((m) => ({ default: m.SettingsPage })),
-);
+const SettingsWindow = React.lazy(() => import("./settings/SettingsWindow").then((module) => ({ default: module.SettingsWindow })));
 
-/** Wraps the settings page with focus/blur listeners that dim the window
- *  when it loses focus — a hyprland-style inactive window treatment. */
-function SettingsWindowWrapper() {
-  useEffect(() => {
-    let unsubFocus: (() => void) | undefined;
-    let unsubBlur: (() => void) | undefined;
-    const setup = async () => {
-      const win = getCurrentWindow();
-      unsubFocus = await win.listen("tauri://focus", () => {
-        document.documentElement.classList.remove("settings-unfocused");
-      });
-      unsubBlur = await win.listen("tauri://blur", () => {
-        document.documentElement.classList.add("settings-unfocused");
-      });
-    };
-    setup();
-    return () => {
-      unsubFocus?.();
-      unsubBlur?.();
-    };
-  }, []);
-  return (
-    <React.Suspense fallback={<div className="flex h-full items-center justify-center text-[11px] text-muted-foreground">Loading settings…</div>}>
-      <SettingsPage onClose={() => void getCurrentWindow().close()} />
-    </React.Suspense>
-  );
-}
-
-// Paint with the saved theme + mono font immediately, so either entry point
-// (the main app or the standalone settings window) starts with the right
-// colors and the chrome font. App.tsx re-applies --font-mono reactively, but
-// the settings window renders SettingsPage (not App) and never runs that
-// effect — so set it here too, otherwise settings would flash/stay on the
-// fallback font.
-function applyStartupChrome() {
-  const prefs = getPrefs();
-  document.documentElement.dataset.theme = prefs.theme;
-  document.documentElement.style.setProperty("--font-mono", fontStack(prefs.fontFamily));
-}
-
-applyStartupChrome();
+// Paint both entry points consistently before React mounts. Each window then
+// uses the same reactive hook, including accent and custom CSS changes.
+applyWindowChrome(getPrefs());
 
 // Global safety net for a Radix quirk that was freezing the window: a modal
 // Dialog disables `pointer-events` on <body> while open and can leave it
@@ -162,7 +106,15 @@ async function startApplication() {
   hydrateAiConfigFromNative(configDocument.ai);
   hydrateMcpServersFromNative(configDocument.mcp);
   hydrateAppearancePresetsFromNative(configDocument.appearance_presets);
-  applyStartupChrome();
+  const stopConfigSync = subscribeNativeConfigDocument((document) => {
+    // These are authoritative updates, not new edits. Hydration must not echo
+    // the other window's changes back into the persistence queue.
+    hydrateAiConfigFromNative(document.ai);
+    hydrateMcpServersFromNative(document.mcp);
+    hydrateAppearancePresetsFromNative(document.appearance_presets);
+  });
+  if (import.meta.hot) import.meta.hot.dispose(stopConfigSync);
+  applyWindowChrome(getPrefs());
 
   await initialiseAiSync();
   if (!isSettings) {
@@ -173,7 +125,9 @@ async function startApplication() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
       {isSettings ? (
-        <SettingsWindowWrapper />
+        <React.Suspense fallback={<div className="h-full bg-background" />}>
+          <SettingsWindow />
+        </React.Suspense>
       ) : (
         <React.Suspense fallback={<div className="h-full bg-background" />}>
           <App />

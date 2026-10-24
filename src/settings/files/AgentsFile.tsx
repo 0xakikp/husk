@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
-import { builtInAiAgents, usePrefs, setPrefs, type AiAgent, type AiResponseStyle } from "../preferences";
+import { useRef, useState, type ReactNode } from "react";
+import { confirmSettingsNavigation, useSettingsDraft } from "../settingsDrafts";
+import { builtInAiAgents, getPrefs, usePrefs, setPrefs, type AiAgent, type AiResponseStyle } from "../preferences";
 import {
   ConfigEditor,
   CfgArt,
@@ -18,7 +19,7 @@ import { BANNERS } from "../config/banners";
 import { getProjectMemory, setProjectMemory, MAX_MEMORY_CHARS } from "../../ai/projectMemory";
 import { MAX_GLOBAL_INSTRUCTIONS_CHARS, MAX_PERSONAL_MEMORY_CHARS } from "../../ai/huskContext";
 import { getWorkspaceRoot } from "../../workspace/store";
-import { saveAiAgentsToFiles } from "../../ai/agentFiles";
+import { saveAiAgentChanges } from "../../ai/agentFiles";
 import { toast } from "../../toast";
 
 function nextId() {
@@ -33,6 +34,7 @@ type AgentsView =
   | { kind: "add" };
 
 type AgentFormState = { name: string; icon: string; systemPrompt: string; model: string };
+type AgentFormErrors = Partial<Record<keyof AgentFormState, string>>;
 
 const EMPTY_AGENT_FORM: AgentFormState = { name: "", icon: "", systemPrompt: "", model: "" };
 
@@ -131,23 +133,27 @@ function AgentEditorForm({
   onChange,
   onSave,
   onCancel,
+  busy,
+  errors,
 }: {
   editing: AiAgent | null;
   form: AgentFormState;
   onChange: (patch: Partial<AgentFormState>) => void;
   onSave: () => void;
   onCancel: () => void;
+  busy: boolean;
+  errors: AgentFormErrors;
 }) {
   return (
-    <section className="settings-entity-editor" aria-label={editing ? "Edit agent" : "Add agent"}>
+    <fieldset disabled={busy} className="settings-entity-editor" aria-label={editing ? "Edit agent" : "Add agent"}>
       <CfgSection name={editing ? "editAgent" : "newAgent"} />
-      <CfgRow name="icon" comment="Emoji shown beside the agent name.">
+      <CfgRow name="icon" error={errors.icon} comment="Emoji shown beside the agent name.">
         <CfgText value={form.icon} onChange={(icon) => onChange({ icon })} placeholder="🤖" widthCh={4} />
       </CfgRow>
-      <CfgRow name="name" comment="Agent name, shown in the composer's agent picker.">
+      <CfgRow name="name" error={errors.name} comment="Agent name, shown in the composer's agent picker.">
         <CfgText value={form.name} onChange={(name) => onChange({ name })} placeholder="Agent name" widthCh={18} />
       </CfgRow>
-      <CfgRow name="systemPrompt" comment="System prompt that defines this agent's behaviour and tone.">
+      <CfgRow name="systemPrompt" error={errors.systemPrompt} comment="System prompt that defines this agent's behaviour and tone.">
         <CfgBlock
           value={form.systemPrompt}
           onChange={(systemPrompt) => onChange({ systemPrompt })}
@@ -155,7 +161,7 @@ function AgentEditorForm({
           rows={5}
         />
       </CfgRow>
-      <CfgRow name="model" comment="Optional override. Leave empty to use the global model in AI & Models.">
+      <CfgRow name="model" error={errors.model} comment="Optional override. Leave empty to use the global model in AI & Models.">
         <CfgText
           value={form.model}
           onChange={(model) => onChange({ model })}
@@ -167,7 +173,7 @@ function AgentEditorForm({
         <CfgAct onClick={onSave}>{editing ? "save changes" : "add agent"}</CfgAct>
         <CfgAct onClick={onCancel}>cancel</CfgAct>
       </CfgRow>
-    </section>
+    </fieldset>
   );
 }
 
@@ -182,28 +188,52 @@ export function AgentsFile() {
   const [editing, setEditing] = useState<AiAgent | null>(null);
   const [form, setForm] = useState<AgentFormState>(EMPTY_AGENT_FORM);
 
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const newId = useRef(nextId());
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<AgentFormErrors>({});
+  const baseline = editing ? { name: editing.name, icon: editing.icon, systemPrompt: editing.systemPrompt, model: editing.model ?? "" } : EMPTY_AGENT_FORM;
+  const dirty = (Boolean(editing) || view.kind === "add") && JSON.stringify(form) !== JSON.stringify(baseline);
+  useSettingsDraft(dirty, "Agents", busy);
   const agents = p.aiAgents ?? [];
 
-  const saveAgents = async (next: AiAgent[]) => {
-    // Keep the picker responsive immediately; the native Markdown write is
-    // then reconciled in the background and reports a real failure instead of
-    // silently pretending the setting survived a restart.
-    setPrefs({ aiAgents: next });
+  const saveAgents = async (next: AiAgent[]): Promise<boolean> => {
+    if (busyRef.current) return false;
+    busyRef.current = true;
+    setBusy(true);
+    setSaveError(null);
     try {
-      await saveAiAgentsToFiles(next);
+      if (next.length > 256) throw new Error("You can save up to 256 AI agents. Remove one before adding another.");
+      await saveAiAgentChanges(agents, next);
+      const removed = new Set(agents.filter(agent => !next.some(item => item.id === agent.id)).map(agent => agent.id));
+      const changed = new Map(next.filter(agent => JSON.stringify(agent) !== JSON.stringify(agents.find(item => item.id === agent.id))).map(agent => [agent.id, agent]));
+      const merged = getPrefs().aiAgents.filter(agent => !removed.has(agent.id)).map(agent => changed.get(agent.id) ?? agent);
+      for (const [id, agent] of changed) if (!merged.some(item => item.id === id)) merged.push(agent);
+      setPrefs({ aiAgents: merged });
+      return true;
     } catch (cause) {
-      toast({
-        title: "Could not save AI agents",
-        message: cause instanceof Error ? cause.message : String(cause),
-        variant: "error",
-      });
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setSaveError(message);
+      toast({ title: "Could not save AI agents", message, variant: "error" });
+      return false;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
   };
 
-  const save = () => {
-    if (!form.name.trim() || !form.systemPrompt.trim()) return;
+  const save = async () => {
+    const validation: AgentFormErrors = {
+      name: !form.name.trim() ? "Enter an agent name." : form.name.trim().length > 80 || form.name.includes("\0") ? "Use a name of at most 80 characters without null characters." : undefined,
+      systemPrompt: !form.systemPrompt.trim() ? "Add instructions for this agent." : new TextEncoder().encode(form.systemPrompt.trim()).length > 32_000 || form.systemPrompt.includes("\0") ? "Keep the instructions within 32,000 UTF-8 bytes, without null characters." : undefined,
+      icon: [...form.icon.trim()].length > 16 || form.icon.includes("\0") ? "Use at most 16 Unicode characters for the icon, without null characters." : undefined,
+      model: form.model.trim().length > 256 || form.model.includes("\0") ? "Use a model name of at most 256 characters, without null characters." : undefined,
+    };
+    setErrors(validation);
+    if (Object.values(validation).some(Boolean) || busyRef.current) return;
     const item: AiAgent = {
-      id: editing?.id ?? nextId(),
+      id: editing?.id ?? newId.current,
       name: form.name.trim(),
       icon: form.icon.trim() || "🤖",
       systemPrompt: form.systemPrompt.trim(),
@@ -211,46 +241,53 @@ export function AgentsFile() {
       color: editing?.color,
       builtIn: editing?.builtIn ?? false,
     };
-    const next = editing
-      ? agents.map((a) => (a.id === editing.id ? item : a))
-      : [...agents, item];
-    void saveAgents(next);
-    setEditing(null);
-    setForm(EMPTY_AGENT_FORM);
+    const next = agents.some((agent) => agent.id === item.id)
+      ? agents.map((agent) => agent.id === item.id ? item : agent)
+      : [...agents.filter(agent => agent.id !== item.id), item];
+    if (!await saveAgents(next)) return;
+    resetForm();
     setView({ kind: "agent", id: item.id });
   };
 
   const resetForm = () => {
     setEditing(null);
     setForm(EMPTY_AGENT_FORM);
+    setErrors({});
+    setSaveError(null);
   };
 
-  const cancelForm = () => {
+  const cancelForm = async () => {
+    if (busyRef.current || !await confirmSettingsNavigation()) return;
     const editingId = editing?.id;
     resetForm();
     setView(editingId ? { kind: "agent", id: editingId } : { kind: "overview" });
   };
 
   const startEdit = (a: AiAgent) => {
+    setErrors({});
+    setSaveError(null);
     setEditing(a);
     setForm({ name: a.name, icon: a.icon, systemPrompt: a.systemPrompt, model: a.model ?? "" });
     setView({ kind: "agent", id: a.id });
   };
 
   const startAdd = () => {
+    newId.current = nextId();
     resetForm();
     setView({ kind: "add" });
   };
 
-  const duplicate = (a: AiAgent) => {
-    const copy = { ...a, id: nextId(), name: `${a.name} Copy`, builtIn: false };
-    void saveAgents([...agents, copy]);
+  const duplicate = async (a: AiAgent) => {
+    const name = [...a.name];
+    while (name.join("").length > 75) name.pop();
+    const copy = { ...a, id: nextId(), name: `${name.join("")} Copy`, builtIn: false };
+    if (!await saveAgents([...agents, copy])) return;
     setView({ kind: "agent", id: copy.id });
   };
 
-  const remove = (id: string) => {
+  const remove = async (id: string) => {
     const next = agents.filter((a) => a.id !== id);
-    void saveAgents(next);
+    if (!await saveAgents(next)) return;
     if (p.activeAgentId === id) {
       const fallback = next.find((a) => a.id === "code") || next[0];
       if (fallback) setPrefs({ activeAgentId: fallback.id });
@@ -266,13 +303,16 @@ export function AgentsFile() {
   };
 
   const selectedAgent = view.kind === "agent"
-    ? agents.find((agent) => agent.id === view.id) ?? null
+    ? agents.find((agent) => agent.id === view.id) ?? (editing?.id === view.id ? editing : null)
     : null;
 
   return (
     <ConfigEditor>
       <CfgArt lines={BANNERS.agents} />
+      {saveError && <p role="alert" className="settings-field-error">Could not save agents: {saveError}. Any unsaved draft is still here.</p>}
       <CfgBlank />
+      <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <legend className="sr-only">AI agent settings</legend>
 
       {view.kind === "overview" ? (
         <>
@@ -394,6 +434,8 @@ export function AgentsFile() {
           <AgentEditorForm
             editing={null}
             form={form}
+            busy={busy}
+            errors={errors}
             onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
             onSave={save}
             onCancel={cancelForm}
@@ -404,7 +446,8 @@ export function AgentsFile() {
           <AgentInspectorHead
             title={`${selectedAgent.icon} ${selectedAgent.name}`}
             subtitle={selectedAgent.model ? `Model override · ${selectedAgent.model}` : "Uses the global default model"}
-            onBack={() => {
+            onBack={async () => {
+              if (busyRef.current || !await confirmSettingsNavigation()) return;
               resetForm();
               setView({ kind: "overview" });
             }}
@@ -421,6 +464,8 @@ export function AgentsFile() {
             <AgentEditorForm
               editing={editing}
               form={form}
+              busy={busy}
+              errors={errors}
               onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
               onSave={save}
               onCancel={cancelForm}
@@ -451,6 +496,8 @@ export function AgentsFile() {
       ) : (
         <CfgRow><CfgAct onClick={() => setView({ kind: "overview" })}>back to agents</CfgAct></CfgRow>
       )}
+      </fieldset>
+      {busy && <p role="status">Saving AI agents…</p>}
     </ConfigEditor>
   );
 }

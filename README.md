@@ -111,6 +111,7 @@ Husk’s first-run defaults are deliberately opinionated: Iosevka typography, th
 - Switch terminal theme, font, cursor behaviour, scrollback, editor preferences, and Vim controls.
 - Choose wallpapers, folder-based wallpaper cycling, opacity, blur, and background fit.
 - Tune panel gaps, animations, frosted glass, shadows, active glow, neon borders, and AI composer appearance independently.
+- Search individual controls in Settings, check live save status, and review encrypted backups before importing. See the [Settings guide](docs/SETTINGS.md) for draft protection, backup exclusions, and privacy behavior.
 - Start from the **HUSK / READY** boot screen on a clean install, then revisit it any time through `⌘/Ctrl K` → **Welcome to Husk**.
 
 ## First five minutes

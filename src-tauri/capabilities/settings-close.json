@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings-close",
+  "description": "Allow the Settings window to close itself after draft and save checks succeed",
+  "windows": ["settings"],
+  "permissions": ["core:window:allow-destroy"]
+}

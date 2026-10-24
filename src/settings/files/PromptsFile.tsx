@@ -1,5 +1,7 @@
-import { useState, type ReactNode } from "react";
-import { usePrefs, setPrefs, type PromptTemplate } from "../preferences";
+import { useRef, useState, type ReactNode } from "react";
+import { usePrefs, getPrefs, preferencesForNativeConfig, type PromptTemplate } from "../preferences";
+import { commitNativeConfigSections } from "../nativeConfig";
+import { confirmSettingsNavigation, useSettingsDraft } from "../settingsDrafts";
 import {
   ConfigEditor,
   CfgArt,
@@ -136,38 +138,73 @@ export function PromptsFile() {
   const [view, setView] = useState<PromptsView>({ kind: "overview" });
   const [editing, setEditing] = useState<PromptTemplate | null>(null);
   const [form, setForm] = useState<PromptFormState>(EMPTY_PROMPT_FORM);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
+  const newTemplateId = useRef<string | null>(null);
 
   const templates = p.aiPromptTemplates ?? [];
+  const formOpen = view.kind === "add" || !!editing;
+  const original = editing ? { label: editing.label, icon: editing.icon, prompt: editing.prompt } : EMPTY_PROMPT_FORM;
+  const dirty = formOpen && JSON.stringify(form) !== JSON.stringify(original);
+  useSettingsDraft(dirty, "prompt template", busy);
+
+  const commitTemplates = async (next: PromptTemplate[]) => {
+    const previous = preferencesForNativeConfig(getPrefs());
+    // Explicit forms write first. A failed draft must never remain queued for
+    // automatic persistence after the user discards it or switches categories.
+    await commitNativeConfigSections({ preferences: { ...previous, aiPromptTemplates: next } }, { preferences: previous });
+  };
+
+  const perform = async (operation: () => Promise<void>) => {
+    if (saving.current) return;
+    saving.current = true; setBusy(true); setError(null);
+    try { await operation(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save this template. Your draft is still here; try again."); }
+    finally { saving.current = false; setBusy(false); }
+  };
 
   const save = () => {
-    if (!form.label.trim() || !form.prompt.trim()) return;
+    if (saving.current) return;
+    if (!form.label.trim()) { setError("Enter a label for this prompt template."); return; }
+    if (!form.prompt.trim()) { setError("Enter prompt text before saving."); return; }
+    if (form.label.includes("\0") || form.prompt.includes("\0") || form.icon.includes("\0")) { setError("Remove null characters from the label, prompt, or icon before saving."); return; }
+    if (form.label.trim().length > 160 || form.icon.trim().length > 64 || form.prompt.trim().length > 32_000) { setError("Use at most 160 characters for the label, 64 for the icon, and 32,000 for the prompt."); return; }
+    newTemplateId.current ??= nextId();
     const item: PromptTemplate = {
-      id: editing?.id ?? nextId(),
+      id: editing?.id ?? newTemplateId.current,
       label: form.label.trim(),
       icon: form.icon.trim() || "✨",
       prompt: form.prompt.trim(),
     };
-    const next = editing
-      ? templates.map((t) => (t.id === editing.id ? item : t))
-      : [...templates, item];
-    setPrefs({ aiPromptTemplates: next });
-    setEditing(null);
-    setForm(EMPTY_PROMPT_FORM);
-    setView({ kind: "template", id: item.id });
+    void perform(async () => {
+      const current = getPrefs().aiPromptTemplates;
+      const next = current.some((template) => template.id === item.id)
+        ? current.map((template) => template.id === item.id ? item : template)
+        : [...current, item];
+      if (next.length > 256) throw new Error("You can save up to 256 prompt templates. Remove one before adding another.");
+      await commitTemplates(next);
+      resetForm();
+      setView({ kind: "template", id: item.id });
+    });
   };
 
   const resetForm = () => {
     setEditing(null);
     setForm(EMPTY_PROMPT_FORM);
+    newTemplateId.current = null;
+    setError(null);
   };
 
-  const cancelForm = () => {
+  const cancelForm = async () => {
+    if (saving.current || !await confirmSettingsNavigation()) return;
     const editingId = editing?.id;
     resetForm();
     setView(editingId ? { kind: "template", id: editingId } : { kind: "overview" });
   };
 
   const startEdit = (t: PromptTemplate) => {
+    setError(null);
     setEditing(t);
     setForm({ label: t.label, icon: t.icon, prompt: t.prompt });
     setView({ kind: "template", id: t.id });
@@ -175,31 +212,38 @@ export function PromptsFile() {
 
   const startAdd = () => {
     resetForm();
+    newTemplateId.current = nextId();
     setView({ kind: "add" });
   };
 
   const remove = (id: string) => {
-    setPrefs({ aiPromptTemplates: templates.filter((t) => t.id !== id) });
-    resetForm();
-    setView({ kind: "overview" });
+    void perform(async () => {
+      await commitTemplates(getPrefs().aiPromptTemplates.filter((template) => template.id !== id));
+      resetForm();
+      setView({ kind: "overview" });
+    });
   };
 
   const move = (index: number, dir: -1 | 1) => {
-    const arr = [...templates];
+    const arr = [...getPrefs().aiPromptTemplates];
+    const selectedId = templates[index]?.id;
+    index = arr.findIndex((template) => template.id === selectedId);
     const newIndex = index + dir;
-    if (newIndex < 0 || newIndex >= arr.length) return;
+    if (index < 0 || newIndex < 0 || newIndex >= arr.length) return;
     [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
-    setPrefs({ aiPromptTemplates: arr });
+    void perform(() => commitTemplates(arr));
   };
 
   const selectedTemplate = view.kind === "template"
-    ? templates.find((template) => template.id === view.id) ?? null
+    ? templates.find((template) => template.id === view.id) ?? (editing?.id === view.id ? editing : null)
     : null;
 
   return (
     <ConfigEditor>
       <CfgArt lines={BANNERS.prompts} />
       <CfgBlank />
+      <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <legend className="sr-only">Prompt templates</legend>
       {view.kind === "overview" ? (
         <>
           <CfgComment>Shown as /slash commands in the AI composer, in order.</CfgComment>
@@ -215,13 +259,13 @@ export function PromptsFile() {
         </>
       ) : view.kind === "add" ? (
         <section className="settings-entity-inspector" aria-label="New prompt template">
-          <PromptInspectorHead title="New template" subtitle="Create a reusable composer slash command." onBack={cancelForm} />
+          <PromptInspectorHead title="New template" subtitle="Create a reusable composer slash command." onBack={() => void cancelForm()} />
           <PromptEditorForm
             editing={null}
             form={form}
             onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
             onSave={save}
-            onCancel={cancelForm}
+            onCancel={() => void cancelForm()}
           />
         </section>
       ) : selectedTemplate ? (
@@ -230,8 +274,12 @@ export function PromptsFile() {
             title={`${selectedTemplate.icon} /${selectedTemplate.label}`}
             subtitle={`Composer order · ${templates.findIndex((template) => template.id === selectedTemplate.id) + 1}`}
             onBack={() => {
-              resetForm();
-              setView({ kind: "overview" });
+              if (saving.current) return;
+              void confirmSettingsNavigation().then((allow) => {
+                if (!allow || saving.current) return;
+                resetForm();
+                setView({ kind: "overview" });
+              });
             }}
             actions={editing ? undefined : <CfgAct onClick={() => startEdit(selectedTemplate)}>edit</CfgAct>}
           />
@@ -241,7 +289,7 @@ export function PromptsFile() {
               form={form}
               onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
               onSave={save}
-              onCancel={cancelForm}
+              onCancel={() => void cancelForm()}
             />
           ) : (
             <>
@@ -266,6 +314,9 @@ export function PromptsFile() {
       ) : (
         <CfgRow><CfgAct onClick={() => setView({ kind: "overview" })}>back to templates</CfgAct></CfgRow>
       )}
+      </fieldset>
+      {busy && <p role="status">Saving prompt templates…</p>}
+      {error && <p role="alert">{error}</p>}
     </ConfigEditor>
   );
 }

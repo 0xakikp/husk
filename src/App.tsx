@@ -16,7 +16,9 @@ import { checkForUpdates } from "./updater";
 import { setAiQueryListener } from "./ai/terminalInput";
 import type { OpenFile } from "./editor/EditorArea";
 import { usePrefs, setPrefs, getPrefs } from "./settings/preferences";
-import { fontStack } from "./styles/fonts";
+import { useWindowChrome } from "./settings/windowChrome";
+import { confirmSettingsNavigation } from "./settings/settingsDrafts";
+import { flushNativeConfig } from "./settings/nativeConfig";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { readFileBase64 } from "./fs";
 import { getBuiltInWallpaper, stepWallpaper, randomWallpaper } from "./settings/wallpapers";
@@ -272,40 +274,7 @@ function App() {
   }, [prefs.background.enabled, prefs.background.path]);
 
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = prefs.theme;
-  }, [prefs.theme]);
-
-  useEffect(() => {
-    document.documentElement.style.setProperty("--font-mono", fontStack(prefs.fontFamily));
-  }, [prefs.fontFamily]);
-
-  // Apply custom CSS from preferences reactively
-  useEffect(() => {
-    const existing = document.getElementById("husk-custom-css");
-    if (!prefs.customCSS) {
-      existing?.remove();
-      return;
-    }
-    if (existing && existing.textContent === prefs.customCSS) return;
-    const style = existing ?? document.createElement("style");
-    style.id = "husk-custom-css";
-    style.textContent = prefs.customCSS;
-    if (!existing) document.head.appendChild(style);
-  }, [prefs.customCSS]);
-
-  useEffect(() => {
-    document.documentElement.style.setProperty("--accent", prefs.accentColor);
-    const r = parseInt(prefs.accentColor.slice(1, 3), 16);
-    const g = parseInt(prefs.accentColor.slice(3, 5), 16);
-    const b = parseInt(prefs.accentColor.slice(5, 7), 16);
-    document.documentElement.style.setProperty("--accent-rgb", `${r} ${g} ${b}`);
-  }, [prefs.accentColor]);
-
-  useEffect(() => {
-    document.documentElement.style.setProperty("--panel-gaps", `${prefs.panelGaps}px`);
-    document.documentElement.style.setProperty("--active-gap-glow", prefs.activePanelGlow ? "color-mix(in srgb, var(--accent) 20%, transparent)" : "transparent");
-  }, [prefs.panelGaps, prefs.panelShadows, prefs.activePanelGlow]);
+  useWindowChrome();
 
   // Auto-check for updates on app start (non-blocking)
   useEffect(() => {
@@ -626,7 +595,7 @@ function App() {
       { id: "browser", label: "Open browser", keywords: "web internet page url chrome", run: () => openBrowser() },
       { id: "open-folder", label: "Open folder…", run: async () => { await pickWorkspaceFolder(); } },
       { id: "welcome", label: "Welcome to Husk", keywords: "getting started onboarding first launch startup help", run: showWelcome },
-      { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
+      { id: "settings", label: "Open settings", run: () => { setSettingsOpen(true); setActiveKind("settings"); } },
       { id: "settings-window", label: "Open settings (new window)", run: () => openSettingsWindow() },
       { id: "runbooks", label: "Open workflows", run: () => { cycleSidebarView("workflows"); } },
       {
@@ -810,9 +779,20 @@ function App() {
     setSettingsOpen(true);
     setActiveKind("settings");
   };
-  const closeSettings = () => {
-    setSettingsOpen(false);
-    setActiveKind((k) => (k === "settings" ? "term" : k));
+  const closingSettings = useRef(false);
+  const closeSettings = async (confirmed = false) => {
+    if (closingSettings.current) return;
+    closingSettings.current = true;
+    try {
+      if (!confirmed && !await confirmSettingsNavigation()) return;
+      await flushNativeConfig();
+      setSettingsOpen(false);
+      setActiveKind((k) => (k === "settings" ? "term" : k));
+    } catch {
+      toast({ title: "Settings stayed open", message: "Your changes could not be saved. Retry from the Settings save status before closing.", variant: "error" });
+    } finally {
+      closingSettings.current = false;
+    }
   };
   const continueWelcomeWorkspace = useCallback(() => {
     dismissWelcome();
@@ -1354,7 +1334,7 @@ function App() {
             onOpenNote={openNote}
             settingsOpen={settingsOpen}
             openPanel={openPanel}
-            closeSettings={closeSettings}
+            closeSettings={() => { void closeSettings(true); }}
             closeGitGraph={closeGitGraph}
             closeIssues={closeIssues}
             closeSftp={closeSftp}

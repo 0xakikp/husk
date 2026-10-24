@@ -10,15 +10,19 @@ use serde_json::Value;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 const CONFIG_VERSION: u64 = 1;
 const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
 const CONFIG_DIR: &str = ".husk";
 const CONFIG_FILE: &str = "config.toml";
 const AGENTS_DIR: &str = "agents";
+// All app windows share this lock. Read/merge/write is one transaction, rather
+// than each webview replacing a stale copy of the whole document.
+static CONFIG_REVISION: Mutex<u64> = Mutex::new(0);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,12 +31,24 @@ pub struct ConfigLoad {
     pub exists: bool,
     pub document: Option<Value>,
     pub error: Option<String>,
+    pub revision: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigSave {
     pub path: String,
+    pub document: Value,
+    pub revision: u64,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigPatch {
+    pub path: Vec<String>,
+    // Absence (or null) deletes an optional key. Arrays are atomic values;
+    // object fields are patched individually, including nested preferences.
+    pub value: Option<Value>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -179,9 +195,12 @@ fn ensure_config_dir(path: &Path) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
         // Agent files can be written before config.toml during first-run
         // migration. Protect the shared root as well as the immediate parent.
-        let root = husk_root()?;
-        fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
-            .map_err(|e| config_error(format!("protect {}: {e}", root.display())))?;
+        if dir.file_name().and_then(|name| name.to_str()) == Some(AGENTS_DIR) {
+            if let Some(root) = dir.parent() {
+                fs::set_permissions(root, fs::Permissions::from_mode(0o700))
+                    .map_err(|e| config_error(format!("protect {}: {e}", root.display())))?;
+            }
+        }
         fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
             .map_err(|e| config_error(format!("protect {}: {e}", dir.display())))?;
     }
@@ -346,6 +365,9 @@ fn parse_agent(path: &Path, contents: &str) -> Result<AgentDocument, String> {
 
 #[tauri::command]
 pub fn config_load(_app: AppHandle) -> Result<ConfigLoad, String> {
+    let revision = CONFIG_REVISION
+        .lock()
+        .map_err(|_| config_error("settings lock is unavailable"))?;
     let path = config_path()?;
     let path_string = path.to_string_lossy().to_string();
     if !path.exists() {
@@ -354,22 +376,11 @@ pub fn config_load(_app: AppHandle) -> Result<ConfigLoad, String> {
             exists: false,
             document: None,
             error: None,
+            revision: *revision,
         });
     }
 
-    let result = (|| -> Result<Value, String> {
-        let meta = fs::metadata(&path)
-            .map_err(|e| config_error(format!("inspect {}: {e}", path.display())))?;
-        if meta.len() > MAX_CONFIG_BYTES {
-            return Err(config_error("config.toml is larger than 4 MiB"));
-        }
-        let text = fs::read_to_string(&path)
-            .map_err(|e| config_error(format!("read {}: {e}", path.display())))?;
-        let document = toml::from_str::<Value>(&text)
-            .map_err(|e| config_error(format!("parse {}: {e}", path.display())))?;
-        validate_document(&document)?;
-        Ok(document)
-    })();
+    let result = read_document(&path);
 
     match result {
         Ok(document) => Ok(ConfigLoad {
@@ -377,23 +388,134 @@ pub fn config_load(_app: AppHandle) -> Result<ConfigLoad, String> {
             exists: true,
             document: Some(document),
             error: None,
+            revision: *revision,
         }),
         Err(error) => Ok(ConfigLoad {
             path: path_string,
             exists: true,
             document: None,
             error: Some(error),
+            revision: *revision,
         }),
     }
 }
 
+fn read_document(path: &Path) -> Result<Value, String> {
+    let meta =
+        fs::metadata(path).map_err(|e| config_error(format!("inspect {}: {e}", path.display())))?;
+    if meta.len() > MAX_CONFIG_BYTES {
+        return Err(config_error("config.toml is larger than 4 MiB"));
+    }
+    if !meta.is_file() {
+        return Err(config_error("config.toml must be a regular file"));
+    }
+    let text = fs::read_to_string(path)
+        .map_err(|e| config_error(format!("read {}: {e}", path.display())))?;
+    let document = toml::from_str::<Value>(&text)
+        .map_err(|e| config_error(format!("parse {}: {e}", path.display())))?;
+    validate_document(&document)?;
+    Ok(document)
+}
+
+/// Migration is create-only. A second window must adopt the winning document,
+/// and a malformed/existing file must never be silently replaced.
+fn initialise_document(path: &Path, document: Value) -> Result<Value, String> {
+    if path.exists() {
+        return read_document(path);
+    }
+    write_document(path, &document)?;
+    Ok(document)
+}
+
 #[tauri::command]
-pub fn config_save(_app: AppHandle, document: Value) -> Result<ConfigSave, String> {
+pub fn config_save(app: AppHandle, document: Value) -> Result<ConfigSave, String> {
+    let mut revision = CONFIG_REVISION
+        .lock()
+        .map_err(|_| config_error("settings lock is unavailable"))?;
     let path = config_path()?;
-    write_document(&path, &document)?;
-    Ok(ConfigSave {
+    let document = initialise_document(&path, document)?;
+    *revision += 1;
+    let saved = ConfigSave {
         path: path.to_string_lossy().to_string(),
-    })
+        document,
+        revision: *revision,
+    };
+    let _ = app.emit("husk:config-changed", &saved);
+    Ok(saved)
+}
+
+fn patch_document(document: &mut Value, patches: &[ConfigPatch]) -> Result<(), String> {
+    if patches.len() > 2048 {
+        return Err(config_error("too many settings edits in one save"));
+    }
+    for patch in patches {
+        if patch.path.len() < 2
+            || patch.path.len() > 8
+            || !matches!(
+                patch.path[0].as_str(),
+                "preferences" | "ai" | "mcp" | "appearance_presets"
+            )
+            || patch.path.iter().any(|key| {
+                key.is_empty()
+                    || key.len() > 256
+                    || matches!(key.as_str(), "__proto__" | "prototype" | "constructor")
+            })
+        {
+            return Err(config_error("invalid settings edit path"));
+        }
+        let mut target = &mut *document;
+        for key in &patch.path[..patch.path.len() - 1] {
+            let object = target
+                .as_object_mut()
+                .ok_or_else(|| config_error("settings edit parent must be a table"))?;
+            target = object
+                .entry(key.clone())
+                .or_insert_with(|| Value::Object(Default::default()));
+            // Preferences tolerate an invalid individual field at load. A
+            // deliberate edit to that field should repair its malformed
+            // container, not make every later save fail forever.
+            if !target.is_object() {
+                *target = Value::Object(Default::default());
+            }
+        }
+        let object = target
+            .as_object_mut()
+            .ok_or_else(|| config_error("settings edit parent must be a table"))?;
+        let key = patch.path.last().expect("validated path");
+        match &patch.value {
+            Some(value) => {
+                object.insert(key.clone(), value.clone());
+            }
+            None => {
+                object.remove(key);
+            }
+        }
+    }
+    validate_document(document)
+}
+
+fn patch_file(path: &Path, patches: &[ConfigPatch]) -> Result<Value, String> {
+    let mut document = read_document(path)?;
+    patch_document(&mut document, patches)?;
+    write_document(path, &document)?;
+    Ok(document)
+}
+
+#[tauri::command]
+pub fn config_patch(app: AppHandle, patches: Vec<ConfigPatch>) -> Result<ConfigSave, String> {
+    let mut revision = CONFIG_REVISION
+        .lock()
+        .map_err(|_| config_error("settings lock is unavailable"))?;
+    let path = config_path()?;
+    let document = patch_file(&path, &patches)?;
+    *revision += 1;
+    let saved = ConfigSave {
+        path: path.to_string_lossy().to_string(),
+        document,
+        revision: *revision,
+    };
+    let _ = app.emit("husk:config-changed", &saved);
+    Ok(saved)
 }
 
 #[tauri::command]
@@ -466,6 +588,175 @@ pub fn agent_delete(_app: AppHandle, id: String) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "husk-config-test-{}-{}",
+                std::process::id(),
+                NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+        fn path(&self) -> PathBuf {
+            self.0.join(CONFIG_FILE)
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn example_document() -> Value {
+        json!({ "config_version": 1, "preferences": { "terminalFontSize": 13, "background": { "opacity": 100, "path": "old.png" } }, "ai": { "model": "old" }, "mcp": {}, "appearance_presets": {} })
+    }
+    fn edit(path: &[&str], value: Value) -> ConfigPatch {
+        ConfigPatch {
+            path: path.iter().map(|key| (*key).to_owned()).collect(),
+            value: Some(value),
+        }
+    }
+
+    #[test]
+    fn serialized_leaf_edits_preserve_newer_sections_and_nested_sibling_fields() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        write_document(&path, &example_document()).unwrap();
+        patch_file(
+            &path,
+            &[
+                edit(&["preferences", "terminalFontSize"], json!(18)),
+                edit(&["preferences", "background", "opacity"], json!(60)),
+            ],
+        )
+        .unwrap();
+        let result = patch_file(
+            &path,
+            &[
+                edit(&["ai", "model"], json!("new")),
+                edit(&["preferences", "background", "path"], json!("new.png")),
+            ],
+        )
+        .unwrap();
+        assert_eq!(result["preferences"]["terminalFontSize"], 18);
+        assert_eq!(
+            result["preferences"]["background"],
+            json!({"opacity": 60, "path": "new.png"})
+        );
+        assert_eq!(result["ai"]["model"], "new");
+        assert_eq!(read_document(&path).unwrap(), result);
+        assert_eq!(
+            read_document(&backup_path(&path)).unwrap()["ai"]["model"],
+            "old"
+        );
+    }
+
+    #[test]
+    fn migration_is_create_only_and_adopts_an_existing_document() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        let first = initialise_document(&path, example_document()).unwrap();
+        let mut stale = example_document();
+        stale["preferences"]["terminalFontSize"] = json!(99);
+        assert_eq!(initialise_document(&path, stale).unwrap(), first);
+        assert_eq!(read_document(&path).unwrap(), first);
+    }
+
+    #[test]
+    fn malformed_and_future_config_files_are_never_replaced_by_patches_or_migration() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        for source in ["this is not TOML", "config_version = 999\n"] {
+            fs::write(&path, source).unwrap();
+            assert!(patch_file(&path, &[edit(&["ai", "model"], json!("new"))]).is_err());
+            assert!(initialise_document(&path, example_document()).is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap(), source);
+            assert!(!backup_path(&path).exists());
+        }
+    }
+
+    #[test]
+    fn invalid_or_secret_patch_is_atomic_and_leaves_the_file_untouched() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        write_document(&path, &example_document()).unwrap();
+        let original = fs::read(&path).unwrap();
+        assert!(patch_file(
+            &path,
+            &[
+                edit(&["preferences", "terminalFontSize"], json!(18)),
+                edit(
+                    &["mcp", "servers"],
+                    json!([{ "env": { "API_TOKEN": "unsafe-secret" } }])
+                ),
+            ]
+        )
+        .is_err());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        for invalid in [
+            vec!["config_version"],
+            vec!["unknown", "field"],
+            vec!["preferences", "__proto__", "x"],
+            vec!["preferences", ""],
+        ] {
+            assert!(patch_file(&path, &[edit(&invalid, json!(1))]).is_err());
+            assert_eq!(fs::read(&path).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn optional_keys_can_be_deleted_without_removing_unrelated_data() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        write_document(&path, &example_document()).unwrap();
+        let result = patch_file(
+            &path,
+            &[ConfigPatch {
+                path: vec!["preferences".into(), "background".into(), "path".into()],
+                value: None,
+            }],
+        )
+        .unwrap();
+        assert!(result["preferences"]["background"].get("path").is_none());
+        assert_eq!(result["preferences"]["background"]["opacity"], 100);
+    }
+
+    #[test]
+    fn editing_a_nested_field_repairs_only_its_malformed_container() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        let mut document = example_document();
+        document["preferences"]["background"] = json!("invalid legacy field");
+        write_document(&path, &document).unwrap();
+        let result = patch_file(
+            &path,
+            &[edit(&["preferences", "background", "opacity"], json!(65))],
+        )
+        .unwrap();
+        assert_eq!(
+            result["preferences"]["background"],
+            json!({ "opacity": 65 })
+        );
+        assert_eq!(result["preferences"]["terminalFontSize"], 13);
+        assert_eq!(result["ai"], document["ai"]);
+    }
+
+    #[test]
+    fn identical_writes_do_not_rotate_backup_and_large_configs_are_rejected() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        write_document(&path, &example_document()).unwrap();
+        write_document(&path, &example_document()).unwrap();
+        assert!(!backup_path(&path).exists());
+        let mut oversized = example_document();
+        oversized["preferences"]["large"] = json!("x".repeat(MAX_CONFIG_BYTES as usize));
+        assert!(write_document(&path, &oversized).is_err());
+        assert_eq!(read_document(&path).unwrap(), example_document());
+    }
 
     fn example_agent() -> AgentDocument {
         AgentDocument {

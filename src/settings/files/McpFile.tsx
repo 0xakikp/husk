@@ -24,6 +24,7 @@ import {
   CfgText,
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
+import { formatMcpArguments, parseMcpArguments } from "../mcpArguments";
 
 const GITHUB_TOKEN_ACCOUNT = "mcp.github.personal-access-token";
 
@@ -496,7 +497,7 @@ function McpServerInspector({
               <small>Arguments, environment, working directory</small>
             </summary>
             <div className="mcp-advanced-content">
-              <McpReadOnlyValue label="Arguments" value={server.args.length ? server.args.join(" ") : "No arguments"} />
+              <McpReadOnlyValue label="Arguments (JSON)" value={formatMcpArguments(server.args)} />
               <McpReadOnlyValue label="Environment" value={Object.keys(server.env).length ? Object.entries(server.env).map(([key, value]) => `${key}=${value}`).join("\n") : "No environment variables"} />
               <McpReadOnlyValue label="Working directory" value={server.cwd ?? "Use the current workspace"} />
             </div>
@@ -706,43 +707,50 @@ function GitHubIntegration({
 
 /** The editor keeps primary fields visible and folds technical launch details
  * away until needed. Its validation and saved payload remain unchanged. */
-function McpServerForm({
+export function McpServerForm({
   editing,
   onCancel,
   onSave,
 }: {
   editing: McpServerConfig | null;
   onCancel: () => void;
-  onSave: (config: Omit<McpServerConfig, "id"> & { id?: string }) => void;
+  onSave: (config: Omit<McpServerConfig, "id"> & { id?: string }) => void | Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [command, setCommand] = useState("");
-  const [args, setArgs] = useState("");
+  const [args, setArgs] = useState("[]");
   const [env, setEnv] = useState("");
   const [cwd, setCwd] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editing) {
       setName(editing.name);
       setCommand(editing.command);
-      setArgs(editing.args.join(" "));
+      setArgs(formatMcpArguments(editing.args));
       setEnv(Object.entries(editing.env).map(([k, v]) => `${k}=${v}`).join("\n"));
       setCwd(editing.cwd ?? "");
       setEnabled(editing.enabled);
     } else {
       setName("");
       setCommand("");
-      setArgs("");
+      setArgs("[]");
       setEnv("");
       setCwd("");
       setEnabled(true);
     }
+    setError(null);
   }, [editing]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !command.trim()) return;
+    if (saving || !name.trim() || !command.trim()) return;
+    setError(null);
+    let parsedArgs: string[];
+    try { parsedArgs = parseMcpArguments(args); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Invalid arguments."); return; }
     const envMap: Record<string, string> = {};
     for (const line of env.split("\n")) {
       const trimmed = line.trim();
@@ -750,32 +758,37 @@ function McpServerForm({
       const idx = trimmed.indexOf("=");
       if (idx > 0) envMap[trimmed.slice(0, idx)] = trimmed.slice(idx + 1);
     }
-    onSave({
+    setSaving(true);
+    try { await onSave({
       id: editing?.id,
       name: name.trim(),
       command: command.trim(),
-      args: args.trim().split(/\s+/).filter((s) => s.length > 0),
+      args: parsedArgs,
       env: envMap,
       secretEnv: editing?.secretEnv,
       integration: editing?.integration,
       readOnly: editing?.readOnly,
       cwd: cwd.trim() || undefined,
       enabled,
-    });
+    }); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save this server. Try again."); }
+    finally { setSaving(false); }
   };
 
   return (
     <section className="mcp-inline-form" aria-label={editing ? "Edit MCP server" : "Add MCP server"}>
       <CfgSection name={editing ? "edit_connection" : "new_connection"} />
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={(event) => void handleSubmit(event)}>
+        <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <legend className="sr-only">MCP server connection</legend>
         <CfgRow name="name" comment="A short label for this server in the integrations list.">
-          <Input className="mcp-inline-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Filesystem" required />
+          <Input aria-label="Server name" className="mcp-inline-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Filesystem" required />
         </CfgRow>
         <CfgRow name="command" comment="The executable that starts the server, for example npx or uvx.">
-          <Input className="mcp-inline-input" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="e.g. npx" required />
+          <Input aria-label="Server executable" className="mcp-inline-input" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="e.g. npx" required />
         </CfgRow>
         <CfgRow name="enabled" comment="Load this server's tools into the AI as soon as it is saved.">
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
+          <Switch aria-label="Enable MCP server" checked={enabled} onCheckedChange={setEnabled} />
         </CfgRow>
         <details className="mcp-advanced">
           <summary>
@@ -783,14 +796,14 @@ function McpServerForm({
             <small>Arguments, environment, working directory</small>
           </summary>
           <div className="mcp-advanced-content">
-            <CfgRow name="arguments" comment="Arguments passed to the command, separated by spaces.">
-              <Input className="mcp-inline-input" value={args} onChange={(e) => setArgs(e.target.value)} placeholder="e.g. -y @modelcontextprotocol/server-filesystem /path" />
+            <CfgRow name="arguments" comment="JSON array of strings. Each item is one argument; spaces, quotes, and empty arguments are preserved exactly.">
+              <textarea aria-label="Server arguments (JSON array)" className="mcp-inline-textarea" value={args} onChange={(e) => setArgs(e.target.value)} placeholder={'["-y", "@modelcontextprotocol/server-filesystem", "/My Project"]'} rows={5} spellCheck={false} />
             </CfgRow>
             <CfgRow name="environment" comment="Optional KEY=value entries, one per line. Token, secret, password, and API-key values are moved to your OS keychain automatically.">
-              <textarea className="mcp-inline-textarea" value={env} onChange={(e) => setEnv(e.target.value)} placeholder={`LOG_LEVEL=debug\nAPI_TOKEN=stored securely`} rows={4} />
+              <textarea aria-label="Server environment variables" className="mcp-inline-textarea" value={env} onChange={(e) => setEnv(e.target.value)} placeholder={`LOG_LEVEL=debug\nAPI_TOKEN=stored securely`} rows={4} />
             </CfgRow>
             <CfgRow name="workingDirectory" comment="Optional directory where Husk starts the server.">
-              <Input className="mcp-inline-input" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/dir" />
+              <Input aria-label="Server working directory" className="mcp-inline-input" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/dir" />
             </CfgRow>
           </div>
         </details>
@@ -798,6 +811,9 @@ function McpServerForm({
           <CfgAct onClick={onCancel}>cancel</CfgAct>
           <button type="submit" className="cfg-act">[ {editing ? "save changes" : "add server"} ]</button>
         </CfgRow>
+        </fieldset>
+        {error && <p role="alert">{error}</p>}
+        {saving && <p role="status">Saving server…</p>}
       </form>
     </section>
   );

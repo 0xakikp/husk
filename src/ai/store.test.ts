@@ -10,7 +10,7 @@ vi.mock("../secrets", () => ({
   secretsSet: vi.fn(async (id: string, value: string) => { fixtures.keychain.set(id, value); }),
   secretsDelete: vi.fn(async (id: string) => { fixtures.keychain.delete(id); }),
 }));
-vi.mock("../settings/nativeConfig", () => ({ persistNativeConfigSection: vi.fn() }));
+vi.mock("../settings/nativeConfig", () => ({ persistNativeConfigSection: vi.fn(), subscribeNativeConfigDocument: () => () => {} }));
 vi.mock("@tauri-apps/api/event", () => ({
   emit: vi.fn(async () => {}),
   listen: vi.fn(async (name: string, listener: (event: { payload: Record<string, unknown> }) => void) => { fixtures.listeners.set(name, listener); return () => fixtures.listeners.delete(name); }),
@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { secretsGetAll, secretsSet } from "../secrets";
 import { emit } from "@tauri-apps/api/event";
 import { PROVIDERS } from "./providers";
+import { persistNativeConfigSection } from "../settings/nativeConfig";
 
 const KEY = "huskv2.ai.config";
 
@@ -68,6 +69,14 @@ describe("AI key migration", () => {
 });
 
 describe("provider configuration", () => {
+  it("does not echo another window's AI configuration back into durable settings", async () => {
+    const store = await import("./store");
+    await store.initialiseAiSync();
+    vi.mocked(persistNativeConfigSection).mockClear();
+    fixtures.listeners.get("husk-ai-config-changed")?.({ payload: { source: "other-window", config: { providerId: "local", model: "fixture-model", baseURL: "http://localhost:1234/v1" } } });
+    expect(store.loadConfig()).toMatchObject({ providerId: "local", model: "fixture-model" });
+    expect(persistNativeConfigSection).not.toHaveBeenCalled();
+  });
   it.each([["gpt-5.4-mini", "gpt-5.6-luna"], ["gpt-5.4", "gpt-5.6-terra"]])("migrates saved retired Codex selection %s before a quick action can read it", async (model, replacement) => {
     localStorage.setItem(KEY, JSON.stringify({ providerId: "codex", model, baseURL: "" }));
     const store = await import("./store");

@@ -69,7 +69,7 @@ export function GeneralFile() {
       <CfgRow name="vimMode" comment="Vim keybindings in the code editor.">
         <CfgBool value={p.vimMode} onChange={(v) => setPrefs({ vimMode: v })} />
       </CfgRow>
-      <CfgRow name="cursorBlink" comment="Blink the editor caret.">
+      <CfgRow name="cursorBlink" searchId="editor.cursorBlink" comment="Blink the editor caret.">
         <CfgBool value={p.editorCursorBlink} onChange={(v) => setPrefs({ editorCursorBlink: v })} />
       </CfgRow>
       <CfgRow name="minimap" comment="Zoomed-out code overview on the right.">
@@ -78,7 +78,7 @@ export function GeneralFile() {
       <CfgRow name="stickyScroll" comment="Pin the current function/class at the top while scrolling.">
         <CfgBool value={p.editorStickyScroll} onChange={(v) => setPrefs({ editorStickyScroll: v })} />
       </CfgRow>
-      <CfgRow name="fontSize" comment="Editor text size, in pixels.">
+      <CfgRow name="fontSize" searchId="editor.fontSize" comment="Editor text size, in pixels.">
         <CfgEnum<number>
           value={p.editorFontSize}
           onChange={(editorFontSize) => setPrefs({ editorFontSize })}
@@ -117,7 +117,7 @@ export function GeneralFile() {
       <details className="settings-advanced-group">
         <summary><span>Advanced editor</span><small>Caret, highlighting, whitespace, and formatting</small></summary>
         <div className="settings-advanced-group-content">
-          <CfgRow name="cursorStyle" comment="Shape of the editor caret.">
+          <CfgRow name="cursorStyle" searchId="editor.cursorStyle" comment="Shape of the editor caret.">
             <CfgEnum<EditorCursorStyle>
               value={p.editorCursorStyle}
               onChange={(editorCursorStyle) => setPrefs({ editorCursorStyle })}
@@ -205,10 +205,10 @@ export function GeneralFile() {
       <CfgRow name="welcomeBanner" comment="Show a small welcome using your profile name (or HUSK) in fresh local terminals. Stays visible until you clear the terminal or output fills the screen; restored sessions and SSH logins are excluded. No commands or shell probes are run.">
         <CfgBool value={p.terminalWelcomeEnabled} onChange={(terminalWelcomeEnabled) => setPrefs({ terminalWelcomeEnabled })} />
       </CfgRow>
-      <CfgRow name="cursorBlink" comment="Blink the terminal cursor.">
+      <CfgRow name="cursorBlink" searchId="terminal.cursorBlink" comment="Blink the terminal cursor.">
         <CfgBool value={p.cursorBlink} onChange={(v) => setPrefs({ cursorBlink: v })} />
       </CfgRow>
-      <CfgRow name="fontSize" comment="Terminal text size, in pixels.">
+      <CfgRow name="fontSize" searchId="terminal.fontSize" comment="Terminal text size, in pixels.">
         <CfgEnum<number>
           value={p.terminalFontSize}
           onChange={(terminalFontSize) => setPrefs({ terminalFontSize })}
@@ -259,7 +259,7 @@ export function GeneralFile() {
               }))}
             />
           </CfgRow>
-          <CfgRow name="cursorStyle" comment="Shape of the terminal cursor.">
+          <CfgRow name="cursorStyle" searchId="terminal.cursorStyle" comment="Shape of the terminal cursor.">
             <CfgEnum<TerminalCursorStyle>
               value={p.terminalCursorStyle}
               onChange={(terminalCursorStyle) => setPrefs({ terminalCursorStyle })}
@@ -272,6 +272,7 @@ export function GeneralFile() {
           </CfgRow>
         </div>
       </details>
+      <CfgSection name="notes" />
       <CfgRow name="notesDirectory" comment="Leave empty to use ~/.husk/notes/">
         <CfgText
           value={p.notesDirectory}
@@ -281,11 +282,8 @@ export function GeneralFile() {
       </CfgRow>
       <CfgBlank />
       <CfgComment>
-        {config.ready && config.path
-          ? `saved automatically to ${config.path}`
-          : config.error
-            ? `settings are using the previous local copy: ${config.error}`
-            : "preparing ~/.husk/config.toml…"}
+        {config.error ? `Changes have not been saved: ${config.error}` : config.path
+          ? `Preferences file: ${config.path}` : "Preparing ~/.husk/config.toml…"}
       </CfgComment>
     </ConfigEditor>
   );

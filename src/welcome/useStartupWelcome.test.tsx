@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getPrefs, hydratePrefsFromNative, setPrefs, usePrefs } from "../settings/preferences";
 import { useStartupWelcome } from "./useStartupWelcome";
 
-vi.mock("../settings/nativeConfig", () => ({ persistNativeConfigSection: vi.fn() }));
+vi.mock("../settings/nativeConfig", () => ({ persistNativeConfigSection: vi.fn(), subscribeNativeConfigDocument: vi.fn(() => () => {}) }));
 
 const originalPrefs = getPrefs();
 let root: Root, host: HTMLDivElement, welcome: ReturnType<typeof useStartupWelcome>;

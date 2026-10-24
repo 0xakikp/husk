@@ -64,6 +64,20 @@ export async function saveAiAgentsToFiles(agents: AiAgent[]): Promise<void> {
   }
 }
 
+/** Settings edits affect only changed agents. A stale window must never delete
+ * or rewrite unrelated files created or edited elsewhere. */
+export async function saveAiAgentChanges(before: AiAgent[], after: AiAgent[]): Promise<void> {
+  const previous = new Map(agentOverrides(before).map(agent => [agent.id, agent]));
+  const desired = new Map(agentOverrides(after).map(agent => [agent.id, agent]));
+  for (const [id, agent] of desired) {
+    const old = previous.get(id);
+    if (!old || !sameAgent(old, agent)) await invoke("agent_write", { agent });
+  }
+  for (const id of previous.keys()) {
+    if (!desired.has(id)) await invoke("agent_delete", { id });
+  }
+}
+
 /** First-run migration from the old preferences blob. It is intentionally the
  * same reconciliation path used by Settings, so a custom agent cannot be
  * dropped due to a one-off migration implementation. */

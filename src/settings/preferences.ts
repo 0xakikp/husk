@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { TerminalThemePreset } from "../styles/terminalTheme";
 import type { FontFamilyId } from "../styles/fonts";
-import { persistNativeConfigSection } from "./nativeConfig";
+import { persistNativeConfigSection, subscribeNativeConfigDocument } from "./nativeConfig";
 
 export type WordWrap = "off" | "on" | "bounded";
 export type EditorCursorStyle = "line" | "block" | "underline";
@@ -315,54 +315,127 @@ const DEFAULT: Prefs = {
 };
 export const PREFS_STORAGE_KEY = "huskv2.prefs.v2";
 
-function mergePrefs(saved: Partial<Prefs> & { aiTtsVoice?: unknown }): Prefs {
-  // TTS was removed from Husk. Ignore its old persisted key rather than
-  // carrying a dead setting forward into localStorage or config.toml.
-  const { aiTtsVoice: _legacyTtsVoice, ...current } = saved;
-  const merged = { ...DEFAULT, ...current };
-  merged.showWelcomeOnStartup = typeof current.showWelcomeOnStartup === "boolean"
-    ? current.showWelcomeOnStartup
-    : DEFAULT.showWelcomeOnStartup;
-  merged.terminalWelcomeEnabled = typeof current.terminalWelcomeEnabled === "boolean"
-    ? current.terminalWelcomeEnabled
-    : DEFAULT.terminalWelcomeEnabled;
-  /* Before this mode existed, 11px was Husk's shipped AI size. Treat that
-     untouched legacy value as the new readable follow-terminal default, while
-     preserving every value a user had deliberately changed as Custom. */
-  if (current.aiFontSizeMode !== "terminal" && current.aiFontSizeMode !== "custom") {
-    merged.aiFontSizeMode = typeof current.aiMiniFontSize === "number" && current.aiMiniFontSize !== 11
-      ? "custom"
-      : "terminal";
-  }
-  /* Shallow merge alone would let a stored nested object (e.g. background)
-     permanently hide keys added to the defaults later — deep-merge those. */
-  merged.background = { ...DEFAULT.background, ...(current.background ?? {}) };
-  merged.workflowSuggestionDismissals = Array.isArray(current.workflowSuggestionDismissals)
-    ? current.workflowSuggestionDismissals.filter((value): value is string => typeof value === "string").slice(-100)
-    : [];
+const PREF_ENUMS: Partial<Record<keyof Prefs, readonly unknown[]>> = {
+  theme: ["dark", "light"], fontFamily: ["jetbrains", "meslo", "fira", "source", "cascadia", "plex", "iosevka", "hack", "glasstty", "system"],
+  terminalCursorStyle: ["block", "bar", "underline"], terminalTheme: ["husk", "hacker", "ocean", "rose"],
+  editorWordWrap: ["off", "on", "bounded"], editorCursorStyle: ["line", "block", "underline"],
+  editorLineNumbers: ["on", "off", "relative"], editorWhitespace: ["none", "boundary", "all"],
+  editorLineHighlight: ["none", "line", "gutter", "all"], aiResponseStyle: ["concise", "balanced", "detailed"],
+  aiFontSizeMode: ["terminal", "custom"], aiContextBudgetKb: [8, 16, 32, 64],
+  panelGapStyle: ["none", "dots", "grid", "cross", "gradient"],
+  aiComposerBgStyle: ["default", "gradient", "solid"], aiPanelDock: ["left", "right"],
+  aiTabColor: ["border-l-red-500", "border-l-blue-500", "border-l-emerald-500", "border-l-violet-500", "border-l-amber-500", "border-l-cyan-500", "border-l-pink-500", "border-l-slate-500"],
+};
+const PREF_RANGES: Partial<Record<keyof Prefs, readonly [number, number, boolean?]>> = {
+  zoomLevel: [0.5, 3], terminalFontSize: [8, 48, true], terminalScrollback: [0, 100_000, true],
+  editorFontSize: [8, 48, true], editorTabSize: [1, 8, true], inspectorHeight: [80, 2000, true],
+  panelGaps: [0, 12, true], editorWallpaperOpacity: [0, 50], aiMiniOpacity: [10, 100],
+  aiMiniFontSize: [9, 18, true], aiMiniBgBlur: [0, 20], aiMiniBgDim: [0, 90],
+  aiSidebarWidth: [160, 380, true], aiComposerSideWidth: [280, 620, true],
+};
+const PREF_STRING_LIMITS: Partial<Record<keyof Prefs, number>> = {
+  userName: 80, activeAgentId: 80, pluginsDir: 8192, notesDirectory: 8192,
+  aiGlobalInstructions: 32_000, aiPersonalMemory: 32_000, customCSS: 128_000,
+};
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+function finiteRange(value: unknown, min: number, max: number, integer = false): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max && (!integer || Number.isInteger(value));
+}
+function text(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.length <= max && !value.includes("\0");
+}
+function color(value: unknown): value is string { return typeof value === "string" && /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(value); }
+function validatedAgents(value: unknown): AiAgent[] {
+  if (!Array.isArray(value)) return DEFAULT.aiAgents.map((agent) => ({ ...agent }));
+  const ids = new Set<string>();
+  return value.slice(0, 256).flatMap((candidate) => {
+    const agent = record(candidate);
+    if (!text(agent.id, 80) || !/^[a-zA-Z0-9_-]+$/.test(agent.id) || ids.has(agent.id)
+      || !text(agent.name, 80) || !agent.name.trim() || !text(agent.icon, 64)
+      || !text(agent.systemPrompt, 32_000) || !agent.systemPrompt.trim()) return [];
+    ids.add(agent.id);
+    return [{
+      id: agent.id, name: agent.name, icon: agent.icon, systemPrompt: agent.systemPrompt,
+      ...(text(agent.model, 256) ? { model: agent.model } : {}),
+      ...(text(agent.color, 64) ? { color: agent.color } : {}),
+      ...(typeof agent.builtIn === "boolean" ? { builtIn: agent.builtIn } : {}),
+    }];
+  });
+}
+function validatedTemplates(value: unknown): PromptTemplate[] {
+  if (!Array.isArray(value)) return DEFAULT.aiPromptTemplates.map((template) => ({ ...template }));
+  const ids = new Set<string>();
+  return value.slice(0, 256).flatMap((candidate) => {
+    const template = record(candidate);
+    if (!text(template.id, 80) || !template.id || ids.has(template.id)
+      || !text(template.label, 160) || !template.label.trim() || !text(template.icon, 64)
+      || !text(template.prompt, 32_000) || !template.prompt.trim()) return [];
+    ids.add(template.id);
+    return [{ id: template.id, label: template.label, icon: template.icon, prompt: template.prompt }];
+  });
+}
 
-  /* `dim` was a second black overlay above the wallpaper, while `opacity`
-     faded the wallpaper toward the same black underneath it — so the two
-     multiplied out to one value, image x opacity x (1 - dim). Only `opacity`
-     remains; fold any stored dim into it so an existing wallpaper keeps the
-     brightness it had rather than jumping. */
-  const legacyDim = (current.background as { dim?: number } | undefined)?.dim;
-  if (typeof legacyDim === "number" && legacyDim > 0) {
-    merged.background = {
-      ...merged.background,
-      opacity: Math.max(10, Math.round((merged.background.opacity * (100 - legacyDim)) / 100)),
-    };
-    delete (merged.background as { dim?: number }).dim;
+/** Recover invalid fields independently, retaining the user's other choices.
+ * Explicit allowlisting also removes retired keys and prototype-shaped input. */
+export function validatePreferences(value: unknown): Prefs {
+  const current = record(value);
+  const merged: Prefs = { ...DEFAULT, background: { ...DEFAULT.background } };
+  for (const key of Object.keys(DEFAULT) as (keyof Prefs)[]) {
+    const candidate = current[key];
+    const fallback = DEFAULT[key];
+    const options = PREF_ENUMS[key];
+    const range = PREF_RANGES[key];
+    let valid = false;
+    if (options) valid = options.includes(candidate);
+    else if (range) valid = finiteRange(candidate, ...range);
+    else if (typeof fallback === "boolean") valid = typeof candidate === "boolean";
+    else if (["accentColor", "aiComposerBgColor"].includes(key)) {
+      if (color(candidate)) {
+        (merged as unknown as Record<string, unknown>)[key] = candidate.length === 4
+          ? `#${candidate.slice(1).split("").map(char => char + char).join("")}` : candidate;
+      }
+      continue;
+    }
+    else if (typeof fallback === "string" || key === "customCSS") valid = text(candidate, PREF_STRING_LIMITS[key] ?? 8192);
+    if (valid) (merged as unknown as Record<string, unknown>)[key] = candidate;
+  }
+  if (text(current.customCSS, 128_000)) merged.customCSS = current.customCSS;
+  const background = record(current.background);
+  for (const key of ["enabled", "path", "dir", "opacity", "blur", "fit"] as const) {
+    const value = background[key];
+    const valid = key === "enabled" ? typeof value === "boolean"
+      : key === "path" || key === "dir" ? text(value, 8192)
+      : key === "opacity" ? finiteRange(value, 10, 100)
+      : key === "blur" ? finiteRange(value, 0, 20)
+      : value === "cover" || value === "contain";
+    if (valid) (merged.background as unknown as Record<string, unknown>)[key] = value;
+  }
+  // Preserve the old wallpaper brightness migration, but not invalid dim input.
+  if (finiteRange(background.dim, 0, 100) && background.dim > 0) {
+    merged.background.opacity = Math.max(10, Math.round(merged.background.opacity * (100 - background.dim) / 100));
+  }
+  if (current.aiFontSizeMode !== "terminal" && current.aiFontSizeMode !== "custom") {
+    merged.aiFontSizeMode = finiteRange(current.aiMiniFontSize, 9, 18, true) && current.aiMiniFontSize !== 11 ? "custom" : "terminal";
+  }
+  merged.workflowSuggestionDismissals = Array.isArray(current.workflowSuggestionDismissals)
+    ? current.workflowSuggestionDismissals.filter((value): value is string => text(value, 256)).slice(-100) : [];
+  merged.aiAgents = validatedAgents(current.aiAgents);
+  merged.aiPromptTemplates = validatedTemplates(current.aiPromptTemplates);
+  if (!merged.aiAgents.some((agent) => agent.id === merged.activeAgentId)) {
+    merged.activeAgentId = merged.aiAgents.find((agent) => agent.id === DEFAULT.activeAgentId)?.id ?? merged.aiAgents[0]?.id ?? DEFAULT.activeAgentId;
   }
   return merged;
 }
+const mergePrefs = validatePreferences;
 
 function load(): Prefs {
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_STORAGE_KEY) || "{}") as Partial<Prefs>;
     return mergePrefs(saved);
   } catch {
-    return DEFAULT;
+    return validatePreferences({});
   }
 }
 
@@ -392,7 +465,8 @@ export function getPrefs(): Prefs {
 }
 
 export function setPrefs(patch: Partial<Prefs>): void {
-  state = { ...state, ...patch };
+  const previous = preferencesForNativeConfig(state);
+  state = validatePreferences({ ...state, ...patch });
   try {
     localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -402,7 +476,7 @@ export function setPrefs(patch: Partial<Prefs>): void {
   // in localStorage still keeps their runtime state synchronous, but TOML never
   // absorbs long prompts or duplicates the agent source of truth.
   const { aiAgents: _agents, ...preferences } = state;
-  persistNativeConfigSection("preferences", preferences);
+  persistNativeConfigSection("preferences", preferences, previous);
   for (const fn of subscribers) fn();
 }
 
@@ -429,6 +503,16 @@ export function preferencesForNativeConfig(prefs = state): Omit<Prefs, "aiAgents
 export function builtInAiAgents(): AiAgent[] {
   return DEFAULT.aiAgents.map((agent) => ({ ...agent }));
 }
+
+subscribeNativeConfigDocument((document) => {
+  const next = validatePreferences({ ...document.preferences, aiAgents: state.aiAgents });
+  if (JSON.stringify(next) === JSON.stringify(state)) return;
+  // Do not write the compatibility mirror here: every native window receives
+  // the same event and its own pending edits may differ. Local user edits and
+  // startup hydration maintain the browser fallback without event echo loops.
+  state = next;
+  for (const subscriber of subscribers) subscriber();
+});
 
 export function subscribePrefs(fn: () => void): () => void {
   subscribers.add(fn);

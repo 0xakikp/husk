@@ -304,7 +304,6 @@ export function initialiseAiSync(): Promise<void> {
       if (JSON.stringify(next) === JSON.stringify(loadConfig())) return;
       configCache = next;
       persistBrowserConfig(next);
-      persistNativeConfigSection("ai", next);
       for (const fn of configSubs) fn();
     };
     window.addEventListener("storage", (event) => {
