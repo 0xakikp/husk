@@ -19,10 +19,12 @@ vi.mock("../settings/preferences", () => ({ usePrefs: () => ({ aiEnabled: fixtur
 vi.mock("../ai/screenAssist", () => ({ requestScreenAssist: vi.fn() }));
 import { requestScreenAssist } from "../ai/screenAssist";
 import { TerminalLogs } from "./TerminalLogs";
+import { LOG_BATCH_MS, LOG_LIMITS } from "./logBuffer";
 
 let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
+  vi.useFakeTimers();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   fixture.enabled = true;
   fixture.buffer = "ready\n\nerror: connection refused\n";
@@ -31,6 +33,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(async () => root.unmount()); container.remove(); window.getSelection()?.removeAllRanges();
+  vi.useRealTimers();
 });
 async function render(leafId = 1) {
   await act(async () => root.render(createElement(TerminalLogs, { leafId, onClose: vi.fn() })));
@@ -39,8 +42,36 @@ async function click(label: string) {
   const button = [...container.querySelectorAll("button")].find((element) => element.textContent === label || element.getAttribute("aria-label") === label);
   expect(button, label).toBeDefined(); await act(async () => button!.click());
 }
-async function output(text: string) { await act(async () => fixture.output?.(text)); }
+async function output(text: string) { await act(async () => { fixture.output?.(text); await vi.advanceTimersByTimeAsync(LOG_BATCH_MS); }); }
 function evidence() { return container.querySelector('[aria-label="Captured log evidence"]'); }
+
+it("batches bursts, bounds live rows and cancels pending updates on terminal switch", async () => {
+  await render();
+  const oldListener = fixture.output!;
+  await act(async () => {
+    for (let i = 0; i < 3000; i++) fixture.output?.(`line ${i}\n`);
+  });
+  expect(container.querySelectorAll("[data-log-id]")).toHaveLength(2);
+  await act(async () => { await vi.advanceTimersByTimeAsync(LOG_BATCH_MS); });
+  expect(container.querySelectorAll("[data-log-id]")).toHaveLength(LOG_LIMITS.lines);
+  expect(container.textContent).toContain("limited preview");
+  await act(async () => fixture.output?.("old terminal pending\n"));
+  fixture.buffer = "new terminal\n";
+  await render(2);
+  await act(async () => { oldListener("stale\n"); await vi.advanceTimersByTimeAsync(LOG_BATCH_MS); });
+  expect(container.textContent).toContain("new terminal");
+  expect(container.textContent).not.toContain("old terminal pending");
+  expect(container.textContent).not.toContain("stale");
+});
+
+it("bounds a long line and preserves the frozen preview when paused", async () => {
+  await render(); await output("x".repeat(100_000)); await output("\n");
+  expect(container.textContent).toContain("[line truncated]");
+  await click("pause"); await output("ignored\n");
+  expect(container.textContent).not.toContain("ignored");
+  await click("resume"); await output("resumed\n");
+  expect(container.textContent).toContain("resumed");
+});
 
 it("reviews a frozen filtered snapshot and never sends newly arriving output", async () => {
   vi.mocked(requestScreenAssist).mockResolvedValue('{"findings":[{"summary":"The connection was refused.","lineIds":[3]}]}');

@@ -591,6 +591,10 @@
 .about-primary-action:focus-visible, .about-text-action:focus-visible, .about-footer button:focus-visible, .about-trust-disclosure summary:focus-visible, .about-guide-disclosure summary:focus-visible, .about-guide-link:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
 .about-profile-divider { height: 1px; margin: 0 25px; background: color-mix(in srgb, var(--border) 80%, transparent); }
 .about-profile-section { padding: 16px 25px 18px; }
+.about-diagnostics { display: grid; justify-items: start; gap: 6px; margin-top: 6px; }
+.about-diagnostics small { max-width: 650px; color: var(--muted-foreground); font-size: 9.5px; line-height: 1.5; }
+.about-diagnostics [role="alert"] { color: var(--destructive); }
+.about-diagnostics button:disabled { opacity: .6; cursor: wait; }
 
 .about-capability-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 14px; }
 .about-capability-item { min-width: 0; padding: 0 14px; }

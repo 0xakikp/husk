@@ -29,6 +29,41 @@ const MAX_OUT: usize = 256 * 1024;
 const MAX_TIMEOUT_SECS: u64 = 300;
 const PIPE_POLL: Duration = Duration::from_millis(10);
 const FINAL_DRAIN: Duration = Duration::from_millis(100);
+const COMMAND_QUEUE_TIMEOUT: Duration = Duration::from_secs(2);
+static COMMAND_WORKERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(8);
+
+/// Blocking filesystem/process work must never run on the native IPC thread.
+/// Waiting for capacity is asynchronous and bounded; a rejected request is not
+/// left in the worker pool to execute later. The permit stays with the worker
+/// even if its caller goes away while a process is still being cleaned up.
+pub(crate) async fn run_blocking_command<T, F>(work: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    run_with_worker_limit(&COMMAND_WORKERS, COMMAND_QUEUE_TIMEOUT, work).await
+}
+
+async fn run_with_worker_limit<T, F>(
+    workers: &'static tokio::sync::Semaphore,
+    queue_timeout: Duration,
+    work: F,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let permit = tokio::time::timeout(queue_timeout, workers.acquire())
+        .await
+        .map_err(|_| "Native command workers are busy. This request was not started.".to_string())?
+        .map_err(|_| "Native command workers are unavailable.".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        work()
+    })
+    .await
+    .map_err(|error| format!("Native command worker failed: {error}"))?
+}
 
 /// Shell interpreters that must never be invoked directly. These are excluded
 /// to prevent callers from bypassing the no-shell rule by passing
@@ -265,6 +300,18 @@ fn resolve_binary_path(program: &str) -> Result<PathBuf, String> {
             "'{program}' is a shell interpreter and is not allowed"
         ));
     }
+
+    resolve_configured_program(program)
+}
+
+/// User-configured MCP servers may intentionally use wrapper interpreters or
+/// paths containing spaces. Resolve those literal executables without changing
+/// the stricter no-shell policy of shell_run_command / AI command execution.
+pub(crate) fn resolve_configured_program(program: &str) -> Result<PathBuf, String> {
+    if program.is_empty() || program.chars().any(char::is_control) {
+        return Err("Invalid configured executable name".into());
+    }
+    let path = Path::new(program);
 
     // Absolute path: use as-is if it exists.
     if path.is_absolute() {
@@ -543,20 +590,23 @@ pub(crate) fn run_captured(mut command: Command, timeout: Duration) -> Result<Sh
 }
 
 #[tauri::command]
-pub fn shell_run_command(
+pub async fn shell_run_command(
     program: String,
     args: Vec<String>,
     cwd: Option<String>,
     timeout_secs: Option<u64>,
 ) -> Result<ShellOutput, String> {
-    let resolved_program = validate_program(&program)?;
-    let timeout = Duration::from_secs(timeout_secs.unwrap_or(20).min(MAX_TIMEOUT_SECS));
-    let mut command = Command::new(resolved_program);
-    command.args(args);
-    if let Some(dir) = cwd {
-        command.current_dir(dir);
-    }
-    run_captured(command, timeout)
+    run_blocking_command(move || {
+        let resolved_program = validate_program(&program)?;
+        let timeout = Duration::from_secs(timeout_secs.unwrap_or(20).min(MAX_TIMEOUT_SECS));
+        let mut command = Command::new(resolved_program);
+        command.args(args);
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        run_captured(command, timeout)
+    })
+    .await
 }
 
 /// Detect which of the requested binaries are installed.
@@ -564,7 +614,17 @@ pub fn shell_run_command(
 /// PATH modifications are applied, matching the behaviour of an interactive
 /// shell. Each name is validated and quoted before reaching the shell.
 #[tauri::command]
-pub fn detect_binaries(bins: Vec<String>) -> Result<Vec<String>, String> {
+pub async fn detect_binaries(bins: Vec<String>) -> Result<Vec<String>, String> {
+    // Discovery is a bounded operation, including when every missing binary
+    // requires a slow login-shell lookup. Do not let arbitrary IPC arrays hold
+    // a worker indefinitely.
+    if bins.len() > 64 {
+        return Err("At most 64 binaries can be checked at once.".into());
+    }
+    run_blocking_command(move || detect_binaries_blocking(bins)).await
+}
+
+fn detect_binaries_blocking(bins: Vec<String>) -> Result<Vec<String>, String> {
     let mut found = Vec::new();
 
     for bin in bins {
@@ -596,6 +656,66 @@ pub fn detect_binaries(bins: Vec<String>) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn configured_program_paths_remain_literal_without_weakening_shell_policy() {
+        let dir =
+            std::env::temp_dir().join(format!("husk configured program {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("fixture binary");
+        std::fs::write(&path, b"not executed").unwrap();
+        assert_eq!(
+            resolve_configured_program(path.to_str().unwrap()).unwrap(),
+            path
+        );
+        assert!(validate_program(path.to_str().unwrap()).is_err());
+        assert!(validate_program("sh").is_err());
+        assert!(resolve_configured_program("invalid\nname").is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn blocking_commands_leave_async_executor_responsive() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let caller = std::thread::current().id();
+            let worker = run_blocking_command(move || {
+                assert_ne!(std::thread::current().id(), caller);
+                std::thread::sleep(Duration::from_millis(60));
+                Ok(())
+            });
+            tokio::pin!(worker);
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_millis(10)) => {}
+                result = &mut worker => panic!("blocking work completed before the heartbeat: {result:?}"),
+            }
+            worker.await.unwrap();
+        });
+    }
+
+    #[test]
+    fn saturated_worker_pool_rejects_without_running_later() {
+        static WORKERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let permit = WORKERS.acquire().await.unwrap();
+            let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let executed = ran.clone();
+            let result = run_with_worker_limit(&WORKERS, Duration::from_millis(10), move || {
+                executed.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            })
+            .await;
+            assert!(result.unwrap_err().contains("not started"));
+            drop(permit);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        });
+    }
 
     #[test]
     fn login_path_parser_uses_framed_metadata_not_startup_chatter() {

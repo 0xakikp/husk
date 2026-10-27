@@ -63,6 +63,7 @@ import type { IMarker } from "@xterm/xterm";
 import { KUBECONFIG_OSC, KubeconfigOutputFilter, TerminalKubeconfigCapture, type TerminalKubeconfigSnapshot } from "./kubeconfigCapture";
 import { CONTEXT_OSC, TerminalContextCapture, type TerminalContextSnapshot } from "./contextCapture";
 import { STARTING_TERMINAL, TerminalSessionConnection, boundedTerminalRequest, type NativeTerminalStatus, type TerminalSessionStatus } from "./sessionLifecycle";
+import type { NativeTerminalOutput } from "./outputFlow";
 import { installTerminalWakeChecks, mayRestoreTerminalFocus } from "./sessionWake";
 import { buildPtySpawnArgs, resolveTerminalLaunchCwd } from "./launchOptions";
 import {
@@ -1040,16 +1041,17 @@ export async function createSession(
       cols: term.cols, rows: term.rows,
       cwd: session.cwd, initialCwd: session.initialCwd, isRemoteShell: session.isRemoteShell,
     })),
-    listenData: (id, callback) => listen<number[]>(`pty://data/${id}`, (event) => callback(event.payload)),
+    listenData: (id, callback) => listen<NativeTerminalOutput>(`pty://data/${id}`, (event) => callback(event.payload)),
     listenExit: (id, callback) => listen<NativeTerminalStatus | null>(`pty://exit/${id}`, (event) => callback(event.payload)),
     attach: (id) => invoke<NativeTerminalStatus>("pty_attach", { id }),
+    acknowledge: (id, sequence) => invoke("pty_ack_output", { id, sequence }),
     status: (id) => invoke<NativeTerminalStatus>("pty_status", { id }),
     write: (id, data) => invoke("pty_write", { id, data }),
     kill: (id) => invoke("pty_kill", { id }),
-  }, (bytes) => {
+  }, (bytes, parsed) => {
       const data = new Uint8Array(bytes);
       const text = session.decoder.decode(data, { stream: true });
-      term.write(data);
+      term.write(data, parsed);
       const publicText = session.kubeconfigOutputFilter.consume(text);
       if (publicText) emitTerminalOutput(leafId, publicText);
 

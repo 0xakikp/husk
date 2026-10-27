@@ -38,12 +38,25 @@ async function fixture(initial: boolean | null = true, delayed = false) {
   let idle: (() => void) | undefined;
   const cancel = vi.fn();
   const schedule = vi.fn((callback: () => void) => { idle = callback; return cancel; });
-  dispose = consent.initialiseCrashReporting({ load, schedule });
+  const syncNative = vi.fn(async (_enabled: boolean) => {});
+  dispose = consent.initialiseCrashReporting({ load, schedule, syncNative });
   const start = async () => { idle?.(); await Promise.resolve(); };
-  return { consent, clients, send, flush, init, sdk, pending, load, schedule, cancel, start };
+  return { consent, clients, send, flush, init, sdk, pending, load, schedule, cancel, start, syncNative };
 }
 
 describe("crash reporting consent lifecycle", () => {
+  it("synchronizes native consent before SDK startup and on every change", async () => {
+    const f = await fixture(false);
+    expect(f.syncNative).toHaveBeenLastCalledWith(false);
+    expect(f.load).not.toHaveBeenCalled();
+    f.consent.setSentryEnabled(true);
+    expect(f.syncNative).toHaveBeenLastCalledWith(true);
+    f.consent.setSentryEnabled(false);
+    expect(f.syncNative).toHaveBeenLastCalledWith(false);
+    dispose?.(); dispose = undefined;
+    f.consent.setSentryEnabled(true);
+    expect(f.syncNative).toHaveBeenCalledTimes(3);
+  });
   it("does not even load the SDK on an opted-out launch", async () => {
     const f = await fixture(false);
     expect(f.schedule).not.toHaveBeenCalled();

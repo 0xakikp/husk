@@ -15,6 +15,9 @@ const INPUT_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_INPUT_BYTES: usize = 256 * 1024;
 const INPUT_QUEUE_SIZE: usize = 32;
 const MAX_PENDING_OUTPUT: usize = 1024 * 1024;
+// Bound JSON/event/xterm queues even when the webview is slow or suspended.
+// Credits return only after xterm has parsed the corresponding packet.
+const MAX_OUTSTANDING_OUTPUT: usize = 256 * 1024;
 const MAX_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
 const IO_POLL: Duration = Duration::from_millis(100);
 
@@ -72,8 +75,13 @@ impl PtyStatus {
         }
     }
 }
+#[derive(Clone, Debug, Serialize)]
+pub struct PtyOutput {
+    sequence: u64,
+    bytes: Vec<u8>,
+}
 enum PtyEvent {
-    Data(Vec<u8>),
+    Data(PtyOutput),
     Status(PtyStatus),
 }
 type EventSink = Arc<dyn Fn(PtyEvent) -> Result<(), String> + Send + Sync>;
@@ -83,6 +91,10 @@ struct OutputState {
     attached: bool,
     pending: VecDeque<Vec<u8>>,
     bytes: usize,
+    sequence: u64,
+    acknowledged: u64,
+    outstanding: VecDeque<(u64, usize)>,
+    outstanding_bytes: usize,
 }
 struct WriteRequest {
     data: Vec<u8>,
@@ -223,9 +235,13 @@ impl PtySession {
             capture.feed(bytes);
         }
         let mut output = self.output.lock().unwrap_or_else(|e| e.into_inner());
-        // Pause just this reader until attach rather than drop prompt bytes.
-        while !output.attached
-            && output.bytes + bytes.len() > MAX_PENDING_OUTPUT
+        // Pause only this reader. Attached output is credit limited; startup
+        // output is bounded separately until the frontend subscribes. Never
+        // hold capture, registry or input locks while waiting for the parser.
+        while ((!output.attached && output.bytes + bytes.len() > MAX_PENDING_OUTPUT)
+            || (output.attached
+                && (output.bytes > 0
+                    || output.outstanding_bytes + bytes.len() > MAX_OUTSTANDING_OUTPUT)))
             && !self.closed.load(Ordering::Acquire)
         {
             output = self
@@ -237,31 +253,71 @@ impl PtySession {
         if self.closed.load(Ordering::Acquire) {
             return false;
         }
-        if output.attached {
-            if let Err(error) = (self.emit)(PtyEvent::Data(bytes.to_vec())) {
-                drop(output);
-                self.set_status(PtyStatus::disconnected(format!(
-                    "Terminal output delivery failed: {error}"
-                )));
-                return false;
-            }
-        } else {
-            output.bytes += bytes.len();
-            output.pending.push_back(bytes.to_vec());
+        output.bytes += bytes.len();
+        output.pending.push_back(bytes.to_vec());
+        if let Err(error) = self.drain_output(&mut output) {
+            drop(output);
+            self.set_status(PtyStatus::disconnected(format!(
+                "Terminal output delivery failed: {error}"
+            )));
+            return false;
         }
         true
+    }
+    /// Caller holds this session's output lock, never the global registry.
+    fn drain_output(&self, output: &mut OutputState) -> Result<(), String> {
+        while output.attached {
+            let Some(bytes) = output.pending.front() else {
+                break;
+            };
+            if output.outstanding_bytes + bytes.len() > MAX_OUTSTANDING_OUTPUT {
+                break;
+            }
+            let sequence = output.sequence + 1;
+            (self.emit)(PtyEvent::Data(PtyOutput {
+                sequence,
+                bytes: bytes.clone(),
+            }))?;
+            let bytes = output.pending.pop_front().unwrap();
+            output.bytes -= bytes.len();
+            output.sequence = sequence;
+            output.outstanding_bytes += bytes.len();
+            output.outstanding.push_back((sequence, bytes.len()));
+        }
+        Ok(())
+    }
+    fn acknowledge(&self, sequence: u64) -> Result<(), String> {
+        let mut output = self.output.lock().unwrap_or_else(|e| e.into_inner());
+        // Duplicates (including an IPC retry after wake) cannot grant credits
+        // twice. Future/forged ACKs must never unlock unread output.
+        if sequence <= output.acknowledged {
+            return Ok(());
+        }
+        if sequence > output.sequence {
+            return Err("Terminal output acknowledgement is ahead of the stream.".into());
+        }
+        while output
+            .outstanding
+            .front()
+            .is_some_and(|(sent, _)| *sent <= sequence)
+        {
+            let (_, bytes) = output.outstanding.pop_front().unwrap();
+            output.outstanding_bytes -= bytes;
+        }
+        output.acknowledged = sequence;
+        let result = self.drain_output(&mut output);
+        self.attached.notify_all();
+        result
     }
     fn attach(&self) -> Result<PtyStatus, String> {
         let mut output = self.output.lock().unwrap_or_else(|e| e.into_inner());
         if !output.attached {
-            // Serialize initial drain with new bytes, but never registry locks.
-            while let Some(bytes) = output.pending.pop_front() {
-                output.bytes -= bytes.len();
-                (self.emit)(PtyEvent::Data(bytes))?;
-            }
             output.attached = true;
-            self.attached.notify_all();
         }
+        // Attach never waits for a rendering ACK. Remaining startup packets
+        // drain as credits arrive, in order ahead of subsequent reader bytes.
+        self.drain_output(&mut output)?;
+        self.attached.notify_all();
         Ok(self.status())
     }
     fn ensure_running(&self) -> Result<(), String> {
@@ -636,6 +692,19 @@ pub async fn pty_attach(state: State<'_, PtyState>, id: u32) -> Result<PtyStatus
         .await
         .map_err(|e| format!("Could not attach terminal: {e}"))?
 }
+/// ACKs are cumulative and idempotent. The output mutex and any pending event
+/// drain stay off the native UI thread, including during a slow webview/wake.
+#[tauri::command]
+pub async fn pty_ack_output(
+    state: State<'_, PtyState>,
+    id: u32,
+    sequence: u64,
+) -> Result<(), String> {
+    let session = state.session(id)?;
+    tauri::async_runtime::spawn_blocking(move || session.acknowledge(sequence))
+        .await
+        .map_err(|e| format!("Could not acknowledge terminal output: {e}"))?
+}
 /// Read-only: never writes a probe, restarts a shell or kills work on wake.
 #[tauri::command]
 pub fn pty_status(state: State<'_, PtyState>, id: u32) -> PtyStatus {
@@ -898,7 +967,10 @@ mod tests {
                     .recv_timeout(deadline.saturating_duration_since(Instant::now()))
                     .unwrap()
                 {
-                    PtyEvent::Data(bytes) => text.push_str(&String::from_utf8_lossy(&bytes)),
+                    PtyEvent::Data(packet) => {
+                        text.push_str(&String::from_utf8_lossy(&packet.bytes));
+                        session.acknowledge(packet.sequence).unwrap();
+                    }
                     PtyEvent::Status(status) => panic!("unexpected fixture status: {status:?}"),
                 }
             }
@@ -993,11 +1065,11 @@ mod tests {
         assert!(events.try_recv().is_err());
         assert_eq!(session.attach().unwrap().state, SessionPhase::Exited);
         match events.try_recv().unwrap() {
-            PtyEvent::Data(bytes) => assert_eq!(bytes, b"first"),
+            PtyEvent::Data(packet) => assert_eq!(packet.bytes, b"first"),
             _ => panic!("expected data"),
         }
         match events.try_recv().unwrap() {
-            PtyEvent::Data(bytes) => assert_eq!(bytes, b" prompt"),
+            PtyEvent::Data(packet) => assert_eq!(packet.bytes, b" prompt"),
             _ => panic!("expected data"),
         }
         session.attach().unwrap();
@@ -1027,7 +1099,7 @@ mod tests {
         session.attach().unwrap();
         read_stream(&mut InterruptedReader(0), &session, &io);
         match events.try_recv().unwrap() {
-            PtyEvent::Data(bytes) => assert_eq!(bytes, b"prompt"),
+            PtyEvent::Data(packet) => assert_eq!(packet.bytes, b"prompt"),
             _ => panic!("expected prompt after interruption"),
         }
         assert_eq!(session.status().state, SessionPhase::Disconnected);
@@ -1129,6 +1201,123 @@ mod tests {
             .enqueue(vec![b'x'], Deadline::after(INPUT_TIMEOUT))
             .is_err());
         assert!(PtyState::default().session(999).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_credits_bound_a_slow_renderer_and_preserve_all_bytes_in_order() {
+        let (session, _queued, _slave, _io, events) = fixture();
+        session.attach().unwrap();
+        let producer = session.clone();
+        let (done, finished) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            for index in 0..1024usize {
+                assert!(producer.publish(&vec![(index % 256) as u8; 8192]));
+            }
+            done.send(()).unwrap();
+        });
+        // Deliberately stop consuming. Only 256 KiB can enter the webview.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while session.output.lock().unwrap().outstanding_bytes < MAX_OUTSTANDING_OUTPUT
+            && Instant::now() < deadline
+        {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(
+            session.output.lock().unwrap().outstanding_bytes,
+            MAX_OUTSTANDING_OUTPUT
+        );
+        assert!(finished.try_recv().is_err());
+        for index in 0..1024usize {
+            let PtyEvent::Data(packet) = events.recv_timeout(Duration::from_secs(2)).unwrap()
+            else {
+                panic!("unexpected status");
+            };
+            assert_eq!(packet.sequence, index as u64 + 1);
+            assert_eq!(packet.bytes, vec![(index % 256) as u8; 8192]);
+            session.acknowledge(packet.sequence).unwrap();
+            assert!(session.output.lock().unwrap().outstanding_bytes <= MAX_OUTSTANDING_OUTPUT);
+        }
+        worker.join().unwrap();
+        assert_eq!(session.output.lock().unwrap().outstanding_bytes, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn startup_drain_uses_credits_without_blocking_attach_or_losing_early_exit_output() {
+        let (session, _queued, _slave, _io, events) = fixture();
+        for index in 0..128usize {
+            assert!(session.publish(&vec![index as u8; 8192]));
+        }
+        session.set_status(PtyStatus {
+            state: SessionPhase::Exited,
+            message: None,
+        });
+        assert_eq!(session.attach().unwrap().state, SessionPhase::Exited);
+        assert_eq!(
+            session.output.lock().unwrap().outstanding_bytes,
+            MAX_OUTSTANDING_OUTPUT
+        );
+        for index in 0..128usize {
+            let PtyEvent::Data(packet) = events.recv_timeout(Duration::from_secs(1)).unwrap()
+            else {
+                panic!("expected startup bytes");
+            };
+            assert_eq!(packet.bytes, vec![index as u8; 8192]);
+            session.acknowledge(packet.sequence).unwrap();
+        }
+        assert_eq!(session.output.lock().unwrap().bytes, 0);
+        assert_eq!(session.output.lock().unwrap().outstanding_bytes, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_acknowledgements_are_cumulative_idempotent_and_reject_future_sequences() {
+        let (session, _queued, _slave, _io, _events) = fixture();
+        session.attach().unwrap();
+        for _ in 0..3 {
+            assert!(session.publish(b"1234"));
+        }
+        assert!(session.acknowledge(4).is_err());
+        assert_eq!(session.output.lock().unwrap().outstanding_bytes, 12);
+        session.acknowledge(2).unwrap();
+        assert_eq!(session.output.lock().unwrap().outstanding_bytes, 4);
+        session.acknowledge(2).unwrap();
+        session.acknowledge(1).unwrap();
+        assert_eq!(session.output.lock().unwrap().outstanding_bytes, 4);
+        session.acknowledge(3).unwrap();
+        assert_eq!(session.output.lock().unwrap().outstanding_bytes, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn closing_a_stalled_output_reader_unblocks_it_and_other_sessions_stay_usable() {
+        let (session, _queued, _slave, _io, _events) = fixture();
+        let (other, _queued2, _slave2, _io2, _events2) = fixture();
+        session.attach().unwrap();
+        other.attach().unwrap();
+        for _ in 0..MAX_OUTSTANDING_OUTPUT / 8192 {
+            assert!(session.publish(&[0; 8192]));
+        }
+        let producer = session.clone();
+        let worker = thread::spawn(move || producer.publish(b"blocked"));
+        assert!(other.publish(b"unrelated prompt"));
+        assert_eq!(other.status(), PtyStatus::running());
+        session.close().unwrap();
+        assert!(!worker.join().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_lost_output_receiver_reports_disconnect_without_unbounded_retry() {
+        let (session, _queued, _slave, _io, events) = fixture();
+        session.attach().unwrap();
+        drop(events);
+        assert!(!session.publish(b"still bounded"));
+        assert_eq!(session.status().state, SessionPhase::Disconnected);
+        assert_eq!(session.output.lock().unwrap().bytes, b"still bounded".len());
+        assert_eq!(session.output.lock().unwrap().outstanding_bytes, 0);
+        session.close().unwrap();
     }
 
     #[test]

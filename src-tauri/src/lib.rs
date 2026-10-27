@@ -1,6 +1,7 @@
 mod ai_cli;
 mod browser;
 mod config;
+mod diagnostics;
 mod fs;
 mod jobs;
 mod kubeconfig;
@@ -80,6 +81,7 @@ fn install_macos_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _diagnostics = diagnostics::init();
     tauri::Builder::default()
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Focused(true) = event {
@@ -94,6 +96,9 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::default().build())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().ok();
+            if let Some(directory) = &app_data_dir {
+                diagnostics::set_storage_directory(directory.clone());
+            }
             app.manage(SftpManager::with_app_data_dir(app_data_dir));
 
             /* Non-fatal on purpose. Built with `?` inside setup, a menu that
@@ -117,6 +122,8 @@ pub fn run() {
         .manage(TailscaleState::default())
         .manage(timeline::TimelineState::default())
         .invoke_handler(tauri::generate_handler![
+            diagnostics::diagnostics_set_reporting_enabled,
+            diagnostics::diagnostics_snapshot,
             ai_cli::ai_cli_available,
             ai_cli::ai_cli_start,
             ai_cli::ai_cli_stop,
@@ -132,6 +139,7 @@ pub fn run() {
             ai_cli::kimi_cli_stop,
             pty::pty_spawn,
             pty::pty_attach,
+            pty::pty_ack_output,
             pty::pty_status,
             pty::pty_write,
             pty::pty_resize,

@@ -24,6 +24,8 @@ import { loadConfig, getKey, useConfig } from "../ai/store";
 import { getProvider } from "../ai/providers";
 import { ModelSwitcher } from "../ai/ModelSwitcher";
 import { streamChat } from "../ai/client";
+import { TextBatch } from "../ai/textBatch";
+import { MessageRenderCache } from "./messageRenderCache";
 import { MODELS } from "../ai/models";
 import { assertAiRequest, beginAiRequest, cancelAiRequest, finishAiRequest, isCurrentAiRequest, type AiRequest } from "../ai/requestLifecycle";
 import { boundConversation, imageInputs, prepareSendContext, reviewSendContext, type PreparedSend, type SendChoices } from "../ai/requestContext";
@@ -766,6 +768,19 @@ export function TerminalAiComposer({
   const [noteCaptureTarget, setNoteCaptureTarget] = useState<(AiNoteCaptureTarget & { messageIndex: number }) | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const requestRef = useRef<AiRequest | null>(null);
+  const textBatchRef = useRef<{ request: AiRequest; batch: TextBatch } | null>(null);
+  const messageRenderCache = useRef(new MessageRenderCache<AiMessage, ReactNode>());
+  const cancelCurrentRequest = useCallback(() => {
+    const request = requestRef.current;
+    if (!request) return;
+    // Preserve already received text before abort invalidates this request.
+    if (textBatchRef.current?.request === request) {
+      textBatchRef.current.batch.flush();
+      textBatchRef.current.batch.dispose();
+      textBatchRef.current = null;
+    }
+    cancelAiRequest(request);
+  }, []);
   const pendingSendRef = useRef<PreparedSend | null>(null);
   const attachmentGenerationRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1039,7 +1054,7 @@ export function TerminalAiComposer({
     attachmentGenerationRef.current++;
     setAttachedFiles([]);
     setAttachedRuns([]);
-    if (requestRef.current) cancelAiRequest(requestRef.current);
+    cancelCurrentRequest();
     pendingSendRef.current = null;
     setBusy(false);
     setStatus(null);
@@ -1738,7 +1753,7 @@ export function TerminalAiComposer({
     pendingSendRef.current = null;
     setBudgetPrompt(null);
     setSensitivePrompt(null);
-    if (requestRef.current) cancelAiRequest(requestRef.current);
+    cancelCurrentRequest();
     requestRef.current = null;
     setBusy(false);
     setStatus(null);
@@ -1760,7 +1775,7 @@ export function TerminalAiComposer({
     setExcludeProjectMemory(false);
     return () => {
       attachmentGenerationRef.current++;
-      if (requestRef.current) cancelAiRequest(requestRef.current);
+      cancelCurrentRequest();
       requestRef.current = null;
     };
   }, [sessionId]);
@@ -1859,6 +1874,10 @@ export function TerminalAiComposer({
         }),
       }));
     };
+    const textBatch = new TextBatch((delta) => {
+      setMessages((previous) => previous.map((message) => ({ ...message, content: message.content + delta })));
+    }, () => isCurrentAiRequest(request), requestSignal);
+    textBatchRef.current = { request, batch: textBatch };
     try {
       const prepared = opts && pendingSendRef.current
         ? { ...pendingSendRef.current, choices: { ...pendingSendRef.current.choices, ...opts } }
@@ -2035,7 +2054,7 @@ export function TerminalAiComposer({
           setMessages((prev) => prev.map((message) => message.trace ? { ...message, trace: { ...message.trace, historyMessagesOmitted: bounded.omitted } } : message));
           toast({ title: "Using recent conversation", message: `${bounded.omitted} older messages are omitted from this request to fit the model. Your full chat remains saved.`, variant: "info" });
         }
-        return streamChat(
+        try { return await streamChat(
         {
           provider,
           model: modelId,
@@ -2048,20 +2067,14 @@ export function TerminalAiComposer({
         (delta) => {
           if (!isCurrentAiRequest(request)) return;
           assistantResponse += delta;
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last?.role === "assistant") {
-              next[next.length - 1] = { ...last, content: last.content + delta };
-            }
-            return next;
-          });
+          textBatch.push(delta);
         },
         tools && Object.keys(tools).length > 0 ? tools : undefined,
         requestSignal,
         (statusText) => { if (isCurrentAiRequest(request)) setStatus(statusText); },
         (activity) => {
           if (!isCurrentAiRequest(request)) return;
+          textBatch.flush();
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
@@ -2084,7 +2097,7 @@ export function TerminalAiComposer({
             });
           }
         },
-      );
+      ); } finally { textBatch.flush(); }
       };
       const conversation: AiMessage[] = [...historyAtSend, { role: "user", content: prepared.text, ...(images.length ? { images } : {}) }];
       await streamReply(conversation);
@@ -2252,6 +2265,7 @@ export function TerminalAiComposer({
         if (parsed.rejected) toast({ title: "Ignored an invalid edit proposal", message: "Only valid workspace-scoped proposals can be reviewed.", variant: "error" });
       }
     } catch (e) {
+      textBatch.flush();
       if (!isCurrentAiRequest(request)) return;
       taskResponseFailed = true;
       const msg = e instanceof Error ? e.message : String(e);
@@ -2265,6 +2279,9 @@ export function TerminalAiComposer({
         return next;
       });
     } finally {
+      textBatch.flush();
+      textBatch.dispose();
+      if (textBatchRef.current?.request === request) textBatchRef.current = null;
       if (taskAtRequest && taskRequestEventId) {
         const responseFailed = requestSignal.aborted || taskResponseFailed;
         recordTaskEventFor(taskAtRequest.id, {
@@ -2288,7 +2305,7 @@ export function TerminalAiComposer({
 
   const stop = useCallback(() => {
     pauseCommandFollowup(sessionId);
-    if (requestRef.current) cancelAiRequest(requestRef.current);
+    cancelCurrentRequest();
     setBusy(false);
     setStatus(null);
   }, [sessionId]);
@@ -2526,7 +2543,7 @@ export function TerminalAiComposer({
 
   const handleClose = () => {
     pauseCommandFollowup(sessionId, "Chat closed. Automatic analysis is paused; the shell command is not interrupted.");
-    if (requestRef.current) cancelAiRequest(requestRef.current);
+    cancelCurrentRequest();
     setOpen(false);
     setBusy(false);
     setStatus(null);
@@ -2804,6 +2821,21 @@ export function TerminalAiComposer({
      return below — a hook after it would change hook order between renders. */
   const cfg = useConfig();
   const provider = cfg.providerId ? getProvider(cfg.providerId) : getProvider("openai");
+  const messageActions = useRef({ copyMessage, editMessage, redoMessage, copyCode, runCommand, openResponseContextMenu, openResponseActionsFromButton });
+  useLayoutEffect(() => {
+    messageActions.current = { copyMessage, editMessage, redoMessage, copyCode, runCommand, openResponseContextMenu, openResponseActionsFromButton };
+  });
+  // Cached JSX must still execute today's safety checks/workspace actions,
+  // rather than the closures from when an old response first appeared.
+  const stableMessageActions = useMemo(() => ({
+    copyMessage: (...args: Parameters<typeof copyMessage>) => messageActions.current.copyMessage(...args),
+    editMessage: (...args: Parameters<typeof editMessage>) => messageActions.current.editMessage(...args),
+    redoMessage: (...args: Parameters<typeof redoMessage>) => messageActions.current.redoMessage(...args),
+    copyCode: (...args: Parameters<typeof copyCode>) => messageActions.current.copyCode(...args),
+    runCommand: (...args: Parameters<typeof runCommand>) => messageActions.current.runCommand(...args),
+    openResponseContextMenu: (...args: Parameters<typeof openResponseContextMenu>) => messageActions.current.openResponseContextMenu(...args),
+    openResponseActionsFromButton: (...args: Parameters<typeof openResponseActionsFromButton>) => messageActions.current.openResponseActionsFromButton(...args),
+  }), []);
 
   const ctxTotalBytes = totalBytes(contextItems);
   const ctxOverBudget = ctxTotalBytes > budgetBytes(budgetKb);
@@ -3407,7 +3439,12 @@ export function TerminalAiComposer({
             </div>
           )
         ) : (
-          messages.map((msg, i) => {
+          messages.map((msg, i) => messageRenderCache.current.render(msg, [
+            sessionId, i, msg.content, msg.kind, msg.role, msg.timestamp, msg.streaming, msg.trace,
+            dockSide, activeAgent?.color, activeAgentName, cfg.model, provider.defaultModel,
+            workspacePath, copiedIdx, msgCopiedIdx === i, codeTabMap[i] ?? 0,
+          ], () => {
+            const { copyMessage, editMessage, redoMessage, copyCode, runCommand, openResponseContextMenu, openResponseActionsFromButton } = stableMessageActions;
             if (msg.kind === "command-result") return (
               <details key={msg.id ?? i} className="composer-command-result">
                 <summary>Terminal result · {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : "observed"}</summary>
@@ -3599,7 +3636,7 @@ export function TerminalAiComposer({
                 </div>
               </div>
             );
-          })
+          }))
         )}
 
         {/* Inside the scroll area rather than pinned beside it. These render

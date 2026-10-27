@@ -37,7 +37,7 @@ sysinfo = "0.31"
 russh = { version = "0.61", features = ["ring"] }
 russh-sftp = "2.3"
 dirs = "5"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "fs"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "fs", "process", "io-util", "sync", "time", "macros"] }
 shellexpand = "3"
 whoami = "2.1.2"
 sentry = "0.48.2"

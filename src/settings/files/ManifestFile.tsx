@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { checkForUpdates } from "../../updater";
 import { ConfigEditor } from "../config/controls";
 import { useNativeConfigStatus } from "../nativeConfig";
+import { DiagnosticsButton } from "../DiagnosticsButton";
 
 const REPO_URL = "https://github.com/0xakikp/husk";
 const GUIDE_URL = "https://github.com/0xakikp/husk#readme";
@@ -49,7 +50,7 @@ export function ManifestFile() {
   useEffect(() => {
     void getVersion()
       .then(setVersion)
-      .catch(() => setVersion("0.7.5"));
+      .catch(() => setVersion(__APP_VERSION__));
   }, []);
 
   const configPath = config.path ?? "~/.husk/config.toml";
@@ -184,6 +185,10 @@ export function ManifestFile() {
               <button type="button" onClick={() => void openUrl(BUY_ME_A_COFFEE_URL)}>support Husk ↗</button>
             </div>
           </footer>
+          <section className="about-profile-section" aria-label="Troubleshooting">
+            <p className="about-kicker">TROUBLESHOOTING</p>
+            <DiagnosticsButton />
+          </section>
         </section>
       </div>
     </ConfigEditor>

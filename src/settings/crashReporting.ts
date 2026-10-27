@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 const STORAGE_KEY = "husk:sentry-enabled";
 type SentryModule = typeof import("@sentry/react");
@@ -76,6 +77,7 @@ function scheduleIdle(callback: () => void): () => void {
 export function initialiseCrashReporting(options: {
   load?: () => Promise<SentryModule>;
   schedule?: (callback: () => void) => () => void;
+  syncNative?: (enabled: boolean) => Promise<unknown>;
 } = {}): () => void {
   const load = options.load ?? (() => import("@sentry/react"));
   const schedule = options.schedule ?? scheduleIdle;
@@ -83,6 +85,17 @@ export function initialiseCrashReporting(options: {
   let stopped = false;
   let cancelScheduled: (() => void) | undefined;
   let client: SentryClient;
+  const syncNative = options.syncNative ?? ((value: boolean) => isTauri()
+    ? invoke("diagnostics_set_reporting_enabled", { enabled: value })
+    : Promise.resolve());
+  const syncNativeConsent = () => {
+    // Send immediately, not after SDK import/idle startup. Native reporting
+    // starts disabled and must also honor storage errors and live opt-out.
+    void syncNative(getSentryEnabled() && readConsent()).catch(() => {
+      console.warn("Native crash-reporting preference could not be synchronized.");
+    });
+  };
+  syncNativeConsent();
 
   const stopClient = () => {
     ++generation;
@@ -140,6 +153,7 @@ export function initialiseCrashReporting(options: {
   };
 
   const unsubscribe = subscribeSentryEnabled(() => {
+    syncNativeConsent();
     stopClient();
     if (getSentryEnabled()) startClient();
   });

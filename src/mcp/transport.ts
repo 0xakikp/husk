@@ -31,6 +31,7 @@ export class TauriMcpTransport implements Transport {
   private _sessionId: number | null = null;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
+  private starting = false;
 
   constructor(options: TauriMcpTransportOptions) {
     this.options = options;
@@ -38,17 +39,30 @@ export class TauriMcpTransport implements Transport {
 
   async start(): Promise<void> {
     if (this.closed) throw new Error("Transport is closed");
-    if (this._sessionId != null) throw new Error("Transport already started");
-    this._sessionId = await invoke<number>("mcp_spawn", {
-      command: this.options.command,
-      args: this.options.args ?? [],
-      env: this.options.env ?? null,
-      cwd: this.options.cwd ?? null,
-    });
-    this.schedulePoll();
+    if (this._sessionId != null || this.starting) throw new Error("Transport already started");
+    this.starting = true;
+    try {
+      const id = await invoke<number>("mcp_spawn", {
+        command: this.options.command,
+        args: this.options.args ?? [],
+        env: this.options.env ?? null,
+        cwd: this.options.cwd ?? null,
+      });
+      if (this.closed) {
+        // close() may have run while native discovery/spawn was pending. It
+        // could not know the ID then; dispose the late child, never adopt it.
+        try { await invoke("mcp_kill", { id }); } catch { /* Already exited. */ }
+        throw new Error("Transport closed during startup");
+      }
+      this._sessionId = id;
+      this.schedulePoll();
+    } finally {
+      this.starting = false;
+    }
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
+    if (this.closed) throw new Error("Transport is closed");
     if (this._sessionId == null) throw new Error("Transport not started");
     await invoke("mcp_send", { id: this._sessionId, message: JSON.stringify(message) });
   }
@@ -90,9 +104,13 @@ export class TauriMcpTransport implements Transport {
 
   private async poll(): Promise<void> {
     if (this._sessionId == null || this.closed) return;
+    const id = this._sessionId;
     try {
-      const result = await invoke<McpReceive>("mcp_recv", { id: this._sessionId, limit: 50 });
+      const result = await invoke<McpReceive>("mcp_recv", { id, limit: 50 });
+      if (this.closed || this._sessionId !== id) return;
       for (const line of result.lines) {
+        // An onmessage callback can close the transport synchronously.
+        if (this.closed || this._sessionId !== id) return;
         try {
           this.onmessage?.(JSON.parse(line) as JSONRPCMessage);
         } catch {
@@ -107,6 +125,7 @@ export class TauriMcpTransport implements Transport {
       }
       this.schedulePoll();
     } catch (cause) {
+      if (this.closed || this._sessionId !== id) return;
       const error = cause instanceof Error ? cause : new Error(String(cause));
       await this.finish(error, true);
     }

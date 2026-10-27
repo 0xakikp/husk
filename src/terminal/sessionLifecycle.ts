@@ -1,3 +1,5 @@
+import { TerminalOutputFlow, type NativeTerminalOutput } from "./outputFlow";
+
 /** Connection health is not shell/prompt readiness. Never send commands as probes. */
 export type NativeTerminalStatus = {
   state: "running" | "exited" | "disconnected";
@@ -10,9 +12,10 @@ export type TerminalSessionStatus = {
 
 export interface TerminalTransport {
   spawn(): Promise<number>;
-  listenData(id: number, callback: (data: number[]) => void): Promise<() => void>;
+  listenData(id: number, callback: (data: NativeTerminalOutput) => void): Promise<() => void>;
   listenExit(id: number, callback: (status: NativeTerminalStatus | null) => void): Promise<() => void>;
   attach(id: number): Promise<NativeTerminalStatus>;
+  acknowledge(id: number, sequence: number): Promise<unknown>;
   status(id: number): Promise<NativeTerminalStatus>;
   write(id: number, data: string): Promise<unknown>;
   kill(id: number): Promise<unknown>;
@@ -54,10 +57,11 @@ export class TerminalSessionConnection {
   private pendingInput: { data: string; expires: number; size: number }[] = [];
   private pendingBytes = 0;
   private writing = false;
+  private output: TerminalOutputFlow | null = null;
 
   constructor(
     private transport: TerminalTransport,
-    private onData: (data: number[]) => void,
+    private onData: (data: number[], parsed: () => void) => void,
     private onChange: () => void,
   ) {}
 
@@ -77,7 +81,7 @@ export class TerminalSessionConnection {
       this.pendingInput = [];
       this.pendingBytes = 0;
       this.publish({ state: status.state, message: status.message });
-    } else if (this.status.state !== "exited") {
+    } else if (this.status.state !== "exited" && !this.output?.failed) {
       this.publish(this.receivedOutput ? { state: "ready" } : {
         state: Date.now() - this.startedAt >= STARTUP_NOTICE_MS ? "slow-start" : "starting",
         message: "Waiting for shell output. Shell startup files may still be loading.",
@@ -106,6 +110,17 @@ export class TerminalSessionConnection {
       const id = await this.transport.spawn();
       if (!this.current(generation)) { await this.transport.kill(id); return; }
       this.id = id;
+      this.output?.dispose();
+      this.output = new TerminalOutputFlow(
+        this.onData,
+        sequence => bounded(this.transport.acknowledge(id, sequence)),
+        error => {
+          if (this.current(generation) && this.status.state !== "exited") this.publish({
+            state: "unresponsive",
+            message: `Terminal output is paused. ${message(error)} Your shell has not been restarted.`,
+          });
+        },
+      );
       this.onChange();
       await this.attach(generation, id);
     } catch (error) {
@@ -131,11 +146,14 @@ export class TerminalSessionConnection {
         await bounded(Promise.all([
           register(this.transport.listenData(id, (data) => {
             if (!valid()) return;
-            if (data.length) {
+            // Validate inside the flow controller before touching wire fields.
+            // A mismatched/old native build should pause with a useful error,
+            // not throw out of the event callback.
+            this.output?.accept(data);
+            if (data?.bytes?.length) {
               this.receivedOutput = true;
               clearTimeout(this.startupTimer);
               if (this.status.state === "starting" || this.status.state === "slow-start") this.publish({ state: "ready" });
-              this.onData(data);
             }
           })),
           register(this.transport.listenExit(id, (status) => {
@@ -175,6 +193,7 @@ export class TerminalSessionConnection {
     const operation = (async () => {
       try {
         if (!this.nativeAttached) await this.attach(generation, id);
+        await this.output?.flush(true);
         const status = await bounded(this.transport.status(id));
         if (this.current(generation)) this.applyNative(status);
       } catch (error) {
@@ -233,6 +252,8 @@ export class TerminalSessionConnection {
     const generation = ++this.generation;
     clearTimeout(this.startupTimer);
     this.releaseListeners();
+    this.output?.dispose();
+    this.output = null;
     this.attached = false;
     this.nativeAttached = false;
     this.listenersRegistered = false;
@@ -262,6 +283,8 @@ export class TerminalSessionConnection {
     ++this.generation;
     clearTimeout(this.startupTimer);
     this.releaseListeners();
+    this.output?.dispose();
+    this.output = null;
     this.pendingInput = [];
     this.pendingBytes = 0;
     if (this.id !== null) void this.transport.kill(this.id).catch(() => {});

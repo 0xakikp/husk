@@ -1,22 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { getSessionHandle, subscribeTerminalOutput } from "./registry";
 import { usePrefs } from "../settings/preferences";
 import { captureLogHighlights, type LogHighlightSnapshot } from "../ai/logHighlights";
 import { LogHighlightsPanel } from "./LogHighlightsPanel";
 import { captureOutput, type OutputSnapshot } from "./outputExplore";
 import { OutputExplorePanel } from "./OutputExplorePanel";
+import { LOG_BATCH_MS, TerminalLogBuffer, type LogEntry, type LogLevel } from "./logBuffer";
 
-type LogLevel = "info" | "warn" | "error" | "output";
 type LogFilter = "all" | LogLevel;
-
-type LogEntry = {
-  id: number;
-  at: number;
-  level: LogLevel;
-  text: string;
-};
-
-const MAX_LOG_LINES = 2000;
 const SNAPSHOT_LINES = 600;
 
 const LEVEL_LABEL: Record<LogLevel, string> = {
@@ -26,39 +17,16 @@ const LEVEL_LABEL: Record<LogLevel, string> = {
   output: "OUT",
 };
 
-function levelFor(text: string): LogLevel {
-  if (/\b(?:fatal|error|exception|panic|failed|failure)\b/i.test(text)) return "error";
-  if (/\b(?:warn|warning|deprecated)\b/i.test(text)) return "warn";
-  if (/\b(?:info|ready|started|listening|compiled|success|connected)\b/i.test(text)) return "info";
-  return "output";
-}
-
-/* xterm receives the real byte stream. The log drawer gets a readable version:
-   strip styling/control sequences while retaining every printable line. */
-function cleanTerminalText(raw: string): string {
-  return raw
-    .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/\x1b[()][0-9A-Za-z]/g, "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
-}
-
-function entriesFromLines(lines: string[], startId: number): LogEntry[] {
-  const at = Date.now();
-  return lines
-    .map((line, index) => ({ text: line.trimEnd(), id: startId + index }))
-    .filter((line) => line.text.trim().length > 0)
-    .map((line) => ({ ...line, at, level: levelFor(line.text) }));
-}
-
-function timestamp(at: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(at);
-}
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+});
+const LogRow = memo(function LogRow({ entry }: { entry: LogEntry }) {
+  return <div data-log-id={entry.id} className={`terminal-log-row ${entry.level}`}>
+    <time>{timeFormatter.format(entry.at)}</time>
+    <span className="terminal-log-level">{LEVEL_LABEL[entry.level]}</span>
+    <span className="terminal-log-message">{entry.text}</span>
+  </div>;
+});
 
 export function TerminalLogs({
   leafId,
@@ -68,6 +36,7 @@ export function TerminalLogs({
   onClose: () => void;
 }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [limited, setLimited] = useState(false);
   const [filter, setFilter] = useState<LogFilter>("all");
   const [paused, setPaused] = useState(false);
   const [follow, setFollow] = useState(true);
@@ -75,39 +44,47 @@ export function TerminalLogs({
   const [highlights, setHighlights] = useState<{ leafId: number; id: number; snapshot: LogHighlightSnapshot } | null>(null);
   const [explore, setExplore] = useState<{ leafId: number; id: number; snapshot: OutputSnapshot } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const pendingRef = useRef("");
+  const bufferRef = useRef<TerminalLogBuffer | null>(null);
   const nextIdRef = useRef(1);
   const captureIdRef = useRef(0);
   const pausedRef = useRef(paused);
 
   useEffect(() => {
     pausedRef.current = paused;
+    bufferRef.current?.discardPartial();
   }, [paused]);
 
   useEffect(() => {
-    pendingRef.current = "";
+    const buffer = new TerminalLogBuffer(nextIdRef.current);
+    bufferRef.current = buffer;
     const snapshot = getSessionHandle(leafId)?.getBuffer(SNAPSHOT_LINES) ?? "";
-    const initialLines = snapshot.split(/\r?\n/);
-    const initial = entriesFromLines(initialLines, nextIdRef.current);
-    // IDs include skipped blank rows so later output cannot reuse an evidence ID.
-    nextIdRef.current += initialLines.length;
-    setEntries(initial.slice(-MAX_LOG_LINES));
-
-    return subscribeTerminalOutput(leafId, (raw) => {
-      if (pausedRef.current) return;
-      const merged = `${pendingRef.current}${cleanTerminalText(raw)}`
-        .replace(/\r\n/g, "\n")
-        /* Progress bars rewrite their current line with CR. A finished progress
-           update is still useful in the drawer, so render it as the next line. */
-        .replace(/\r/g, "\n");
-      const lines = merged.split("\n");
-      pendingRef.current = lines.pop() ?? "";
-      if (lines.length === 0) return;
-      const fresh = entriesFromLines(lines, nextIdRef.current);
-      nextIdRef.current += lines.length;
-      if (fresh.length === 0) return;
-      setEntries((previous) => [...previous, ...fresh].slice(-MAX_LOG_LINES));
+    buffer.append(snapshot);
+    buffer.finishSnapshot();
+    nextIdRef.current = buffer.nextLineId;
+    setEntries(buffer.snapshot());
+    setLimited(buffer.isLimited);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
+    const unsubscribe = subscribeTerminalOutput(leafId, (raw) => {
+      if (disposed || pausedRef.current) return;
+      const version = buffer.version;
+      buffer.append(raw);
+      nextIdRef.current = buffer.nextLineId;
+      if (version === buffer.version || timer !== undefined) return;
+      // One bounded snapshot per batch; no queued React updater per PTY chunk.
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (disposed) return;
+        setEntries(buffer.snapshot());
+        setLimited(buffer.isLimited);
+      }, LOG_BATCH_MS);
     });
+    return () => {
+      disposed = true;
+      if (timer !== undefined) clearTimeout(timer);
+      unsubscribe();
+      if (bufferRef.current === buffer) bufferRef.current = null;
+    };
   }, [leafId]);
 
   const visibleEntries = useMemo(
@@ -119,7 +96,7 @@ export function TerminalLogs({
     if (!follow) return;
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
-  }, [follow, visibleEntries.length]);
+  }, [follow, visibleEntries]);
 
   const selectFilter = (next: LogFilter) => setFilter(next);
 
@@ -189,7 +166,9 @@ export function TerminalLogs({
             {value === "all" ? "all" : LEVEL_LABEL[value].toLowerCase()}
           </button>
         ))}
-        <span className="terminal-logs-count">{visibleEntries.length} lines</span>
+        <span className="terminal-logs-count" title={limited ? "Bounded preview: older output is removed and very long lines are shortened. Terminal scrollback is unchanged." : undefined}>
+          {visibleEntries.length} lines{limited ? " · limited preview" : ""}
+        </span>
       </div>
       {prefs.aiEnabled && highlights?.leafId === leafId && <LogHighlightsPanel key={highlights.id} snapshot={highlights.snapshot} onClose={() => setHighlights(null)} />}
       {explore?.leafId === leafId && <OutputExplorePanel key={explore.id} snapshot={explore.snapshot} onClose={() => setExplore(null)} />}
@@ -204,13 +183,7 @@ export function TerminalLogs({
         {visibleEntries.length === 0 ? (
           <div className="terminal-logs-empty">Waiting for terminal output…</div>
         ) : (
-          visibleEntries.map((entry) => (
-            <div key={entry.id} data-log-id={entry.id} className={`terminal-log-row ${entry.level}`}>
-              <time>{timestamp(entry.at)}</time>
-              <span className="terminal-log-level">{LEVEL_LABEL[entry.level]}</span>
-              <span className="terminal-log-message">{entry.text}</span>
-            </div>
-          ))
+          visibleEntries.map((entry) => <LogRow key={entry.id} entry={entry} />)
         )}
       </div>
     </section>

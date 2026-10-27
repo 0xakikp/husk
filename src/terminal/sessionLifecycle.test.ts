@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalSessionConnection, type NativeTerminalStatus, type TerminalTransport } from "./sessionLifecycle";
+import type { NativeTerminalOutput } from "./outputFlow";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -14,19 +15,21 @@ function fixture() {
   const stops: ReturnType<typeof vi.fn>[] = [];
   const transport = {
     spawn: vi.fn<() => Promise<number>>().mockResolvedValue(1),
-    listenData: vi.fn<TerminalTransport["listenData"]>(async (id: number, callback: (bytes: number[]) => void) => {
-      data.set(id, callback); const stop = vi.fn(); stops.push(stop); return stop;
+    listenData: vi.fn<TerminalTransport["listenData"]>(async (id: number, callback: (packet: NativeTerminalOutput) => void) => {
+      let sequence = 0;
+      data.set(id, bytes => callback({ sequence: ++sequence, bytes })); const stop = vi.fn(); stops.push(stop); return stop;
     }),
     listenExit: vi.fn<TerminalTransport["listenExit"]>(async (id: number, callback: (status: NativeTerminalStatus | null) => void) => {
       exits.set(id, callback); const stop = vi.fn(); stops.push(stop); return stop;
     }),
     attach: vi.fn<TerminalTransport["attach"]>().mockResolvedValue(running),
+    acknowledge: vi.fn<TerminalTransport["acknowledge"]>().mockResolvedValue(undefined),
     status: vi.fn<TerminalTransport["status"]>().mockResolvedValue(running),
     write: vi.fn<TerminalTransport["write"]>().mockResolvedValue(undefined),
     kill: vi.fn<TerminalTransport["kill"]>().mockResolvedValue(undefined),
   };
   const output = vi.fn(); const changed = vi.fn();
-  const connection = new TerminalSessionConnection(transport, output, changed);
+  const connection = new TerminalSessionConnection(transport, (bytes, parsed) => { output(bytes); parsed(); }, changed);
   const ready = async () => { await connection.start(); data.get(connection.id!)!([36, 32]); };
   return { connection, transport, data, exits, stops, output, changed, ready };
 }
@@ -149,6 +152,25 @@ describe("terminal startup and generation identity", () => {
 });
 
 describe("non-destructive health checks and explicit restart", () => {
+  it("retains final queued output after an early native exit while returning its credits", async () => {
+    const f = fixture(); await f.ready(); await vi.advanceTimersByTimeAsync(0);
+    f.exits.get(1)!({ state: "exited", message: "Shell exited." });
+    f.data.get(1)!([102, 105, 110, 97, 108]); await vi.advanceTimersByTimeAsync(0);
+    expect(f.output.mock.calls[f.output.mock.calls.length - 1]).toEqual([[102, 105, 110, 97, 108]]);
+    expect(f.transport.acknowledge.mock.calls[f.transport.acknowledge.mock.calls.length - 1]).toEqual([1, 2]);
+    expect(f.connection.status.state).toBe("exited"); f.connection.dispose();
+  });
+
+  it("recovers a timed-out parser ACK without restarting or duplicating output", async () => {
+    const f = fixture(); f.transport.acknowledge.mockReturnValueOnce(new Promise(() => {}));
+    await f.ready(); await vi.advanceTimersByTimeAsync(5_001);
+    expect(f.connection.status.state).toBe("unresponsive");
+    await f.connection.check(); expect(f.connection.status.state).toBe("ready");
+    expect(f.transport.acknowledge.mock.calls).toEqual([[1, 1], [1, 1]]);
+    expect(f.output).toHaveBeenCalledOnce(); expect(f.transport.spawn).toHaveBeenCalledOnce();
+    expect(f.transport.kill).not.toHaveBeenCalled(); f.connection.dispose();
+  });
+
   it("coalesces health checks and never writes, kills, or respawns a running job", async () => {
     const f = fixture(); await f.ready(); const status = deferred<NativeTerminalStatus>();
     f.transport.status.mockReturnValue(status.promise);
