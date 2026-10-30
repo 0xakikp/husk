@@ -1,0 +1,33 @@
+.ai-workflow-proposal {
+  min-width: 0;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 3%, transparent);
+  color: var(--foreground);
+  font-size: 11px;
+}
+.ai-workflow-proposal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ai-workflow-proposal-header > div { min-width: 0; }
+.ai-workflow-proposal-eyebrow { display: block; margin-bottom: 3px; color: var(--primary); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.ai-workflow-proposal h4 { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.ai-workflow-proposal-count { flex-shrink: 0; color: var(--muted-foreground); font-size: 10px; font-variant-numeric: tabular-nums; }
+.ai-workflow-proposal-description { margin: 7px 0 0; color: var(--muted-foreground); line-height: 1.5; overflow-wrap: anywhere; }
+.ai-workflow-proposal-steps { max-height: 220px; margin: 10px 0 0; padding: 0; overflow: auto; overscroll-behavior: contain; list-style: none; border-block: 1px solid var(--border); }
+.ai-workflow-proposal-steps:focus-visible { outline: 1px solid var(--primary); outline-offset: 3px; }
+.ai-workflow-proposal-steps li { display: flex; align-items: baseline; gap: 9px; margin: 0; padding: 8px 0; }
+.ai-workflow-proposal-steps li + li { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.ai-workflow-proposal-step-number { min-width: 14px; flex-shrink: 0; color: var(--muted-foreground); font-size: 10px; font-variant-numeric: tabular-nums; }
+.ai-workflow-proposal-steps li > div { min-width: 0; flex: 1; }
+.ai-workflow-proposal-step-title { display: block; margin-bottom: 3px; color: var(--muted-foreground); font-size: 10px; overflow-wrap: anywhere; }
+.ai-workflow-proposal-steps pre { margin: 0; color: var(--foreground); font: inherit; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-workflow-proposal-steps code { font-family: var(--font-mono, monospace); }
+.ai-workflow-proposal-shell { margin: 8px 0 0; color: var(--muted-foreground); font-size: 9px; line-height: 1.5; }
+.ai-workflow-proposal-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; margin-top: 10px; }
+.ai-workflow-proposal-footer > span { flex: 1 1 160px; color: var(--muted-foreground); font-size: 9px; line-height: 1.5; }
+.ai-workflow-proposal-review { flex-shrink: 0; padding: 5px 8px; border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--primary) 8%, transparent); color: var(--primary); font: inherit; cursor: pointer; }
+.ai-workflow-proposal-review:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 15%, transparent); border-color: var(--primary); }
+.ai-workflow-proposal-review:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
+.ai-workflow-proposal-review:disabled { opacity: .45; cursor: default; }
+.composer-workflow-status { max-width: 100%; margin: 8px 0; color: var(--muted-foreground); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }

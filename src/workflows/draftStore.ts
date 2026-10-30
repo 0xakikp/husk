@@ -7,6 +7,7 @@ export type WorkflowDraft = {
   name: string;
   description: string;
   steps: string[];
+  stepTitles?: string[];
   stopOnError: boolean;
   source: "suggestion" | "evolution" | "timeline" | "recent" | "terminal-selection" | "terminal-history" | "ai-code" | "manual" | "edit";
   fingerprint?: string;

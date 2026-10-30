@@ -19,6 +19,8 @@ type HuskAssistantContextInput = {
   /** A session-only opt-in for Husk to apply eligible proposals after validation. */
   subscriptionAutoApply?: boolean;
   workspaceEditAccess?: boolean;
+  /** Only surfaces that render reviewable workflow cards may enable this. */
+  workflowProposals?: boolean;
   globalInstructions?: string;
   personalMemory?: string;
 };
@@ -125,6 +127,7 @@ export function buildHuskAssistantContext({
   subscriptionEditAccess,
   subscriptionAutoApply,
   workspaceEditAccess,
+  workflowProposals,
   globalInstructions: reviewedInstructions,
   personalMemory: reviewedMemory,
 }: HuskAssistantContextInput): string {
@@ -140,6 +143,16 @@ export function buildHuskAssistantContext({
     "Husk is a local, keyboard-first workspace for terminals, code, notes, and AI help. Describe it through visible user workflows and controls; do not volunteer framework, implementation-language, or infrastructure details.",
     "Useful Husk areas: terminal tabs and pane splits; a file explorer and code editor; the Vault for notes; Husk AI in the composer and full AI screen; Task Mode with explicitly started, supervised terminal steps in the visible terminal; the ⌘K command palette; Appearance and workspace settings; a lower terminal inspector for Beautiful Logs; command-tool setup; and optional MCP integrations such as GitHub.",
     "On-screen AI tools: select terminal/editor text and right-click Explain here for AI Peek with source-line links, Ask more (a draft), and Save to Vault. Right-click a single command or prompt draft → Modify command with AI… to review a proposal and copy it or stage into an empty prompt without Enter. Repeating the same command in the same terminal/folder/known host can show Compare with previous: a local diff, with optional Explain changes. This requires shell command markers and reliable host/CWD tracking. Beautiful Logs → Highlights captures selected or filtered lines for review before Analyze. Ctrl+R defaults to local history search; Ask AI → review entries → Find matches retrieves only saved commands, never generates them. Local history is not remote-host history. These tools use bounded, explicit context without requiring a workspace or SFTP.",
+    workflowProposals
+      ? [
+          "Reviewable workflows: when the user asks to create, collect, or append commands to a workflow, or a reusable ordered routine would clearly help, you may propose a workflow. Do not turn unrelated alternatives or every single command into a workflow.",
+          'Use one fenced `husk-workflow` JSON object with exactly this shape: {"version":1,"name":"Check project","description":"Optional purpose","steps":["pnpm lint","pnpm test"],"stepTitles":["Lint","Test"],"stopOnError":true}. Put opening and closing fences on their own lines. description and stepTitles are optional; titles must match the step count. Do not repeat the same commands in ordinary shell fences.',
+          "Each step is one complete command line, preserved in order; use 1–100 steps, at most 8,000 UTF-8 bytes per command and 128 KiB for the proposal. Prefer one workflow per reply; never exceed three. Names and titles are single-line text of at most 160 UTF-8 bytes, descriptions at most 2,000 bytes. Do not split quoted commands, continuations, heredocs, loops, or scripts into separate steps. Keep complex scripts as source code or suggest invoking a reviewed script file.",
+          "Workflow steps run later, sequentially in one POSIX sh subprocess. New workflows stop on the first failure by default; appending keeps the destination's failure policy. Directory and environment changes can carry between steps inside that subprocess, not back into the user's terminal. Interactive aliases and functions are not inherited. A long-running server or interactive command blocks following steps; explain that or keep it separate. Never assume credentials, installed tools, a local versus SSH target, or a workspace that has not been supplied.",
+          "The user chooses New workflow, their current draft, or a saved workflow to append to, reviews and edits the exact steps, and saves separately. For an append request, propose only the additional steps; do not invent saved workflow contents or IDs. Never include target, id, actions, inputs, other execution flags, credentials, or tokens in proposal JSON. Simple non-secret whole-argument {{name}} placeholders can be reviewed as runtime inputs; do not embed secret values or defaults.",
+          "A workflow proposal only opens an inert review when the user chooses it. It never automatically saves, appends, replaces, runs, or schedules anything, even if other workspace actions have auto-apply enabled. Do not claim any of those actions completed. Running a saved workflow requires a separate explicit user action.",
+        ].join(" ")
+      : "",
     "When explaining Husk, give the smallest useful answer first, then exact navigation such as Settings → AI & Models, Settings → Integrations, or ⌘K. Do not invent a feature, shortcut, connection, or current configuration. If the user asks what Husk can do, group capabilities briefly instead of dumping every feature.",
     "Tone: practical and calm. Lead with the answer. Be explicit about limits and next actions; never imply that an action was taken when it was only suggested.",
     responseStyleContext(prefs.aiResponseStyle),

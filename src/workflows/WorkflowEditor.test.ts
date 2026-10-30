@@ -42,6 +42,17 @@ it("keeps optional fields collapsed and preserves metadata when moving/duplicati
   await click("Move step 2 up"); await click("Duplicate step 1"); await click("Save workflow");
   expect(save).toHaveBeenCalledWith(expect.objectContaining({ steps: ["git status", "git status", "git log -n {{count}}"], stepTitles: ["Status", "Status", "History"], inputs: wf.inputs }));
 });
+it("preserves proposed draft titles without a controlled session value", async () => {
+  await act(async () => root.render(createElement(WorkflowEditor, {
+    initial: null,
+    draft: { name: "Check", description: "Review first", steps: ["git status", "git diff"], stepTitles: ["Working tree", "Changes"], stopOnError: true, source: "ai-code" },
+    onSave: save, onCancel: vi.fn(),
+  })));
+  expect(container.querySelector<HTMLInputElement>('[aria-label="Step 1 title"]')?.value).toBe("Working tree");
+  expect(container.querySelector<HTMLInputElement>('[aria-label="Step 2 title"]')?.value).toBe("Changes");
+  await click("Move step 2 up"); await click("Save workflow");
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: "Check", steps: ["git diff", "git status"], stepTitles: ["Changes", "Working tree"] }));
+});
 it("uses the same flat labelled field anatomy as other compact forms with a single step card layer", async () => {
   await render();
   const name = container.querySelector<HTMLInputElement>('[aria-label="Workflow name"]')!;

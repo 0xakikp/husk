@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addWorkflowCapture,
+  addWorkflowCaptures,
   collapseWorkflowEditor,
   discardWorkflowEditor,
   finishWorkflowEditor,
@@ -210,5 +211,87 @@ describe("workflow editor session", () => {
     startWorkflowEditor(command, { name: "Status", description: "Updated", steps: ["git status --short"], stopOnError: true, source: "edit" });
     expect(current().original).toEqual(command);
     expect(current().workflow).toMatchObject({ kind: "command", description: "Updated", steps: ["git status --short"] });
+  });
+
+  it("opens a batch with exact step boundaries and proposal titles without executing or persisting it", () => {
+    const steps = ["  git status  ", "printf '%s\\n' \\\n  hello"];
+    const titles = ["Status", "Print"];
+    addWorkflowCaptures(steps, "ai-code", "new", { expectedKey: null, expectedRevision: null, name: "Inspect", description: "A proposed check", stepTitles: titles });
+    expect(current()).toMatchObject({ original: null, revision: 0, workflow: { name: "Inspect", description: "A proposed check", steps, stepTitles: titles, stopOnError: true }, sourceDraft: { source: "ai-code", steps, stepTitles: titles } });
+    steps[0] = "mutated"; titles[0] = "mutated";
+    expect(current().workflow.steps[0]).toBe("  git status  ");
+    expect(current().workflow.stepTitles).toEqual(["Status", "Print"]);
+    expect(current().sourceDraft?.stepTitles).toEqual(["Status", "Print"]);
+  });
+
+  it("appends the whole batch in order while preserving existing raw values, inputs and policy", () => {
+    startWorkflowEditor(fixture());
+    const { key, revision, revealRevision } = current();
+    collapseWorkflowEditor(key);
+    addWorkflowCaptures(["git status", "git diff"], "ai-code", "current", { expectedKey: key, expectedRevision: revision, name: "Must not rename", description: "Must not replace", stepTitles: ["Status", "Diff"] });
+    expect(current()).toMatchObject({ key, collapsed: false, revision: revision + 1, revealRevision: revealRevision + 1, original: fixture(), workflow: {
+      ...fixture(), steps: [fixture().steps[0], "git status", "git diff"], stepTitles: ["Recent commits", "Status", "Diff"],
+    } });
+  });
+
+  it("requires the reviewed revision even when the draft key has not changed", () => {
+    startWorkflowEditor(fixture());
+    const { key, revision } = current();
+    updateWorkflowEditor(key, { ...current().workflow, name: "Newer edit" });
+    const edited = current();
+    for (const target of ["current", "new"] as const) {
+      expect(() => addWorkflowCaptures(["pwd", "whoami"], "ai-code", target, { expectedKey: key, expectedRevision: revision, replaceExisting: true })).toThrow("draft changed");
+      expect(current()).toBe(edited);
+    }
+  });
+
+  it("validates the full batch and metadata before publishing any changes", () => {
+    startWorkflowEditor(fixture());
+    const original = current();
+    const options = { expectedKey: original.key, expectedRevision: original.revision };
+    for (const steps of [[], ["pwd", ""], ["pwd", "é".repeat(4001)], ["pwd", "bad\u0000"], Array(100).fill("pwd")]) {
+      expect(() => addWorkflowCaptures(steps, "ai-code", "current", options)).toThrow();
+      expect(current()).toBe(original);
+    }
+    for (const metadata of [{ name: "界".repeat(54) }, { description: "a".repeat(2001) }, { name: "bad\u0085" }, { stepTitles: ["Only one"] }, { stepTitles: ["Good", "bad\u001b"] }]) {
+      expect(() => addWorkflowCaptures(["pwd", "whoami"], "ai-code", "new", { ...options, replaceExisting: true, ...metadata })).toThrow();
+      expect(current()).toBe(original);
+    }
+  });
+
+  it("fills an empty workflow with a batch but cannot convert an empty saved-command draft", () => {
+    startWorkflowEditor();
+    const { key, revision } = current();
+    addWorkflowCaptures(["pwd", "whoami"], "ai-code", "current", { expectedKey: key, expectedRevision: revision, stepTitles: ["Directory", "User"] });
+    expect(current().workflow.steps).toEqual(["pwd", "whoami"]);
+    expect(current().workflow.stepTitles).toEqual(["Directory", "User"]);
+    resetSession();
+    startWorkflowEditor(null, { kind: "command", name: "", description: "", steps: [""], stopOnError: true, source: "manual" });
+    const original = current();
+    expect(() => addWorkflowCaptures(["pwd", "whoami"], "ai-code", "current", { expectedKey: original.key, expectedRevision: original.revision })).toThrow("exactly one command");
+    expect(current()).toBe(original);
+  });
+
+  it("rejects multiline proposal names atomically while preserving multiline descriptions and shell text", () => {
+    for (const separator of ["\r", "\n", "\t", "\u2028", "\u2029"]) {
+      expect(() => addWorkflowCaptures(["pwd"], "ai-code", "new", { expectedKey: null, expectedRevision: null, name: `First${separator}second` })).toThrow("single-line");
+      expect(getWorkflowEditorSession()).toBeNull();
+    }
+    addWorkflowCaptures(["printf 'one\ntwo'"], "ai-code", "new", { expectedKey: null, expectedRevision: null, name: "Inspect", description: "First line\nSecond line" });
+    expect(current().workflow).toMatchObject({ name: "Inspect", description: "First line\nSecond line", steps: ["printf 'one\ntwo'"] });
+  });
+
+  it("requires consent before replacing a draft with a batch and blocks capture while saving", () => {
+    startWorkflowEditor(fixture());
+    const original = current();
+    const options = { expectedKey: original.key, expectedRevision: original.revision };
+    expect(() => addWorkflowCaptures(["pwd", "whoami"], "ai-code", "new", options)).toThrow("already an unsaved");
+    expect(current()).toBe(original);
+    setWorkflowEditorBusy(original.key, true);
+    expect(() => addWorkflowCaptures(["pwd", "whoami"], "ai-code", "new", { ...options, replaceExisting: true })).toThrow("being saved");
+    setWorkflowEditorBusy(original.key, false);
+    addWorkflowCaptures(["pwd", "whoami"], "ai-code", "new", { ...options, replaceExisting: true });
+    expect(current().key).not.toBe(original.key);
+    expect(current().workflow.steps).toEqual(["pwd", "whoami"]);
   });
 });

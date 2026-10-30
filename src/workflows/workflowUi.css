@@ -65,4 +65,18 @@
 .workflow-sidebar-draft:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
 .wf-form .wf-disclosure { padding: 0; }
 .wf-form .wf-disclosure[open] > summary { margin-bottom: 8px; }
+.workflow-capture-dialog { width: min(600px, calc(100vw - 32px)); z-index: 100; }
+.wf-capture-heading, .wf-capture-step-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wf-capture-heading h3 { margin: 0; overflow-wrap: anywhere; }
+.wf-capture-heading > span { flex-shrink: 0; color: var(--muted-foreground); font-size: 10px; }
+.wf-capture-steps { list-style: none; margin: 8px 0 0; padding: 0; max-height: min(260px, 32dvh); overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: 6px; }
+.wf-capture-step { padding: 8px 10px; }
+.wf-capture-step + .wf-capture-step { border-top: 1px solid var(--border); }
+.wf-capture-step[data-selected="true"] { background: color-mix(in srgb, var(--primary) 5%, transparent); }
+.wf-capture-step .compact-check { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.wf-capture-step .wf-step-actions { flex-shrink: 0; }
+.wf-capture-step pre { margin: 5px 0 0; }
+.wf-capture-single { max-height: min(220px, 30dvh); overflow: auto; }
+.wf-capture-destination { margin-top: 8px; }
+.wf-capture-footer.compact-actions { flex-shrink: 0; margin: 0; padding: 10px 14px; border-top: 1px solid var(--border); flex-direction: row; }
 @media(max-width: 580px) { .wf-input-grid { grid-template-columns: 1fr; } .workflow-dialog { max-height: calc(100dvh - 24px); } }

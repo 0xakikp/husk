@@ -25,7 +25,7 @@ function initialValue(initial: Workflow | null, draft?: WorkflowDraft | null): W
   const kind = draft?.kind ?? initial?.kind;
   let inputs: WorkflowInput[];
   try { inputs = getWorkflowInputs({ steps, inputs: initial?.inputs }); } catch { inputs = initial?.inputs ?? []; }
-  return { id: draft?.targetWorkflowId ?? initial?.id ?? newWorkflowId(), ...(kind ? { kind } : {}), name: draft?.name ?? initial?.name ?? "", description: draft?.description ?? initial?.description ?? "", steps, ...(kind === "command" ? {} : { stepTitles: steps.map((_, i) => draft ? "" : initial?.stepTitles?.[i] ?? "") }), inputs, stopOnError: draft?.stopOnError ?? initial?.stopOnError ?? true };
+  return { id: draft?.targetWorkflowId ?? initial?.id ?? newWorkflowId(), ...(kind ? { kind } : {}), name: draft?.name ?? initial?.name ?? "", description: draft?.description ?? initial?.description ?? "", steps, ...(kind === "command" ? {} : { stepTitles: steps.map((_, i) => draft?.stepTitles?.[i] ?? (draft ? "" : initial?.stepTitles?.[i] ?? "")) }), inputs, stopOnError: draft?.stopOnError ?? initial?.stopOnError ?? true };
 }
 const sourceDescriptions: Record<string, string> = {
   evolution: "Review the proposed update. Saving replaces this workflow’s steps; nothing runs.",

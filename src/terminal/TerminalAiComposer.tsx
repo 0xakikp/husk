@@ -95,6 +95,9 @@ import { toast } from "../toast";
 import { getTerminalRunDecision, getWorkspaceRunDecision } from "./commandRun";
 import { notifyTerminalFolderUnavailable, runComposerTerminalCommand } from "./composerTerminalRun";
 import { WorkflowCaptureButton } from "../workflows/WorkflowCaptureButton";
+import { AiWorkflowProposalCard } from "../workflows/AiWorkflowProposalCard";
+import { maskWorkflowProposals, parseWorkflowProposals, stripWorkflowProposals } from "../ai/workflowProposals";
+import { parseComposerCodeBlocks as parseCodeBlocks } from "./composerCodeBlocks";
 import { shq } from "../lib/shellQuote";
 import { useWorkspaceRoot } from "../workspace/store";
 import {
@@ -216,21 +219,6 @@ interface FileTreeNode {
 
 function getMessageAccentClass(color?: string) {
   return color ? `composer-message-accent-${color}` : "";
-}
-
-function parseCodeBlocks(text: string): CodeBlock[] {
-  const blocks: CodeBlock[] = [];
-  const regex = /```([\w-]*)\n?([\s\S]*?)```/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    /* An omitted fence language is code to copy and inspect, not an implicit
-       shell command. Direct Run is intentionally opt-in via sh/bash/zsh. */
-    const lang = (match[1] || "").toLowerCase();
-    /* Subscription edit fences are machine-readable review proposals, not
-       source code to copy or run. PendingEditsReview renders their diff. */
-    if (lang !== "husk-edit") blocks.push({ lang, code: match[2].trim() });
-  }
-  return blocks;
 }
 
 function stripCodeBlocks(text: string): string {
@@ -2001,10 +1989,11 @@ export function TerminalAiComposer({
         subscriptionEditAccess,
         subscriptionAutoApply: subscriptionAutoApplyActive,
         workspaceEditAccess,
+        workflowProposals: true,
         globalInstructions: sendItems.find((item) => item.kind === "instructions")?.preview ?? "",
         personalMemory: sendItems.find((item) => item.kind === "personal-memory")?.preview ?? "",
       }) +
-      "\n\nIf you suggest a command the user may run, put one short command in an explicitly labelled `sh` code block. Put scripts and source code in their real language fence; do not label them `sh`. When referring to a file in the selected workspace, use a backticked relative path, optionally with `:line`, so the user can open it." +
+      "\n\nFor a standalone command the user may run, use an explicitly labelled `sh` code block. For a related multi-step routine or commands to append to a workflow, use the review-only `husk-workflow` format described above; do not duplicate those steps in ordinary shell fences. Put scripts and source code in their real language fence; do not label them `sh`. When referring to a file in the selected workspace, use a backticked relative path, optionally with `:line`, so the user can open it." +
       mcpActionCatalog;
 
     /* Applying or discarding a review card happens in Husk, outside the chat
@@ -3452,10 +3441,16 @@ export function TerminalAiComposer({
               </details>
             );
             const isUser = msg.role === "user";
-            const textParts = isUser ? msg.content : stripCodeBlocks(msg.content);
+            const workflows = isUser ? null : parseWorkflowProposals(msg.content);
+            const hasWorkflow = !!workflows && (workflows.proposals.length > 0 || workflows.rejected > 0 || workflows.pending);
+            // Protocol JSON never becomes a runnable shell tab, even while incomplete.
+            // Keep the original message intact so proposals survive chat reloads.
+            const visibleContent = isUser ? msg.content : stripWorkflowProposals(msg.content);
+            const textParts = isUser ? visibleContent : stripCodeBlocks(visibleContent);
+            const maskedContent = isUser ? msg.content : maskWorkflowProposals(msg.content);
             const codeBlocks = isUser ? [] : parseCodeBlocks(msg.content);
-            const diffBlocks = isUser ? [] : parseDiffBlocks(msg.content);
-            const tree = isUser ? null : parseFileTree(msg.content);
+            const diffBlocks = isUser ? [] : parseDiffBlocks(maskedContent);
+            const tree = isUser ? null : parseFileTree(maskedContent);
             const timeLabel = msg.timestamp
               ? new Date(msg.timestamp).toLocaleTimeString(undefined, { hour12: false })
               : "";
@@ -3464,6 +3459,7 @@ export function TerminalAiComposer({
               codeBlocks.length === 0 &&
               diffBlocks.length === 0 &&
               !tree &&
+              !hasWorkflow &&
               (!msg.trace || Boolean(msg.streaming)) &&
               !msg.content.includes("\n") &&
               msg.content.trim().length <= 80;
@@ -3564,7 +3560,10 @@ export function TerminalAiComposer({
                   ) : (
                     <>
                       {textParts && <CollapsibleMarkdownText text={textParts} workspaceRoot={msg.trace?.workspacePath ?? workspacePath} />}
-                      {msg.streaming && !textParts && codeBlocks.length === 0 && diffBlocks.length === 0 && !tree && <LoadingIndicator />}
+                      {workflows?.proposals.map((proposal, index) => <AiWorkflowProposalCard key={index} proposal={proposal} disabled={!!msg.streaming} />)}
+                      {workflows?.pending && <p className="composer-workflow-status" role="status">{msg.streaming ? "Preparing workflow proposal…" : "This workflow proposal was incomplete. Ask Husk AI to send it again; no draft was created."}</p>}
+                      {!!workflows?.rejected && <p className="composer-workflow-status" role="status">{workflows.rejected === 1 ? "A workflow proposal could not be reviewed" : `${workflows.rejected} workflow proposals could not be reviewed`} because the format or limits were unsupported. Ask Husk AI to resend a smaller, valid workflow. These proposals did not create or run a workflow.</p>}
+                      {msg.streaming && !textParts && !hasWorkflow && codeBlocks.length === 0 && diffBlocks.length === 0 && !tree && <LoadingIndicator />}
                       {codeBlocks.length > 0 && (
                         <CodeBlockTabs
                           blocks={codeBlocks}
@@ -4168,7 +4167,7 @@ function CodeBlockTabs({
             </button>
           ))}
         </div>
-        <CodeActions block={active} idx={tabIndex} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} />
+        <CodeActions block={active} blocks={blocks} idx={blocks[tabIndex] ? tabIndex : 0} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} />
       </div>
       <CodeBlockPre block={active} />
     </div>
@@ -4201,12 +4200,14 @@ function CodeBlockCard({
 
 function CodeActions({
   block,
+  blocks,
   idx,
   copiedIdx,
   onCopy,
   onRun,
 }: {
   block: CodeBlock;
+  blocks?: CodeBlock[];
   idx: number;
   copiedIdx: number | null;
   onCopy: (code: string, idx: number) => void;
@@ -4224,7 +4225,7 @@ function CodeActions({
         <HugeiconsIcon icon={copiedIdx === idx ? TickDouble01Icon : Copy01Icon} size={10} strokeWidth={1.75} />
         {copiedIdx === idx ? "Copied" : "Copy"}
       </button>
-      <WorkflowCaptureButton language={block.lang} code={block.code} />
+      <WorkflowCaptureButton language={block.lang} code={block.code} blocks={blocks} blockIndex={idx} />
       {run.runnable ? (
         <button
           type="button"

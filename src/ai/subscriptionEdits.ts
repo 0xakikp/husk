@@ -1,4 +1,5 @@
 import { resolveWorkspacePath } from "./workspaceScope";
+import { maskWorkflowProposals } from "./workflowProposals";
 
 /** Legacy signed-in CLI edit interchange. New provider-neutral requests use
  * `husk-action`; this format remains for existing review and auto-apply
@@ -33,8 +34,11 @@ export function parseSubscriptionEditProposals(
   const proposals: SubscriptionEditProposal[] = [];
   let rejected = 0;
   let match: RegExpExecArray | null;
+  // Never promote embedded examples from an inert workflow proposal into a
+  // legacy edit/auto-apply request, even if the proposal is invalid/unfinished.
+  const actionableResponse = maskWorkflowProposals(response);
 
-  while ((match = EDIT_FENCE.exec(response)) !== null) {
+  while ((match = EDIT_FENCE.exec(actionableResponse)) !== null) {
     let payload: unknown;
     try {
       payload = JSON.parse(match[1]);

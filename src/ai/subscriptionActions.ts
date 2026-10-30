@@ -1,6 +1,7 @@
 import { resolveWorkspacePath } from "./workspaceScope";
 import { resolveRemoteWorkspacePath, type RemoteWorkspaceScope } from "./remoteWorkspace";
 import type { HuskActionRequest } from "./actionBroker";
+import { maskWorkflowProposals } from "./workflowProposals";
 
 const ACTION_OPEN = /```husk-action\b[ \t]*/gi;
 const ACTION_CLOSE = /^[ \t]*```[ \t]*(?=\r?\n|$)/gm;
@@ -25,17 +26,21 @@ type SubscriptionActionBlock = {
  */
 function actionBlocks(text: string): SubscriptionActionBlock[] {
   const blocks: SubscriptionActionBlock[] = [];
+  // Workflow proposals are inert review data, including malformed or partial
+  // proposals. Preserve offsets so stripping executable actions never removes
+  // a protocol example from a workflow card's original chat content.
+  const actionableText = maskWorkflowProposals(text);
   const opening = new RegExp(ACTION_OPEN.source, ACTION_OPEN.flags);
   let match: RegExpExecArray | null;
 
-  while ((match = opening.exec(text)) !== null) {
+  while ((match = opening.exec(actionableText)) !== null) {
     let payloadStart = opening.lastIndex;
     if (text.startsWith("\r\n", payloadStart)) payloadStart += 2;
     else if (text[payloadStart] === "\n") payloadStart += 1;
 
     const closing = new RegExp(ACTION_CLOSE.source, ACTION_CLOSE.flags);
     closing.lastIndex = payloadStart;
-    const closeMatch = closing.exec(text);
+    const closeMatch = closing.exec(actionableText);
     if (!closeMatch) {
       blocks.push({
         start: match.index,
