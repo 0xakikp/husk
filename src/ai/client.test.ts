@@ -107,6 +107,22 @@ describe("request cancellation", () => {
 });
 
 describe("accurate tool traces", () => {
+  it.each(["length", "content-filter", "error"])("does not call a %s finish a completed answer", async (finishReason) => {
+    fixtures.events = [{ type: "text-delta", text: "Partial answer" }, { type: "finish", finishReason }];
+    const delta = vi.fn();
+    await expect(streamChat(config(), "", [{ role: "user", content: "work" }], delta)).rejects.toThrow(/incomplete/);
+    expect(delta).toHaveBeenCalledWith("Partial answer");
+  });
+  it("rejects an empty completed answer but accepts tool-only approval activity", async () => {
+    fixtures.events = [{ type: "finish", finishReason: "stop" }];
+    await expect(streamChat(config(), "", [{ role: "user", content: "work" }], vi.fn())).rejects.toThrow("no answer");
+    fixtures.events.unshift({ type: "tool-call", toolName: "propose_edit" });
+    await expect(streamChat(config(), "", [{ role: "user", content: "work" }], vi.fn())).resolves.toBeUndefined();
+  });
+  it("preserves a normally completed answer", async () => {
+    fixtures.events = [{ type: "text-delta", text: "Finished" }, { type: "finish", finishReason: "stop" }];
+    await expect(streamChat(config(), "", [{ role: "user", content: "work" }], vi.fn())).resolves.toBeUndefined();
+  });
   it("preserves error, refused, and queued broker results in the reply trace", async () => {
     fixtures.events = [
       { type: "tool-call", toolName: "create_file" },

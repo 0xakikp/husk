@@ -34,10 +34,13 @@ export type AiReplyTrace = {
 export type AiMessage = {
   id?: string;
   /** Locally observed evidence, not a message typed by the user. */
-  kind?: "command-result";
+  kind?: "command-result" | "integration-result";
   role: Role;
   content: string;
   streaming?: boolean;
+  /** Kept outside response Markdown so it cannot become part of a code block. */
+  notice?: string;
+  incomplete?: boolean;
   timestamp?: number;
   trace?: AiReplyTrace;
   images?: { dataUrl: string; mediaType?: string }[];
@@ -45,6 +48,8 @@ export type AiMessage = {
 
 export type AiSession = {
   id: string;
+  /** Changes when a chat is cleared, even if its terminal/session ID stays. */
+  conversationId?: string;
   name: string;
   messages: AiMessage[];
   input: string;
@@ -127,6 +132,7 @@ function restoreSession(value: unknown): AiSession | null {
     ...message,
     id: message.id || `${session.id}-restored-${index}`,
     streaming: false,
+    ...(message.streaming ? { incomplete: true, notice: message.notice || "This response was interrupted when Husk closed. Any partial code needs review before use." } : {}),
     // A process cannot continue a tool after a restart. Do not leave stale
     // running indicators that imply a command is still being supervised.
     trace: message.trace && {
@@ -136,6 +142,7 @@ function restoreSession(value: unknown): AiSession | null {
   }));
   return {
     ...session,
+    conversationId: session.conversationId || crypto.randomUUID(),
     messages,
     input: typeof session.input === "string" ? session.input : "",
     remoteWorkspace: normalizeRemoteWorkspace(session.remoteWorkspace),
@@ -340,6 +347,8 @@ function installPersistenceLifecycle() {
         do {
           await registerCloseGuard();
           if (hasUnsavedSessions() && !await flushSessionPersistence()) return;
+          const { flushTerminalHistories } = await import("../terminal/scrollbackPersistence");
+          if (!await flushTerminalHistories()) throw new Error("Recent terminal output could not be saved. Retry after checking local storage.");
           await removeCloseGuard();
         } while (hasUnsavedSessions());
         await win.close();
@@ -367,6 +376,7 @@ function ensureGlobalSession() {
   if (!sessions.has("global")) {
     sessions.set("global", {
       id: "global",
+      conversationId: crypto.randomUUID(),
       name: "Global AI",
       messages: [],
       input: "",
@@ -412,6 +422,15 @@ function invalidateSessions(id: string) {
 
 export function updateSession(id: string, updater: (s: AiSession) => AiSession) {
   updateExistingSession(id, updater);
+}
+
+export function conversationIdentity(session: AiSession): string {
+  return session.conversationId || `${session.id}:${session.createdAt}`;
+}
+
+/** A fresh conversation cannot inherit delayed receipts from the old one. */
+export function clearSessionConversation(id: string): void {
+  updateExistingSession(id, (session) => ({ ...session, conversationId: crypto.randomUUID(), messages: [], input: "", task: undefined }));
 }
 
 /** Late stream/tool callbacks must not recreate a deleted conversation. */
@@ -462,6 +481,7 @@ export function createSession(options: {
   const id = options.tabId ? `tab-${options.tabId}` : `ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const session: AiSession = {
     id,
+    conversationId: crypto.randomUUID(),
     name: options.name || (options.tabId ? `Tab ${options.tabId}` : "New AI Chat"),
     messages: [],
     input: "",
@@ -490,6 +510,7 @@ export function ensureSession(id: string, options?: {
   if (sessions.has(id)) return sessions.get(id)!;
   const session: AiSession = {
     id,
+    conversationId: crypto.randomUUID(),
     name: options?.name || (options?.tabId ? `Tab ${options.tabId}` : "AI Chat"),
     messages: [],
     input: "",

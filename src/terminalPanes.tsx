@@ -2,6 +2,7 @@ import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react"
 import { TerminalView } from "./Terminal";
 import { resolveTerminalLaunchCwd } from "./terminal/launchOptions";
 import { TerminalPaneHeader } from "./terminal/TerminalPaneHeader";
+import { createScrollbackKey, isScrollbackKey } from "./terminal/scrollbackIdentity";
 
 /** A tab's terminals form a binary tree: leaves are terminals, splits divide
  *  the space row-wise (side by side) or column-wise (stacked). */
@@ -13,14 +14,14 @@ export type TerminalCheckpoint = {
 };
 
 export type Pane =
-  | { kind: "leaf"; id: number; initialCwd?: string; checkpoint?: TerminalCheckpoint; restored?: boolean }
+  | { kind: "leaf"; id: number; initialCwd?: string; checkpoint?: TerminalCheckpoint; restored?: boolean; historyKey?: string }
   | { kind: "split"; id: number; dir: "row" | "col"; ratio: number; a: Pane; b: Pane };
 
 let paneSeq = 1000;
 const nextPaneId = () => (paneSeq += 1);
 
 export function newLeaf(initialCwd?: string): Pane {
-  return { kind: "leaf", id: nextPaneId(), initialCwd: resolveTerminalLaunchCwd(initialCwd) };
+  return { kind: "leaf", id: nextPaneId(), historyKey: createScrollbackKey(), initialCwd: resolveTerminalLaunchCwd(initialCwd) };
 }
 
 /** Update only one pane's persisted launch directory. OSC 7 gives us this
@@ -35,8 +36,8 @@ export function setLeafCwd(node: Pane, leafId: number, cwd: string): Pane {
   return a === node.a && b === node.b ? node : { ...node, a, b };
 }
 
-/** Save a tiny restart checkpoint, never terminal output. A new terminal is
- * still a new process; this is enough context to orient the user honestly. */
+/** Layout keeps only a restart checkpoint and archive identity, never output.
+ * Optional scrollback lives separately; a new terminal is still a new process. */
 export function setLeafCheckpoint(node: Pane, leafId: number, checkpoint: TerminalCheckpoint): Pane {
   if (node.kind === "leaf") {
     return node.id === leafId ? { ...node, checkpoint: { ...node.checkpoint, ...checkpoint } } : node;
@@ -62,7 +63,7 @@ function checkpointFromUnknown(value: unknown): TerminalCheckpoint | undefined {
  * local data, so a corrupt or old shape must fail back to a fresh leaf rather
  * than duplicate IDs or crash the terminal layout.
  */
-export function hydratePane(value: unknown, seen = new Set<number>(), depth = 0): Pane | null {
+export function hydratePane(value: unknown, seen = new Set<number>(), depth = 0, historyKeys = new Set<string>()): Pane | null {
   if (!value || typeof value !== "object" || depth > 32) return null;
   const raw = value as Record<string, unknown>;
   const id = raw.id;
@@ -70,18 +71,22 @@ export function hydratePane(value: unknown, seen = new Set<number>(), depth = 0)
   if (raw.kind === "leaf") {
     seen.add(id);
     paneSeq = Math.max(paneSeq, id);
+    const historyKey = isScrollbackKey(raw.historyKey) && !historyKeys.has(raw.historyKey)
+      ? raw.historyKey : createScrollbackKey();
+    historyKeys.add(historyKey);
     return {
       kind: "leaf",
       id,
       initialCwd: resolveTerminalLaunchCwd(raw.initialCwd),
       checkpoint: checkpointFromUnknown(raw.checkpoint),
       restored: true,
+      historyKey,
     };
   }
   if (raw.kind !== "split" || (raw.dir !== "row" && raw.dir !== "col")) return null;
   seen.add(id);
-  const a = hydratePane(raw.a, seen, depth + 1);
-  const b = hydratePane(raw.b, seen, depth + 1);
+  const a = hydratePane(raw.a, seen, depth + 1, historyKeys);
+  const b = hydratePane(raw.b, seen, depth + 1, historyKeys);
   if (!a || !b) return null;
   paneSeq = Math.max(paneSeq, id);
   const ratio = typeof raw.ratio === "number" && Number.isFinite(raw.ratio) ? raw.ratio : 0.5;
@@ -155,6 +160,7 @@ export function PaneView({ node, paneNumber = 1, ...ops }: { node: Pane; paneNum
           initialCwd={node.initialCwd}
           checkpoint={node.checkpoint}
           restored={node.restored}
+          historyKey={node.historyKey}
           canClose={ops.multi}
           onSplit={(dir) => ops.onSplit(node.id, dir)}
           onClose={() => ops.onClose(node.id)}

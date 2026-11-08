@@ -86,7 +86,7 @@ function accessContext(
       prefs.aiMcpToolsEnabled
         ? "For a configured integration, emit a fenced `husk-action` JSON object: {kind:\"mcp.call\",serverId:\"…\",toolName:\"…\",input:{…}}. Never invent a server or tool name. Husk validates the request. Read-only integrations may run; every other integration action is shown for user approval."
         : "Connected integrations are disabled in Settings → Agents; do not propose integration actions.",
-      "After proposing an action, do not claim it ran. Husk will return a result or an approval state in the conversation.",
+      "Action and legacy edit fences must start at column zero on their own lines, outside lists, quotes, HTML, and other code blocks. Use an ordinary json or markdown code block when explaining an example; examples are never requests to execute. After proposing an action, do not claim it ran. Husk will return a result or an approval state in the conversation.",
     ].join(" ");
     return [
       `Current AI access: ${provider.label} · ${modelLabel} · signed-in subscription.`,

@@ -42,6 +42,14 @@ it("does not let an older batch review close a newer capture", () => {
   clearWorkflowCaptureRequest(first.id);
   expect(getWorkflowCaptureRequest()?.steps).toEqual(["whoami", "hostname"]);
 });
+it("clones candidate provenance without changing reviewed command text", () => {
+  const detail = { label: "Debian / Ubuntu", blockIndex: 0, lineStart: 2, lineEnd: 2, kind: "command" as const };
+  requestWorkflowStepsCapture(["apt download <package>"], "ai-code", { candidateDetails: [detail], selectedIndices: [] });
+  detail.label = "Changed after capture";
+  expect(getWorkflowCaptureRequest()?.candidateDetails).toEqual([{ ...detail, label: "Debian / Ubuntu" }]);
+  expect(getWorkflowCaptureRequest()?.steps).toEqual(["apt download <package>"]);
+  expect(getWorkflowCaptureRequest()?.selectedIndices).toEqual([]);
+});
 it("validates batches without combining their byte budgets or splitting multiline shell text", () => {
   expect(workflowCaptureStepsError(["é".repeat(4000), "a".repeat(8000)])).toBeNull();
   expect(workflowCaptureStepsError(["printf 'one\ntwo'", "printf three"], ["First", ""])).toBeNull();

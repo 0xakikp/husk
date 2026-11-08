@@ -42,6 +42,9 @@ const workspaceFields = [
   ["fontFamily", "Terminal font family", "typeface"],
   ["boldFont", "Terminal bold font", "text weight"],
   ["scrollback", "Terminal scrollback", "history lines"],
+  ["terminalRestoreScrollback", "Restore terminal history", "scrollback output persistence restart recording plain text credentials privacy"],
+  ["terminalScrollbackRetentionDays", "Terminal history retention", "scrollback output days expiration storage limits"],
+  ["deleteTerminalHistory", "Delete saved terminal history", "scrollback output archive remove erase clear privacy"],
   ["terminal.cursorStyle", "Terminal cursor style", "caret shape"],
   ["notesDirectory", "Notes directory", "vault folder path"],
 ];

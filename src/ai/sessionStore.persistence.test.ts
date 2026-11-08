@@ -12,7 +12,9 @@ const nativeWindow = vi.hoisted(() => ({
   registrations: 0,
   closed: false,
   events: [] as string[],
+  historyFlush: vi.fn(async () => true),
 }));
+vi.mock("../terminal/scrollbackPersistence", () => ({ flushTerminalHistories: nativeWindow.historyFlush }));
 vi.mock("@tauri-apps/api/window", async () => {
   const sdk = await vi.importActual<typeof import("@tauri-apps/api/window")>("@tauri-apps/api/window");
   const fixture = {
@@ -58,6 +60,7 @@ beforeEach(() => {
   nativeWindow.registrations = 0;
   nativeWindow.closed = false;
   nativeWindow.events = [];
+  nativeWindow.historyFlush.mockReset().mockResolvedValue(true);
   nativeWindow.unlisten.mockReset().mockImplementation(async () => { nativeWindow.events.push("unlisten"); });
   nativeWindow.destroy.mockReset().mockImplementation(async () => { throw "Command plugin:window|destroy not allowed by ACL"; });
   nativeWindow.close.mockReset().mockImplementation(async () => {
@@ -79,6 +82,7 @@ describe("session archive migration and recovery", () => {
     expect(await first.initialiseSessionPersistence()).toBe(true);
     expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
     expect(first.getSession("history").messages[0].streaming).toBe(false);
+    expect(first.getSession("history").messages[0]).toMatchObject({ incomplete: true, notice: expect.stringContaining("interrupted") });
     first.appendSessionMessage("history", { role: "user", content: "inspect screenshot", images: [{ dataUrl: "data:image/png;base64,abc", mediaType: "image/png" }] });
     first.setSessionInput("history", "next question");
     expect(await first.flushSessionPersistence()).toBe(true);
@@ -156,6 +160,23 @@ describe("session archive migration and recovery", () => {
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Chat changes have not been saved", action: expect.objectContaining({ label: "Retry save" }) }));
     put.mockRestore();
     expect(await store.flushSessionPersistence()).toBe(true);
+  });
+
+  it("waits for terminal history before closing and keeps the guard on save failure", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    const store = await import("./sessionStore");
+    await store.initialiseSessionPersistence();
+    await vi.waitFor(() => expect(nativeWindow.listener).toBeDefined());
+    let finish!: (saved: boolean) => void;
+    nativeWindow.historyFlush.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const close = emitClose();
+    await vi.waitFor(() => expect(nativeWindow.historyFlush).toHaveBeenCalled());
+    expect(nativeWindow.close).not.toHaveBeenCalled();
+    finish(false); await close;
+    expect(nativeWindow.closed).toBe(false); expect(nativeWindow.listener).toBeDefined();
+    nativeWindow.historyFlush.mockResolvedValue(true);
+    await emitClose();
+    expect(nativeWindow.closed).toBe(true); expect(nativeWindow.destroy).not.toHaveBeenCalled();
   });
 
   it("also prevents implicit SDK destruction when no chat changes need saving", async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Folder01Icon, InformationCircleIcon, TimelineListIcon, WorkflowCircle01Icon } from "@hugeicons/core-free-icons";
 
@@ -19,6 +19,9 @@ import {
   type TimelineWorkspace,
 } from "./store";
 import { toast } from "../toast";
+import { TimelineEventRow } from "./TimelineEventRow";
+import { timelineDayLabel, timelinePresentation } from "./presentation";
+import "./TimelineView.css";
 import { stageWorkflowDraft } from "../workflows/draftStore";
 import {
   clearWorkflowSuggestionsForWorkspace,
@@ -160,42 +163,19 @@ function FolderSwitch({
   );
 }
 
-function dayLabel(ts: number): string {
-  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const today = dayStart(new Date());
-  const eventDay = dayStart(new Date(ts * 1000));
-  if (eventDay === today) return "Today";
-  if (eventDay === today - 86_400_000) return "Yesterday";
-  return new Date(ts * 1000).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-}
-
-function timeLabel(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString(undefined, { hour12: false, hour: "2-digit", minute: "2-digit" });
-}
-
-function eventGlyph(type: string): { glyph: string; className: string } {
-  switch (type) {
-    case "command":
-      return { glyph: "✓", className: "text-emerald-400" };
-    case "command_failed":
-      return { glyph: "✕", className: "text-red-400" };
-    case "ai":
-      return { glyph: "✦", className: "text-primary" };
-    case "git":
-      return { glyph: "⌥", className: "text-violet-400" };
-    case "file":
-      return { glyph: "✎", className: "text-muted-foreground" };
-    default:
-      return { glyph: "·", className: "text-muted-foreground" };
-  }
-}
-
 export function TimelineView({ inline }: { inline?: boolean }) {
   const root = useWorkspaceRoot();
   const [filter, setFilter] = useState<FilterId>("all");
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [recording, setRecording] = useState(() => isTimelineRecordingEnabled());
+  const [error, setError] = useState(false);
+  const [search, setSearch] = useState("");
+  const [limit, setLimit] = useState(200);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const clearingRef = useRef(false);
+  const queryVersion = useRef(0);
   const [selectingCommands, setSelectingCommands] = useState(false);
   const [selectedCommandIds, setSelectedCommandIds] = useState<Set<number>>(() => new Set());
   /* Folder switcher: peek at another bucket without cd-ing there. null means
@@ -203,55 +183,86 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   const [viewRoot, setViewRoot] = useState<string | null>(null);
   const effectiveRoot = viewRoot ?? root;
   const viewingCurrent = viewRoot === null || viewRoot === root;
+  const recording = useSyncExternalStore(subscribeTimeline, () => isTimelineRecordingEnabled(effectiveRoot));
+  const currentRoot = useRef(effectiveRoot);
+  currentRoot.current = effectiveRoot;
 
   const load = useCallback(async () => {
+    const version = ++queryVersion.current;
     const types = FILTERS.find((f) => f.id === filter)?.types ?? [];
     try {
-      setEvents(await queryTimeline(types, 30, 200, effectiveRoot));
-    } catch (e) {
-      console.warn("[timeline] query failed:", e);
+      const rows = await queryTimeline(types, 90, limit, effectiveRoot);
+      if (version !== queryVersion.current) return;
+      setEvents([...rows].sort((a, b) => b.ts - a.ts || b.id - a.id));
+      setError(false);
+    } catch {
+      if (version !== queryVersion.current) return;
+      setEvents([]);
+      setError(true);
     } finally {
-      setLoading(false);
+      if (version === queryVersion.current) setLoading(false);
     }
-  }, [filter, effectiveRoot]);
+  }, [filter, effectiveRoot, limit]);
+  const currentLoad = useRef(load);
+  currentLoad.current = load;
 
   useEffect(() => {
     setLoading(true);
     void load();
-  }, [load, root]);
+    return () => { queryVersion.current += 1; };
+  }, [load]);
 
   /* New records and clears refresh the open view; the toggle does too. */
   useEffect(() => subscribeTimeline(() => void load()), [load]);
 
   useEffect(() => {
-    setRecording(isTimelineRecordingEnabled());
-  }, [root]);
-
-  useEffect(() => {
     setSelectingCommands(false);
     setSelectedCommandIds(new Set());
+    setExpandedId(null);
+    setConfirmClear(false);
+    setSearch("");
+    setLimit(200);
   }, [effectiveRoot]);
+
+  useEffect(() => {
+    // Keep the selection count honest after filtering, refreshing or clearing.
+    const visible = new Set(events.map((event) => event.id));
+    setSelectedCommandIds((ids) => new Set([...ids].filter((id) => visible.has(id))));
+  }, [events]);
 
   const toggleRecording = () => {
     const next = !recording;
-    setTimelineRecordingEnabled(next);
-    setRecording(next);
+    const persisted = setTimelineRecordingEnabled(next, effectiveRoot);
     if (!next && effectiveRoot) clearWorkflowSuggestionsForWorkspace(effectiveRoot);
     toast({
       title: next ? "Timeline recording on" : "Timeline recording off for this workspace",
-      message: next ? "Commands, saves, AI and git events are summarized locally." : "Nothing new will be recorded here. Existing entries stay until cleared.",
-      variant: "info",
+      message: !persisted ? "Changed for this session only. The preference could not be saved; check it again before working after a restart."
+        : next ? "Commands, saves, AI and git events are summarized locally." : "Nothing new will be recorded here. Existing entries stay until cleared.",
+      variant: persisted ? "info" : "warning",
     });
   };
 
-  const clearAll = () => {
-    void clearWorkspaceTimeline(effectiveRoot)
-      .then(() => {
-        if (effectiveRoot) clearWorkflowSuggestionsForWorkspace(effectiveRoot);
-        if (viewRoot && viewRoot !== root) setViewRoot(null);
-        toast({ title: "Timeline cleared", message: "Only this workspace was affected.", variant: "success" });
-      })
-      .catch((e) => toast({ title: "Could not clear timeline", message: String(e), variant: "error" }));
+  const clearAll = async () => {
+    if (!effectiveRoot || clearingRef.current) return;
+    const target = effectiveRoot;
+    clearingRef.current = true;
+    setClearing(true);
+    try {
+      await clearWorkspaceTimeline(target);
+      clearWorkflowSuggestionsForWorkspace(target);
+      if (currentRoot.current === target) {
+        setSelectedCommandIds(new Set());
+        setExpandedId(null);
+        setConfirmClear(false);
+        await currentLoad.current();
+      }
+      toast({ title: "Timeline cleared", message: `Only ${baseName(target)} was affected. Terminal output and shell history were not cleared.`, variant: "success" });
+    } catch {
+      toast({ title: "Could not clear timeline", message: "Nothing has been confirmed deleted. Please try again.", variant: "error" });
+    } finally {
+      clearingRef.current = false;
+      setClearing(false);
+    }
   };
 
   const createWorkflowFromSelection = () => {
@@ -265,6 +276,10 @@ export function TimelineView({ inline }: { inline?: boolean }) {
       toast({ title: "Select at least two safe commands", message: "Failed, sensitive, and destructive commands cannot be converted automatically.", variant: "warning" });
       return;
     }
+    if (chosen.length > 100) {
+      toast({ title: "Select up to 100 commands", message: "A workflow can contain at most 100 steps.", variant: "warning" });
+      return;
+    }
     const first = chosen[0].command.split(/\s+/).slice(0, 2).join(" ");
     stageWorkflowDraft({
       name: `${first || "Recent"} workflow`,
@@ -276,16 +291,21 @@ export function TimelineView({ inline }: { inline?: boolean }) {
   };
 
   /* Group newest-first events under day headings. */
+  const needle = search.trim().toLocaleLowerCase();
+  const visibleEvents = needle ? events.filter((event) => {
+    const detail = timelinePresentation(event);
+    return [detail.summary, detail.command?.command ?? "", ...detail.fields.map((field) => field.value)].join(" ").toLocaleLowerCase().includes(needle);
+  }) : events;
   const groups: { label: string; events: TimelineEvent[] }[] = [];
-  for (const event of events) {
-    const label = dayLabel(event.ts);
+  for (const event of visibleEvents) {
+    const label = timelineDayLabel(event.ts);
     const last = groups[groups.length - 1];
     if (last && last.label === label) last.events.push(event);
     else groups.push({ label, events: [event] });
   }
 
   return (
-    <div className={cn("@container flex h-full flex-col font-mono", inline && "text-[11px]")}>
+    <div className={cn("@container flex h-full min-h-0 min-w-0 flex-col font-mono", inline && "text-[11px]")}>
       <PanelHeader
         icon={TimelineListIcon}
         title="Timeline"
@@ -294,6 +314,8 @@ export function TimelineView({ inline }: { inline?: boolean }) {
             <button
               type="button"
               onClick={toggleRecording}
+              disabled={!effectiveRoot}
+              aria-label={recording ? "Stop recording this workspace" : "Resume recording this workspace"}
               title={recording ? "Stop recording this workspace" : "Resume recording this workspace"}
               className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-muted/40"
             >
@@ -357,7 +379,8 @@ export function TimelineView({ inline }: { inline?: boolean }) {
             </TooltipProvider>
             <button
               type="button"
-              onClick={clearAll}
+              onClick={() => setConfirmClear((value) => !value)}
+              disabled={!effectiveRoot || clearing}
               title="Delete this workspace's timeline (cannot be undone)"
               className="shrink-0 rounded-md border border-border/50 px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:border-red-400/40 hover:text-red-400"
             >
@@ -375,7 +398,7 @@ export function TimelineView({ inline }: { inline?: boolean }) {
             <button
               key={f.id}
               type="button"
-              onClick={() => setFilter(f.id)}
+              onClick={() => { setFilter(f.id); setLimit(200); setSelectedCommandIds(new Set()); setExpandedId(null); }}
               title={f.label}
               aria-pressed={filter === f.id}
               style={filter === f.id ? {
@@ -396,27 +419,42 @@ export function TimelineView({ inline }: { inline?: boolean }) {
             </button>
           ))}
         </div>
+        <input type="search" aria-label="Search loaded timeline events" placeholder="Search loaded events…" value={search}
+          onChange={(event) => { setSearch(event.target.value); setSelectedCommandIds(new Set()); }}
+          className="mt-2 w-full min-w-0 rounded-md border border-border/55 bg-background/30 px-2 py-1.5 text-[10px] text-foreground placeholder:text-muted-foreground/60 focus:border-primary/45 focus:outline-none" />
+        {confirmClear ? <div role="group" aria-label="Confirm timeline deletion" className="mt-2 space-y-2 rounded-md border border-red-400/30 bg-red-400/[0.04] p-2 text-[10px]">
+          <p className="m-0 break-words leading-relaxed">Delete all Timeline entries for <strong>{baseName(effectiveRoot)}</strong>? This cannot be undone. Terminal output and shell history stay intact.</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={clearing} onClick={() => setConfirmClear(false)} className="timeline-action timeline-action-neutral">Cancel</button>
+            <button type="button" disabled={clearing} onClick={() => void clearAll()} className="timeline-action timeline-action-danger">{clearing ? "Deleting…" : "Delete timeline"}</button>
+          </div>
+        </div> : null}
         {selectingCommands ? (
           <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/[0.05] px-2 py-1 text-[9.5px]">
             <span className="min-w-0 flex-1 text-muted-foreground">
-              Select successful commands; Timeline order is preserved · {selectedCommandIds.size} selected
+              Select safe commands · oldest first in draft · {selectedCommandIds.size}/100 selected
             </span>
             <button type="button" className="shrink-0 rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted/40 hover:text-foreground" onClick={() => setSelectedCommandIds(new Set())}>clear</button>
-            <button type="button" className="shrink-0 rounded bg-primary/12 px-1.5 py-0.5 text-primary hover:bg-primary/20 disabled:opacity-40" disabled={selectedCommandIds.size < 2} onClick={createWorkflowFromSelection}>review workflow</button>
+            <button type="button" className="shrink-0 rounded bg-primary/12 px-1.5 py-0.5 text-primary hover:bg-primary/20 disabled:opacity-40" disabled={selectedCommandIds.size < 2 || selectedCommandIds.size > 100 || loading || error} onClick={createWorkflowFromSelection}>review workflow</button>
           </div>
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {!root ? (
+      <div aria-busy={loading} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-1 [scrollbar-width:thin]">
+        {!effectiveRoot ? (
           <EmptyState text="Open a folder to see its timeline." />
         ) : loading ? (
           <EmptyState text="loading…" />
-        ) : events.length === 0 ? (
+        ) : error ? (
+          <div role="alert" className="px-3 py-8 text-center text-[10px] text-muted-foreground">
+            Could not load this timeline.
+            <div className="mt-2"><button type="button" className="timeline-action" onClick={() => { setLoading(true); void load(); }}>Retry</button></div>
+          </div>
+        ) : visibleEvents.length === 0 ? (
           <EmptyState
             text={
-              recording
-                ? "Nothing recorded yet. Commands, file saves, AI requests and git events will appear here as summaries."
+              needle ? "No matches in the loaded events. Try another search or load more below." : recording
+                ? "No entries in the last 90 days for this filter. Commands, file saves, AI requests and git events appear here as summaries."
                 : "Recording is off for this workspace. Turn it on to start the timeline."
             }
           />
@@ -427,48 +465,38 @@ export function TimelineView({ inline }: { inline?: boolean }) {
                 {group.label}
               </div>
               {group.events.map((event) => {
-                const { glyph, className } = eventGlyph(event.event_type);
                 const command = timelineCommand(event);
                 const selectable = Boolean(command && !command.failed && isSafeWorkflowSuggestionCommand(command.command));
                 const selected = selectedCommandIds.has(event.id);
                 return (
-                  <button
+                  <TimelineEventRow
                     key={event.id}
-                    type="button"
-                    disabled={!selectingCommands || !selectable}
-                    onClick={() => {
-                      if (!selectingCommands || !selectable) return;
+                    event={event}
+                    expanded={event.id === expandedId}
+                    onExpand={() => setExpandedId(event.id === expandedId ? null : event.id)}
+                    selecting={selectingCommands}
+                    selectable={selectable && (selected || selectedCommandIds.size < 100)}
+                    selected={selected}
+                    onSelect={() => {
                       setSelectedCommandIds((current) => {
                         const next = new Set(current);
                         if (next.has(event.id)) next.delete(event.id);
-                        else next.add(event.id);
+                        else if (next.size < 100) next.add(event.id);
                         return next;
                       });
                     }}
-                    className={cn(
-                      "flex w-full items-baseline gap-2 rounded-md px-1.5 py-1 text-left hover:bg-muted/30",
-                      selectingCommands && selectable && "cursor-pointer border border-transparent hover:border-primary/20",
-                      selected && "border-primary/35 bg-primary/10",
-                      selectingCommands && !selectable && "opacity-45",
-                    )}
-                    title={event.summary}
-                  >
-                    {selectingCommands ? <span className={cn("w-2.5 shrink-0 text-[9px]", selected ? "text-primary" : "text-muted-foreground/50")}>{selected ? "✓" : "○"}</span> : null}
-                    <span className="shrink-0 text-[9.5px] tabular-nums text-muted-foreground/60">
-                      {timeLabel(event.ts)}
-                    </span>
-                    <span className={cn("shrink-0 text-[10px]", className)}>{glyph}</span>
-                    <span className="min-w-0 truncate text-[10.5px] text-foreground/90">{event.summary}</span>
-                  </button>
+                  />
                 );
               })}
             </div>
           ))
         )}
+        {!loading && !error && events.length >= limit && limit < 1_000 ? <button type="button" onClick={() => setLimit((value) => Math.min(1_000, value + 200))} className="timeline-action my-2 w-full">Load 200 more</button> : null}
       </div>
 
-      <div className="shrink-0 border-t border-border/30 px-3 py-1.5 text-[8.5px] text-muted-foreground/50">
-        summaries only · stored locally (~/.husk/state.sqlite) · kept 90 days
+      <div className="shrink-0 space-y-1 border-t border-border/30 px-3 py-2 text-[9px] leading-relaxed text-muted-foreground/65">
+        <div>{needle ? `${visibleEvents.length} matches · ${events.length} loaded` : `${events.length} loaded · last 90 days`}{events.length >= 1_000 ? " · latest 1,000 per filter" : ""}</div>
+        <div title="Stored locally in ~/.husk/state.sqlite. Expired entries are pruned on the next write.">Local summaries · click an entry for details</div>
       </div>
     </div>
   );

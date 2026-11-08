@@ -10,6 +10,7 @@
  */
 
 import { isPathInWorkspace, normalizeWorkspacePath } from "../ai/workspaceScope";
+import { commandPlaceholderError } from "../lib/commandPlaceholders";
 
 export type TerminalRunDecision =
   | { runnable: true; command: string }
@@ -78,6 +79,9 @@ export function getTerminalRunDecision(language: string, code: string): Terminal
   if (command.length > MAX_DIRECT_COMMAND_CHARS) {
     return { runnable: false, reason: "Long commands are copy-only so they do not flood the terminal" };
   }
+
+  const placeholderError = commandPlaceholderError(command);
+  if (placeholderError) return { runnable: false, reason: placeholderError };
 
   return { runnable: true, command };
 }

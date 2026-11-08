@@ -13,25 +13,13 @@ import {
   registerEditorCloseFind,
   registerEditorDocument,
 } from "@/ai/editorStore";
-import { markSaved, markModified, markNew, clearState, getFileState } from "./dirtyStore";
+import { markSaved, markModified, markNew, markDeleted, clearState, getFileState } from "./dirtyStore";
 import { EditorContextMenu } from "./EditorContextMenu";
 import { toast } from "../toast";
+import { watchFileChanges, watchRepositoryChanges } from "./fileChanges";
+export { onFileChanged, watchFileChanges } from "./fileChanges";
 
 /* ── External file change notifications ───────────────────────────── */
-
-type FileChangeListener = (path: string) => void;
-const fileChangeListeners = new Set<FileChangeListener>();
-
-export function onFileChanged(path: string) {
-  for (const fn of fileChangeListeners) {
-    try { fn(path); } catch { /* ignore */ }
-  }
-}
-
-export function watchFileChanges(fn: FileChangeListener): () => void {
-  fileChangeListeners.add(fn);
-  return () => fileChangeListeners.delete(fn);
-}
 
 const monacoTheme = (p: Prefs) => {
   if (p.theme === "dark") {
@@ -403,7 +391,7 @@ export function EditorArea({
   // read: the user can type, close, delete, or replace the model while it runs.
   useEffect(() => {
     const requests = new Map<string, number>();
-    const unsub = watchFileChanges((changedPath) => {
+    const updateFile = (changedPath: string, repositoryChange = false) => {
       const editor = editorRef.current;
       if (!editor) return;
       const file = filesRef.current.find((candidate) => candidate.path === changedPath);
@@ -432,9 +420,25 @@ export function EditorArea({
           () => null,
         );
         markSaved(changedPath, model.getAlternativeVersionId());
-      }).catch(() => { /* A renamed/deleted file may no longer be readable. */ });
+      }).catch((cause) => {
+        if (!repositoryChange || editorRef.current !== editor || requests.get(changedPath) !== request
+          || model.isDisposed() || monaco.editor.getModel(model.uri) !== model
+          || getFileState(changedPath) !== "clean" || model.getVersionId() !== version
+          || !filesRef.current.some((candidate) => candidate.path === changedPath && !candidate.remoteHost)) return;
+        const missing = /\bos error (?:2|3)\b/.test(String(cause));
+        if (missing) markDeleted(changedPath);
+        toast({ title: missing ? "Open file no longer exists after Git changed files" : "Could not refresh an open file after Git changed files",
+          message: `${changedPath}\nThe editor contents were kept. Reopen or close this tab before continuing.`, variant: "info" });
+      });
+    };
+    const unsub = watchFileChanges(updateFile);
+    const unsubRepository = watchRepositoryChanges((root) => {
+      const prefix = `${root.replace(/\/+$/, "")}/`;
+      for (const file of filesRef.current) {
+        if (!file.remoteHost && file.path.startsWith(prefix)) updateFile(file.path, true);
+      }
     });
-    return unsub;
+    return () => { unsub(); unsubRepository(); };
   }, []);
 
   // Load + show the active file (one model per path, reused if already open).

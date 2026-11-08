@@ -62,6 +62,11 @@ export type Prefs = {
   terminalBoldFont: boolean;
   terminalTheme: TerminalThemePreset;
   terminalScrollback: number;
+  /** Opt-in local plain-text output archive. Layout restoration is separate;
+   * saved output is never sent back to the shell as commands. */
+  terminalRestoreScrollback: boolean;
+  /** Maximum age of saved terminal output, in whole days (1–30). */
+  terminalScrollbackRetentionDays: number;
   /** App-rendered welcome for fresh local shells; never injected into the PTY. */
   terminalWelcomeEnabled: boolean;
 
@@ -183,7 +188,9 @@ const DEFAULT: Prefs = {
   terminalCursorStyle: "bar",
   terminalBoldFont: false,
   terminalTheme: "husk",
-  terminalScrollback: 1000,
+  terminalScrollback: 10_000,
+  terminalRestoreScrollback: false,
+  terminalScrollbackRetentionDays: 7,
   terminalWelcomeEnabled: true,
 
   editorFontSize: 13,
@@ -328,6 +335,7 @@ const PREF_ENUMS: Partial<Record<keyof Prefs, readonly unknown[]>> = {
 };
 const PREF_RANGES: Partial<Record<keyof Prefs, readonly [number, number, boolean?]>> = {
   zoomLevel: [0.5, 3], terminalFontSize: [8, 48, true], terminalScrollback: [0, 100_000, true],
+  terminalScrollbackRetentionDays: [1, 30, true],
   editorFontSize: [8, 48, true], editorTabSize: [1, 8, true], inspectorHeight: [80, 2000, true],
   panelGaps: [0, 12, true], editorWallpaperOpacity: [0, 50], aiMiniOpacity: [10, 100],
   aiMiniFontSize: [9, 18, true], aiMiniBgBlur: [0, 20], aiMiniBgDim: [0, 90],
@@ -402,6 +410,11 @@ export function validatePreferences(value: unknown): Prefs {
     if (valid) (merged as unknown as Record<string, unknown>)[key] = candidate;
   }
   if (text(current.customCSS, 128_000)) merged.customCSS = current.customCSS;
+  // Retention must always stay bounded, including manually edited TOML.
+  // Invalid types keep the safe default rather than coercing strings/booleans.
+  if (typeof current.terminalScrollbackRetentionDays === "number" && Number.isFinite(current.terminalScrollbackRetentionDays)) {
+    merged.terminalScrollbackRetentionDays = Math.max(1, Math.min(30, Math.floor(current.terminalScrollbackRetentionDays)));
+  }
   const background = record(current.background);
   for (const key of ["enabled", "path", "dir", "opacity", "blur", "fit"] as const) {
     const value = background[key];

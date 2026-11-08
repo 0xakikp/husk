@@ -23,6 +23,15 @@ const savedLayout = {
 };
 
 describe("terminal workspace restore", () => {
+  it("keeps stable archive identities, rotating missing, invalid, or duplicate keys", () => {
+    const fresh = newLeaf();
+    if (fresh.kind !== "leaf") throw new Error("expected leaf");
+    expect(hydratePane(fresh)).toMatchObject({ historyKey: fresh.historyKey });
+    const tree = hydratePane({ ...savedLayout, a: { ...savedLayout.a, historyKey: fresh.historyKey }, b: { ...savedLayout.b, historyKey: fresh.historyKey } });
+    if (tree?.kind !== "split" || tree.a.kind !== "leaf" || tree.b.kind !== "leaf") throw new Error("expected split");
+    expect(tree.a.historyKey).toBe(fresh.historyKey); expect(tree.b.historyKey).not.toBe(fresh.historyKey);
+    expect(hydratePane({ ...savedLayout.a, historyKey: "wrong" })).not.toMatchObject({ historyKey: "wrong" });
+  });
   it("does not retain invalid runtime launch values in new or restored panes", () => {
     const cyclic = { self: null as unknown }; cyclic.self = cyclic;
     const fresh = newLeaf(cyclic as unknown as string);

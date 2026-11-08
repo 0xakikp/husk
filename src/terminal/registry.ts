@@ -40,7 +40,7 @@ import { recordSensitiveOutput } from "./sensitiveOutputStore";
 import { completeTask, startTask } from "./taskStore";
 import { clearEnvironmentWarning, recordEnvironmentWarning } from "./environmentWarnings";
 import { recordTimelineEvent } from "../timeline/store";
-import { safeTimelineCommand } from "../timeline/commandMetadata";
+import { EXACT_TIMELINE_COMMAND_FORMAT, safeTimelineCommand } from "../timeline/commandMetadata";
 import { refreshWorkflowSuggestion } from "../workflows/suggestions";
 import { getWorkspaceRoot, syncWorkspaceRootToCwd } from "../workspace/store";
 import {
@@ -66,6 +66,9 @@ import { STARTING_TERMINAL, TerminalSessionConnection, boundedTerminalRequest, t
 import type { NativeTerminalOutput } from "./outputFlow";
 import { installTerminalWakeChecks, mayRestoreTerminalFocus } from "./sessionWake";
 import { buildPtySpawnArgs, resolveTerminalLaunchCwd } from "./launchOptions";
+import { installScrollbackClearPolicy } from "./scrollbackClear";
+import { createScrollbackKey } from "./scrollbackIdentity";
+import { createTerminalHistory, type TerminalScrollbackPersistence } from "./scrollbackPersistence";
 import {
   dismissTerminalWelcome, disposeTerminalWelcome, getTerminalWelcome, initializeTerminalWelcome,
   noteTerminalWelcomeCommand, observeTerminalWelcomeCwd, observeTerminalWelcomePrompt, scrollTerminalWelcome,
@@ -87,6 +90,9 @@ export type TerminalHandle = {
   getSelection: () => string | null;
   getLastCommandRun: () => CommandRun | null;
   clear: () => void;
+  canClearScreen: () => boolean;
+  eraseScrollback: () => Promise<void>;
+  hasRestoredHistory: () => boolean;
   selectAll: () => void;
   hasSelection: () => boolean;
   clearSelection: () => void;
@@ -179,6 +185,7 @@ type Session = {
   commandStartedAt: number;
   /** Small rolling output sample for live local-server detection. */
   liveOutputTail: string;
+  history: TerminalScrollbackPersistence | null;
 };
 
 /** Keep the native PTY at the same grid size as xterm.
@@ -272,6 +279,7 @@ function fitAttachedSession(session: Session): void {
 }
 
 const sessions = new Map<number, Session>();
+const creatingSessions = new Map<number, Promise<Session>>();
 
 /** Status UI consumes only terminal observations, never active-tab globals. */
 function observeStatusScope(session: Session, cwd?: string, boundary = false): void {
@@ -564,13 +572,23 @@ function buildTermOptions() {
 // Create a new session (terminal + PTY)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function createSession(
+export function createSession(
   leafId: number,
   initialCwd?: string,
+  historyOptions?: { key?: string; restored?: boolean },
 ): Promise<Session> {
+  const pending = creatingSessions.get(leafId);
+  if (pending) return pending;
   const existing = sessions.get(leafId);
-  if (existing) return existing;
+  if (existing) return Promise.resolve(existing);
+  const creation = initializeSession(leafId, initialCwd, historyOptions);
+  creatingSessions.set(leafId, creation);
+  const finished = () => { if (creatingSessions.get(leafId) === creation) creatingSessions.delete(leafId); };
+  void creation.then(finished, finished);
+  return creation;
+}
 
+async function initializeSession(leafId: number, initialCwd?: string, historyOptions?: { key?: string; restored?: boolean }): Promise<Session> {
   const term = new Terminal(buildTermOptions());
   const fitAddon = new FitAddon();
   const searchAddon = new SearchAddon();
@@ -627,8 +645,16 @@ export async function createSession(
     currentCommand: "",
     commandStartedAt: 0,
     liveOutputTail: "",
+    history: null,
   };
   sessions.set(leafId, session);
+  const clearPolicy = installScrollbackClearPolicy(term);
+  session.unlisteners.push(() => clearPolicy.dispose());
+  session.history = createTerminalHistory(term, historyOptions?.key ?? createScrollbackKey());
+  // Restore inert rendered text before installing OSC/bridge handlers and
+  // before starting a PTY. Shell startup clears now preserve these rows too.
+  await session.history.initialize(historyOptions?.restored === true);
+  if (session.disposed) return session;
   initializeTerminalWelcome(leafId);
   initializeTerminalStatus(leafId, session.workflowSessionId);
   setTerminalRunInterrupter(interruptSessionRun);
@@ -827,7 +853,11 @@ export async function createSession(
               exitCode,
               cwd: session.cwd,
               terminalSessionId: session.workflowSessionId,
-              ...(safeCommand.command ? { command: safeCommand.command } : { redacted: true, sensitive: true }),
+              ...(safeCommand.command ? { command: safeCommand.command, commandFormat: EXACT_TIMELINE_COMMAND_FORMAT } : {
+                ...(safeCommand.sensitive ? { redacted: true, sensitive: true } : {}),
+                ...(safeCommand.truncated ? { truncated: true } : {}),
+                ...(safeCommand.unsupported ? { unsupported: true } : {}),
+              }),
               ...(durationMs > 0 && durationMs < 86_400_000 ? { durationMs } : {}),
             },
             { workspaceRoot, sensitivity: safeCommand.sensitive ? 1 : 0 },
@@ -1331,6 +1361,12 @@ export function setSessionActive(leafId: number, active: boolean): void {
 // Get handle for a session (exposed to TerminalView component)
 // ─────────────────────────────────────────────────────────────────────────────
 
+function canClearSessionScreen(session: Session): boolean {
+  return !session.disposed && session.ptyId !== null && session.connection?.status.state === "ready"
+    && !session.currentCommand && session.term.buffer.active.type === "normal"
+    && session.promptTracker.position() !== null;
+}
+
 export function getSessionHandle(leafId: number): TerminalHandle | null {
   const session = sessions.get(leafId);
   if (!session) return null;
@@ -1364,7 +1400,26 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       return sel.length > 0 ? sel : null;
     },
     getLastCommandRun: () => session.lastCompletedRun ? { ...session.lastCompletedRun } : null,
-    clear: () => { dismissTerminalWelcome(leafId); session.promptTracker.clear(); session.term.clear(); },
+    canClearScreen: () => canClearSessionScreen(session),
+    clear: () => {
+      // Ask only a verified interactive shell to redraw. Never send Ctrl+L
+      // into a running job/full-screen app, or execute a textual command.
+      if (!canClearSessionScreen(session)) return;
+      dismissTerminalWelcome(leafId);
+      writeSessionInput(session, "\x0c");
+      session.promptTracker.clear();
+    },
+    eraseScrollback: async () => {
+      if (session.disposed || session.term.buffer.active.type !== "normal") throw new Error("Return to the normal terminal screen before erasing scrollback.");
+      // Storage failure must not be presented as successful deletion.
+      await session.history?.erase();
+      if (session.disposed) return;
+      if (session.term.buffer.active.type !== "normal") throw new Error("The terminal screen changed. Saved history was deleted; review and erase the live scrollback again.");
+      dismissTerminalWelcome(leafId);
+      session.promptTracker.clear();
+      session.term.clear();
+    },
+    hasRestoredHistory: () => session.history?.restored === true,
     selectAll: () => session.term.selectAll(),
     hasSelection: () => session.term.hasSelection(),
     clearSelection: () => session.term.clearSelection(),
@@ -1418,6 +1473,8 @@ export function disposeSession(leafId: number): void {
   if (!session) return;
 
   session.disposed = true;
+  creatingSessions.delete(leafId);
+  session.history?.dispose();
   disposeTerminalWelcome(leafId);
   disposeTerminalStatus(leafId);
 

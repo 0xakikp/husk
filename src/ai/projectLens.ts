@@ -210,12 +210,8 @@ export async function loadProjectLensSnapshot(rootValue: string, refresh = false
 
   const request = (async () => {
     const entries = await readDirScoped(root, root);
-    const [files, repository, branch, changed] = await Promise.all([
-      readProjectFiles(root, entries),
-      isRepo(root),
-      currentBranch(root),
-      status(root),
-    ]);
+    const [files, repository] = await Promise.all([readProjectFiles(root, entries), isRepo(root)]);
+    const [branch, changed] = repository ? await Promise.all([currentBranch(root), status(root)]) : ["", []];
     const snapshot = createProjectLensSnapshot({
       root,
       entries,

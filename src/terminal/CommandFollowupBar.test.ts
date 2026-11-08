@@ -9,7 +9,7 @@ let container: HTMLDivElement;
 let root: Root;
 const handlers = { onToggle: vi.fn(), onStop: vi.fn(), onAnalyze: vi.fn(), onInterrupt: vi.fn() };
 const state = (patch: Partial<CommandFollowup> = {}): CommandFollowup => ({
-  id: "run-1", sessionId: "chat", remoteScope: "null", target: { ptyId: 3, cwd: "/project", isRemote: false, host: null },
+  id: "run-1", sessionId: "chat", conversationId: "chat-generation", remoteScope: "null", target: { ptyId: 3, cwd: "/project", isRemote: false, host: null },
   command: "sleep 5", queuedAt: 1, phase: "waiting", completed: false, note: "Waiting for command result…", ...patch,
 });
 function render(value: CommandFollowup | undefined = state(), busy = false) {

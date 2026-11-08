@@ -1,0 +1,16 @@
+/* Scoped chrome: avoid native button/list defaults in the no-preflight UI. */
+.git-aux { min-height:0; font-family:var(--font-mono); font-size:11px; }
+.git-aux ol, .git-aux ul { list-style:none; padding:0; margin:0; }
+.git-aux h2, .git-aux p { margin:0; }
+.git-aux button { font-family:inherit; font-size:inherit; }
+.git-aux button:focus-visible { outline:1px solid var(--primary); outline-offset:2px; }
+.git-aux button[aria-expanded]:hover { background:color-mix(in srgb,var(--primary) 6%,transparent); }
+.git-aux button[aria-expanded] { color:var(--foreground); }
+.git-aux button:disabled { opacity:.45; cursor:default; }
+.git-aux .git-aux-action { color:var(--primary); border:1px solid color-mix(in srgb,var(--primary) 25%,var(--border)); background:color-mix(in srgb,var(--primary) 6%,transparent); border-radius:5px; padding:5px 8px; font-size:10px; }
+.git-aux .git-aux-action:hover { background:color-mix(in srgb,var(--primary) 13%,transparent); }
+.git-aux input { box-sizing:border-box; min-width:0; font-family:inherit; color:var(--foreground); }
+.git-aux ol > li + li, .git-aux ul > li + li { margin-top:5px; }
+.git-aux ul[aria-label="Labels"] > li { margin-top:0; }
+.git-commit-diff { height:340px; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+.git-commit-diff > .git-diff-view { flex:1; min-height:0; }

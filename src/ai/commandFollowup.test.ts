@@ -16,6 +16,7 @@ vi.mock("./store", () => ({ loadConfig: () => ({ providerId: "test", model: "fal
 vi.mock("./providers", () => ({ getProvider: () => ({ id: "test", kind: "openai", label: "Test Provider", defaultModel: "default" }) }));
 vi.mock("../settings/preferences", () => ({ getPrefs: () => fixtures.prefs }));
 vi.mock("./sessionStore", () => ({
+  conversationIdentity: (session: AiSession) => session.conversationId || `${session.id}:${session.createdAt}`,
   getAllSessions: () => [...fixtures.sessions.values()],
   updateExistingSession: (id: string, updater: (session: AiSession) => AiSession) => {
     const session = fixtures.sessions.get(id);
@@ -159,6 +160,42 @@ describe("command receipt observation", () => {
     complete({ runId: "run-2" });
     expect(fixtures.sessions.has("chat")).toBe(false);
     expect(messages("other")).toHaveLength(0);
+  });
+
+  it("forgets every outstanding receipt when a conversation is cleared", async () => {
+    track(); track({ runId: "run-2" });
+    followup.clearCommandFollowup("chat");
+    changeSession({ messages: [], input: "", task: undefined, conversationId: "fresh" });
+    complete(); complete({ runId: "run-2" });
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(messages()).toEqual([]);
+    expect(followup.getCommandFollowup("chat")).toBeUndefined();
+    expect(client.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("rejects a late receipt after a same-ID conversation is replaced", () => {
+    changeSession({ task: undefined }); track();
+    changeSession({ messages: [], conversationId: "replacement" });
+    complete();
+    expect(messages()).toEqual([]);
+    expect(followup.commandFollowupBlockReason(followup.getCommandFollowup("chat")!)).toContain("cleared");
+    expect(client.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("cancels an in-progress analysis on clear without restoring its reply", async () => {
+    changeSession({ task: undefined }); track(); complete();
+    let finish!: () => void;
+    let emit!: (text: string) => void;
+    vi.mocked(client.streamChat).mockImplementationOnce(async (_cfg, _system, _messages, delta) => {
+      emit = delta;
+      await new Promise<void>((resolve) => { finish = resolve; });
+    });
+    const analysis = followup.analyzeCommandFollowup("chat", "run-1");
+    followup.clearCommandFollowup("chat");
+    changeSession({ messages: [], conversationId: "fresh" });
+    emit("late reply"); finish(); await analysis;
+    expect(messages()).toEqual([]);
+    expect(followup.getCommandFollowup("chat")).toBeUndefined();
   });
 
   it("never saves or sends a secret even beyond the visible output excerpt", async () => {

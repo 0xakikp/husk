@@ -25,6 +25,11 @@ beforeEach(() => {
 });
 
 describe("versioned settings backup", () => {
+  it("never imports or exports consent to save terminal output", () => {
+    const doc = document(); doc.preferences.terminalRestoreScrollback = true;
+    expect(createSettingsBackup(doc, [], []).preferences).not.toHaveProperty("terminalRestoreScrollback");
+    expect(parseSettingsBackup({ ...backup(), preferences: { terminalRestoreScrollback: true } }).preferences).not.toHaveProperty("terminalRestoreScrollback");
+  });
   it("exports current config, prompts, agents, presets and file bookmarks but no credential/executable data", () => {
     const doc = document();
     doc.preferences.customCSS = "not-for-export";

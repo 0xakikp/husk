@@ -178,17 +178,22 @@ export async function streamChat(
     maxOutputTokens: 2048,
     abortSignal,
   });
+  let hasText = false;
+  let hasToolActivity = false;
   for await (const event of result.fullStream) {
     if (abortSignal?.aborted) throw abortError();
     switch (event.type) {
       case "text-delta":
+        hasText ||= Boolean(event.text.trim());
         onDelta(event.text);
         break;
       case "tool-call":
+        hasToolActivity = true;
         onStatus?.(`🛠️ ${event.toolName}`);
         onToolActivity?.({ name: event.toolName, state: "running" });
         break;
       case "tool-result":
+        hasToolActivity = true;
         {
           const output = event.output as { state?: string } | null;
           const state = output && ["error", "refused", "queued"].includes(output.state ?? "") ? output.state as "error" | "refused" | "queued" : "complete";
@@ -197,6 +202,7 @@ export async function streamChat(
         }
         break;
       case "tool-error":
+        hasToolActivity = true;
         onStatus?.(`Failed ${event.toolName}`);
         onToolActivity?.({ name: event.toolName, state: "error" });
         break;
@@ -209,6 +215,17 @@ export async function streamChat(
           const msg = err instanceof Error ? err.message : String(err || "Stream error");
           throw new Error(msg);
         }
+      case "finish-step":
+      case "finish":
+        if (event.finishReason === "length") {
+          throw new Error("The model reached its output limit. This reply may be incomplete; do not run unfinished code. Ask for a smaller answer or the remaining steps.");
+        }
+        if (event.finishReason === "content-filter") {
+          throw new Error("The provider filtered this reply. Any partial answer may be incomplete; rephrase your request.");
+        }
+        if (event.finishReason === "error") throw new Error("The provider could not finish this reply. Any partial answer may be incomplete.");
+        if (event.type === "finish" && !hasText && !hasToolActivity) throw new Error("The provider returned no answer. Try again or choose another model.");
+        break;
       default:
         break;
     }

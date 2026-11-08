@@ -68,6 +68,20 @@ async function setup() {
 }
 
 describe("registry receipt integration without native shell processes", () => {
+  it("shares pending restoration across concurrent/StrictMode mounts before attaching a terminal", async () => {
+    const { TerminalScrollbackPersistence } = await import("./scrollbackPersistence");
+    let finish!: () => void;
+    const init = vi.spyOn(TerminalScrollbackPersistence.prototype, "initialize").mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const leaf = ++nextLeaf; leaves.push(leaf);
+    try {
+      const first = createSession(leaf, "/project");
+      const second = createSession(leaf, "/project");
+      expect(second).toBe(first);
+      let ready = false; void second.then(() => { ready = true; });
+      await Promise.resolve(); expect(ready).toBe(false);
+      finish(); expect(await second).toBe(await first);
+    } finally { init.mockRestore(); }
+  });
   it("shows the welcome from observed local prompt metadata without any native write or output mutation", async () => {
     const leaf = ++nextLeaf;
     leaves.push(leaf);
@@ -142,7 +156,7 @@ describe("registry receipt integration without native shell processes", () => {
     expect(getTerminalWelcome(leaf)).toMatchObject({ visible: true, atPrompt: true });
   });
 
-  it.each(["\x1b[2J", "\x1b[3J", "\x1bc"])("retires welcome on an actual clear/reset %j without consuming the sequence", async sequence => {
+  it.each(["\x1b[2J", "\x1b[3J", "\x1bc"])("retires welcome on clear/reset %j and only reset destroys output", async sequence => {
     const { leaf, write } = await setup();
     await write("old output\r\n");
     await write(sequence);
@@ -151,7 +165,8 @@ describe("registry receipt integration without native shell processes", () => {
     expect(getTerminalWelcome(leaf)?.visible).toBe(false);
     expect(fixture.writes).toEqual([]);
     expect(nativeWrites()).toEqual([]);
-    if (sequence !== "\x1b[3J") expect(getSessionHandle(leaf)!.getBuffer()).not.toContain("old output");
+    if (sequence === "\x1bc") expect(getSessionHandle(leaf)!.getBuffer()).not.toContain("old output");
+    else expect(getSessionHandle(leaf)!.getBuffer()).toContain("old output");
   });
 
   it("retires on Ctrl+L and the context-menu Clear action, not ordinary input", async () => {
@@ -162,6 +177,35 @@ describe("registry receipt integration without native shell processes", () => {
     const second = await setup();
     getSessionHandle(second.leaf)!.clear();
     expect(getTerminalWelcome(second.leaf)?.visible).toBe(false);
+  });
+
+  it("clears the screen through a verified shell redraw without losing output or submitting its draft", async () => {
+    const { leaf, session, write } = await setup();
+    await write("draft not submitted");
+    const handle = getSessionHandle(leaf)!;
+    expect(handle.canClearScreen()).toBe(true);
+    handle.clear();
+    expect(fixture.writes).toEqual([{ ptyId: session.ptyId, data: "\x0c" }]);
+    expect(handle.getBuffer()).toContain("draft not submitted");
+    await write("\x1b[H\x1b[2J\x1b[3J❯ " + osc(133, "B") + "draft not submitted");
+    expect(handle.getBuffer().match(/draft not submitted/g)).toHaveLength(2);
+    expect(nativeWrites()).toEqual([]);
+  });
+
+  it("never sends clear/redraw input to a busy or alternate-screen program", async () => {
+    const { leaf, write, start } = await setup(); const handle = getSessionHandle(leaf)!;
+    await start("long-running-job"); expect(handle.canClearScreen()).toBe(false); handle.clear();
+    await write("\x1b[?1049h"); expect(handle.canClearScreen()).toBe(false); handle.clear();
+    expect(fixture.writes).toEqual([]); expect(nativeWrites()).toEqual([]);
+  });
+
+  it("only the explicit erase action removes both saved history and visible scrollback", async () => {
+    const { leaf, session, write } = await setup();
+    await write("earlier output\r\ncurrent prompt");
+    const erase = vi.spyOn(session.history!, "erase").mockResolvedValue();
+    await getSessionHandle(leaf)!.eraseScrollback();
+    expect(erase).toHaveBeenCalledOnce(); expect(getSessionHandle(leaf)!.getBuffer()).not.toContain("earlier output");
+    expect(getSessionHandle(leaf)!.getBuffer()).toContain("current prompt"); expect(fixture.writes).toEqual([]);
   });
 
   it("scrolls the greeting with output after the first page fills, preserving output across refits", async () => {

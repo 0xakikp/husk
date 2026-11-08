@@ -42,6 +42,29 @@ describe("AI context safety", () => {
     expect(scanForSecrets("terminal output", "ghp_abcdefghijklmnopqrstuvwxyz")).toContain("GitHub token");
   });
 
+  it.each(["token", "password", "api_key", "DATABASE_PASSWORD", "AWS_SECRET_ACCESS_KEY", "SERVICE_AUTH_TOKEN"])(
+    "recognizes quoted JSON credential key %s without relying on a token-shaped value", (key) => {
+      for (const text of [JSON.stringify({ [key]: "example-sensitive-value" }), JSON.stringify({ [key]: "example-sensitive-value" }, null, 2)]) {
+        expect(scanForSecrets("tool output", text)).toContain("assigned secret");
+      }
+    },
+  );
+
+  it("recognizes single-quoted credential keys while retaining unquoted assignment detection", () => {
+    for (const text of ["{'token': 'example-sensitive-value'}", "DATABASE_PASSWORD=example-sensitive-value", "password: example-sensitive-value"]) {
+      expect(scanForSecrets("tool output", text)).toContain("assigned secret");
+    }
+  });
+
+  it.each([
+    '{"name":"example-project","region":"us-east-1","port":3000}',
+    '{"description":"Documentation about token and password fields"}',
+    '{"token":"","password":null,"api_key":false}',
+    '{"tokenCount":42,"passwordRequired":true}',
+  ])("does not flag ordinary JSON without a recognized credential assignment: %s", (text) => {
+    expect(scanForSecrets("tool output", text)).toEqual([]);
+  });
+
   it("builds the inspected terminal block exactly as it is sent to the model", () => {
     const item = { ...contextItem("output", 12), preview: "pnpm test\npassed" };
 

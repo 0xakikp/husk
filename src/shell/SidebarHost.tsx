@@ -154,7 +154,7 @@ export function SidebarHost({
                   <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
                 </div>
               ) : id === "source-control" ? (
-                lazyPanel(<SourceControlPanel inline onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} />, "Source Control")
+                lazyPanel(<SourceControlPanel inline active={explorerOpen && sidebarView === "source-control"} onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} onOpenFile={openLocalFile ?? (!remoteHost ? openFile : undefined)} />, "Source Control")
               ) : id === "remotes" ? (
                 lazyPanel(<RemotesView inline onSftp={(h) => openSftp(h)} />, "Remotes")
               ) : id === "workflows" ? (

@@ -72,7 +72,7 @@ describe("subscription edit proposals", () => {
     const prefix = "Preparing an edit." + editFence(edit);
     for (const close of ["", ticks + "`"]) {
       const workflow = [ticks + "`husk-workflow", "Malformed example:", editFence({ kind: "create", path: "nested.txt", content: "data" }), close].filter(Boolean).join("\n");
-      expect(parseSubscriptionEditProposals([prefix, workflow].join("\n\n"), "/work/husk")).toEqual({ proposals: [{ ...edit, path: "/work/husk/before.txt" }], rejected: 0 });
+      expect(parseSubscriptionEditProposals([prefix, workflow].join("\n\n"), "/work/husk")).toEqual({ proposals: [], rejected: 0 });
     }
   });
 

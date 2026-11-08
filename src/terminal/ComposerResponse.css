@@ -1,0 +1,20 @@
+.composer-code-block.composer-ordered-code-block { overflow: visible; }
+.composer-ordered-code-block > .composer-code-header { border-radius: 8px 8px 0 0; }
+.composer-ordered-code-block > .composer-code-pre { border-radius: 0 0 8px 8px; }
+.composer-save-menu { position: relative; }
+.composer-save-options {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+}
+.composer-save-options .composer-code-header-btn { justify-content: flex-start; white-space: nowrap; padding: 6px 8px; }

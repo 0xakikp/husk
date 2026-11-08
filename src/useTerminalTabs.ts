@@ -145,9 +145,10 @@ export function useTerminalTabs() {
         /* Pane IDs identify live xterm registry sessions, so they must be
            unique across every restored tab, not merely inside one split tree. */
         const restoredPaneIds = new Set<number>();
+        const restoredHistoryKeys = new Set<string>();
         let id = 1;
         for (const t of saved.tabs) {
-          const restoredRoot = hydratePane(t.root, restoredPaneIds);
+          const restoredRoot = hydratePane(t.root, restoredPaneIds, 0, restoredHistoryKeys);
           const fallback = makeTab(id, resolveTerminalLaunchCwd(t.cwd, home));
           const root = restoredRoot ?? fallback.root;
           const leaves = leafIds(root);

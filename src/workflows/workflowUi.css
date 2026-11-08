@@ -76,6 +76,8 @@
 .wf-capture-step .compact-check { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .wf-capture-step .wf-step-actions { flex-shrink: 0; }
 .wf-capture-step pre { margin: 5px 0 0; }
+.wf-capture-origin, .wf-capture-note { margin: 4px 0 0; color: var(--muted-foreground); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.wf-capture-origin { font-variant-numeric: tabular-nums; }
 .wf-capture-single { max-height: min(220px, 30dvh); overflow: auto; }
 .wf-capture-destination { margin-top: 8px; }
 .wf-capture-footer.compact-actions { flex-shrink: 0; margin: 0; padding: 10px 14px; border-top: 1px solid var(--border); flex-direction: row; }

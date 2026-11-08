@@ -5,7 +5,7 @@ import { loadConfig, getKey } from "./store";
 import { getProvider } from "./providers";
 import { getPrefs } from "../settings/preferences";
 import { beginAiRequest, cancelAiRequest, finishAiRequest, isCurrentAiRequest, type AiRequest } from "./requestLifecycle";
-import { getAllSessions, updateExistingSession, type AiSession } from "./sessionStore";
+import { conversationIdentity, getAllSessions, updateExistingSession, type AiSession } from "./sessionStore";
 import { subscribeTerminalCommandRuns, type ObservedCommandRun } from "./terminalContext";
 import { captureTerminalTarget, isCurrentTerminalTarget, type TerminalTarget } from "./terminalTarget";
 import { prepareTaskCommandEvidence, prepareTaskFollowupReply } from "./taskFollowupReply";
@@ -14,6 +14,7 @@ import type { AiTaskStatus } from "./taskMode";
 export type CommandFollowup = {
   id: string;
   sessionId: string;
+  conversationId: string;
   ownerId?: string;
   taskId?: string;
   workspacePath?: string;
@@ -61,10 +62,24 @@ export function pauseCommandFollowup(sessionId: string, note = "Follow-up stoppe
     requests.delete(sessionId);
     cancelAiRequest(request);
     updateExistingSession(sessionId, (session) => ({ ...session, messages: session.messages.map((message) =>
-      message.id === request.id ? { ...message, streaming: false, content: message.content || "Result analysis stopped." } : message) }));
+      message.id === request.id ? { ...message, streaming: false, incomplete: true, notice: "Result analysis stopped. Any partial code needs review before use.", content: message.content || "Result analysis stopped." } : message) }));
   }
   const entry = latest.get(sessionId);
   if (entry && entry.phase !== "done") update(entry.id, { phase: "paused", note });
+}
+
+/** Clear is stronger than pause: forget all receipts for the old conversation.
+ * This never interrupts or replays the user's actual shell command. */
+export function clearCommandFollowup(sessionId: string): void {
+  pauseCommandFollowup(sessionId);
+  latest.delete(sessionId);
+  for (const [id, entry] of pending) {
+    if (entry.sessionId !== sessionId) continue;
+    clearTimeout(timers.get(id));
+    timers.delete(id);
+    pending.delete(id);
+  }
+  emit();
 }
 
 export function isManualCommandAnalysis(entry: CommandFollowup | undefined): boolean {
@@ -77,6 +92,7 @@ export function commandFollowupBlockReason(entry: CommandFollowup, options: { wa
   if (!getPrefs().aiEnabled) return "AI is disabled. Enable AI in Settings before analyzing this result.";
   const session = sessionFor(entry.sessionId);
   if (!session) return "The original chat is unavailable. Open its saved result before continuing.";
+  if (conversationIdentity(session) !== entry.conversationId) return "This conversation was cleared. The result belongs to the previous chat.";
   if (session.workspacePath !== entry.workspacePath || remoteKey(session) !== entry.remoteScope) return "The chat workspace changed. Return to the original workspace before analyzing this result.";
   if (entry.taskId !== session.task?.id) return "The Task changed. This result belongs to the earlier Task; review its saved output in chat.";
   const manual = isManualCommandAnalysis(entry);
@@ -105,6 +121,7 @@ export function trackCommandFollowup(input: {
   const auto = input.auto && (!session.task || session.task.status === "running");
   const entry: CommandFollowup = {
     id: input.runId, sessionId: input.sessionId, ownerId: input.ownerId,
+    conversationId: conversationIdentity(session),
     taskId: session.task?.id,
     workspacePath: session.workspacePath, remoteScope: remoteKey(session),
     target: { ...(input.target ?? captureTerminalTarget()) }, command: input.command, queuedAt: input.queuedAt,
@@ -136,7 +153,7 @@ export function observeCommandFollowup(run: ObservedCommandRun) {
   pending.delete(entry.id);
   clearTimeout(timers.get(entry.id)); timers.delete(entry.id);
   const session = sessionFor(entry.sessionId);
-  if (!session) return;
+  if (!session || conversationIdentity(session) !== entry.conversationId) return;
   const evidence = prepareTaskCommandEvidence(run, getPrefs().aiContextBudgetKb || 32);
   const resultMessageId = `command-result-${entry.id}`;
   updateExistingSession(entry.sessionId, (current) => current.messages.some((message) => message.id === resultMessageId) ? current : ({
@@ -210,7 +227,12 @@ export async function analyzeCommandFollowup(sessionId: string, id: string, owne
       else update(id, { phase: "done", result: undefined, command: "", note: "Result analyzed. Review the suggestion or send feedback; nothing else runs automatically." });
     }
   } catch (error) {
-    if (isCurrentAiRequest(request)) update(id, { phase: "paused", note: error instanceof Error ? error.message : "Could not analyze the result. Try again when ready." });
+    if (isCurrentAiRequest(request)) {
+      const note = error instanceof Error ? error.message : "Could not analyze the result. Try again when ready.";
+      update(id, { phase: "paused", note });
+      updateExistingSession(sessionId, (current) => ({ ...current, messages: current.messages.map((message) =>
+        message.id === request.id ? { ...message, incomplete: true, notice: note } : message) }));
+    }
   } finally {
     updateExistingSession(sessionId, (current) => ({ ...current, messages: current.messages.map((message) =>
       message.id === request.id ? { ...message, streaming: false, content: message.content || "No analysis was returned. The command result is saved above." } : message) }));

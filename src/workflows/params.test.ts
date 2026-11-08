@@ -35,6 +35,20 @@ it("rejects controls, multiline commands, oversized inputs, and malformed placeh
   expect(() => compileWorkflow({ steps: ["echo first\necho second"] }, {})).toThrow("one command line");
   expect(() => compileWorkflow({ steps: ["echo {{broken"] }, {})).toThrow("Malformed");
 });
+it.each([undefined, "command"] as const)("requires illustrative angle placeholders to be replaced before running %s items", (kind) => {
+  for (const step of ["apt download <package>", "apt install <package-name>", "cat <path/to/file>"]) {
+    expect(() => compileWorkflow({ kind, steps: [step] }, {})).toThrow("Step 1: Replace example placeholder");
+  }
+});
+it("checks example placeholders in the authored step without rejecting a literal runtime input", () => {
+  expect(compileWorkflow({ steps: ["apt download {{package}}"] }, { package: "curl" }).steps).toEqual(["apt download 'curl'"]);
+  expect(compileWorkflow({ steps: ["printf '%s' {{value}}"] }, { value: "<package>" }).steps).toEqual(["printf '%s' '<package>'"]);
+  expect(() => compileWorkflow({ steps: ["printf ready", "apt download <package>"] }, {})).toThrow("Step 2: Replace example placeholder");
+});
+it.each(["cat < input.txt > output.txt", "cat <input.txt", "cat<>file", "printf '<package>'", "printf \\<package\\>"])("keeps authored redirection and quoted placeholders unchanged: %s", (step) => {
+  expect(compileWorkflow({ steps: [step] }, {}).steps).toEqual([step]);
+  expect(compileWorkflow({ kind: "command", steps: [step] }, {}).command).toBe(step);
+});
 it("does not let semicolons in a later step bypass stop-on-error", () => {
   const command = compileWorkflow({ steps: ["false", "printf first; printf leaked"], stopOnError: true }, {}).command;
   const result = spawnSync("sh", ["-c", command], { encoding: "utf8", timeout: 2000 });

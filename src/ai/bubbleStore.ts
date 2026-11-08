@@ -1,25 +1,5 @@
-/** Simple toggle store for AiFloatingBubble from external triggers. */
-
-let toggleFn: (() => void) | null = null;
-let openFn: ((text?: string) => void) | null = null;
-
-export function registerBubbleToggle(fn: () => void): () => void {
-  toggleFn = fn;
-  return () => {
-    if (toggleFn === fn) toggleFn = null;
-  };
-}
-
-export function registerBubbleOpen(fn: (text?: string) => void): () => void {
-  openFn = fn;
-  return () => {
-    if (openFn === fn) openFn = null;
-  };
-}
-
-export function toggleBubble(): void {
-  toggleFn?.();
-}
+/** External requests target the active composer; the old floating bubble
+ * implementation has been retired. Preserve its open alias for callers. */
 
 export function openBubble(text?: string): void {
   // Floating bubble is retired; redirect to inline composer.
@@ -69,19 +49,4 @@ export function sendToComposer(text: string): void {
 
 export function openComposer(text?: string): void {
   composerOpenFns.forEach((fn) => fn(text));
-}
-
-/* ── Session switch requests ── */
-
-let switchBubbleSubscribers: ((id: string) => void)[] = [];
-
-export function subscribeBubbleSwitch(fn: (id: string) => void): () => void {
-  switchBubbleSubscribers.push(fn);
-  return () => {
-    switchBubbleSubscribers = switchBubbleSubscribers.filter((f) => f !== fn);
-  };
-}
-
-export function requestBubbleSwitch(id: string): void {
-  switchBubbleSubscribers.forEach((fn) => fn(id));
 }

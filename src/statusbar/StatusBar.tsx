@@ -20,16 +20,19 @@ export function StatusBar({
   const root = useWorkspaceRoot();
   const cwd = useActiveTerminalCwd();
   const exit = useActiveTerminalExit();
-  const [branch, setBranch] = useState("");
+  const [git, setGit] = useState({ root: "", branch: "" });
+  const branch = git.root === root ? git.branch : "";
 
   useEffect(() => {
     let alive = true;
     void (async () => {
-      if (await isRepo()) {
-        const b = await currentBranch();
-        if (alive) setBranch(b);
-      } else if (alive) {
-        setBranch("");
+      try {
+        const branch = root && await isRepo(root) ? await currentBranch(root) : "";
+        if (alive) setGit({ root, branch });
+      } catch {
+        // A failed read must not retain a branch from another folder or reject
+        // an unobserved background promise.
+        if (alive) setGit({ root, branch: "" });
       }
     })();
     return () => {

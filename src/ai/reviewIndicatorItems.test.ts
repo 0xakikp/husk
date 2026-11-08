@@ -20,6 +20,14 @@ it("uses exact file paths, remote host and actual integration identity", () => {
   expect(items[1].target).not.toContain("Generated description");
 });
 
+it("does not count submitted operations or settled results as pending approvals", () => {
+  expect(collectReviewItems("a", [], [
+    { ...integration, id: "running", status: "running" },
+    { ...integration, id: "complete", status: "settled" },
+    { ...integration, id: "pending", status: "pending" },
+  ]).map((item) => item.id)).toEqual(["pending"]);
+});
+
 it("does not infer an unknown SSH host or folder", () => {
   const item = collectReviewItems("a", [], [], [{ ...terminal, id: "remote-run", target: { ptyId: 1, isRemote: true, host: null, cwd: "" } }])[0];
   expect(item.target).toBe("SSH host unknown · folder unknown");

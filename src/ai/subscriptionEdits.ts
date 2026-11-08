@@ -1,5 +1,5 @@
 import { resolveWorkspacePath } from "./workspaceScope";
-import { maskWorkflowProposals } from "./workflowProposals";
+import { executableProtocolFences } from "./protocolFences";
 
 /** Legacy signed-in CLI edit interchange. New provider-neutral requests use
  * `husk-action`; this format remains for existing review and auto-apply
@@ -15,7 +15,6 @@ export type SubscriptionEditParseResult = {
 
 const MAX_PROPOSALS = 12;
 const MAX_FIELD_CHARS = 200_000;
-const EDIT_FENCE = /```husk-edit\s*\n([\s\S]*?)```/gi;
 
 function recordsFrom(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
@@ -33,15 +32,11 @@ export function parseSubscriptionEditProposals(
 ): SubscriptionEditParseResult {
   const proposals: SubscriptionEditProposal[] = [];
   let rejected = 0;
-  let match: RegExpExecArray | null;
-  // Never promote embedded examples from an inert workflow proposal into a
-  // legacy edit/auto-apply request, even if the proposal is invalid/unfinished.
-  const actionableResponse = maskWorkflowProposals(response);
-
-  while ((match = EDIT_FENCE.exec(actionableResponse)) !== null) {
+  for (const block of executableProtocolFences(response, "husk-edit")) {
+    if (!block.closed) { rejected += 1; continue; }
     let payload: unknown;
     try {
-      payload = JSON.parse(match[1]);
+      payload = JSON.parse(block.payload);
     } catch {
       rejected += 1;
       continue;

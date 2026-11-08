@@ -11,7 +11,7 @@ const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_BLOB_LENGTH = 6 * 1024 * 1024;
 const SALT_LEN = 16;
 const IV_LEN = 12;
-const EXCLUDED_PREFS = new Set(["aiAgents", "customCSS", "pluginsDir", "hasSeenWelcome", "setupAssistantDismissed", "workflowSuggestionDismissals"]);
+const EXCLUDED_PREFS = new Set(["aiAgents", "customCSS", "pluginsDir", "hasSeenWelcome", "setupAssistantDismissed", "workflowSuggestionDismissals", "terminalRestoreScrollback"]);
 const APPEARANCE_KEYS = new Set(["theme", "accentColor", "animationsEnabled", "frostedGlass", "neonBorderGlow", "panelGaps", "panelGapStyle", "panelShadows", "activePanelGlow", "editorWallpaperOpacity", "aiMiniOpacity", "aiFontSizeMode", "aiMiniFontSize", "aiMiniBgBlur", "aiMiniBgDim", "aiComposerBgStyle", "aiComposerBgColor"]);
 const hasOwn = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 

@@ -217,7 +217,7 @@ export function AiNoteCaptureMenu({
                 <div className="ai-note-menu-separator" />
                 <button type="button" role="menuitem" onClick={() => { onRedo(); onClose(); }}>
                   <HugeiconsIcon icon={Refresh01Icon} size={12} />
-                  <span>Redo response</span>
+                  <span>Ask again</span>
                 </button>
               </>
             )}

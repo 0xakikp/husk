@@ -25,9 +25,27 @@ vi.mock("./pendingActions", () => ({
   getPendingMcpActions: () => [...queues.mcp],
   subscribePendingMcpActions: (listener: () => void) => { queues.mcpListeners.add(listener); return () => queues.mcpListeners.delete(listener); },
   removePendingMcpAction: vi.fn((id: string) => { queues.mcp = queues.mcp.filter((item) => item.id !== id); queues.mcpListeners.forEach((listener) => listener()); }),
+  claimPendingMcpAction: (id: string) => {
+    const action = queues.mcp.find((item) => item.id === id);
+    if (!action || (action.status ?? "pending") !== "pending") return null;
+    const claimed = { ...action, status: "running" as const };
+    queues.mcp = queues.mcp.map((item) => item.id === id ? claimed : item);
+    queues.mcpListeners.forEach((listener) => listener());
+    return claimed;
+  },
+  settlePendingMcpAction: (id: string, outcome: PendingMcpAction["outcome"], receiptSaved: boolean) => {
+    queues.mcp = queues.mcp.map((item) => item.id === id ? { ...item, status: "settled", outcome, receiptSaved } : item);
+    queues.mcpListeners.forEach((listener) => listener());
+    return true;
+  },
 }));
-vi.mock("./actionBroker", () => ({ executeHuskAction: vi.fn(async () => ({ state: "error", summary: "Service rejected the tool call" })) }));
-vi.mock("../settings/preferences", () => ({ getPrefs: () => ({ aiFileToolsEnabled: true, aiMcpToolsEnabled: true }) }));
+vi.mock("./sessionStore", () => ({
+  conversationIdentity: (session: { id: string }) => session.id,
+  getAllSessions: () => queues.mcp.map((action) => ({ id: action.sessionId })),
+  updateExistingSession: () => false,
+}));
+vi.mock("./actionBroker", () => ({ executeHuskAction: vi.fn(async () => ({ state: "error", activity: "Integration", summary: "Service rejected the tool call" })) }));
+vi.mock("../settings/preferences", () => ({ getPrefs: () => ({ aiEnabled: true, aiFileToolsEnabled: true, aiMcpToolsEnabled: true }) }));
 vi.mock("../toast", () => ({ toast: vi.fn() }));
 
 import { AppliedEditsActivity, PendingEditsReview } from "./PendingEditsReview";
@@ -106,7 +124,7 @@ describe("session-scoped review UI", () => {
   });
 
   it("shows only the selected chat's MCP approvals and keeps failed actions for review", async () => {
-    queues.mcp = ["a", "b"].map((sessionId) => ({ id: sessionId, sessionId, label: `Tool ${sessionId}`, timestamp: 1, request: { kind: "mcp.call", serverId: sessionId, toolName: "write", input: { chat: sessionId } } }));
+    queues.mcp = ["a", "b"].map((sessionId) => ({ id: sessionId, sessionId, conversationId: sessionId, label: `Tool ${sessionId}`, timestamp: 1, request: { kind: "mcp.call", serverId: sessionId, toolName: "write", input: { chat: sessionId } } }));
     await act(async () => root.render(createElement(PendingMcpActionsReview, { sessionId: "a" })));
     await click("review");
     expect(container.textContent).toContain("Tool a");

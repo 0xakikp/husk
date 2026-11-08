@@ -2,11 +2,20 @@ import { useSyncExternalStore } from "react";
 import { bytes } from "./schema";
 
 export type WorkflowCaptureSource = "terminal-selection" | "ai-code";
+/** Source context for reviewed choices, not an executable workflow definition. */
+export type WorkflowCaptureCandidateDetail = {
+  label: string;
+  blockIndex: number;
+  lineStart: number;
+  lineEnd: number;
+  kind: "command" | "script";
+};
 export type WorkflowCaptureDetails = {
   name?: string;
   description?: string;
   stepTitles?: readonly string[];
   selectedIndices?: readonly number[];
+  candidateDetails?: readonly WorkflowCaptureCandidateDetail[];
 };
 export type WorkflowCaptureRequest = {
   id: number;
@@ -17,6 +26,7 @@ export type WorkflowCaptureRequest = {
   description?: string;
   stepTitles?: string[];
   selectedIndices?: number[];
+  candidateDetails?: WorkflowCaptureCandidateDetail[];
 };
 let sequence = 0;
 let requested: WorkflowCaptureRequest | null = null;
@@ -28,7 +38,8 @@ export function requestWorkflowCapture(text: string, source: WorkflowCaptureSour
   requested = { id: ++sequence, text, source };
   subscribers.forEach((fn) => fn());
 }
-/** Boundaries are authored explicitly, never inferred by splitting shell text. */
+/** Boundaries come from authored steps or conservatively parsed choices. No
+ * shell text is split here; selecting and ordering choices is always explicit. */
 export function requestWorkflowStepsCapture(steps: readonly string[], source: WorkflowCaptureSource, details: WorkflowCaptureDetails = {}) {
   requested = {
     id: ++sequence, text: steps.join("\n\n"), source, steps: [...steps],
@@ -36,6 +47,7 @@ export function requestWorkflowStepsCapture(steps: readonly string[], source: Wo
     ...(details.description !== undefined ? { description: details.description } : {}),
     ...(details.stepTitles !== undefined ? { stepTitles: [...details.stepTitles] } : {}),
     ...(details.selectedIndices !== undefined ? { selectedIndices: [...details.selectedIndices] } : {}),
+    ...(details.candidateDetails !== undefined ? { candidateDetails: details.candidateDetails.map((detail) => ({ ...detail })) } : {}),
   };
   subscribers.forEach((fn) => fn());
 }

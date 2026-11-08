@@ -108,6 +108,7 @@ vi.mock("../toast", () => ({ toast: fixture.toast }));
 vi.mock("./EditorContextMenu", () => ({ EditorContextMenu: () => null }));
 
 import { EditorArea, onFileChanged, type EditorRevealTarget, type OpenFile } from "./EditorArea";
+import { onRepositoryFilesChanged } from "./fileChanges";
 import { clearState, getFileState, markDeleted, markModified, markSaved, useFileState } from "./dirtyStore";
 import { applyAiEdit, getEditorDocument, getEditorFile, getEditorSelection, replaceEditorDocument } from "../ai/editorStore";
 
@@ -390,6 +391,29 @@ it("makes clean external updates undoable without losing the saved baseline", as
   model().undo();
   expect(model().getValue()).toBe(original);
   expect(getFileState(noteA.path)).toBe("modified");
+});
+
+it("refreshes only clean local tabs within a repository after Git changes disk", async () => {
+  await render(); await render(noteB.path); model(noteB.path).edit("unsaved B");
+  fixture.read.mockClear(); fixture.read.mockResolvedValue("checked-out branch text");
+  await act(async () => onRepositoryFilesChanged("/unrelated")); expect(fixture.read).not.toHaveBeenCalled();
+  await act(async () => onRepositoryFilesChanged("/vault"));
+  expect(fixture.read).toHaveBeenCalledTimes(1); expect(fixture.read).toHaveBeenCalledWith(noteA.path);
+  expect(model(noteA.path).getValue()).toBe("checked-out branch text"); expect(getFileState(noteA.path)).toBe("clean");
+  expect(model(noteB.path).getValue()).toBe("unsaved B");
+});
+
+it("does not reload local-looking remote tabs through a repository notification", async () => {
+  await render(noteA.path, { files: [{ ...noteA, remoteHost: "server" }] }); fixture.read.mockClear();
+  await act(async () => onRepositoryFilesChanged("/vault")); expect(fixture.read).not.toHaveBeenCalled();
+});
+
+it("preserves and marks an open buffer when its file disappears after a Git operation", async () => {
+  await render(); const original = model().getValue();
+  fixture.read.mockRejectedValueOnce("No such file or directory (os error 2)");
+  await act(async () => onRepositoryFilesChanged("/vault"));
+  expect(model().getValue()).toBe(original); expect(getFileState(noteA.path)).toBe("deleted");
+  expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringContaining("no longer exists") }));
 });
 
 it("keeps the dock save status reactive without needing a parent render", async () => {

@@ -352,11 +352,11 @@ fn shell_quote(value: &str) -> String {
 
 #[derive(Debug, Serialize)]
 pub struct ShellOutput {
-    stdout: String,
-    stderr: String,
-    exit_code: Option<i32>,
-    timed_out: bool,
-    truncated: bool,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) timed_out: bool,
+    pub(crate) truncated: bool,
 }
 
 #[derive(Default)]

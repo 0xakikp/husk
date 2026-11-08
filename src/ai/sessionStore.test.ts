@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { automaticSessionName, type AiMessage } from "./sessionStore";
+import { automaticSessionName, clearSessionConversation, conversationIdentity, createSession, getSession, type AiMessage } from "./sessionStore";
+
+it("gives a cleared conversation a fresh identity while preserving its workspace", () => {
+  const session = createSession({ workspacePath: "/project" });
+  clearSessionConversation(session.id);
+  const fresh = getSession(session.id);
+  expect(conversationIdentity(fresh)).not.toBe(conversationIdentity(session));
+  expect(fresh).toMatchObject({ id: session.id, workspacePath: "/project", messages: [], input: "" });
+});
 
 function user(content: string): AiMessage {
   return { role: "user", content };

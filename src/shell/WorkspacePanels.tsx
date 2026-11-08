@@ -428,7 +428,7 @@ export function WorkspacePanels({
           </div>
         ) : null}
 
-        {/* Git Graph layer */}
+        {/* Commit history layer */}
         {openPanel === "git-graph" && (
           <div
             className={cn(
@@ -439,7 +439,7 @@ export function WorkspacePanels({
             aria-hidden={activeKind !== "git-graph"}
           >
             <ErrorBoundary>
-              {lazyPanel(<GitGraphPanel onClose={closeGitGraph} />, "Git Graph")}
+              {lazyPanel(<GitGraphPanel onClose={closeGitGraph} />, "Commit history")}
             </ErrorBoundary>
           </div>
         )}

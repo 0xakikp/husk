@@ -10,8 +10,6 @@ import {
   MessageMultiple02Icon,
   AttachmentSquareIcon,
   StopIcon,
-  Copy01Icon,
-  TickDouble01Icon,
   ArrowDown01Icon,
   Folder01Icon,
   NotebookIcon,
@@ -26,6 +24,7 @@ import { ModelSwitcher } from "../ai/ModelSwitcher";
 import { streamChat } from "../ai/client";
 import { TextBatch } from "../ai/textBatch";
 import { MessageRenderCache } from "./messageRenderCache";
+import { composerKeyAction, previousUserQuestion } from "./composerInput";
 import { MODELS } from "../ai/models";
 import { assertAiRequest, beginAiRequest, cancelAiRequest, finishAiRequest, isCurrentAiRequest, type AiRequest } from "../ai/requestLifecycle";
 import { boundConversation, imageInputs, prepareSendContext, reviewSendContext, type PreparedSend, type SendChoices } from "../ai/requestContext";
@@ -48,10 +47,11 @@ import {
 } from "../ai/terminalContext";
 import { TerminalPilot } from "./TerminalPilot";
 import { CommandFollowupBar } from "./CommandFollowupBar";
-import { analyzeCommandFollowup, commandFollowupBlockReason, getCommandFollowup, isManualCommandAnalysis, pauseCommandFollowup, trackCommandFollowup, useCommandFollowup } from "../ai/commandFollowup";
+import { analyzeCommandFollowup, clearCommandFollowup, commandFollowupBlockReason, getCommandFollowup, isManualCommandAnalysis, pauseCommandFollowup, trackCommandFollowup, useCommandFollowup } from "../ai/commandFollowup";
 import { captureTerminalTarget, isCurrentTerminalTarget, type TerminalTarget } from "../ai/terminalTarget";
 import { AppliedEditsActivity, PendingEditsReview } from "../ai/PendingEditsReview";
 import { PendingMcpActionsReview } from "../ai/PendingMcpActionsReview";
+import { getPendingMcpActions, removePendingMcpAction } from "../ai/pendingActions";
 import { NeedsReviewIndicator } from "../ai/NeedsReviewIndicator";
 import {
   getAppliedEdits,
@@ -92,12 +92,10 @@ import { buildMcpTools, getMcpToolMeta } from "../mcp/tools";
 import { buildBuiltinTools, mergeTools } from "../ai/builtinTools";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "../toast";
-import { getTerminalRunDecision, getWorkspaceRunDecision } from "./commandRun";
+import { getWorkspaceRunDecision } from "./commandRun";
 import { notifyTerminalFolderUnavailable, runComposerTerminalCommand } from "./composerTerminalRun";
-import { WorkflowCaptureButton } from "../workflows/WorkflowCaptureButton";
-import { AiWorkflowProposalCard } from "../workflows/AiWorkflowProposalCard";
-import { maskWorkflowProposals, parseWorkflowProposals, stripWorkflowProposals } from "../ai/workflowProposals";
-import { parseComposerCodeBlocks as parseCodeBlocks } from "./composerCodeBlocks";
+import { ComposerResponse } from "./ComposerResponse";
+import { parseComposerResponseParts } from "./composerResponseParts";
 import { shq } from "../lib/shellQuote";
 import { useWorkspaceRoot } from "../workspace/store";
 import {
@@ -112,6 +110,7 @@ import {
   type AiReplyTrace,
   type AiSession,
   createSession,
+  clearSessionConversation,
   appendSessionMessage,
   getAllSessions,
   getSession,
@@ -144,11 +143,6 @@ import {
 } from "../ai/taskMode";
 import "./TerminalAiComposer.css";
 import "./FullChatTranscript.css";
-
-interface CodeBlock {
-  lang: string;
-  code: string;
-}
 
 type ComposerAttachment = {
   name: string;
@@ -207,22 +201,8 @@ function hasFileDrag(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes("Files");
 }
 
-interface DiffBlockType {
-  fileName?: string;
-  lines: { kind: "add" | "del" | "ctx"; text: string }[];
-}
-
-interface FileTreeNode {
-  name: string;
-  children?: FileTreeNode[];
-}
-
 function getMessageAccentClass(color?: string) {
   return color ? `composer-message-accent-${color}` : "";
-}
-
-function stripCodeBlocks(text: string): string {
-  return text.replace(/```([\w-]*)\n?([\s\S]*?)```/g, "").trim();
 }
 
 function renderInline(text: string, workspaceRoot?: string): ReactNode[] {
@@ -415,7 +395,6 @@ function AiReplyTraceRow({ trace }: { trace: AiReplyTrace }) {
     </div>
   );
 }
-
 function LoadingIndicator() {
   return (
     <span className="composer-loading">
@@ -427,31 +406,6 @@ function LoadingIndicator() {
       <span>thinking</span>
     </span>
   );
-}
-
-function parseDiffBlocks(text: string): DiffBlockType[] {
-  const blocks: DiffBlockType[] = [];
-  const regex = /```diff\n?([\s\S]*?)```/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const raw = match[1];
-    const lines = raw.split("\n").map((line) => {
-      if (line.startsWith("+")) return { kind: "add" as const, text: line };
-      if (line.startsWith("-")) return { kind: "del" as const, text: line };
-      return { kind: "ctx" as const, text: line };
-    });
-    blocks.push({ lines });
-  }
-  return blocks;
-}
-
-function parseFileTree(text: string): FileTreeNode[] | null {
-  const lines = text.split("\n").filter((l) => l.trim().startsWith("├──") || l.trim().startsWith("└──") || l.trim().startsWith("│"));
-  if (lines.length < 2) return null;
-  return lines.map((line) => {
-    const cleaned = line.replace(/^[│\s]*[├└]── /, "").trim();
-    return { name: cleaned };
-  });
 }
 
 export function tabSessionId(tabId: number): string {
@@ -703,7 +657,7 @@ export function TerminalAiComposer({
      conversation. Switching terminal tabs returns to that tab's own chat. */
   const [dockedSessionId, setDockedSessionId] = useState(routedSessionId);
   const sessionId = variant === "docked" ? dockedSessionId : routedSessionId;
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
   const [attachedFiles, setAttachedFiles] = useState<ComposerAttachment[]>([]);
@@ -787,7 +741,6 @@ export function TerminalAiComposer({
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [codeTabMap, setCodeTabMap] = useState<Record<number, number>>({});
   const activeWorkspaceRoot = useWorkspaceRoot();
   const activeTerminalCwd = useActiveTerminalCwd();
   const activeRemoteTerminal = useActiveRemoteTerminal();
@@ -1046,7 +999,11 @@ export function TerminalAiComposer({
     pendingSendRef.current = null;
     setBusy(false);
     setStatus(null);
-    updateSession(sessionId, () => ({ ...getSession(sessionId), messages: [], input: "", task: undefined }));
+    clearCommandFollowup(sessionId);
+    for (const action of getPendingMcpActions()) {
+      if (action.sessionId === sessionId && (action.status ?? "pending") === "pending") removePendingMcpAction(action.id);
+    }
+    clearSessionConversation(sessionId);
     const defaults = getPrefs();
     setIncludeFile(defaults.aiDefaultIncludeFile);
     setIncludeSelection(defaults.aiDefaultIncludeSelection);
@@ -2263,7 +2220,7 @@ export function TerminalAiComposer({
         const next = [...prev];
         const last = next[next.length - 1];
         if (last?.role === "assistant") {
-          next[next.length - 1] = { ...last, content: last.content + `\n\n⚠️ ${msg}` };
+          next[next.length - 1] = { ...last, notice: msg, incomplete: true };
         }
         return next;
       });
@@ -2281,7 +2238,7 @@ export function TerminalAiComposer({
           at: Date.now(),
         });
       }
-      updateExistingSession(sessionId, (current) => ({ ...current, messages: current.messages.map((message) => message.id === request.id ? { ...message, streaming: false } : message) }));
+      updateExistingSession(sessionId, (current) => ({ ...current, messages: current.messages.map((message) => message.id === request.id ? { ...message, streaming: false, ...(requestSignal.aborted ? { incomplete: true, notice: message.notice || "Response stopped. Any partial code needs review before use." } : {}) } : message) }));
       finishAiRequest(request);
       if (requestRef.current === request) {
         requestRef.current = null;
@@ -2724,23 +2681,24 @@ export function TerminalAiComposer({
     onOpenInAiTab?.();
   };
 
-  const copyCode = async (code: string, idx: number) => {
+  const copyCode = async (code: string, idx: string) => {
     try {
       await writeText(code);
       setCopiedIdx(idx);
       setTimeout(() => setCopiedIdx((current) => (current === idx ? null : current)), 1500);
     } catch {
-      // ignore
+      toast({ title: "Could not copy code", variant: "error" });
     }
   };
 
-  const [msgCopiedIdx, setMsgCopiedIdx] = useState<number | null>(null);
+  const [msgCopiedIdx, setMsgCopiedIdx] = useState<string | null>(null);
 
   const copyMessage = async (content: string, idx: number) => {
+    const key = `${sessionId}:${getSession(sessionId).messages[idx]?.id ?? idx}`;
     try {
       await writeText(content);
-      setMsgCopiedIdx(idx);
-      setTimeout(() => setMsgCopiedIdx((current) => (current === idx ? null : current)), 1500);
+      setMsgCopiedIdx(key);
+      setTimeout(() => setMsgCopiedIdx((current) => (current === key ? null : current)), 1500);
     } catch {
       // ignore
     }
@@ -2752,13 +2710,8 @@ export function TerminalAiComposer({
   };
 
   const redoMessage = (idx: number) => {
-    const msgs = getSession(sessionId).messages;
-    for (let j = idx - 1; j >= 0; j--) {
-      if (msgs[j].role === "user" && msgs[j].content.trim()) {
-        void handleSendRef.current(msgs[j].content);
-        return;
-      }
-    }
+    const question = previousUserQuestion(getSession(sessionId).messages, idx);
+    if (question) void handleSendRef.current(question);
   };
 
   const showNoteCaptureActions = (
@@ -3429,37 +3382,27 @@ export function TerminalAiComposer({
           )
         ) : (
           messages.map((msg, i) => messageRenderCache.current.render(msg, [
-            sessionId, i, msg.content, msg.kind, msg.role, msg.timestamp, msg.streaming, msg.trace,
+            sessionId, i, msg.content, msg.kind, msg.role, msg.timestamp, msg.streaming, msg.trace, msg.notice, msg.incomplete,
             dockSide, activeAgent?.color, activeAgentName, cfg.model, provider.defaultModel,
-            workspacePath, copiedIdx, msgCopiedIdx === i, codeTabMap[i] ?? 0,
+            workspacePath, copiedIdx, msgCopiedIdx === `${sessionId}:${msg.id ?? i}`,
           ], () => {
             const { copyMessage, editMessage, redoMessage, copyCode, runCommand, openResponseContextMenu, openResponseActionsFromButton } = stableMessageActions;
-            if (msg.kind === "command-result") return (
+            if (msg.kind === "command-result" || msg.kind === "integration-result") return (
               <details key={msg.id ?? i} className="composer-command-result">
-                <summary>Terminal result · {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : "observed"}</summary>
+                <summary>{msg.kind === "integration-result" ? "Integration result" : "Terminal result"} · {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : "observed"}</summary>
                 <pre>{msg.content}</pre>
               </details>
             );
             const isUser = msg.role === "user";
-            const workflows = isUser ? null : parseWorkflowProposals(msg.content);
-            const hasWorkflow = !!workflows && (workflows.proposals.length > 0 || workflows.rejected > 0 || workflows.pending);
-            // Protocol JSON never becomes a runnable shell tab, even while incomplete.
-            // Keep the original message intact so proposals survive chat reloads.
-            const visibleContent = isUser ? msg.content : stripWorkflowProposals(msg.content);
-            const textParts = isUser ? visibleContent : stripCodeBlocks(visibleContent);
-            const maskedContent = isUser ? msg.content : maskWorkflowProposals(msg.content);
-            const codeBlocks = isUser ? [] : parseCodeBlocks(msg.content);
-            const diffBlocks = isUser ? [] : parseDiffBlocks(maskedContent);
-            const tree = isUser ? null : parseFileTree(maskedContent);
+            const messageCopied = msgCopiedIdx === `${sessionId}:${msg.id ?? i}`;
+            const hasBlocks = !isUser && parseComposerResponseParts(msg.content).some((part) => part.kind !== "text");
             const timeLabel = msg.timestamp
               ? new Date(msg.timestamp).toLocaleTimeString(undefined, { hour12: false })
               : "";
             const isCompact =
               (dockSide || !isUser) &&
-              codeBlocks.length === 0 &&
-              diffBlocks.length === 0 &&
-              !tree &&
-              !hasWorkflow &&
+              !hasBlocks &&
+              !msg.notice &&
               (!msg.trace || Boolean(msg.streaming)) &&
               !msg.content.includes("\n") &&
               msg.content.trim().length <= 80;
@@ -3488,18 +3431,18 @@ export function TerminalAiComposer({
                       type="button"
                       onClick={() => copyMessage(msg.content, i)}
                       className="msg-act msg-act-sm"
-                      aria-label={msgCopiedIdx === i ? "Copied" : "Copy message"}
-                      title={msgCopiedIdx === i ? "Copied" : "Copy message"}
+                      aria-label={messageCopied ? "Copied" : "Copy message"}
+                      title={messageCopied ? "Copied" : "Copy message"}
                     >
-                      {msgCopiedIdx === i ? "✓" : "⧉"}
+                      {messageCopied ? "✓" : "⧉"}
                     </button>
                     {isUser ? (
                       <button
                         type="button"
                         onClick={() => editMessage(msg.content)}
                         className="msg-act msg-act-sm"
-                        aria-label="Edit message"
-                        title="Edit message"
+                        aria-label="Reuse as draft"
+                        title="Copy this message into your draft without changing history"
                       >
                         ✎
                       </button>
@@ -3520,8 +3463,8 @@ export function TerminalAiComposer({
                           type="button"
                           onClick={() => redoMessage(i)}
                           className="msg-act msg-act-sm"
-                          aria-label="Regenerate response"
-                          title="Regenerate response"
+                          aria-label="Ask again"
+                          title="Ask this question again using the current chat and context"
                         >
                           ↻
                         </button>
@@ -3559,28 +3502,14 @@ export function TerminalAiComposer({
                     <div className="whitespace-pre-wrap">{msg.content}</div>
                   ) : (
                     <>
-                      {textParts && <CollapsibleMarkdownText text={textParts} workspaceRoot={msg.trace?.workspacePath ?? workspacePath} />}
-                      {workflows?.proposals.map((proposal, index) => <AiWorkflowProposalCard key={index} proposal={proposal} disabled={!!msg.streaming} />)}
-                      {workflows?.pending && <p className="composer-workflow-status" role="status">{msg.streaming ? "Preparing workflow proposal…" : "This workflow proposal was incomplete. Ask Husk AI to send it again; no draft was created."}</p>}
-                      {!!workflows?.rejected && <p className="composer-workflow-status" role="status">{workflows.rejected === 1 ? "A workflow proposal could not be reviewed" : `${workflows.rejected} workflow proposals could not be reviewed`} because the format or limits were unsupported. Ask Husk AI to resend a smaller, valid workflow. These proposals did not create or run a workflow.</p>}
-                      {msg.streaming && !textParts && !hasWorkflow && codeBlocks.length === 0 && diffBlocks.length === 0 && !tree && <LoadingIndicator />}
-                      {codeBlocks.length > 0 && (
-                        <CodeBlockTabs
-                          blocks={codeBlocks}
-                          copiedIdx={copiedIdx}
-                          onCopy={copyCode}
-                          onRun={runCommand}
-                          tabIndex={codeTabMap[i] ?? 0}
-                          onChangeTab={(idx) => setCodeTabMap((m) => ({ ...m, [i]: idx }))}
-                        />
-                      )}
-                      {diffBlocks.map((diff, idx) => (
-                        <DiffBlock key={idx} diff={diff} />
-                      ))}
-                      {tree && <FileTreeBlock tree={tree} />}
+                      {msg.streaming && !msg.content.trim() && <LoadingIndicator />}
+                      <ComposerResponse text={msg.content} messageKey={`${sessionId}:${msg.id ?? i}`} streaming={msg.streaming} incomplete={msg.incomplete}
+                        copiedKey={copiedIdx} onCopy={copyCode} onRun={runCommand}
+                        renderText={(text) => <CollapsibleMarkdownText text={text} workspaceRoot={msg.trace?.workspacePath ?? workspacePath} />} />
                     </>
                   )}
                 </div>
+                {msg.notice && <p className="composer-workflow-status" role="status">{msg.notice}</p>}
                 <div className={cn("msg-block-after", !isUser && msg.trace && "has-trace")}>
                   {!isUser && msg.trace && <AiReplyTraceRow trace={msg.trace} />}
                   {!msg.streaming && <div className="msg-block-foot">
@@ -3588,22 +3517,22 @@ export function TerminalAiComposer({
                       type="button"
                       onClick={() => copyMessage(msg.content, i)}
                       className="msg-act"
-                      aria-label={msgCopiedIdx === i ? "Copied" : "Copy message"}
-                      title={msgCopiedIdx === i ? "Copied" : "Copy message"}
+                      aria-label={messageCopied ? "Copied" : "Copy message"}
+                      title={messageCopied ? "Copied" : "Copy message"}
                     >
-                      <span className="msg-act-icon" aria-hidden="true">{msgCopiedIdx === i ? "✓" : "⧉"}</span>
-                      <span className="msg-act-label">{msgCopiedIdx === i ? "copied" : "copy"}</span>
+                      <span className="msg-act-icon" aria-hidden="true">{messageCopied ? "✓" : "⧉"}</span>
+                      <span className="msg-act-label">{messageCopied ? "copied" : "copy"}</span>
                     </button>
                     {isUser ? (
                       <button
                         type="button"
                         onClick={() => editMessage(msg.content)}
                         className="msg-act"
-                        aria-label="Edit message"
-                        title="Edit message"
+                        aria-label="Reuse as draft"
+                        title="Copy this message into your draft without changing history"
                       >
                         <span className="msg-act-icon" aria-hidden="true">✎</span>
-                        <span className="msg-act-label">edit</span>
+                        <span className="msg-act-label">reuse</span>
                       </button>
                     ) : (
                       <>
@@ -3623,11 +3552,11 @@ export function TerminalAiComposer({
                           type="button"
                           onClick={() => redoMessage(i)}
                           className="msg-act"
-                          aria-label="Regenerate response"
-                          title="Regenerate response"
+                          aria-label="Ask again"
+                          title="Ask this question again using the current chat and context"
                         >
                           <span className="msg-act-icon" aria-hidden="true">↻</span>
-                          <span className="msg-act-label">redo</span>
+                          <span className="msg-act-label">ask again</span>
                         </button>
                       </>
                     )}
@@ -4001,39 +3930,17 @@ export function TerminalAiComposer({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (slashOpen) {
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setSlashIndex((i) => (i + 1) % filteredSlash.length);
-                    return;
-                  }
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setSlashIndex((i) => (i - 1 + filteredSlash.length) % filteredSlash.length);
-                    return;
-                  }
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    const cmd = filteredSlash[slashIndex];
-                    if (cmd) {
-                      cmd.run();
-                      setSlashOpen(false);
-                    }
-                    return;
-                  }
-                  if (e.key === "Escape") {
-                    setSlashOpen(false);
-                    return;
-                  }
-                }
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-                if (e.key === "Escape" && variant === "docked") {
-                  handleClose();
-                }
+                const action = composerKeyAction(e.nativeEvent, slashOpen, filteredSlash.length, variant === "docked");
+                if (!action) return;
+                e.preventDefault();
+                if (action === "next") setSlashIndex((i) => (i + 1) % filteredSlash.length);
+                else if (action === "previous") setSlashIndex((i) => (i - 1 + filteredSlash.length) % filteredSlash.length);
+                else if (action === "choose") { filteredSlash[slashIndex]?.run(); setSlashOpen(false); }
+                else if (action === "dismiss") setSlashOpen(false);
+                else if (action === "send") void handleSend();
+                else if (action === "close") handleClose();
               }}
+              aria-label="Message Husk AI"
               placeholder={activeTask ? "ask, correct a command, or give feedback…" : "ask husk…"}
               rows={1}
               className="composer-textarea"
@@ -4129,165 +4036,6 @@ export function TerminalAiComposer({
           onRedo={() => redoMessage(noteCaptureTarget.messageIndex)}
         />
       )}
-    </div>
-  );
-}
-
-function CodeBlockTabs({
-  blocks,
-  copiedIdx,
-  onCopy,
-  onRun,
-  tabIndex,
-  onChangeTab,
-}: {
-  blocks: CodeBlock[];
-  copiedIdx: number | null;
-  onCopy: (code: string, idx: number) => void;
-  onRun: (code: string) => void;
-  tabIndex: number;
-  onChangeTab: (idx: number) => void;
-}) {
-  if (blocks.length === 1) {
-    return <CodeBlockCard block={blocks[0]} idx={0} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} />;
-  }
-  const active = blocks[tabIndex] || blocks[0];
-  return (
-    <div className="composer-code-block">
-      <div className="composer-code-tabs">
-        <div className="composer-code-tab-list">
-          {blocks.map((b, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => onChangeTab(i)}
-              className={cn("composer-code-tab", i === tabIndex && "composer-code-tab-active")}
-            >
-              {b.lang || "code"}
-            </button>
-          ))}
-        </div>
-        <CodeActions block={active} blocks={blocks} idx={blocks[tabIndex] ? tabIndex : 0} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} />
-      </div>
-      <CodeBlockPre block={active} />
-    </div>
-  );
-}
-
-function CodeBlockCard({
-  block,
-  idx,
-  copiedIdx,
-  onCopy,
-  onRun,
-}: {
-  block: CodeBlock;
-  idx: number;
-  copiedIdx: number | null;
-  onCopy: (code: string, idx: number) => void;
-  onRun: (code: string) => void;
-}) {
-  return (
-    <div className="composer-code-block">
-      <div className="composer-code-header">
-        <span className="lang">{block.lang || "code"}</span>
-        <CodeActions block={block} idx={idx} copiedIdx={copiedIdx} onCopy={onCopy} onRun={onRun} />
-      </div>
-      <CodeBlockPre block={block} />
-    </div>
-  );
-}
-
-function CodeActions({
-  block,
-  blocks,
-  idx,
-  copiedIdx,
-  onCopy,
-  onRun,
-}: {
-  block: CodeBlock;
-  blocks?: CodeBlock[];
-  idx: number;
-  copiedIdx: number | null;
-  onCopy: (code: string, idx: number) => void;
-  onRun: (command: string) => void;
-}) {
-  const run = getTerminalRunDecision(block.lang, block.code);
-  return (
-    <div className="composer-code-actions">
-      <button
-        type="button"
-        onClick={() => onCopy(block.code, idx)}
-        className="composer-code-header-btn"
-        title="Copy"
-      >
-        <HugeiconsIcon icon={copiedIdx === idx ? TickDouble01Icon : Copy01Icon} size={10} strokeWidth={1.75} />
-        {copiedIdx === idx ? "Copied" : "Copy"}
-      </button>
-      <WorkflowCaptureButton language={block.lang} code={block.code} blocks={blocks} blockIndex={idx} />
-      {run.runnable ? (
-        <button
-          type="button"
-          onClick={() => onRun(run.command)}
-          className="composer-run-btn"
-          title="Run this one command in the active terminal"
-        >
-          <HugeiconsIcon icon={ComputerTerminal02Icon} size={10} strokeWidth={1.75} />
-          Run command
-        </button>
-      ) : (
-        <span className="composer-code-manual" title={run.reason}>review before running</span>
-      )}
-    </div>
-  );
-}
-
-function CodeBlockPre({ block }: { block: CodeBlock }) {
-  return (
-    <pre className="composer-code-pre">
-      <code>{block.code}</code>
-    </pre>
-  );
-}
-
-function DiffBlock({ diff }: { diff: DiffBlockType }) {
-  return (
-    <div className="composer-diff-block">
-      <div className="composer-diff-header">
-        <span>Diff</span>
-        <span className="text-[9px] text-muted-foreground/60">{diff.lines.length} lines</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {diff.lines.map((line: { kind: "add" | "del" | "ctx"; text: string }, i: number) => (
-          <div
-            key={i}
-            className={cn(
-              "composer-diff-line",
-              line.kind === "add" && "composer-diff-line-add",
-              line.kind === "del" && "composer-diff-line-del",
-              line.kind === "ctx" && "composer-diff-line-ctx",
-            )}
-          >
-            {line.text}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FileTreeBlock({ tree }: { tree: FileTreeNode[] }) {
-  return (
-    <div className="composer-filetree">
-      <div className="text-[10px] font-semibold text-muted-foreground mb-1">Files</div>
-      {tree.map((node, i) => (
-        <div key={i} className="composer-filetree-row">
-          <span className="composer-filetree-row-indent" />
-          <span>📄</span>
-          <span>{node.name}</span>
-        </div>
-      ))}
     </div>
   );
 }

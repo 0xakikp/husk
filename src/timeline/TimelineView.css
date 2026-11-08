@@ -1,0 +1,31 @@
+/* App.css intentionally resets native buttons outside Tailwind's layers.
+   Keep these local action styles unlayered too, without changing other panels. */
+.timeline-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  color: var(--primary);
+  font-size: 10px;
+  line-height: 1.5;
+  transition: background-color 120ms, border-color 120ms;
+}
+.timeline-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+.timeline-action:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: 2px;
+}
+.timeline-action:disabled { cursor: default; opacity: 0.5; }
+.timeline-action-danger { --primary: #f87171; }
+.timeline-action-neutral { --primary: var(--muted-foreground); }
+.timeline-event-toggle:hover { background: color-mix(in srgb, var(--primary) 6%, transparent); }
+.timeline-event-toggle[aria-expanded="true"] { color: var(--primary); }
+@media (prefers-reduced-motion: reduce) {
+  .timeline-action { transition: none; }
+}

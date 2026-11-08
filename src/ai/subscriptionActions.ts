@@ -1,21 +1,11 @@
 import { resolveWorkspacePath } from "./workspaceScope";
 import { resolveRemoteWorkspacePath, type RemoteWorkspaceScope } from "./remoteWorkspace";
 import type { HuskActionRequest } from "./actionBroker";
-import { maskWorkflowProposals } from "./workflowProposals";
-
-const ACTION_OPEN = /```husk-action\b[ \t]*/gi;
-const ACTION_CLOSE = /^[ \t]*```[ \t]*(?=\r?\n|$)/gm;
+import { executableProtocolFences } from "./protocolFences";
 const MAX_ACTIONS = 6;
 const MAX_TEXT = 200_000;
 
 export type SubscriptionActionParseResult = { actions: HuskActionRequest[]; rejected: number };
-
-type SubscriptionActionBlock = {
-  start: number;
-  end: number;
-  payload: string;
-  closed: boolean;
-};
 
 /**
  * Find explicit Husk protocol blocks without depending on a perfectly closed
@@ -24,44 +14,8 @@ type SubscriptionActionBlock = {
  * (so the bounded correction path runs), and the protocol tail must never be
  * shown as ordinary chat text.
  */
-function actionBlocks(text: string): SubscriptionActionBlock[] {
-  const blocks: SubscriptionActionBlock[] = [];
-  // Workflow proposals are inert review data, including malformed or partial
-  // proposals. Preserve offsets so stripping executable actions never removes
-  // a protocol example from a workflow card's original chat content.
-  const actionableText = maskWorkflowProposals(text);
-  const opening = new RegExp(ACTION_OPEN.source, ACTION_OPEN.flags);
-  let match: RegExpExecArray | null;
-
-  while ((match = opening.exec(actionableText)) !== null) {
-    let payloadStart = opening.lastIndex;
-    if (text.startsWith("\r\n", payloadStart)) payloadStart += 2;
-    else if (text[payloadStart] === "\n") payloadStart += 1;
-
-    const closing = new RegExp(ACTION_CLOSE.source, ACTION_CLOSE.flags);
-    closing.lastIndex = payloadStart;
-    const closeMatch = closing.exec(actionableText);
-    if (!closeMatch) {
-      blocks.push({
-        start: match.index,
-        end: text.length,
-        payload: text.slice(payloadStart),
-        closed: false,
-      });
-      break;
-    }
-
-    const end = closeMatch.index + closeMatch[0].length;
-    blocks.push({
-      start: match.index,
-      end,
-      payload: text.slice(payloadStart, closeMatch.index),
-      closed: true,
-    });
-    opening.lastIndex = end;
-  }
-
-  return blocks;
+function actionBlocks(text: string) {
+  return executableProtocolFences(text, "husk-action");
 }
 
 function records(value: unknown): unknown[] {

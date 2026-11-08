@@ -1,0 +1,44 @@
+.git-review-panel { display:flex; flex-direction:column; height:100%; min-height:0; min-width:0; color:var(--foreground); font-family:var(--font-mono); font-size:11px; line-height:1.5; }
+.git-review-panel h2, .git-review-panel h3, .git-review-panel p { margin:0; }
+.git-review-panel h2 { font-size:13px; font-weight:600; }
+.git-review-panel h3 { font-size:11px; font-weight:600; }
+.git-review-panel button { font:inherit; color:var(--foreground); border:1px solid var(--border); border-radius:5px; padding:5px 8px; background:transparent; cursor:pointer; overflow-wrap:anywhere; }
+.git-review-panel button:hover:not(:disabled) { color:var(--primary); border-color:color-mix(in srgb,var(--primary) 45%,var(--border)); background:color-mix(in srgb,var(--primary) 6%,transparent); }
+.git-review-panel button:focus-visible, .git-review-panel summary:focus-visible { outline:1px solid var(--primary); outline-offset:2px; }
+.git-review-panel button:disabled { opacity:.4; cursor:default; }
+.git-review-header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px; flex-shrink:0; border-bottom:1px solid var(--border); }
+.git-review-header > div { min-width:0; }
+.git-review-header p { margin-top:3px; color:var(--muted-foreground); font-size:10px; overflow-wrap:anywhere; }
+.git-review-header > button { border:0; flex-shrink:0; font-size:16px; }
+.git-review-content { min-height:0; flex:1; overflow:auto; padding:12px; display:flex; flex-direction:column; align-items:stretch; gap:10px; scrollbar-width:thin; }
+.git-review-content > * { flex-shrink:0; }
+.git-review-panel [role="alert"] { color:var(--destructive,#f87171); overflow-wrap:anywhere; }
+.git-review-empty { display:flex; flex-direction:column; gap:10px; color:var(--muted-foreground); }
+.git-provider-review, .git-review-card, .git-review-browser-actions { display:flex; flex-direction:column; gap:10px; min-width:0; overflow-wrap:anywhere; }
+.git-review-provider-meta { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:6px; }
+.git-review-provider-meta strong { font-weight:600; }
+.git-review-provider-meta > span { color:var(--muted-foreground); font-size:10px; }
+.git-review-location, .git-review-note { color:var(--muted-foreground); font-size:10px; }
+.git-review-panel .git-review-primary { color:var(--primary); border-color:color-mix(in srgb,var(--primary) 35%,var(--border)); background:color-mix(in srgb,var(--primary) 8%,transparent); }
+.git-review-card { border:1px solid var(--border); border-radius:7px; padding:10px; }
+.git-review-description { padding-top:8px; white-space:pre-wrap; font-size:10px; }
+.git-review-browser-actions { border-top:1px solid var(--border); padding-top:10px; }
+.git-review-panel summary { cursor:pointer; color:var(--muted-foreground); }
+.git-review-checks, .git-review-commits { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
+.git-review-checks li { display:flex; align-items:flex-start; gap:7px; min-width:0; }
+.git-review-checks small { display:block; color:var(--muted-foreground); font-size:9px; }
+.git-check-state { font-size:9px; flex-shrink:0; padding:1px 4px; border:1px solid var(--border); border-radius:3px; color:var(--muted-foreground); }
+.git-check-pass { color:var(--primary); }
+.git-check-fail { color:#f87171; }
+.git-check-pending { color:#e9b949; }
+.git-review-commits > li { min-width:0; }
+.git-review-commits button { display:flex; flex-direction:column; gap:4px; width:100%; min-width:0; text-align:left; padding:8px; }
+.git-review-commits button[aria-pressed="true"] { background:color-mix(in srgb,var(--primary) 8%,transparent); border-color:color-mix(in srgb,var(--primary) 40%,var(--border)); }
+.git-review-commits small { color:var(--muted-foreground); font-size:9px; }
+.git-review-patch { display:flex; flex-direction:column; flex:0 1 45%; min-height:130px; border-top:1px solid var(--border); }
+.git-review-patch > header { display:flex; align-items:center; gap:6px; padding:6px 10px; font-size:10px; }
+.git-review-patch > header span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.git-review-patch > header button { border:0; padding:3px 6px; }
+.git-review-patch > p, .git-review-patch > div { padding:8px 12px; }
+.git-review-patch > .git-diff-view { padding:0; min-height:0; flex:1; }
+.git-review-patch > pre { flex:1; min-height:0; overflow:auto; margin:0; padding:8px 12px; font-family:inherit; font-size:10px; white-space:pre; scrollbar-width:thin; }

@@ -1,4 +1,5 @@
 import { shq } from "../lib/shellQuote";
+import { commandPlaceholderError } from "../lib/commandPlaceholders";
 import { bytes, isWorkflowNumber, type Workflow, type WorkflowInput } from "./schema";
 
 export type WorkflowParam = { name: string; default: string | null };
@@ -139,6 +140,9 @@ export function compileWorkflow(wf: Pick<Workflow, "steps" | "inputs" | "stopOnE
   const steps = wf.steps.map((step, index) => {
     if (!step.trim() || bytes(step) > 8000 || /[\x00-\x1f\x7f\u2028\u2029]/.test(step)) throw new Error("Step " + (index + 1) + ": use one command line per card, at most 8,000 UTF-8 bytes.");
     if (wf.kind === "command" && /[\x80-\x9f]/.test(step)) throw new Error("Saved commands cannot contain control characters.");
+    // Inspect the authored template, not safely quoted runtime input values.
+    const placeholderError = commandPlaceholderError(step);
+    if (placeholderError) throw new Error("Step " + (index + 1) + ": " + placeholderError);
     return wf.kind === "command" ? expandSavedCommand(step, resolved) : expandStep(step, resolved);
   });
   if (wf.kind === "command") {

@@ -58,6 +58,7 @@ export function TerminalView({
   initialCwd,
   checkpoint,
   restored = false,
+  historyKey,
   onSplit,
   onClose,
   canClose = false,
@@ -72,6 +73,7 @@ export function TerminalView({
   initialCwd?: string;
   checkpoint?: TerminalCheckpoint;
   restored?: boolean;
+  historyKey?: string;
   onSplit?: (dir: "row" | "col") => void;
   onClose?: () => void;
   canClose?: boolean;
@@ -90,6 +92,7 @@ export function TerminalView({
      change. Keep the value from this leaf's first render instead. */
   const initialCwdRef = useRef(initialCwd);
   const restoredRef = useRef(restored);
+  const historyKeyRef = useRef(historyKey);
   const [sessionReady, setSessionReady] = useState(false);
   const sessionStatus = useSyncExternalStore(
     (listener) => subscribeSessionStatus(leafId, listener),
@@ -134,7 +137,7 @@ export function TerminalView({
 
     void (async () => {
       try {
-        await createSession(leafId, initialCwdRef.current);
+        await createSession(leafId, initialCwdRef.current, { key: historyKeyRef.current, restored: restoredRef.current });
         if (restoredRef.current) dismissTerminalWelcome(leafId);
         if (cancelled) return;
 
@@ -637,7 +640,7 @@ export function TerminalView({
       {restoreNoticeOpen && sessionStatus.state === "ready" && (
         <div className="terminal-restore-note" role="status">
           <span className="terminal-restore-dot" aria-hidden="true">●</span>
-          <span>restored · fresh shell</span>
+          <span>{handleRef.current?.hasRestoredHistory?.() ? "output restored · fresh shell" : "layout restored · fresh shell"}</span>
           {checkpoint?.cwd && <code title={checkpoint.cwd}>{checkpoint.cwd}</code>}
           {checkpoint?.command && (
             <>
@@ -729,9 +732,24 @@ export function TerminalView({
             <button type="button" className="ectx-item" onClick={() => { setMenu(null); handleRef.current?.selectAll(); }}>
               Select all
             </button>
-            <button type="button" className="ectx-item" onClick={() => { setMenu(null); handleRef.current?.clear(); handleRef.current?.focus(); }}>
-              Clear
+            <button type="button" className="ectx-item" disabled={handleRef.current?.canClearScreen?.() === false}
+              title="Clear the screen, keeping scrollback. Available at a verified shell prompt; your draft is preserved."
+              onClick={() => { setMenu(null); handleRef.current?.clear(); handleRef.current?.focus(); }}>
+              Clear screen
             </button>
+            <button type="button" className="ectx-item" onClick={() => {
+              setMenu(null);
+              const reviewed = handleRef.current;
+              let submitted = false;
+              toast({ title: "Erase this terminal’s scrollback?", message: "Removes this pane’s visible scrollback and saved output. The current prompt line and shell command history remain. This cannot be undone.", variant: "warning", duration: 0,
+                action: { label: "Erase scrollback", onClick: () => {
+                  if (submitted || !reviewed || handleRef.current !== reviewed) return;
+                  submitted = true;
+                  void reviewed.eraseScrollback().then(() => toast({ title: "Scrollback erased", variant: "success" }))
+                    .catch(() => toast({ title: "Could not erase scrollback", message: "Return to the normal terminal screen and retry. Saved output deletion was not fully confirmed.", variant: "error" }));
+                } },
+              });
+            }}>Erase scrollback…</button>
             <button type="button" className="ectx-item" onClick={() => { setMenu(null); searchOpenRef.current = true; setSearchOpen(true); }}>
               Find…
             </button>

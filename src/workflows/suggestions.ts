@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from "react";
 
-import { scanForSecrets } from "../ai/contextItems";
 import { getPrefs } from "../settings/preferences";
 import { queryTimeline, type TimelineEvent } from "../timeline/store";
+import { readTimelineCommand, readTimelineMetadata, safeTimelineCommand } from "../timeline/commandMetadata";
 import { getWorkspaceRoot } from "../workspace/store";
 import { loadWorkflows, type Workflow } from "./store";
 
@@ -59,7 +59,7 @@ export function isMeaningfulWorkflowCommand(command: string): boolean {
 export function isSafeWorkflowSuggestionCommand(command: string): boolean {
   const value = command.trim();
   if (!isMeaningfulWorkflowCommand(value)) return false;
-  if (scanForSecrets("terminal command", value).length > 0) return false;
+  if (!safeTimelineCommand(command).command) return false;
   if (/\n|\r|\0/.test(value)) return false;
   return !/(?:^|\s)(?:sudo|su|ssh|mosh|rm|rmdir|dd|mkfs|shutdown|reboot|halt|poweroff)(?:\s|$)|\bgit\s+(?:reset\s+--hard|push\b[^\n]*\s--force)|\bkubectl\s+delete\b|\bterraform\s+(?:apply|destroy)\b|\bdocker\s+(?:system\s+prune|rm\b)|\b(?:drop|truncate)\s+(?:database|table)\b/i.test(value);
 }
@@ -68,22 +68,17 @@ export function isSafeWorkflowSuggestionCommand(command: string): boolean {
  * rather than parsed back from display text, which avoids treating prose as a
  * command and keeps the migration boundary explicit. */
 export function timelineCommand(event: TimelineEvent): RecordedWorkflowCommand | null {
-  if (event.event_type !== "command" && event.event_type !== "command_failed") return null;
-  try {
-    const metadata = JSON.parse(event.metadata_json || "{}") as Record<string, unknown>;
-    if (typeof metadata.command !== "string" || !metadata.command.trim()) return null;
-    if (metadata.redacted === true || metadata.sensitive === true) return null;
-    return {
-      id: event.id,
-      ts: event.ts,
-      command: metadata.command.trim().replace(/\s+/g, " "),
-      cwd: typeof metadata.cwd === "string" ? metadata.cwd : "",
-      terminalSessionId: typeof metadata.terminalSessionId === "string" ? metadata.terminalSessionId : "",
-      failed: event.event_type === "command_failed" || (typeof metadata.exitCode === "number" && metadata.exitCode !== 0),
-    };
-  } catch {
-    return null;
-  }
+  const recorded = readTimelineCommand(event);
+  if (!recorded) return null;
+  const metadata = readTimelineMetadata(event);
+  return {
+    id: event.id,
+    ts: event.ts,
+    command: recorded.command,
+    cwd: typeof metadata.cwd === "string" ? metadata.cwd : "",
+    terminalSessionId: typeof metadata.terminalSessionId === "string" ? metadata.terminalSessionId : "",
+    failed: event.event_type === "command_failed" || (typeof metadata.exitCode === "number" && metadata.exitCode !== 0),
+  };
 }
 
 function hash(value: string): string {

@@ -187,7 +187,7 @@ it("targets the clicked leaf, not a different active terminal or global PTY", as
 
 it("keeps standard context actions available with AI disabled", async () => {
   await render(); await openMenu();
-  for (const label of ["Copy", "Paste", "Select all", "Clear", "Find…", "History…", "Split right", "Split down", "Close pane", "Saved fixes…"]) expect(menuButton(label).disabled).toBe(false);
+  for (const label of ["Copy", "Paste", "Select all", "Clear screen", "Erase scrollback…", "Find…", "History…", "Split right", "Split down", "Close pane", "Saved fixes…"]) expect(menuButton(label).disabled).toBe(false);
   await act(async () => menuButton("History…").click());
   expect(getShellHistory).toHaveBeenCalledOnce(); expect(container.querySelector('[data-testid="history-panel"]')).not.toBeNull();
   expect(openSavedFixes).not.toHaveBeenCalled(); expectNoShellMutation();

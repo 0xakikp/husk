@@ -26,13 +26,24 @@ export type TimelineEvent = {
 };
 
 const DISABLED_KEY = "husk.timeline.disabledWorkspaces";
+let lastKnownDisabled = new Set<string>();
+const recordingOverrides = new Map<string, boolean>();
 
 function disabledWorkspaces(): Set<string> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(DISABLED_KEY) || "[]") as string[]);
+    const parsed: unknown = JSON.parse(localStorage.getItem(DISABLED_KEY) || "[]");
+    if (Array.isArray(parsed) && parsed.every((root) => typeof root === "string")) {
+      lastKnownDisabled = new Set(parsed);
+    }
   } catch {
-    return new Set();
+    // Preserve the last known opt-outs while storage is unavailable.
   }
+  const disabled = new Set(lastKnownDisabled);
+  for (const [root, enabled] of recordingOverrides) {
+    if (enabled) disabled.delete(root);
+    else disabled.add(root);
+  }
+  return disabled;
 }
 
 export function isTimelineRecordingEnabled(root = getWorkspaceRoot()): boolean {
@@ -40,46 +51,53 @@ export function isTimelineRecordingEnabled(root = getWorkspaceRoot()): boolean {
   return !disabledWorkspaces().has(root);
 }
 
-export function setTimelineRecordingEnabled(enabled: boolean, root = getWorkspaceRoot()): void {
-  if (!root) return;
+/** Returns whether the preference was persisted; a failed write still applies
+ * for this session, and the UI must not imply it will survive a restart. */
+export function setTimelineRecordingEnabled(enabled: boolean, root = getWorkspaceRoot()): boolean {
+  if (!root) return false;
   const set = disabledWorkspaces();
   if (enabled) set.delete(root);
   else set.add(root);
+  recordingOverrides.set(root, enabled);
+  let persisted = false;
   try {
     localStorage.setItem(DISABLED_KEY, JSON.stringify([...set]));
+    lastKnownDisabled = set;
+    recordingOverrides.clear();
+    persisted = true;
   } catch {
     // storage unavailable — recording preference stays in memory only
   }
   emit();
+  return persisted;
 }
 
 /* ── Recording ─────────────────────────────────────────────────────────────
    Fire-and-forget: the timeline must never slow down or break the thing it
    is logging. A failed insert is a console note, not an error dialog. */
 
-export function recordTimelineEvent(
+export async function recordTimelineEvent(
   eventType: TimelineEventType,
   summary: string,
   metadata?: Record<string, unknown>,
   options: { workspaceRoot?: string; sensitivity?: number } = {},
 ): Promise<boolean> {
   const root = options.workspaceRoot ?? getWorkspaceRoot();
-  if (!root || !isTimelineRecordingEnabled(root) || !summary.trim()) return Promise.resolve(false);
-  return invoke("timeline_record", {
-    workspaceId: root,
-    eventType,
-    summary: summary.trim(),
-    metadataJson: metadata ? JSON.stringify(metadata) : null,
-    sensitivity: options.sensitivity ?? 0,
-  })
-    .then(() => {
-      emit();
-      return true;
-    })
-    .catch((e) => {
-      console.warn("[timeline] record failed:", e);
-      return false;
+  if (!root || !isTimelineRecordingEnabled(root) || !summary.trim()) return false;
+  try {
+    await invoke("timeline_record", {
+      workspaceId: root,
+      eventType,
+      summary: summary.trim(),
+      metadataJson: metadata ? JSON.stringify(metadata) : null,
+      sensitivity: options.sensitivity ?? 0,
     });
+    emit();
+    return true;
+  } catch {
+    console.warn("[timeline] could not record event");
+    return false;
+  }
 }
 
 /* ── Querying ────────────────────────────────────────────────────────────── */
@@ -125,6 +143,12 @@ const subscribers = new Set<() => void>();
 
 function emit(): void {
   for (const fn of subscribers) fn();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key === DISABLED_KEY || event.key === null) emit();
+  });
 }
 
 export function subscribeTimeline(fn: () => void): () => void {

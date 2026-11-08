@@ -17,6 +17,14 @@ describe("Composer terminal Run", () => {
   it("keeps unlabelled blocks copy-only", () => {
     expect(getTerminalRunDecision("", "git status")).toMatchObject({ runnable: false });
   });
+
+  it.each(["apt download <package>", "dnf download <package-name>", "cat <path/to/file>"])("requires illustrative placeholders to be edited before direct Run: %s", (command) => {
+    expect(getTerminalRunDecision("sh", command)).toEqual({ runnable: false, reason: expect.stringContaining("Replace example placeholder") });
+  });
+
+  it.each(["cat < input.txt > output.txt", "cat <input.txt", "cat<>file", "printf '<package>'", "printf \\<package\\>"])("does not confuse literals or ordinary redirection with placeholders: %s", (command) => {
+    expect(getTerminalRunDecision("sh", command)).toEqual({ runnable: true, command });
+  });
 });
 
 describe("Composer workspace target", () => {

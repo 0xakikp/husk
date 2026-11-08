@@ -42,7 +42,7 @@ describe("preference validation", () => {
       aiContextBudgetKb: 999, aiPanelDock: "top", aiMiniFontSize: NaN,
     });
     expect(result).toMatchObject({
-      terminalFontSize: 13, terminalScrollback: 1000, zoomLevel: 1,
+      terminalFontSize: 13, terminalScrollback: 10_000, zoomLevel: 1,
       editorMinimap: false, theme: "dark", fontFamily: "iosevka", userName: "Alex",
       editorFontSize: 16, terminalWelcomeEnabled: false, aiContextBudgetKb: 32,
       aiPanelDock: "left", aiMiniFontSize: 12,
@@ -91,6 +91,45 @@ describe("preference validation", () => {
     expect(validatePreferences({}).aiAgents[0].name).toBe("Architect");
     expect(validatePreferences({ aiMiniFontSize: 11 }).aiFontSizeMode).toBe("terminal");
     expect(validatePreferences({ aiMiniFontSize: 15 }).aiFontSizeMode).toBe("custom");
+  });
+});
+
+describe("saved terminal history preferences", () => {
+  it("defaults to opt-out and seven-day retention, with more in-memory scrollback", () => {
+    expect(validatePreferences({})).toMatchObject({ terminalRestoreScrollback: false, terminalScrollbackRetentionDays: 7, terminalScrollback: 10_000 });
+  });
+
+  it.each([0, 1000, 5000, 50_000])("retains the user's explicit scrollback value %s", (terminalScrollback) => {
+    expect(validatePreferences({ terminalScrollback }).terminalScrollback).toBe(terminalScrollback);
+  });
+
+  it("does not couple output recording to session restoration", () => {
+    expect(validatePreferences({ terminalRestoreScrollback: true, sessionRestoreEnabled: false }))
+      .toMatchObject({ terminalRestoreScrollback: true, sessionRestoreEnabled: false });
+    expect(validatePreferences({ terminalRestoreScrollback: false, sessionRestoreEnabled: true }))
+      .toMatchObject({ terminalRestoreScrollback: false, sessionRestoreEnabled: true });
+  });
+
+  it.each([[0, 1], [-100, 1], [1, 1], [7, 7], [14.9, 14], [30, 30], [1000, 30]])("clamps retention %s to %s days", (value, expected) => {
+    expect(validatePreferences({ terminalScrollbackRetentionDays: value }).terminalScrollbackRetentionDays).toBe(expected);
+  });
+
+  it.each([null, "30", true, {}, NaN, Infinity, -Infinity])("uses safe defaults for invalid consent/retention %j", (value) => {
+    expect(validatePreferences({ terminalRestoreScrollback: value, terminalScrollbackRetentionDays: value }))
+      .toMatchObject({ terminalRestoreScrollback: typeof value === "boolean" ? value : false, terminalScrollbackRetentionDays: 7 });
+  });
+
+  it("round-trips the preferences through native config without enabling session restore", () => {
+    const original = getPrefs();
+    try {
+      hydratePrefsFromNative({ terminalRestoreScrollback: true, terminalScrollbackRetentionDays: 30, terminalScrollback: 1000, sessionRestoreEnabled: false }, original.aiAgents);
+      const persisted = preferencesForNativeConfig();
+      expect(persisted).toMatchObject({ terminalRestoreScrollback: true, terminalScrollbackRetentionDays: 30, terminalScrollback: 1000, sessionRestoreEnabled: false });
+      hydratePrefsFromNative(persisted, original.aiAgents);
+      expect(getPrefs()).toMatchObject(persisted);
+    } finally {
+      hydratePrefsFromNative(original, original.aiAgents);
+    }
   });
 });
 

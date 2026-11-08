@@ -8,6 +8,10 @@ describe("settings search", () => {
 
   it.each([
     ["scrollback", "config", "scrollback"],
+    ["restore terminal history", "config", "terminalRestoreScrollback"],
+    ["terminal recording", "config", "terminalRestoreScrollback"],
+    ["terminal retention", "config", "terminalScrollbackRetentionDays"],
+    ["delete saved terminal history", "config", "deleteTerminalHistory"],
     ["minimap", "config", "minimap"],
     ["terminal font size", "config", "terminal.fontSize"],
     ["terminal fontsize", "config", "terminal.fontSize"],

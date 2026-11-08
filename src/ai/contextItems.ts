@@ -105,11 +105,11 @@ const SECRET_PATTERNS: { re: RegExp; reason: string }[] = [
   { re: /\bAIza[0-9A-Za-z_-]{35}\b/, reason: "Google API key" },
   { re: /\bBearer\s+[A-Za-z0-9._~-]{10,}/, reason: "bearer token" },
   {
-    re: /\b(?:api[_-]?key|secret|token|password|passwd)\b\s*[:=]\s*["']?[^\s"']{8,}/i,
+    re: /\b(?:api[_-]?key|secret|token|password|passwd)\b["']?\s*[:=]\s*["']?[^\s"']{8,}/i,
     reason: "assigned secret",
   },
   {
-    re: /\b[A-Z0-9_]*(?:SECRET(?:_ACCESS_KEY)?|API_KEY|ACCESS_TOKEN|AUTH_TOKEN|PASSWORD|PASSWD)[A-Z0-9_]*\s*=\s*["']?[^\s"']{8,}/i,
+    re: /\b[A-Z0-9_]*(?:SECRET(?:_ACCESS_KEY)?|API_KEY|ACCESS_TOKEN|AUTH_TOKEN|PASSWORD|PASSWD)[A-Z0-9_]*["']?\s*[:=]\s*["']?[^\s"']{8,}/i,
     reason: "assigned secret",
   },
   { re: /--(?:password|passwd|token|api-key|secret)\s+(?:["'])?[^\s"']{8,}/i, reason: "credential argument" },
@@ -121,7 +121,8 @@ const SENSITIVE_FILENAME_RE = /(?:^|\/)\.env(?:\.|$)|(?:^|\/)(?:id_rsa|id_ed2551
 
 /**
  * Returns the list of reasons this label/text looks sensitive. Empty array
- * means clean. This is a warning system, not redaction — the user decides.
+ * means no known pattern matched, not proof that the data is safe. This is a
+ * best-effort warning system, not redaction — the user decides.
  */
 export function scanForSecrets(label: string, text: string): string[] {
   const reasons = new Set<string>();

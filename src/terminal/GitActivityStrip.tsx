@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 import { branchAheadBehind, currentBranch, isRepo, status } from "../git/client";
-import { typeInActiveTerminal } from "../ai/terminalContext";
+import { shq } from "../lib/shellQuote";
 import { toast } from "../toast";
 import { clearGitActivity, useGitActivity } from "./gitActivityStore";
 
@@ -19,38 +20,48 @@ export function GitActivityStrip({
   onOpenSourceControl: () => void;
 }) {
   const activity = useGitActivity(leafId);
-  const [summary, setSummary] = useState<GitSummary | null>(null);
+  const [result, setResult] = useState<{ activity: typeof activity; summary: GitSummary | null; error: string | null } | null>(null);
+  const current = result?.activity === activity ? result : null;
+  const summary = current?.summary;
 
   useEffect(() => {
     if (!activity) {
-      setSummary(null);
+      setResult(null);
       return;
     }
-    setSummary(null);
+    setResult(null);
     let cancelled = false;
     void (async () => {
-      if (!(await isRepo(activity.cwd))) return;
-      const [branch, files, divergence] = await Promise.all([
-        currentBranch(activity.cwd),
-        status(activity.cwd),
-        branchAheadBehind(activity.cwd),
-      ]);
-      if (!cancelled) setSummary({ branch, changedFiles: files.length, ...divergence });
+      try {
+        if (!activity.cwd || !(await isRepo(activity.cwd))) {
+          if (!cancelled) setResult({ activity, summary: null, error: "repository unavailable" });
+          return;
+        }
+        const [branch, files, divergence] = await Promise.all([
+          currentBranch(activity.cwd),
+          status(activity.cwd),
+          branchAheadBehind(activity.cwd),
+        ]);
+        if (!cancelled) setResult({ activity, summary: { branch, changedFiles: files.length, ...divergence }, error: null });
+      } catch {
+        if (!cancelled) setResult({ activity, summary: null, error: "status unavailable · use review to retry" });
+      }
     })();
     return () => { cancelled = true; };
-  }, [activity?.at, activity?.cwd]);
+  }, [activity]);
 
   if (!activity || leafId == null) return null;
   const details = summary
     ? `${summary.branch || "detached HEAD"}${summary.changedFiles ? ` · ${summary.changedFiles} changed` : ""}${summary.ahead ? ` · ↑${summary.ahead}` : ""}${summary.behind ? ` · ↓${summary.behind}` : ""}`
-    : "refreshing status…";
+    : current?.error ?? "refreshing status…";
 
-  const stageStatus = () => {
-    if (!typeInActiveTerminal("git status --short")) {
-      toast({ title: "No active terminal", message: "Focus this terminal to stage Git status.", variant: "error" });
-      return;
+  const copyStatus = async () => {
+    try {
+      await writeText(`git -C ${shq(activity.cwd)} status --short`);
+      toast({ title: "Git status command copied", message: "Review it before pasting into a terminal. Nothing was run.", variant: "info" });
+    } catch {
+      toast({ title: "Could not copy command", message: "Try again or review Git status in the sidebar.", variant: "error" });
     }
-    toast({ title: "Git status staged", message: "Review it in the terminal, then press Enter to run.", variant: "info" });
   };
 
   return (
@@ -71,17 +82,20 @@ export function GitActivityStrip({
       </button>
       <button
         type="button"
-        onClick={stageStatus}
+        onClick={() => void copyStatus()}
+        disabled={!activity.cwd}
+        aria-label="Copy Git status command"
         className="shrink-0 rounded-md px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground"
-        title="Stage git status in the terminal; it will not run until you press Enter"
+        title="Copy a status command for this folder; nothing is sent to a terminal"
       >
-        status
+        copy status
       </button>
       <button
         type="button"
         onClick={() => clearGitActivity(leafId)}
         className="shrink-0 rounded-md p-0.5 text-muted-foreground/70 transition-colors hover:bg-muted/45 hover:text-foreground"
         title="Dismiss Git summary"
+        aria-label="Dismiss Git summary"
       >
         <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={1.75} />
       </button>

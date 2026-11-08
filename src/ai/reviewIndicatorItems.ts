@@ -35,7 +35,7 @@ export function collectReviewItems(
       label: edit.operation === "create" ? "Create file" : edit.operation === "overwrite" ? "Overwrite file" : "Edit file",
       target: `${edit.remoteHost ? `SSH ${edit.remoteHost}` : "Local"} · ${edit.path}`,
     })),
-    ...integrations.filter((action) => action.sessionId === sessionId).map((action) => ({
+    ...integrations.filter((action) => action.sessionId === sessionId && (action.status ?? "pending") === "pending").map((action) => ({
       id: action.id,
       kind: "integration" as const,
       label: "Integration action",

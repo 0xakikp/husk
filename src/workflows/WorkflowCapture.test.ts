@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Workflow } from "./schema";
@@ -89,8 +89,8 @@ it("offers capture only on explicitly shell-labelled AI blocks", async () => {
   await act(async () => root.render(createElement(WorkflowCaptureButton, { language: "python", code: "print('hi')" })));
   expect(container.querySelector("button")).toBeNull(); expect(getWorkflowCaptureRequest()).toBeNull();
   await act(async () => root.render(createElement(WorkflowCaptureButton, { language: "bash", code: "printf first\nprintf second" })));
-  await click("Add to workflow…");
-  expect(getWorkflowCaptureRequest()).toEqual({ id: expect.any(Number), text: "printf first\nprintf second", source: "ai-code" });
+  await click("Choose commands…");
+  expect(getWorkflowCaptureRequest()).toMatchObject({ steps: ["printf first", "printf second"], selectedIndices: [], source: "ai-code" });
   expect(addWorkflowCaptures).not.toHaveBeenCalled();
 });
 
@@ -191,4 +191,55 @@ it("disables saved destinations when the durable store is read-only", async () =
   await capture();
   expect(document.querySelectorAll<HTMLInputElement>('input[type="radio"]')[2].disabled).toBe(true);
   expect(button("Add to draft").disabled).toBe(false); // local new draft remains available
+});
+
+it("lets the user select one distro alternative instead of a whole multiline example block", async () => {
+  const download = "# Debian/Ubuntu — download without installing\napt download <package>\n\n# Fedora/RHEL\ndnf download <package>\n\n# Arch Linux\npacman -Sw <package>\n\n# Alpine\napk fetch <package>";
+  const install = "sudo apt install <package>\nsudo dnf install <package>\nsudo pacman -S <package>\nsudo apk add <package>";
+  await act(async () => root.render(createElement(Fragment, null,
+    createElement(WorkflowCaptureButton, { language: "sh", code: download, blocks: [{ lang: "sh", code: download }, { lang: "sh", code: install }], blockIndex: 0 }),
+    createElement(WorkflowCapture),
+  )));
+  await click("Choose commands…");
+  const checkboxes = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+  expect(checkboxes).toHaveLength(8); expect(checkboxes.every((input) => !input.checked)).toBe(true);
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("0 of 8 selected");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Debian/Ubuntu");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Fedora/RHEL");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Code block 2");
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+  expect(button("Add to draft").disabled).toBe(true); expect(addWorkflowCaptures).not.toHaveBeenCalled();
+  await act(async () => checkboxes[1].click());
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Running is blocked until example placeholders are resolved");
+  await click("Add to draft");
+  expect(addWorkflowCaptures).toHaveBeenCalledExactlyOnceWith(["dnf download <package>"], "ai-code", "new", {
+    expectedKey: null, expectedRevision: null, replaceExisting: false, stepTitles: ["Fedora/RHEL"],
+  });
+});
+
+it("labels ambiguous shell content as a preserved block, not as a single detected command", async () => {
+  const script = "for file in *.log; do\n  printf '%s\\n' \"$file\"\ndone";
+  requestWorkflowStepsCapture([script], "ai-code", { selectedIndices: [], candidateDetails: [{ label: "", blockIndex: 0, lineStart: 1, lineEnd: 3, kind: "script" }] });
+  await render();
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Shell block 1");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("kept intact");
+  expect(document.querySelector('[aria-label="Exact shell block 1"]')?.textContent).toBe(script);
+  expect(button("Add to draft").disabled).toBe(true);
+  await act(async () => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+  await click("Add to draft");
+  expect(addWorkflowCaptures).toHaveBeenCalledWith([script], "ai-code", "new", expect.anything());
+});
+
+it("refuses mismatched source details even before any choices are selected", async () => {
+  requestWorkflowStepsCapture(["pnpm lint", "pnpm test"], "ai-code", { selectedIndices: [], candidateDetails: [] }); await render();
+  expect(button("Add to draft").disabled).toBe(true);
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("Source details must match");
+});
+
+it("warns about illustrative input in an exact selection without blocking an editable draft", async () => {
+  await capture("apt download <package>", "ai-code");
+  expect(document.body.textContent).toContain("Edit them in the draft");
+  expect(button("Add to draft").disabled).toBe(false);
+  await click("Add to draft");
+  expect(addWorkflowCaptures).toHaveBeenCalledWith(["apt download <package>"], "ai-code", "new", expect.anything());
 });

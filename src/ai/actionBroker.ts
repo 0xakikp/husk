@@ -13,6 +13,7 @@ import { loadProjectLensSnapshot } from "./projectLens";
 import { sshReadDirScoped, sshReadFileScoped } from "../remote/remoteFs";
 import { getActiveRemoteTerminal } from "./terminalContext";
 import { loadRemoteProjectLensSnapshot } from "./remoteProjectLens";
+import { scanForSecrets } from "./contextItems";
 import {
   normalizeRemoteWorkspace,
   resolveRemoteWorkspacePath,
@@ -108,9 +109,30 @@ function isScopeResult(value: ReturnType<typeof workspaceScope>): value is HuskA
   return "state" in value;
 }
 
+const SENSITIVE_REVIEW_GUIDANCE = "Do not repeat the action or retrieve the same content through another tool. Ask the user to attach a reviewed, redacted excerpt through the normal chat attachment review if it is needed. Secret detection is best-effort, not a guarantee.";
+
+/** The attachment review does not authorize later, unseen tool results. Keep
+ * potentially sensitive source names and payloads out of model-facing results
+ * until the user explicitly supplies an excerpt using that existing review.
+ * Preserve the actual operation state: withholding output cannot undo an MCP
+ * side effect, and must not make a successful operation look safe to retry. */
+function protectToolResult(result: HuskActionResult, activity: string, sources: readonly string[] = []): HuskActionResult {
+  const text = [result.summary, result.activity, result.result ?? ""].join("\n");
+  if (!scanForSecrets("", text).length && !sources.some((source) => scanForSecrets(source, source).length)) return result;
+  const outcome = result.state === "complete"
+    ? "The requested action completed, but its output was withheld because its source or content may contain sensitive data."
+    : "The requested action reported an error, but its error details were withheld because they may contain sensitive data. The action was attempted and may already have had side effects.";
+  return {
+    state: result.state,
+    summary: result.state === "complete" ? "Completed; sensitive output withheld" : "Failed; sensitive output withheld",
+    result: `${outcome} ${SENSITIVE_REVIEW_GUIDANCE}`,
+    activity,
+  };
+}
+
 function fail(activity: string, error: unknown): HuskActionResult {
   const message = error instanceof Error ? error.message : String(error);
-  return { state: "error", summary: message, result: `Error: ${message}`, activity };
+  return protectToolResult({ state: "error", summary: message, result: `Error: ${message}`, activity }, activity);
 }
 
 function mcpResultToString(result: unknown): string {
@@ -191,10 +213,18 @@ export async function executeHuskAction(
       case "workspace.read": {
         const scope = workspaceScope(context, request.path);
         if (isScopeResult(scope)) return scope;
+        if (scanForSecrets(scope.resolved, scope.resolved).length) {
+          return {
+            state: "refused",
+            summary: "Sensitive file needs review",
+            result: `Husk did not read this file because its name may identify sensitive data. ${SENSITIVE_REVIEW_GUIDANCE}`,
+            activity: "read file",
+          };
+        }
         const content = scope.kind === "remote"
           ? await sshReadFileScoped(scope.host, scope.root, scope.resolved)
           : await readFileScoped(scope.resolved, scope.root);
-        return { state: "complete", summary: `Read ${request.path}`, result: content, activity: "read file" };
+        return protectToolResult({ state: "complete", summary: `Read ${request.path}`, result: content, activity: "read file" }, "read file", [scope.resolved]);
       }
       case "workspace.list": {
         const scope = workspaceScope(context, request.path);
@@ -206,7 +236,7 @@ export async function executeHuskAction(
         const result = entries.length
           ? `${shown.map((entry: { is_dir: boolean; name: string }) => `- ${entry.is_dir ? "[dir]" : "[file]"} ${entry.name}${entry.is_dir ? "/" : ""}`).join("\n")}${entries.length > shown.length ? `\n… ${entries.length - shown.length} more entries not shown` : ""}`
           : "Directory is empty.";
-        return { state: "complete", summary: `Listed ${request.path}`, result, activity: "list files" };
+        return protectToolResult({ state: "complete", summary: `Listed ${request.path}`, result, activity: "list files" }, "list files");
       }
       case "workspace.inspect": {
         const scope = workspaceScope(context);
@@ -214,12 +244,12 @@ export async function executeHuskAction(
         const snapshot = scope.kind === "remote"
           ? await loadRemoteProjectLensSnapshot({ kind: "ssh", host: scope.host, path: scope.root }, true)
           : await loadProjectLensSnapshot(scope.root, true);
-        return {
+        return protectToolResult({
           state: "complete",
           summary: `Inspected ${snapshot.name}`,
           result: snapshot.context,
           activity: "Project Lens",
-        };
+        }, "Project Lens", snapshot.sources);
       }
       case "workspace.search": {
         const scope = workspaceScope(context);
@@ -236,12 +266,13 @@ export async function executeHuskAction(
         // the same time, and files may change between successive searches.
         const index = await buildCodebaseIndex(scope.root, { signal: context.signal });
         checkCancellation(context);
-        return {
+        const results = searchCodebase(request.query, request.limit ?? 10, index);
+        return protectToolResult({
           state: "complete",
           summary: `Searched workspace for ${request.query}`,
-          result: formatSearchResults(searchCodebase(request.query, request.limit ?? 10, index)),
+          result: formatSearchResults(results),
           activity: "search workspace",
-        };
+        }, "search workspace", results.map((result) => result.path));
       }
       case "workspace.write": {
         const scope = workspaceScope(context, request.path);
@@ -303,11 +334,11 @@ export async function executeHuskAction(
         const response = await callMcpTool(request.serverId, request.toolName, request.input);
         const output = mcpResultToString(response);
         if (response && typeof response === "object" && (response as { isError?: unknown }).isError === true) {
-          return { state: "error", summary: `${actionLabel} failed`, result: output || "The integration reported an error.", activity: actionLabel };
+          return protectToolResult({ state: "error", summary: `${actionLabel} failed`, result: output || "The integration reported an error.", activity: actionLabel }, "MCP action", [actionLabel]);
         }
         // The tool may already have completed externally. Report its result
         // honestly; the cancelled signal still gates every subsequent action.
-        return { state: "complete", summary: `${actionLabel} completed`, result: output, activity: actionLabel };
+        return protectToolResult({ state: "complete", summary: `${actionLabel} completed`, result: output, activity: actionLabel }, "MCP action", [actionLabel]);
       }
     }
   } catch (error) {

@@ -3,6 +3,7 @@ mod browser;
 mod config;
 mod diagnostics;
 mod fs;
+mod git_patch;
 mod jobs;
 mod kubeconfig;
 mod mcp;
@@ -214,6 +215,7 @@ pub fn run() {
             mcp::mcp_recv,
             mcp::mcp_kill,
             shell::shell_run_command,
+            git_patch::git_stage_diff_hunk,
             kubeconfig::kubernetes_resolve_config,
             kubeconfig::kubernetes_run_command,
             shell::detect_binaries,

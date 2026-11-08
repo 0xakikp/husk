@@ -23,6 +23,7 @@ import {
 } from "../config/controls";
 import { BANNERS } from "../config/banners";
 import { useNativeConfigStatus } from "../nativeConfig";
+import { TerminalHistorySettings } from "./TerminalHistorySettings";
 
 const px = (a: number[]) => a.map((n) => ({ value: n, label: `${n}px` }));
 
@@ -202,6 +203,7 @@ export function GeneralFile() {
       <CfgBlank />
 
       <CfgSection name="terminal" />
+      <TerminalHistorySettings />
       <CfgRow name="welcomeBanner" comment="Show a small welcome using your profile name (or HUSK) in fresh local terminals. Stays visible until you clear the terminal or output fills the screen; restored sessions and SSH logins are excluded. No commands or shell probes are run.">
         <CfgBool value={p.terminalWelcomeEnabled} onChange={(terminalWelcomeEnabled) => setPrefs({ terminalWelcomeEnabled })} />
       </CfgRow>
@@ -249,7 +251,7 @@ export function GeneralFile() {
               onChange={(terminalBoldFont) => setPrefs({ terminalBoldFont })}
             />
           </CfgRow>
-          <CfgRow name="scrollback" comment="Lines of history kept.">
+          <CfgRow name="scrollback" comment="In-memory lines kept while a terminal is open. Separate from the saved terminal history limits.">
             <CfgEnum<number>
               value={p.terminalScrollback}
               onChange={(terminalScrollback) => setPrefs({ terminalScrollback })}

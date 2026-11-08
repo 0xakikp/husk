@@ -51,24 +51,20 @@ describe("subscription action proposals", () => {
     expect(stripSubscriptionActionProposals("I will inspect it.\n```husk-action\n{}\n```\nThen I will report back.")).toBe("I will inspect it.\n\nThen I will report back.");
   });
 
-  it("accepts a write proposal even when its fence immediately follows prose", () => {
+  it("keeps an inline write example inert instead of promoting prose to an action", () => {
     const response = `I found the right location.\`\`\`husk-action\n${JSON.stringify({
       kind: "workspace.write",
       path: "add.sh",
       content: "#!/usr/bin/env sh\n\nprintf '%s\\n' \"$1\"",
     })}\n\`\`\`\n`;
     const result = parseSubscriptionActionProposals(response, root);
-    expect(result.actions).toEqual([{
-      kind: "workspace.write",
-      path: "add.sh",
-      content: "#!/usr/bin/env sh\n\nprintf '%s\\n' \"$1\"",
-    }]);
+    expect(result.actions).toEqual([]);
     expect(result.rejected).toBe(0);
-    expect(stripSubscriptionActionProposals(response)).toBe("I found the right location.");
+    expect(stripSubscriptionActionProposals(response)).toBe(response.trim());
   });
 
   it("rejects and hides an unterminated action block", () => {
-    const response = "I will create it.```husk-action\n{\"kind\":\"workspace.write\",\"path\":\"add.sh\",\"content\":\"echo ok\"}";
+    const response = "I will create it.\n```husk-action\n{\"kind\":\"workspace.write\",\"path\":\"add.sh\",\"content\":\"echo ok\"}";
     const result = parseSubscriptionActionProposals(response, root);
     expect(result.actions).toHaveLength(0);
     expect(result.rejected).toBe(1);
@@ -112,8 +108,8 @@ describe("subscription action proposals", () => {
     for (const close of ["", ticks + "`"]) {
       const workflow = [ticks + "`husk-workflow", "Malformed example:", actionFence({ kind: "workspace.write", path: "nested.txt", content: "data" }), close].filter(Boolean).join("\n");
       const response = [prefix, workflow].join("\n\n");
-      expect(parseSubscriptionActionProposals(response, root)).toEqual({ actions: [action], rejected: 0 });
-      expect(stripSubscriptionActionProposals(response)).toBe("I will inspect.\n\n" + workflow);
+      expect(parseSubscriptionActionProposals(response, root)).toEqual({ actions: [], rejected: 0 });
+      expect(stripSubscriptionActionProposals(response)).toBe(response);
     }
   });
 
