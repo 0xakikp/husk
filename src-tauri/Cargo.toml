@@ -43,6 +43,7 @@ whoami = "2.1.2"
 sentry = "0.48.2"
 reqwest = { version = "0.13.4", features = ["json"] }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
+ignore = "0.4"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -181,7 +181,8 @@ export function EditorArea({
   useEffect(() => {
     const onReveal = (e: Event) => {
       const detail = (e as CustomEvent<{ path?: string; line?: number }>).detail;
-      if (!detail?.path || !detail.line) return;
+      if (typeof detail?.path !== "string" || !detail.path || typeof detail.line !== "number"
+        || !Number.isSafeInteger(detail.line) || detail.line < 1) return;
       pendingRevealRef.current = { path: detail.path, line: detail.line };
       applyPendingReveal();
     };

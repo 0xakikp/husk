@@ -209,7 +209,7 @@ const DEFAULT: Prefs = {
   editorLineHighlight: "line",
   vimMode: false,
 
-  showHidden: false,
+  showHidden: true,
   pluginsDir: "",
   inspectorHeight: 300,
 

@@ -36,6 +36,21 @@ describe("live preference coordination", () => {
     expect(fixture.invoke).not.toHaveBeenCalled();
   });
 
+  it("preserves hidden-file opt-outs arriving from native config and other windows", async () => {
+    const { native, prefs, document } = await initialise();
+    expect(prefs.getPrefs().showHidden).toBe(true);
+    document.preferences.showHidden = false;
+    fixture.listener!({ payload: { path: "/fixture/config.toml", document, revision: 1 } });
+    expect(prefs.getPrefs().showHidden).toBe(false);
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: prefs.PREFS_STORAGE_KEY,
+      newValue: JSON.stringify({ ...prefs.getPrefs(), terminalFontSize: 18, showHidden: false }),
+    }));
+    expect(prefs.getPrefs()).toMatchObject({ terminalFontSize: 18, showHidden: false });
+    await native.flushNativeConfig();
+    expect(fixture.invoke).not.toHaveBeenCalled();
+  });
+
   it("does not turn a cross-window browser update into a stale native snapshot write", async () => {
     const { native, prefs, document } = await initialise();
     const stored = { ...prefs.getPrefs(), terminalFontSize: 18 };

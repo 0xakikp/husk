@@ -641,7 +641,7 @@ function App() {
         ? [
             { id: "suggest", label: "Suggest command (AI)", run: () => setSuggestOpen(true) },
             { id: "explain", label: "Explain last error (AI)", run: explainLastError },
-            { id: "ai-bubble", label: "Toggle AI composer", hint: "Ctrl/Cmd+Shift+A", run: () => toggleComposer() },
+            { id: "ai-bubble", label: "Toggle AI composer", hint: "Ctrl/Cmd+Shift+L", run: () => toggleComposer() },
             { id: "ai-rebuild-index", label: "AI: Rebuild codebase index", run: async () => {
               const root = getWorkspaceRoot();
               if (!root) throw new Error("Open a workspace folder before rebuilding its index.");

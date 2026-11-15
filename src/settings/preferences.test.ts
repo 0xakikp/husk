@@ -94,6 +94,61 @@ describe("preference validation", () => {
   });
 });
 
+describe("hidden files preference", () => {
+  const originalPrefs = getPrefs();
+  let storage: Map<string, string>;
+
+  beforeEach(() => {
+    storage = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    });
+    vi.mocked(persistNativeConfigSection).mockClear();
+  });
+
+  afterEach(() => {
+    hydratePrefsFromNative(originalPrefs, originalPrefs.aiAgents);
+    vi.unstubAllGlobals();
+  });
+
+  it("shows hidden files when a new or existing configuration has no saved choice", async () => {
+    expect(validatePreferences({}).showHidden).toBe(true);
+    hydratePrefsFromNative({ terminalFontSize: 15 }, originalPrefs.aiAgents);
+    expect(getPrefs()).toMatchObject({ showHidden: true, terminalFontSize: 15 });
+    expect(persistNativeConfigSection).not.toHaveBeenCalled();
+    storage.set(PREFS_STORAGE_KEY, JSON.stringify({ terminalFontSize: 14 }));
+    vi.resetModules();
+    const reloaded = await import("./preferences");
+    expect(reloaded.getPrefs()).toMatchObject({ showHidden: true, terminalFontSize: 14 });
+  });
+
+  it.each([true, false])("preserves a saved native and browser choice of %s", async (showHidden) => {
+    expect(validatePreferences({ showHidden }).showHidden).toBe(showHidden);
+    hydratePrefsFromNative({ showHidden }, originalPrefs.aiAgents);
+    expect(getPrefs().showHidden).toBe(showHidden);
+    expect(preferencesForNativeConfig().showHidden).toBe(showHidden);
+    expect(persistNativeConfigSection).not.toHaveBeenCalled();
+    vi.resetModules();
+    const reloaded = await import("./preferences");
+    expect(reloaded.getPrefs().showHidden).toBe(showHidden);
+  });
+
+  it("persists an opt-out and keeps it through unrelated preference edits", async () => {
+    hydratePrefsFromNative({}, originalPrefs.aiAgents);
+    setPrefs({ showHidden: false });
+    expect(persistNativeConfigSection).toHaveBeenCalledWith(
+      "preferences", expect.objectContaining({ showHidden: false }), expect.objectContaining({ showHidden: true }),
+    );
+    setPrefs({ terminalFontSize: 16 });
+    expect(getPrefs()).toMatchObject({ showHidden: false, terminalFontSize: 16 });
+    expect(JSON.parse(storage.get(PREFS_STORAGE_KEY)!)).toMatchObject({ showHidden: false, terminalFontSize: 16 });
+    vi.resetModules();
+    const reloaded = await import("./preferences");
+    expect(reloaded.getPrefs().showHidden).toBe(false);
+  });
+});
+
 describe("saved terminal history preferences", () => {
   it("defaults to opt-out and seven-day retention, with more in-memory scrollback", () => {
     expect(validatePreferences({})).toMatchObject({ terminalRestoreScrollback: false, terminalScrollbackRetentionDays: 7, terminalScrollback: 10_000 });

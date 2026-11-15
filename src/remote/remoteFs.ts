@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type DirEntry = { name: string; path: string; is_dir: boolean };
+export type DirEntry = { name: string; path: string; is_dir: boolean; is_symlink?: boolean };
 
 export const sshReadDir = (host: string, path: string) =>
   invoke<DirEntry[]>("ssh_read_dir", { host, path });

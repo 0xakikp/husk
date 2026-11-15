@@ -2,7 +2,7 @@
 import { act, useEffect, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { OpenFile } from "../editor/EditorArea";
+import type { EditorRevealTarget, OpenFile } from "../editor/EditorArea";
 import type { ActiveKind } from "./types";
 import { useNotesDock, type NotesDockApi, type NotesOpeningMode } from "../notes/useNotesDock";
 import { clearState, markModified, markSaved } from "../editor/dirtyStore";
@@ -12,10 +12,10 @@ vi.mock("../TerminalStack", () => ({ TerminalStack: ({ onOpenLogs }: { onOpenLog
   useEffect(() => { life.terminalMount(); return () => { life.terminalUnmount(); }; }, []);
   return <div data-terminal><button onClick={() => onOpenLogs(1)}>Open logs</button></div>;
 } }));
-vi.mock("../editor/EditorArea", () => ({ EditorArea: ({ activePath, visible, files }: { activePath: string | null; visible: boolean; files: OpenFile[] }) => {
+vi.mock("../editor/EditorArea", () => ({ EditorArea: ({ activePath, visible, files, revealTarget }: { activePath: string | null; visible: boolean; files: OpenFile[]; revealTarget?: EditorRevealTarget | null }) => {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   useEffect(() => { life.editorMount(); return () => { life.editorUnmount(); }; }, []);
-  return <div data-editor data-visible={visible} data-files={files.map((file) => file.path).join(",")}>
+  return <div data-editor data-visible={visible} data-files={files.map((file) => file.path).join(",")} data-reveal={JSON.stringify(revealTarget ?? null)}>
     <output>{activePath ? drafts[activePath] ?? activePath : ""}</output>
     <button onClick={() => activePath && setDrafts((old) => ({ ...old, [activePath]: `edited ${activePath}` }))}>Edit draft</button>
   </div>;
@@ -45,7 +45,7 @@ let root: Root;
 let host: HTMLDivElement;
 let height: number;
 const observers = new Set<ResizeObserverCallback>();
-let api: { open: (path: string, name: string, line?: number, mode?: NotesOpeningMode) => void; notes: NotesDockApi; fullFiles: OpenFile[]; selectDetails: () => void; returnToTerm: () => void };
+let api: { open: (path: string, name: string, line?: number, mode?: NotesOpeningMode) => void; openFile: (path: string, name: string) => void; notes: NotesDockApi; fullFiles: OpenFile[]; selectDetails: () => void; returnToTerm: () => void };
 
 function Harness({ split = false }: { split?: boolean }) {
   const notes = useNotesDock();
@@ -53,6 +53,10 @@ function Harness({ split = false }: { split?: boolean }) {
   const [files, setFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [selection, setSelection] = useState<Props["selectedK8sResource"]>(null);
+  const openFile = (path: string, name: string) => {
+    setFiles((old) => old.some((file) => file.path === path) ? old : [...old, { path, name, remoteHost: null }]);
+    setActiveFile(path); setKind("file");
+  };
   const open = (path: string, name: string, line?: number, mode?: NotesOpeningMode) => {
     const target = notes.open(path, name, line, mode);
     if (target === "tab") {
@@ -60,7 +64,7 @@ function Harness({ split = false }: { split?: boolean }) {
       setActiveFile(path); setKind("file");
     } else setKind("term");
   };
-  api = { open, notes, fullFiles: files, selectDetails: () => setSelection({ kind: "pod", name: "api" } as Props["selectedK8sResource"]), returnToTerm: () => setKind("term") };
+  api = { open, openFile, notes, fullFiles: files, selectDetails: () => setSelection({ kind: "pod", name: "api" } as Props["selectedK8sResource"]), returnToTerm: () => setKind("term") };
   return <WorkspacePanels term={{ tabs: [{ id: 1, focused: 1, root: split
     ? { kind: "split", id: 3, dir: "row", ratio: 0.5, a: { kind: "leaf", id: 1 }, b: { kind: "leaf", id: 2 } }
     : { kind: "leaf", id: 1 } }], activeId: 1 } as Props["term"]}
@@ -92,6 +96,33 @@ async function clickText(text: string) {
 }
 async function start() { await act(async () => root.render(<Harness />)); }
 async function open(path = "/notes/A.md", name = "A.md") { await act(async () => api.open(path, name)); }
+
+it("retains the first content-search line request before the editor has mounted", async () => {
+  await start(); expect(editor()).toBeNull();
+  await act(async () => {
+    api.openFile("/repo/index.ts", "index.ts");
+    window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path: "/repo/index.ts", line: 23 } }));
+  });
+  expect(JSON.parse(editor().dataset.reveal!)).toEqual(expect.objectContaining({ path: "/repo/index.ts", line: 23 }));
+  const first = editor().dataset.reveal;
+  await act(async () => window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path: "/repo/index.ts", line: 23 } })));
+  expect(editor().dataset.reveal).not.toBe(first);
+});
+
+it("rejects invalid line requests and lets later Notes navigation replace a search target", async () => {
+  await start();
+  await act(async () => {
+    api.openFile("/repo/index.ts", "index.ts");
+    window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path: "/repo/index.ts", line: 23 } }));
+  });
+  const before = editor().dataset.reveal;
+  for (const line of [NaN, Infinity, -1, 0, 1.5, "12"]) {
+    await act(async () => window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path: "/repo/index.ts", line } })));
+    expect(editor().dataset.reveal).toBe(before);
+  }
+  await act(async () => api.open("/notes/A.md", "A.md", 7, "tab"));
+  expect(JSON.parse(editor().dataset.reveal!)).toEqual(expect.objectContaining({ path: "/notes/A.md", line: 7 }));
+});
 
 it("lets split leaves own their borders without replacing the terminal stack", async () => {
   await start();

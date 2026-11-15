@@ -11,7 +11,6 @@ import {
   loadWorkspaceFiles,
   searchWorkspaceContents,
   subscribeLauncherCache,
-  workspaceFilesCacheKey,
   type NoteEntry,
   type K8sContextEntry,
   type WorkspaceFileEntry,
@@ -40,13 +39,16 @@ import {
   searchCodebase,
   buildCodebaseIndex,
   getCodebaseIndex,
-  getIndexedRoot,
+  isCodebaseIndexFresh,
+  subscribeCodebaseInvalidation,
+  getCodebaseCoverage,
   type SearchResult,
 } from "../ai/codebaseSearch";
 import { getWorkspaceRoot, useWorkspaceRoot } from "../workspace/store";
 import { normalizeWorkspacePath, resolveWorkspacePath } from "../ai/workspaceScope";
 import { explainCommandPrompt, looksLikeCommand } from "../ai/assist";
 import { shq } from "../lib/shellQuote";
+import { watchFileChanges, watchRepositoryChanges } from "../editor/fileChanges";
 
 const copy = (text: string) => writeText(text);
 
@@ -119,8 +121,7 @@ function stageAction(text: string, ctx: LauncherCtx, hint: string) {
 }
 
 /** Merges static app commands with live sources (notes, files, clipboard,
- *  bookmarks, docker, k8s, workflows, jobs, remotes, and ripgrep). Async
- *  sources are TTL-cached and refreshed while the palette is open. */
+ *  bookmarks, docker, k8s, workflows, jobs, remotes, and local search). */
 export function useLauncherItems(
   open: boolean,
   rawInput: string,
@@ -129,12 +130,15 @@ export function useLauncherItems(
 ): Command[] {
   const [dyn, setDyn] = useState<DynamicState>(EMPTY);
   const workspaceRoot = normalizeWorkspacePath(useWorkspaceRoot());
-  const [workspaceFiles, setWorkspaceFiles] = useState<{ root: string; files: WorkspaceFileEntry[] }>({ root: "", files: [] });
-  const [grepState, setGrepState] = useState<{ root: string; query: string; results: GrepResult[] }>({ root: "", query: "", results: [] });
+  const [workspaceFiles, setWorkspaceFiles] = useState<{ root: string; query: string; files: WorkspaceFileEntry[]; notice: string | null; error: string | null }>({ root: "", query: "", files: [], notice: null, error: null });
+  const [filesBusy, setFilesBusy] = useState(false);
+  const [searchRevision, setSearchRevision] = useState(0);
+  const [grepState, setGrepState] = useState<{ root: string; query: string; results: GrepResult[]; notice: string | null; error: string | null }>({ root: "", query: "", results: [], notice: null, error: null });
   const [grepBusy, setGrepBusy] = useState(false);
-  const [grepMissingTool, setGrepMissingTool] = useState(false);
   const [codeState, setCodeState] = useState<{ root: string; query: string; results: SearchResult[] }>({ root: "", query: "", results: [] });
   const [codeIndexing, setCodeIndexing] = useState(false);
+  const [codeRevision, setCodeRevision] = useState(0);
+  const [codeError, setCodeError] = useState<{ root: string; message: string } | null>(null);
   const [codeSnapshot, setCodeSnapshot] = useState<{ root: string; index: ReturnType<typeof getCodebaseIndex> }>({ root: "", index: null });
 
   const { kind: scopedKind, query } = useMemo(() => parseQuery(rawInput), [rawInput]);
@@ -174,42 +178,60 @@ export function useLauncherItems(
   }, [open]);
 
   useEffect(() => {
-    if (!open || !workspaceRoot) return;
-    let cancelled = false;
-    const refresh = () => {
-      void loadWorkspaceFiles(workspaceRoot).then((files) => {
-        if (!cancelled) setWorkspaceFiles((previous) => previous.root === workspaceRoot && previous.files === files
-          ? previous : { root: workspaceRoot, files });
-      }).catch(() => {});
+    if (!open) return;
+    const refresh = () => setSearchRevision((value) => value + 1);
+    const unwatchFiles = watchFileChanges(refresh);
+    const unwatchRepository = watchRepositoryChanges(refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("husk:explorer-path-moved", refresh);
+    window.addEventListener("husk:explorer-path-deleted", refresh);
+    return () => {
+      unwatchFiles(); unwatchRepository();
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("husk:explorer-path-moved", refresh);
+      window.removeEventListener("husk:explorer-path-deleted", refresh);
     };
-    const unsubscribe = subscribeLauncherCache((key) => {
-      if (key === workspaceFilesCacheKey(workspaceRoot)) refresh();
-    });
-    refresh();
-    const interval = setInterval(refresh, 60_000);
-    return () => { cancelled = true; unsubscribe(); clearInterval(interval); };
-  }, [open, workspaceRoot]);
+  }, [open]);
 
-  // Live ripgrep search when the user scopes to "g".
+  const filesActive = open && (!scopedKind || scopedKind === "file");
+  useEffect(() => {
+    if (!filesActive || !workspaceRoot) { setFilesBusy(false); return; }
+    const ac = new AbortController();
+    const search = () => {
+      setFilesBusy(true);
+      void loadWorkspaceFiles(workspaceRoot, query, ac.signal).then(({ files, notice }) => {
+        if (!ac.signal.aborted) setWorkspaceFiles({ root: workspaceRoot, query, files, notice, error: null });
+      }).catch((cause: unknown) => {
+        if (!ac.signal.aborted) setWorkspaceFiles({ root: workspaceRoot, query, files: [], notice: null, error: cause instanceof Error ? cause.message : String(cause) });
+      }).finally(() => { if (!ac.signal.aborted) setFilesBusy(false); });
+    };
+    // Empty-query recents load immediately; typing queries are debounced and
+    // applied during native traversal, never after an arbitrary first-file cap.
+    const timer = query ? setTimeout(search, 150) : null;
+    if (!query) search();
+    return () => { ac.abort(); if (timer !== null) clearTimeout(timer); };
+  }, [filesActive, workspaceRoot, query, searchRevision]);
+
+  // Literal content search shares the Files panel's cancellable native worker.
   useEffect(() => {
     if (!open || scopedKind !== "grep" || !query.trim()) {
       // Reuse the existing array when it is already empty: a fresh [] is never
       // reference-equal, so it would re-run the item memo on every keystroke.
-      setGrepState((state) => state.results.length ? { root: "", query: "", results: [] } : state);
+      setGrepState((state) => state.results.length ? { root: "", query: "", results: [], notice: null, error: null } : state);
       setGrepBusy(false);
-      setGrepMissingTool(false);
       return;
     }
     const ac = new AbortController();
     const t = setTimeout(() => {
       setGrepBusy(true);
-      searchWorkspaceContents(query, 50, workspaceRoot)
-        .then(({ results, missingTool }) => {
+      searchWorkspaceContents(query, 100, workspaceRoot, ac.signal)
+        .then(({ results, notice }) => {
           if (ac.signal.aborted) return;
-          setGrepState({ root: workspaceRoot, query, results });
-          setGrepMissingTool(missingTool);
+          setGrepState({ root: workspaceRoot, query, results, notice, error: null });
         })
-        .catch(() => {})
+        .catch((cause: unknown) => {
+          if (!ac.signal.aborted) setGrepState({ root: workspaceRoot, query, results: [], notice: null, error: cause instanceof Error ? cause.message : String(cause) });
+        })
         .finally(() => {
           if (!ac.signal.aborted) setGrepBusy(false);
         });
@@ -218,23 +240,33 @@ export function useLauncherItems(
       ac.abort();
       clearTimeout(t);
     };
-  }, [open, scopedKind, query, workspaceRoot]);
+  }, [open, scopedKind, query, workspaceRoot, searchRevision]);
 
-  /* Ranked code search over the AI index. Unlike "g:" (a single literal string
-     through ripgrep) this splits the query into terms, drops stopwords and weights
+  /* Ranked code search over the AI index. Unlike "g:" (a single literal string)
+     this splits the query into terms, drops stopwords and weights
      filename over content — so a phrase like "pod name parsing" ranks sensibly.
      It is keyword scoring, not embeddings: words that never appear in the code
      will not find it. */
   const codeActive = open && scopedKind === "code" && Boolean(query.trim());
+  useEffect(() => {
+    if (!codeActive || !workspaceRoot) return;
+    const refresh = () => setCodeRevision((value) => value + 1);
+    const unwatch = subscribeCodebaseInvalidation(refresh);
+    const timer = setInterval(() => { if (!isCodebaseIndexFresh(workspaceRoot)) refresh(); }, 60_000);
+    return () => { unwatch(); clearInterval(timer); };
+  }, [codeActive, workspaceRoot]);
   // Index lifetime is independent of the words being typed. Query changes
   // reuse the in-flight scan; changing roots/closing the scope cancels it.
   useEffect(() => {
     if (!codeActive || !workspaceRoot) {
       setCodeIndexing(false);
+      setCodeError(null);
       setCodeSnapshot((snapshot) => snapshot.index ? { root: "", index: null } : snapshot);
       return;
     }
-    if (getIndexedRoot() === workspaceRoot) {
+    setCodeError(null);
+    setCodeState((state) => state.results.length ? { root: "", query: "", results: [] } : state);
+    if (isCodebaseIndexFresh(workspaceRoot)) {
       setCodeIndexing(false);
       setCodeSnapshot({ root: workspaceRoot, index: getCodebaseIndex() });
       return;
@@ -244,11 +276,13 @@ export function useLauncherItems(
     setCodeIndexing(true);
     void buildCodebaseIndex(workspaceRoot, { signal: ac.signal }).then((index) => {
       if (!ac.signal.aborted) setCodeSnapshot({ root: workspaceRoot, index });
-    }).catch(() => {}).finally(() => {
+    }).catch((cause: unknown) => {
+      if (!ac.signal.aborted) setCodeError({ root: workspaceRoot, message: cause instanceof Error ? cause.message : String(cause) });
+    }).finally(() => {
       if (!ac.signal.aborted) setCodeIndexing(false);
     });
     return () => ac.abort();
-  }, [codeActive, workspaceRoot]);
+  }, [codeActive, workspaceRoot, codeRevision, searchRevision]);
 
   useEffect(() => {
     if (!codeActive || codeSnapshot.root !== workspaceRoot || !codeSnapshot.index) {
@@ -422,27 +456,6 @@ export function useLauncherItems(
         },
       });
     }
-    for (const f of workspaceFiles.root === workspaceRoot ? workspaceFiles.files : []) {
-      if (openPaths.has(f.path)) continue;
-      items.push({
-        id: `file:${f.path}`,
-        kind: "file",
-        label: f.rel,
-        detail: f.path,
-        keywords: f.name,
-        group: "Files",
-        run: () => ctx.openFile(f.path, f.name),
-        secondary: {
-          label: "copy path",
-          run: () => copy(f.path),
-        },
-        actions: [
-          { label: "Copy filename", run: () => copy(f.name) },
-          stageAction(shq(f.path), ctx, "Insert quoted path"),
-          stageAction(`cd ${shq(f.path.replace(/\/[^/]*$/, ""))}`, ctx, "Change directory"),
-        ],
-      });
-    }
 
     // Clipboard history
     for (const c of clips) {
@@ -581,11 +594,34 @@ export function useLauncherItems(
     }
 
     return items;
-  }, [commands, ctx, dyn, openPaths, clips, bookmarks, workspaceRoot, workspaceFiles]);
+  }, [commands, ctx, dyn, clips, bookmarks]);
 
   /* Cheap per-keystroke layer: a handful of rows appended to a stable base. */
   return useMemo(() => {
     const extra: Command[] = [];
+
+    if (!scopedKind || scopedKind === "file") {
+      const current = workspaceFiles.root === workspaceRoot && workspaceFiles.query === query;
+      for (const file of current ? workspaceFiles.files : []) {
+        if (openPaths.has(file.path)) continue;
+        extra.push({
+          id: `file:${file.path}`, kind: "file", label: file.rel, detail: file.path,
+          keywords: file.name, group: "Files", run: () => ctx.openFile(file.path, file.name),
+          secondary: { label: "copy path", run: () => copy(file.path) },
+          actions: [
+            { label: "Copy filename", run: () => copy(file.name) },
+            stageAction(shq(file.path), ctx, "Insert quoted path"),
+            stageAction(`cd ${shq(file.path.replace(/\/[^/]*$/, ""))}`, ctx, "Change directory"),
+          ],
+        });
+      }
+      const message = !workspaceRoot && scopedKind === "file" ? "Open a folder to search files."
+        : filesBusy ? "Searching workspace files…"
+        : current ? workspaceFiles.error ? `File search failed: ${workspaceFiles.error}` : workspaceFiles.notice : null;
+      if (message) extra.push({ id: "files:status", kind: "file", group: "Files", status: true, label: message, run: () => {} });
+      if (current && workspaceFiles.error) extra.push({ id: "files:retry", kind: "file", group: "Files", alwaysShow: true, label: "Retry file search", keepOpen: true, run: () => setSearchRevision((value) => value + 1) });
+      if (scopedKind === "file") return extra.length ? [...base, ...extra] : base;
+    }
 
     if (scopedKind === "code") {
       const results = codeState.root === workspaceRoot && codeState.query === query ? codeState.results : [];
@@ -605,9 +641,20 @@ export function useLauncherItems(
           secondary: { label: "copy path", run: () => copy(path) },
         });
       }
-      if (codeIndexing || (query.trim() && extra.length === 0)) extra.push({
+      const failure = codeError?.root === workspaceRoot ? codeError.message : null;
+      const coverage = codeSnapshot.root === workspaceRoot ? getCodebaseCoverage(codeSnapshot.index) : null;
+      if (failure) {
+        extra.push({ id: "code:error", kind: "code", group: "Code", status: true, label: `Code search failed: ${failure}`, run: () => {} });
+        extra.push({ id: "code:retry", kind: "code", group: "Code", alwaysShow: true, label: "Retry code search", keepOpen: true, run: () => setCodeRevision((value) => value + 1) });
+      }
+      if (!failure && (codeIndexing || (query.trim() && extra.length === 0))) extra.push({
         id: codeIndexing ? "code:indexing" : "code:none", kind: "code", group: "Code", status: true,
         label: codeIndexing ? "Building codebase index…" : workspaceRoot ? "No indexed matches" : "Open a folder to search code",
+        run: () => {},
+      });
+      if (!codeIndexing && coverage?.partial) extra.push({
+        id: "code:coverage", kind: "code", group: "Code", status: true,
+        label: `Partial index · ${coverage.indexedFiles} files · ${coverage.reasons.join("; ")}`,
         run: () => {},
       });
       return extra.length ? [...base, ...extra] : base;
@@ -630,10 +677,12 @@ export function useLauncherItems(
           ],
         });
       }
-      if (grepBusy || grepMissingTool) extra.push({
-        id: grepBusy ? "grep:searching" : "grep:no-rg", kind: "grep", group: "Files", status: true,
-        label: grepBusy ? "Searching…" : "ripgrep not found — install rg for content search", run: () => {},
-      });
+      const current = grepState.root === workspaceRoot && grepState.query === query;
+      const message = !workspaceRoot ? "Open a folder to search its contents."
+        : grepBusy ? "Searching workspace contents…"
+        : current ? grepState.error ? `Content search failed: ${grepState.error}` : grepState.notice : null;
+      if (message) extra.push({ id: "grep:status", kind: "grep", group: "Files", status: true, label: message, run: () => {} });
+      if (current && grepState.error) extra.push({ id: "grep:retry", kind: "grep", group: "Files", alwaysShow: true, label: "Retry content search", keepOpen: true, run: () => setSearchRevision((value) => value + 1) });
       return extra.length ? [...base, ...extra] : base;
     }
     if (scopedKind) return base;
@@ -686,7 +735,7 @@ export function useLauncherItems(
     }
 
     return extra.length ? [...base, ...extra] : base;
-  }, [base, scopedKind, query, ctx, workspaceRoot, codeState, codeIndexing, grepState, grepBusy, grepMissingTool]);
+  }, [base, scopedKind, query, ctx, workspaceRoot, workspaceFiles, openPaths, filesBusy, codeState, codeIndexing, codeError, codeSnapshot, grepState, grepBusy]);
 }
 
 function bookmarkToCommand(b: Bookmark, ctx: LauncherCtx): Command {

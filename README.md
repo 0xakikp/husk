@@ -39,6 +39,7 @@ Most developer tools make you choose a primary surface: an editor with a hidden 
 ### Keep code and workspace tools close
 
 - Browse files, open and pin editor tabs, and work in a Monaco-based code editor with find/replace, syntax support, Vim mode, minimap, sticky scroll, line controls, and configurable typography.
+- Search recursively with **Files / Contents**, show hidden files, reveal the active file, and refresh without collapsing folders. Workspace search works without external search CLIs; limits and errors stay visible. See [Files and search](docs/FILES_AND_SEARCH.md) for scope, keyboard controls, Trash support, and remote-operation requirements.
 - Review diffs and proposed changes without leaving the workspace.
 - Use Source Control, workspace bookmarks, clipboard history, quick switching, and the `⌘/Ctrl K` command palette to move through work quickly.
 - Store Markdown notes in the **Vault**. Recently opened notes and folders are easy to scan, while the rail stays compact enough to leave open.

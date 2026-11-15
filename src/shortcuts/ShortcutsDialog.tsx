@@ -1,5 +1,11 @@
 const SHORTCUTS = [
   { keys: "⌘/Ctrl K", desc: "Command palette" },
+  { keys: "⌘/Ctrl K → files:", desc: "Search workspace filenames" },
+  { keys: "⌘/Ctrl K → content:", desc: "Search workspace contents" },
+  { keys: "⌘/Ctrl Shift A", desc: "Switch open terminals and files" },
+  { keys: "⌘/Ctrl Shift L", desc: "Toggle AI composer" },
+  { keys: "↑ ↓ ← → / Home / End", desc: "Navigate Files (tree focused)" },
+  { keys: "F2 / Shift F10", desc: "Rename / context menu (Files focused)" },
   { keys: "⌘/Ctrl F", desc: "Find in terminal" },
   { keys: "⌘/Ctrl +  /  −  /  0", desc: "Zoom in / out / reset" },
   { keys: "⌘/Ctrl S", desc: "Save file (editor)" },

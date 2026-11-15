@@ -12,7 +12,7 @@ import {
 } from "../notes/store";
 import { loadWorkflows, type Workflow } from "../workflows/store";
 import { getWorkspaceRoot } from "../workspace/store";
-import { detectInstalled } from "../tools";
+import { searchWorkspace, workspaceSearchNotice } from "../explorer/search";
 
 /* Async data loaders for the launcher, with small TTL caches so opening the
    palette doesn't re-spawn CLI calls on every keystroke. */
@@ -27,10 +27,6 @@ let cacheGeneration = 0;
 export function subscribeLauncherCache(listener: (key: string) => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
-}
-
-export function workspaceFilesCacheKey(root: string): string {
-  return `ws-files:${root}`;
 }
 
 /**
@@ -72,14 +68,6 @@ export function invalidateLauncherCache() {
   cacheGeneration += 1;
   cache.clear();
   inflight.clear();
-}
-
-/* ── Tool availability ──────────────────────────────────────────────────────
-   fd and rg are optional. Probing once lets us skip a spawn that is certain to
-   fail, and lets the launcher say so instead of silently returning nothing. */
-
-export async function loadAvailableTools(): Promise<Set<string>> {
-  return cached("tools", 300_000, () => detectInstalled(["rg", "fd"]));
 }
 
 /* ── Notes ──────────────────────────────────────────────────────────────── */
@@ -191,147 +179,39 @@ export async function loadSshHosts(): Promise<string[]> {
 
 /* ── Workspace files ────────────────────────────────────────────────────── */
 
-type ShellOutput = { stdout: string; stderr: string; exit_code: number | null };
-
-async function runShell(program: string, args: string[], cwd: string): Promise<string> {
-  const out = await invoke<ShellOutput>("shell_run_command", {
-    program,
-    args,
-    cwd,
-    timeout_secs: 10,
-  });
-  if (out.exit_code !== 0) throw new Error(out.stderr || "failed");
-  return out.stdout;
-}
-
 export type WorkspaceFileEntry = { path: string; rel: string; name: string };
+export type WorkspaceFilesOutcome = { files: WorkspaceFileEntry[]; notice: string | null };
 
 export type GrepResult = { path: string; rel: string; line: number; text: string };
 
 export type GrepOutcome = {
   results: GrepResult[];
-  /** ripgrep is not installed, so content search cannot run at all. */
-  missingTool: boolean;
+  notice: string | null;
 };
 
-/** Deliberately uncached: the caller debounces, rg is fast, and caching by query
- *  string grows a key space that nothing ever evicts. */
+/** Query-first, cancellable local search. Native JSON preserves unusual paths;
+ * failures remain failures, and partial coverage is explained to the caller. */
 export async function searchWorkspaceContents(
   query: string,
   maxResults = 50,
   root = getWorkspaceRoot(),
+  signal?: AbortSignal,
 ): Promise<GrepOutcome> {
-  if (!root || !query.trim()) return { results: [], missingTool: false };
-
-  if (!(await loadAvailableTools()).has("rg")) {
-    return { results: [], missingTool: true };
-  }
-
-  let out: ShellOutput;
-  try {
-    out = await invoke<ShellOutput>("shell_run_command", {
-      program: "rg",
-      args: [
-        "-n",
-        "-i",
-        // Fixed-string, not regex: launcher queries routinely contain ( [ { * +
-        // and rg would abort with a parse error that we'd silently swallow.
-        "-F",
-        "--max-count",
-        "1",
-        "--max-columns",
-        "200",
-        "--glob",
-        "!node_modules",
-        "--glob",
-        "!.git",
-        "--glob",
-        "!dist",
-        "--glob",
-        "!target",
-        "--no-heading",
-        "-e",
-        query,
-        ".",
-      ],
-      cwd: root,
-      timeout_secs: 10,
-    });
-  } catch {
-    return { results: [], missingTool: true };
-  }
-
-  // rg exit codes: 0 = matches, 1 = no matches, 2 = error. Anything else (or a
-  // null code from a timeout) is a failure with nothing worth parsing.
-  if (out.exit_code !== 0) return { results: [], missingTool: false };
-
-  const results: GrepResult[] = [];
-  for (const line of out.stdout.split("\n")) {
-    const idx = line.indexOf(":");
-    if (idx === -1) continue;
-    const file = line.slice(0, idx);
-    const rest = line.slice(idx + 1);
-    const lnIdx = rest.indexOf(":");
-    if (lnIdx === -1) continue;
-    const ln = parseInt(rest.slice(0, lnIdx), 10);
-    if (!Number.isFinite(ln)) continue;
-    const text = rest.slice(lnIdx + 1).trim();
-    const rel = file.replace(/^\.\//, "");
-    results.push({
-      path: `${root.replace(/\/$/, "")}/${rel}`,
-      rel,
-      line: ln,
-      text,
-    });
-    if (results.length >= maxResults) break;
-  }
-  return { results, missingTool: false };
+  if (!root || !query.trim()) return { results: [], notice: root ? null : "Open a folder to search its contents." };
+  const outcome = await searchWorkspace({ root, query, mode: "contents", maxResults, signal });
+  return {
+    results: outcome.results.flatMap((result) => result.line === null ? [] : [{
+      path: result.path, rel: result.rel, line: result.line, text: result.text ?? "",
+    }]),
+    notice: workspaceSearchNotice(outcome),
+  };
 }
 
-export async function loadWorkspaceFiles(root = getWorkspaceRoot()): Promise<WorkspaceFileEntry[]> {
-  if (!root) return [];
-  return cached(workspaceFilesCacheKey(root), 60_000, async () => {
-    let lines: string[] = [];
-    // Prefer fd (fast, respects .gitignore). Skip it entirely when it isn't
-    // installed rather than spawning a process that is certain to fail.
-    const hasFd = (await loadAvailableTools()).has("fd");
-    if (hasFd) {
-      try {
-        const out = await runShell(
-          "fd",
-          ["--type", "f", "--hidden", "--exclude", ".git", "--max-results", "3000", "."],
-          root,
-        );
-        lines = out.split("\n");
-      } catch {
-        /* fall through to git */
-      }
-    }
-    if (lines.length === 0) {
-      try {
-        // --others --exclude-standard adds untracked-but-not-ignored files, so a
-        // file you just created is still findable. Plain `ls-files` misses them.
-        const out = await runShell(
-          "git",
-          ["ls-files", "--cached", "--others", "--exclude-standard"],
-          root,
-        );
-        lines = out.split("\n");
-      } catch {
-        return [];
-      }
-    }
-    const out: WorkspaceFileEntry[] = [];
-    for (const raw of lines) {
-      const rel = raw.trim().replace(/^\.\//, "");
-      if (!rel) continue;
-      out.push({
-        path: `${root.replace(/\/$/, "")}/${rel}`,
-        rel,
-        name: rel.split("/").pop() ?? rel,
-      });
-      if (out.length >= 3000) break;
-    }
-    return out;
-  });
+export async function loadWorkspaceFiles(root = getWorkspaceRoot(), query = "", signal?: AbortSignal): Promise<WorkspaceFilesOutcome> {
+  if (!root) return { files: [], notice: "Open a folder to search files." };
+  const outcome = await searchWorkspace({ root, query, mode: "files", maxResults: 200, signal });
+  return {
+    files: outcome.results.map(({ path, rel, name }) => ({ path, rel, name })),
+    notice: workspaceSearchNotice(outcome),
+  };
 }

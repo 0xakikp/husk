@@ -18,7 +18,9 @@ function Probe({ name, active }: { name: string; active?: boolean }) {
     createElement("button", { onClick: () => setDraft("retained selection") }, "Set selection"));
 }
 
-vi.mock("../explorer/FileExplorer", () => ({ FileExplorer: () => createElement(Probe, { name: "explorer" }) }));
+vi.mock("../explorer/FileExplorer", () => ({ FileExplorer: ({ active, onOpenFileAtLine }: { active: boolean; onOpenFileAtLine?: (path: string, name: string, line: number) => void }) => createElement("div", null,
+  createElement(Probe, { name: "explorer", active }),
+  createElement("button", { "aria-label": "Open Files search result", onClick: () => onOpenFileAtLine?.("/project/nested/check.ts", "check.ts", 23) }, "Open result")) }));
 vi.mock("../sidebar/SidebarRail", () => ({ SidebarRail: () => createElement("nav", { "aria-label": "Sidebar sections" }) }));
 vi.mock("../tools-hub/stageLocalToolCommand", () => ({ stageLocalToolCommandWithNotice: vi.fn() }));
 vi.mock("../git/SourceControlPanel", () => ({ SourceControlPanel: () => createElement(Probe, { name: "source-control" }) }));
@@ -148,4 +150,21 @@ it("uses a local file fallback when a dedicated Notes dock is not supplied", asy
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open local note"]')!.click());
   expect(openLocalFile).toHaveBeenCalledExactlyOnceWith("/notes/Test.md", "Test.md");
   expect(props.openFile).not.toHaveBeenCalled();
+});
+
+it("opens Files content matches locally and sends the matched line to the editor", async () => {
+  const openLocalFile = vi.fn(); const revealed = vi.fn();
+  window.addEventListener("husk:reveal-line", revealed);
+  try {
+    await render({ sidebarView: "explorer", openLocalFile });
+    expect(view("explorer")?.dataset.active).toBe("true");
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open Files search result"]')!.click());
+    expect(openLocalFile).toHaveBeenCalledExactlyOnceWith("/project/nested/check.ts", "check.ts");
+    expect(props.openFile).not.toHaveBeenCalled();
+    expect((revealed.mock.calls[0][0] as CustomEvent).detail).toEqual({ path: "/project/nested/check.ts", line: 23 });
+    await render({ explorerOpen: false });
+    expect(view("explorer")?.dataset.active).toBe("false");
+    await render({ explorerOpen: true, sidebarView: "docker" });
+    expect(view("explorer")?.dataset.active).toBe("false");
+  } finally { window.removeEventListener("husk:reveal-line", revealed); }
 });

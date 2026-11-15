@@ -1,5 +1,6 @@
 import { readDirScoped, readFileScoped } from "../fs";
 import { normalizeWorkspacePath, resolveWorkspacePath } from "./workspaceScope";
+import { watchFileChanges, watchRepositoryChanges } from "../editor/fileChanges";
 
 interface CodebaseIndexEntry {
   path: string;
@@ -11,6 +12,37 @@ interface CodebaseIndexEntry {
 
 let index: Map<string, CodebaseIndexEntry> | null = null;
 let indexRoot: string | null = null;
+let indexedAt = 0;
+let generation = 0;
+const pendingRoots = new Map<string, number>();
+const invalidationListeners = new Set<() => void>();
+export type CodebaseCoverage = { partial: boolean; reasons: string[]; indexedFiles: number; skippedFiles: number };
+const coverage = new WeakMap<Map<string, CodebaseIndexEntry>, CodebaseCoverage>();
+
+export function getCodebaseCoverage(snapshot = index): CodebaseCoverage | null {
+  return snapshot ? coverage.get(snapshot) ?? null : null;
+}
+export function isCodebaseIndexFresh(root: string): boolean {
+  return index !== null && indexRoot === normalizeWorkspacePath(root) && Date.now() - indexedAt < 60_000;
+}
+export function subscribeCodebaseInvalidation(listener: () => void): () => void {
+  invalidationListeners.add(listener);
+  return () => { invalidationListeners.delete(listener); };
+}
+const within = (path: string, root: string) => path === root || path.startsWith(`${root.replace(/\/$/, "")}/`);
+const invalidateChangedPath = (path: string) => {
+  if ([...(indexRoot ? [indexRoot] : []), ...pendingRoots.keys()].some((root) => within(path, root) || within(root, path))) clearCodebaseIndex();
+};
+watchFileChanges(invalidateChangedPath);
+watchRepositoryChanges(invalidateChangedPath);
+
+const ignoredDirectories = new Set([
+  "node_modules", ".git", ".next", "dist", "build", "target", "vendor",
+  ".husk", ".hermes", ".cargo", ".rustup", ".npm", ".pnpm", ".yarn",
+  ".turbo", ".cache", "coverage", ".nyc_output", ".pytest_cache", "__pycache__",
+  ".tox", ".venv", "venv", "env", ".aws", ".ssh",
+]);
+const ignoredFiles = /^(?:\.env(?:\..*)?|\.DS_Store|Thumbs\.db|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|poetry\.lock|Gemfile\.lock)$|\.lock$|\.min\.|\.(?:map|wasm|ico|png|jpe?g|gif|svg|mp[34]|avi|mov|zip|tar|gz|rar|7z|pdf|docx?|xlsx?|pptx?)$/i;
 
 /** Get the indexed root directory. */
 export function getIndexedRoot(): string | null {
@@ -22,77 +54,24 @@ export async function buildCodebaseIndex(root: string, options: { signal?: Abort
   root = normalizeWorkspacePath(root);
   if (!root) throw new Error("Select an absolute workspace before searching.");
   const entries = new Map<string, CodebaseIndexEntry>();
+  const builtGeneration = generation;
+  const reasons = new Set<string>();
+  let skippedFiles = 0;
   const started = Date.now();
   let scannedEntries = 0;
   let scannedDirectories = 0;
   let indexedBytes = 0;
   const maxBytes = 8 * 1024 * 1024;
   const encoder = new TextEncoder();
-  const exhausted = () => scannedEntries >= 5_000 || scannedDirectories >= 256 || entries.size >= 1_000 || indexedBytes >= maxBytes || Date.now() - started > 10_000;
-  const checkCancellation = () => { if (options.signal?.aborted) throw new Error("Workspace search was cancelled."); };
-  const ignorePatterns = [
-    /node_modules/,
-    /\.git/,
-    /\.next/,
-    /dist/,
-    /build/,
-    /target/,
-    /vendor/,
-    /\.husk/,
-    /\.hermes/,
-    /\.cargo/,
-    /\.rustup/,
-    /\.npm/,
-    /\.pnpm/,
-    /\.yarn/,
-    /\.turbo/,
-    /\.cache/,
-    /coverage/,
-    /\.nyc_output/,
-    /\.pytest_cache/,
-    /__pycache__/,
-    /\.egg-info/,
-    /\.tox/,
-    /\.venv/,
-    /venv/,
-    /env/,
-    /\.env/,
-    /\.env\./,
-    /\.DS_Store/,
-    /Thumbs\.db/,
-    /\.lock/,
-    /package-lock\.json/,
-    /yarn\.lock/,
-    /pnpm-lock\.yaml/,
-    /Cargo\.lock/,
-    /poetry\.lock/,
-    /Gemfile\.lock/,
-    /\.min\./,
-    /\.map$/,
-    /\.wasm$/,
-    /\.ico$/,
-    /\.png$/,
-    /\.jpg$/,
-    /\.jpeg$/,
-    /\.gif$/,
-    /\.svg$/,
-    /\.mp3$/,
-    /\.mp4$/,
-    /\.avi$/,
-    /\.mov$/,
-    /\.zip$/,
-    /\.tar$/,
-    /\.gz$/,
-    /\.rar$/,
-    /\.7z$/,
-    /\.pdf$/,
-    /\.doc$/,
-    /\.docx$/,
-    /\.xls$/,
-    /\.xlsx$/,
-    /\.ppt$/,
-    /\.pptx$/,
-  ];
+  const exhausted = () => {
+    const limited = scannedEntries >= 5_000 || scannedDirectories >= 256 || entries.size >= 1_000 || indexedBytes >= maxBytes || Date.now() - started > 10_000;
+    if (limited) reasons.add("Index scan limit reached");
+    return limited;
+  };
+  const checkCancellation = () => {
+    if (options.signal?.aborted) throw new Error("Workspace search was cancelled.");
+    if (generation !== builtGeneration) throw new Error("Workspace changed while indexing. Search again for current results.");
+  };
 
   const textExtensions = [
     ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
@@ -112,12 +91,14 @@ export async function buildCodebaseIndex(root: string, options: { signal?: Abort
 
   async function scan(dir: string, depth = 0) {
     checkCancellation();
-    if (depth > 12 || exhausted()) return;
+    if (depth > 12) { reasons.add("Folder depth limit reached"); return; }
+    if (exhausted()) return;
     scannedDirectories += 1;
     let items;
     try {
       items = await readDirScoped(dir, root);
     } catch {
+      reasons.add("Some folders could not be read");
       return;
     }
 
@@ -133,7 +114,9 @@ export async function buildCodebaseIndex(root: string, options: { signal?: Abort
         if (!fullPath) continue;
         const relPath = fullPath.slice(root.endsWith("/") ? root.length : root.length + 1);
 
-        if (ignorePatterns.some((p) => p.test(relPath) || p.test(item.name))) {
+        // Match path components, not arbitrary substrings: environment.ts,
+        // distribution.ts and buildPipeline.ts are ordinary source files.
+        if (ignoredFiles.test(item.name) || (item.is_dir && (ignoredDirectories.has(item.name) || item.name.endsWith(".egg-info")))) {
           continue;
         }
 
@@ -149,7 +132,7 @@ export async function buildCodebaseIndex(root: string, options: { signal?: Abort
             const content = await readFileScoped(fullPath, root, 500_000);
             checkCancellation();
             const bytes = encoder.encode(content).byteLength;
-            if (bytes > 500_000 || indexedBytes + bytes > maxBytes) continue;
+            if (bytes > 500_000 || indexedBytes + bytes > maxBytes) { skippedFiles++; reasons.add("Some files exceeded the index size limit"); continue; }
             indexedBytes += bytes;
 
             const lines = content.split("\n");
@@ -161,7 +144,9 @@ export async function buildCodebaseIndex(root: string, options: { signal?: Abort
               mtime: Date.now(),
             });
           } catch {
-            // Skip unreadable files
+            checkCancellation();
+            skippedFiles++;
+            reasons.add("Some files were unreadable or too large");
           }
         }
       }
@@ -170,11 +155,19 @@ export async function buildCodebaseIndex(root: string, options: { signal?: Abort
     }
   }
 
-  await scan(root);
-  checkCancellation();
-  index = entries;
-  indexRoot = root;
-  return entries;
+  pendingRoots.set(root, (pendingRoots.get(root) ?? 0) + 1);
+  try {
+    await scan(root);
+    checkCancellation();
+    coverage.set(entries, { partial: reasons.size > 0, reasons: [...reasons], indexedFiles: entries.size, skippedFiles });
+    index = entries;
+    indexRoot = root;
+    indexedAt = Date.now();
+    return entries;
+  } finally {
+    const remaining = (pendingRoots.get(root) ?? 1) - 1;
+    if (remaining > 0) pendingRoots.set(root, remaining); else pendingRoots.delete(root);
+  }
 }
 
 /** Get the current index, or null if not built. */
@@ -186,6 +179,9 @@ export function getCodebaseIndex(): Map<string, CodebaseIndexEntry> | null {
 export function clearCodebaseIndex(): void {
   index = null;
   indexRoot = null;
+  indexedAt = 0;
+  generation++;
+  for (const listener of invalidationListeners) { try { listener(); } catch { /* Independent subscribers. */ } }
 }
 
 export interface SearchResult {

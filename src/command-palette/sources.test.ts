@@ -1,9 +1,11 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 
 const workspace = vi.hoisted(() => ({ root: "/alpha" }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../workspace/store", () => ({ getWorkspaceRoot: () => workspace.root }));
-vi.mock("../tools", () => ({ detectInstalled: vi.fn(async () => new Set<string>()) }));
+vi.mock("../explorer/search", async (original) => ({
+  ...await original<typeof import("../explorer/search")>(), searchWorkspace: vi.fn(),
+}));
 vi.mock("../jobs/client", () => ({ bgList: vi.fn(async () => []) }));
 vi.mock("../docker/client", () => ({ listContainers: vi.fn(async () => []) }));
 vi.mock("../kubernetes/client", () => ({ listContexts: vi.fn(async () => []), currentContext: vi.fn(async () => "") }));
@@ -13,81 +15,67 @@ vi.mock("../notes/store", () => ({
 }));
 vi.mock("../workflows/store", () => ({ loadWorkflows: () => [] }));
 
-import { invoke } from "@tauri-apps/api/core";
-import { detectInstalled } from "../tools";
-import {
-  invalidateLauncherCache, loadWorkspaceFiles, searchWorkspaceContents,
-  subscribeLauncherCache, workspaceFilesCacheKey,
-} from "./sources";
+import { searchWorkspace, type WorkspaceSearchOutcome } from "../explorer/search";
+import { invalidateLauncherCache, loadWorkspaceFiles, searchWorkspaceContents } from "./sources";
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-}
-const output = (stdout: string) => ({ stdout, stderr: "", exit_code: 0 });
+const outcome = (names: string[] = []): WorkspaceSearchOutcome => ({
+  results: names.map((name) => ({ path: `/alpha/${name}`, rel: name, name, line: null, column: null, text: null })),
+  scannedFiles: names.length, skippedFiles: 0, errors: 0, truncated: false, timedOut: false, reason: null,
+});
 
 beforeEach(() => {
   workspace.root = "/alpha";
   invalidateLauncherCache();
-  vi.mocked(invoke).mockReset();
-  vi.mocked(detectInstalled).mockResolvedValue(new Set());
+  vi.mocked(searchWorkspace).mockReset().mockResolvedValue(outcome());
 });
-afterEach(() => vi.useRealTimers());
 
-it("keys file caches by captured workspace and deduplicates concurrent cold loads", async () => {
-  const pending = deferred<ReturnType<typeof output>>();
-  vi.mocked(invoke).mockImplementation(async (_command, args) => (args as Record<string, unknown> | undefined)?.cwd === "/alpha" ? pending.promise : output("beta.ts\n"));
-  const first = loadWorkspaceFiles();
-  const duplicate = loadWorkspaceFiles();
+it("searches the actual filename query before the result cap with a captured root and cancellation", async () => {
+  const controller = new AbortController();
+  vi.mocked(searchWorkspace).mockResolvedValue(outcome(["late-match.ts"]));
   workspace.root = "/beta";
-  expect(await loadWorkspaceFiles()).toEqual([{ path: "/beta/beta.ts", rel: "beta.ts", name: "beta.ts" }]);
-  pending.resolve(output("alpha.ts\n"));
-  const alpha = await first;
-  expect(await duplicate).toBe(alpha);
-  expect(alpha[0].path).toBe("/alpha/alpha.ts");
-  expect(vi.mocked(invoke).mock.calls.filter(([, args]) => (args as Record<string, unknown> | undefined)?.cwd === "/alpha")).toHaveLength(1);
-  expect((await loadWorkspaceFiles())[0].path).toBe("/beta/beta.ts");
+  const result = await loadWorkspaceFiles("/alpha", "late-match", controller.signal);
+  expect(searchWorkspace).toHaveBeenCalledWith({ root: "/alpha", query: "late-match", mode: "files", maxResults: 200, signal: controller.signal });
+  expect(result.files).toEqual([{ path: "/alpha/late-match.ts", rel: "late-match.ts", name: "late-match.ts" }]);
 });
 
-it("publishes refreshed file data while preserving stale results for the same root only", async () => {
-  vi.useFakeTimers();
-  vi.mocked(invoke).mockResolvedValueOnce(output("before.ts\n"));
-  const before = await loadWorkspaceFiles("/alpha");
-  await vi.advanceTimersByTimeAsync(60_001);
-  const pending = deferred<ReturnType<typeof output>>();
-  vi.mocked(invoke).mockReturnValueOnce(pending.promise);
-  const notified = deferred<string>();
-  const unsubscribe = subscribeLauncherCache((key) => notified.resolve(key));
-  expect(await loadWorkspaceFiles("/alpha")).toBe(before);
-  pending.resolve(output("after.ts\n"));
-  expect(await notified.promise).toBe(workspaceFilesCacheKey("/alpha"));
-  expect((await loadWorkspaceFiles("/alpha"))[0].path).toBe("/alpha/after.ts");
-  unsubscribe();
+it("preserves unusual filenames without line-delimited CLI parsing or whitespace trimming", async () => {
+  vi.mocked(searchWorkspace).mockResolvedValue(outcome([" a:b\n雪.ts "]));
+  expect((await loadWorkspaceFiles()).files[0]).toEqual({ path: "/alpha/ a:b\n雪.ts ", rel: " a:b\n雪.ts ", name: " a:b\n雪.ts " });
 });
 
-it("does not repopulate an invalidated cache with late old loads", async () => {
-  const old = deferred<ReturnType<typeof output>>();
-  vi.mocked(invoke).mockReturnValueOnce(old.promise);
-  const first = loadWorkspaceFiles("/alpha");
-  // Let the optional-tool check settle so the native fake is in flight.
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
-  invalidateLauncherCache();
-  vi.mocked(invoke).mockResolvedValueOnce(output("new.ts\n"));
-  const latest = await loadWorkspaceFiles("/alpha");
-  old.resolve(output("old.ts\n"));
-  await first;
-  expect(await loadWorkspaceFiles("/alpha")).toBe(latest);
-  expect(latest[0].path).toBe("/alpha/new.ts");
+it("does not reuse a pre-query file-list cache after files change", async () => {
+  vi.mocked(searchWorkspace).mockResolvedValueOnce(outcome(["before.ts"])).mockResolvedValueOnce(outcome(["after.ts"]));
+  expect((await loadWorkspaceFiles()).files[0].name).toBe("before.ts");
+  expect((await loadWorkspaceFiles()).files[0].name).toBe("after.ts");
+  expect(searchWorkspace).toHaveBeenCalledTimes(2);
 });
 
-it("runs literal grep inside the explicitly captured root after a workspace switch", async () => {
-  vi.mocked(detectInstalled).mockResolvedValue(new Set(["rg"]));
-  vi.mocked(invoke).mockResolvedValue(output("./src/example.ts:7:literal [text]\n"));
+it("preserves every content match and exact paths from native structured results", async () => {
+  const found = outcome(["a:b.ts", "a:b.ts"]);
+  found.results[0] = { ...found.results[0], line: 7, column: 3, text: "  literal [text]" };
+  found.results[1] = { ...found.results[1], line: 12, column: 1, text: "literal [text] again" };
+  vi.mocked(searchWorkspace).mockResolvedValue(found);
   workspace.root = "/beta";
   const result = await searchWorkspaceContents("[text]", 50, "/alpha");
-  expect(invoke).toHaveBeenCalledWith("shell_run_command", expect.objectContaining({
-    cwd: "/alpha", program: "rg", args: expect.arrayContaining(["-F", "-e", "[text]"]),
-  }));
-  expect(result.results[0]).toEqual({ path: "/alpha/src/example.ts", rel: "src/example.ts", line: 7, text: "literal [text]" });
+  expect(searchWorkspace).toHaveBeenCalledWith({ root: "/alpha", query: "[text]", mode: "contents", maxResults: 50, signal: undefined });
+  expect(result.results).toEqual([
+    { path: "/alpha/a:b.ts", rel: "a:b.ts", line: 7, text: "  literal [text]" },
+    { path: "/alpha/a:b.ts", rel: "a:b.ts", line: 12, text: "literal [text] again" },
+  ]);
+});
+
+it("surfaces partial scans and native errors instead of false exhaustive empty results", async () => {
+  vi.mocked(searchWorkspace).mockResolvedValue({ ...outcome(), timedOut: true, truncated: true, reason: "Search reached its time limit.", errors: 1 });
+  expect((await loadWorkspaceFiles()).notice).toContain("time limit");
+  expect((await searchWorkspaceContents("needle")).notice).toContain("unreadable");
+  vi.mocked(searchWorkspace).mockRejectedValue(new Error("Folder unavailable"));
+  await expect(loadWorkspaceFiles()).rejects.toThrow("Folder unavailable");
+  await expect(searchWorkspaceContents("needle")).rejects.toThrow("Folder unavailable");
+});
+
+it("never widens a missing workspace to the process directory or whole computer", async () => {
+  workspace.root = "";
+  expect((await loadWorkspaceFiles()).notice).toContain("Open a folder");
+  expect((await searchWorkspaceContents("needle")).notice).toContain("Open a folder");
+  expect(searchWorkspace).not.toHaveBeenCalled();
 });

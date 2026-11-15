@@ -150,8 +150,14 @@ export function SidebarHost({
               style={id === sidebarView ? undefined : { display: "none" }}
             >
               {id === "explorer" ? (
-                <div className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost} />
+                <div className="h-full min-h-0 overflow-hidden">
+                  <FileExplorer onOpenFile={openFile} activeFile={activeFile} remoteHost={remoteHost}
+                    active={explorerOpen && sidebarView === "explorer"}
+                    onOpenFileAtLine={(path, name, line) => {
+                      // Search is local-only; never borrow an SSH editor source.
+                      (openLocalFile ?? openFile)(path, name);
+                      window.dispatchEvent(new CustomEvent("husk:reveal-line", { detail: { path, line } }));
+                    }} />
                 </div>
               ) : id === "source-control" ? (
                 lazyPanel(<SourceControlPanel inline active={explorerOpen && sidebarView === "source-control"} onOpenGitGraph={openGitGraph} onOpenIssues={openIssues} onOpenFile={openLocalFile ?? (!remoteHost ? openFile : undefined)} />, "Source Control")

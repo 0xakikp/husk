@@ -27,7 +27,7 @@ import { NotesEditorControls, NotesOpenTabs } from "../notes/NotesEditorChrome";
 import { getFileState } from "../editor/dirtyStore";
 import type { NotesDockApi, NotesOpeningMode } from "../notes/useNotesDock";
 import type { Prefs } from "../settings/preferences";
-import type { OpenFile } from "../editor/EditorArea";
+import type { EditorRevealTarget, OpenFile } from "../editor/EditorArea";
 import type { TerminalTabsApi } from "../useTerminalTabs";
 import type { OpenPanelKind } from "../git/types";
 import type { K8sResourceSelection } from "../kubernetes/KubernetesView";
@@ -107,6 +107,21 @@ export function WorkspacePanels({
   const [dockTab, setDockTab] = useState<"notes" | "logs" | "details">("notes");
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [dockExpanded, setDockExpanded] = useState(false);
+  // Search navigation can arrive before the lazy editor's first mount. Keep
+  // the latest request in the always-mounted workspace, not only in Monaco.
+  const [revealTarget, setRevealTarget] = useState<EditorRevealTarget | null>(notesDock.revealTarget);
+  const revealSequence = useRef(0);
+  useEffect(() => {
+    const onReveal = (event: Event) => {
+      const detail = (event as CustomEvent<{ path?: unknown; line?: unknown }>).detail;
+      if (typeof detail?.path !== "string" || !detail.path || typeof detail.line !== "number"
+        || !Number.isSafeInteger(detail.line) || detail.line < 1) return;
+      setRevealTarget({ path: detail.path, line: detail.line, requestId: `search:${++revealSequence.current}` });
+    };
+    window.addEventListener("husk:reveal-line", onReveal);
+    return () => window.removeEventListener("husk:reveal-line", onReveal);
+  }, []);
+  useEffect(() => { setRevealTarget(notesDock.revealTarget); }, [notesDock.revealTarget]);
   const terminalColumnRef = useRef<HTMLDivElement>(null);
   const fileColumnRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -535,7 +550,7 @@ export function WorkspacePanels({
         </WorkspaceDock>
       </PersistentEditor>}
       {editorStarted.current && <PersistentEditor targetRef={activeKind === "file" && openFiles.length ? fullEditorRef : hasDock ? noteEditorRef : parkingRef}>
-        {lazyPanel(<EditorArea files={editorFiles} activePath={editorPath} visible={editorVisible} revealTarget={notesDock.revealTarget} placementKey={activeKind === "file" ? "full-tab" : "panel"} />, "Editor")}
+        {lazyPanel(<EditorArea files={editorFiles} activePath={editorPath} visible={editorVisible} revealTarget={revealTarget} placementKey={activeKind === "file" ? "full-tab" : "panel"} />, "Editor")}
       </PersistentEditor>}
     </div>
   );

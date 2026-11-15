@@ -3,6 +3,7 @@ mod browser;
 mod config;
 mod diagnostics;
 mod fs;
+mod workspace_search;
 mod git_patch;
 mod jobs;
 mod kubeconfig;
@@ -165,6 +166,9 @@ pub fn run() {
             fs::copy_path,
             fs::rename_path,
             fs::delete_path,
+            fs::trash_path,
+            workspace_search::workspace_search,
+            workspace_search::workspace_search_cancel,
             config::config_load,
             config::config_save,
             config::config_patch,

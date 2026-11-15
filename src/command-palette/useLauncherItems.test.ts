@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({
   root: "/alpha", indexedRoot: null as string | null,
+  codeListeners: new Set<() => void>(),
   workspaceListeners: new Set<() => void>(), cacheListeners: new Set<(key: string) => void>(),
   clips: [] as { id: string; text: string; createdAt: number }[],
   bookmarks: [] as { id: string; type: "directory" | "file" | "command"; label: string; path?: string; command?: string; createdAt: number }[],
@@ -26,9 +27,8 @@ vi.mock("./sources", () => ({
   loadNoteEntries: vi.fn(async () => []), loadDockerContainers: vi.fn(async () => []),
   loadK8sContexts: vi.fn(async () => []), loadWorkflowEntries: vi.fn(() => []),
   loadRunningJobs: vi.fn(async () => []), loadSshHosts: vi.fn(async () => []),
-  loadWorkspaceFiles: vi.fn(async () => []),
-  searchWorkspaceContents: vi.fn(async () => ({ results: [], missingTool: false })),
-  workspaceFilesCacheKey: (root: string) => `ws-files:${root}`,
+  loadWorkspaceFiles: vi.fn(async () => ({ files: [], notice: null })),
+  searchWorkspaceContents: vi.fn(async () => ({ results: [], notice: null })),
   subscribeLauncherCache: (listener: (key: string) => void) => {
     fixture.cacheListeners.add(listener);
     return () => { fixture.cacheListeners.delete(listener); };
@@ -37,7 +37,9 @@ vi.mock("./sources", () => ({
 vi.mock("../ai/codebaseSearch", () => ({
   buildCodebaseIndex: vi.fn(async () => fixture.index),
   getCodebaseIndex: () => fixture.index,
-  getIndexedRoot: () => fixture.indexedRoot,
+  isCodebaseIndexFresh: (root: string) => fixture.indexedRoot === root,
+  subscribeCodebaseInvalidation: (listener: () => void) => { fixture.codeListeners.add(listener); return () => { fixture.codeListeners.delete(listener); }; },
+  getCodebaseCoverage: vi.fn(() => null),
   searchCodebase: vi.fn(() => []),
 }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn(async () => {}) }));
@@ -62,7 +64,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { bgKill } from "../jobs/client";
 import { toast } from "../toast";
 import { shq } from "../lib/shellQuote";
-import { buildCodebaseIndex, searchCodebase } from "../ai/codebaseSearch";
+import { buildCodebaseIndex, searchCodebase, getCodebaseCoverage } from "../ai/codebaseSearch";
 import {
   loadWorkspaceFiles, searchWorkspaceContents, loadDockerContainers, loadK8sContexts,
   loadRunningJobs, loadSshHosts,
@@ -93,6 +95,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 function file(path: string) { return { path, rel: path.split("/").pop()!, name: path.split("/").pop()! }; }
+function files(...paths: string[]) { return { files: paths.map(file), notice: null }; }
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -100,8 +103,10 @@ beforeEach(() => {
   fixture.root = "/alpha"; fixture.indexedRoot = null; fixture.index = new Map(); fixture.aiEnabled = true;
   fixture.clips = []; fixture.bookmarks = []; fixture.accounts = []; fixture.sessions = [];
   fixture.workspaceListeners.clear(); fixture.cacheListeners.clear();
-  vi.mocked(loadWorkspaceFiles).mockReset().mockResolvedValue([]);
-  vi.mocked(searchWorkspaceContents).mockReset().mockResolvedValue({ results: [], missingTool: false });
+  fixture.codeListeners.clear();
+  vi.mocked(getCodebaseCoverage).mockReset().mockReturnValue(null);
+  vi.mocked(loadWorkspaceFiles).mockReset().mockResolvedValue(files());
+  vi.mocked(searchWorkspaceContents).mockReset().mockResolvedValue({ results: [], notice: null });
   vi.mocked(buildCodebaseIndex).mockReset().mockResolvedValue(fixture.index);
   vi.mocked(searchCodebase).mockReset().mockReturnValue([]);
   vi.mocked(writeText).mockReset().mockResolvedValue(undefined);
@@ -121,25 +126,30 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); });
 
-it("keeps the expensive base rows reference-stable on ordinary and scoped keystrokes", async () => {
-  vi.mocked(loadWorkspaceFiles).mockResolvedValue([file("/alpha/main.ts")]);
-  await render("m"); const main = item("file:/alpha/main.ts"); const command = item("test-command");
+it("keeps expensive base rows stable while searching each actual filename query before capping", async () => {
+  vi.mocked(loadWorkspaceFiles).mockResolvedValue(files("/alpha/main.ts"));
+  await render("m"); await advance(); const command = item("test-command");
+  expect(item("file:/alpha/main.ts")).toBeDefined();
   await render("main");
-  expect(item("file:/alpha/main.ts")).toBe(main); expect(item("test-command")).toBe(command);
+  expect(items.some((entry) => entry.id === "file:/alpha/main.ts")).toBe(false);
+  expect(item("test-command")).toBe(command);
+  await advance(); expect(item("file:/alpha/main.ts")).toBeDefined();
   await render("f: main");
-  expect(item("file:/alpha/main.ts")).toBe(main);
-  expect(buildCodebaseIndex).not.toHaveBeenCalled(); expect(loadWorkspaceFiles).toHaveBeenCalledTimes(1);
+  expect(item("file:/alpha/main.ts")).toBeDefined();
+  expect(buildCodebaseIndex).not.toHaveBeenCalled(); expect(loadWorkspaceFiles).toHaveBeenCalledTimes(2);
+  expect(loadWorkspaceFiles).toHaveBeenLastCalledWith("/alpha", "main", expect.any(AbortSignal));
 });
 
-it("immediately hides old workspace files, discards late loads, and accepts live refresh notifications", async () => {
-  const pending = deferred<ReturnType<typeof file>[]>();
-  vi.mocked(loadWorkspaceFiles).mockImplementation((path) => path === "/alpha" ? pending.promise : Promise.resolve([file("/beta/beta.ts")]));
+it("immediately hides old workspace files, cancels late loads, and refreshes on window focus", async () => {
+  const pending = deferred<Awaited<ReturnType<typeof loadWorkspaceFiles>>>();
+  vi.mocked(loadWorkspaceFiles).mockImplementation((path) => path === "/alpha" ? pending.promise : Promise.resolve(files("/beta/beta.ts")));
   await render(); await switchRoot("/beta");
+  expect(vi.mocked(loadWorkspaceFiles).mock.calls[0][2]?.aborted).toBe(true);
   expect(item("file:/beta/beta.ts").detail).toBe("/beta/beta.ts");
-  await act(async () => pending.resolve([file("/alpha/late.ts")]));
+  await act(async () => pending.resolve(files("/alpha/late.ts")));
   expect(items.some((entry) => entry.id === "file:/alpha/late.ts")).toBe(false);
-  vi.mocked(loadWorkspaceFiles).mockResolvedValue([file("/beta/new.ts")]);
-  await act(async () => { for (const listener of fixture.cacheListeners) listener("ws-files:/beta"); });
+  vi.mocked(loadWorkspaceFiles).mockResolvedValue(files("/beta/new.ts"));
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
   expect(item("file:/beta/new.ts").detail).toBe("/beta/new.ts");
   expect(items.some((entry) => entry.id === "file:/beta/beta.ts")).toBe(false);
   await switchRoot(""); expect(items.some((entry) => entry.kind === "file")).toBe(false);
@@ -181,19 +191,75 @@ it("cancels old code scans and ignores their late completion after switching roo
 it("runs grep against the captured workspace and drops late results from the previous workspace", async () => {
   const old = deferred<Awaited<ReturnType<typeof searchWorkspaceContents>>>();
   vi.mocked(searchWorkspaceContents).mockReturnValueOnce(old.promise).mockResolvedValue({
-    results: [{ path: "/beta/found.ts", rel: "found.ts", line: 2, text: "needle" }], missingTool: false,
+    results: [{ path: "/beta/found.ts", rel: "found.ts", line: 2, text: "needle" }], notice: null,
   });
   await render("g: needle"); await advance(); await switchRoot("/beta"); await advance();
-  expect(searchWorkspaceContents).toHaveBeenLastCalledWith("needle", 50, "/beta");
-  await act(async () => old.resolve({ results: [{ path: "/alpha/old.ts", rel: "old.ts", line: 1, text: "needle" }], missingTool: false }));
+  expect(searchWorkspaceContents).toHaveBeenLastCalledWith("needle", 100, "/beta", expect.any(AbortSignal));
+  expect(vi.mocked(searchWorkspaceContents).mock.calls[0][3]?.aborted).toBe(true);
+  await act(async () => old.resolve({ results: [{ path: "/alpha/old.ts", rel: "old.ts", line: 1, text: "needle" }], notice: null }));
   expect(items.some((entry) => entry.id === "grep:/alpha/old.ts:1")).toBe(false);
   expect(item("grep:/beta/found.ts:2").alwaysShow).toBe(true);
+});
+
+it("reuses a fresh code index, then rebuilds after an invalidation or expiry", async () => {
+  fixture.indexedRoot = "/alpha";
+  await render("code: config"); await advance();
+  expect(buildCodebaseIndex).not.toHaveBeenCalled();
+  fixture.indexedRoot = null;
+  await act(async () => { for (const listener of fixture.codeListeners) listener(); });
+  expect(buildCodebaseIndex).toHaveBeenCalledTimes(1);
+  await advance(60_000);
+  expect(buildCodebaseIndex).toHaveBeenCalledTimes(2);
+  await render("code: config", false);
+  expect(fixture.codeListeners.size).toBe(0);
+});
+
+it("shows code index errors with retry instead of reporting no matches", async () => {
+  vi.mocked(buildCodebaseIndex).mockRejectedValueOnce(new Error("Cannot read workspace"));
+  await render("code: config");
+  expect(item("code:error").label).toContain("Cannot read workspace");
+  expect(items.some((entry) => entry.id === "code:none")).toBe(false);
+  await act(async () => { await item("code:retry").run(); }); await advance();
+  expect(buildCodebaseIndex).toHaveBeenCalledTimes(2);
+  expect(items.some((entry) => entry.id === "code:error")).toBe(false);
+});
+
+it("labels partial indexed coverage even when there are no indexed matches", async () => {
+  vi.mocked(getCodebaseCoverage).mockReturnValue({ partial: true, indexedFiles: 20, skippedFiles: 2, reasons: ["Some folders could not be read"] });
+  await render("code: config"); await advance();
+  expect(item("code:coverage").label).toContain("Partial index · 20 files");
+  expect(item("code:coverage").label).toContain("Some folders could not be read");
+});
+
+it("shows filename limits and recoverable failures instead of silent no-results", async () => {
+  vi.mocked(loadWorkspaceFiles).mockResolvedValueOnce({ files: [file("/alpha/match.ts")], notice: "More than 200 matches. Narrow your search." });
+  await render("files: match"); await advance();
+  expect(item("files:status").label).toContain("More than 200");
+  expect(item("files:status").status).toBe(true);
+  vi.mocked(loadWorkspaceFiles).mockRejectedValueOnce(new Error("Folder permission denied"));
+  await render("files: other"); await advance();
+  expect(item("files:status").label).toContain("permission denied");
+  expect(item("files:retry").keepOpen).toBe(true);
+  vi.mocked(loadWorkspaceFiles).mockResolvedValue(files("/alpha/other.ts"));
+  await act(async () => { await item("files:retry").run(); }); await advance();
+  expect(item("file:/alpha/other.ts")).toBeDefined();
+});
+
+it("shows content search partial coverage and errors without claiming rg is missing", async () => {
+  vi.mocked(searchWorkspaceContents).mockResolvedValueOnce({ results: [], notice: "Search reached its time limit." });
+  await render("grep: needle"); await advance();
+  expect(item("grep:status").label).toContain("time limit");
+  vi.mocked(searchWorkspaceContents).mockRejectedValueOnce(new Error("Folder unavailable"));
+  await render("grep: different"); await advance();
+  expect(item("grep:status").label).toContain("Folder unavailable");
+  expect(item("grep:retry").keepOpen).toBe(true);
+  expect(items.some((entry) => /ripgrep not found/.test(entry.label))).toBe(false);
 });
 
 it("quotes generated terminal arguments and adds exact-text target confirmations to every staging route", async () => {
   const path = "/alpha/weird '$(literal)'/file.ts";
   const name = "name';$(literal)";
-  vi.mocked(loadWorkspaceFiles).mockResolvedValue([file(path)]);
+  vi.mocked(loadWorkspaceFiles).mockResolvedValue(files(path));
   vi.mocked(loadDockerContainers).mockResolvedValue([{ id: "container", name, image: "test", state: "running", status: "Up", ports: "" }]);
   vi.mocked(loadK8sContexts).mockResolvedValue([{ name, current: true }]);
   vi.mocked(loadSshHosts).mockResolvedValue([name]);
@@ -255,7 +321,7 @@ it("awaits native 2FA copying and never places the code in a toast", async () =>
 
 it("preserves remote provenance for open files without hiding same-path local workspace files", async () => {
   ctx.openFiles = [{ path: "/alpha/main.ts", name: "main.ts", remoteHost: "fixture-host" }];
-  vi.mocked(loadWorkspaceFiles).mockResolvedValue([file("/alpha/main.ts")]);
+  vi.mocked(loadWorkspaceFiles).mockResolvedValue(files("/alpha/main.ts"));
   await render();
   const remote = item("file-open:fixture-host:/alpha/main.ts");
   expect(remote.detail).toBe("fixture-host:/alpha/main.ts"); await remote.run();
