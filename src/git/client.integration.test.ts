@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ invoke: vi.fn(), cwd: "" }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mock.invoke }));
@@ -13,19 +13,27 @@ import { repositorySnapshot, status, stageFiles, unstageFiles, commit, structure
 // credentials, global configuration or network remotes are involved.
 let fixture: string; let cwd: string;
 function git(args: string[], directory = cwd) {
-  const result = spawnSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", ...args], {
+  const result = spawnSync("git", ["-c", `core.hooksPath=${join(fixture, "empty-hooks")}`, "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", ...args], {
     cwd: directory, encoding: "utf8", timeout: 10_000,
-    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0" },
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(fixture, "global.gitconfig"), GIT_TERMINAL_PROMPT: "0" },
   });
   return { stdout: result.stdout ?? "", stderr: result.stderr ?? "", exit_code: result.status, timed_out: Boolean(result.error), truncated: false };
 }
 function setup(args: string[], directory = cwd) { const result = git(args, directory); if (result.exit_code !== 0) throw new Error(result.stderr || "Fixture Git command failed"); return result.stdout; }
+function isFixtureDirectory(directory: unknown): directory is string {
+  if (typeof directory !== "string") return false;
+  let resolved: string;
+  try { resolved = realpathSync(directory); } catch { return false; }
+  const within = relative(fixture, resolved);
+  return within !== "" && within !== ".." && !within.startsWith(`..${sep}`) && !isAbsolute(within);
+}
 beforeEach(() => {
-  fixture = realpathSync(mkdtempSync(join(tmpdir(), "husk-git-fixture-"))); cwd = join(fixture, "work"); mkdirSync(cwd); mock.cwd = cwd;
+  fixture = realpathSync(mkdtempSync(join(tmpdir(), "husk-git-fixture-"))); cwd = join(fixture, "work");
+  mkdirSync(cwd); mkdirSync(join(fixture, "empty-hooks")); writeFileSync(join(fixture, "global.gitconfig"), ""); mock.cwd = cwd;
   setup(["init", "--template=", "--initial-branch=main"]);
   setup(["config", "user.name", "Test | Developer"]); setup(["config", "user.email", "test@example.invalid"]);
   mock.invoke.mockReset().mockImplementation(async (command, args) => {
-    if (command !== "shell_run_command" || args.program !== "git" || !String(args.cwd).startsWith(fixture + "/")) throw new Error("Fixture forbids unrelated commands and directories");
+    if (command !== "shell_run_command" || args?.program !== "git" || !isFixtureDirectory(args?.cwd)) throw new Error("Fixture forbids unrelated commands and directories");
     return git(args.args, args.cwd);
   });
 });
@@ -45,12 +53,19 @@ it("does not mistake a missing untracked file for a successful empty diff", asyn
   await expect(diffUntrackedFile("empty.txt", cwd)).resolves.toContain("new file mode");
 });
 it("keeps pathspec magic literal and round-trips unusual filenames", async () => {
-  for (const name of [":(glob)*", "other", 'quote "name"', "ユニコード", "line\nbreak", "-leading"]) writeFileSync(join(cwd, name), "content\n");
-  await stageFiles([":(glob)*"], cwd);
-  expect((await status(cwd)).filter((file) => file.staged).map((file) => file.path)).toEqual([":(glob)*"]);
-  await stageFiles(['quote "name"', "ユニコード", "line\nbreak", "-leading"], cwd);
+  // Windows forbids :, *, quotes, and newlines in filenames. Brackets are
+  // legal there but still exercise Git's pathspec globbing unless literal.
+  const magicName = process.platform === "win32" ? "[ab].txt" : ":(glob)*";
+  const otherName = process.platform === "win32" ? "a.txt" : "other";
+  const unusualNames = process.platform === "win32"
+    ? ["space name", "ユニコード", "semicolon;name", "-leading"]
+    : ['quote "name"', "ユニコード", "line\nbreak", "-leading"];
+  for (const name of [magicName, otherName, ...unusualNames]) writeFileSync(join(cwd, name), "content\n");
+  await stageFiles([magicName], cwd);
+  expect((await status(cwd)).filter((file) => file.staged).map((file) => file.path)).toEqual([magicName]);
+  await stageFiles(unusualNames, cwd);
   expect((await status(cwd)).filter((file) => file.staged)).toHaveLength(5);
-  expect((await status(cwd)).find((file) => file.path === "other")?.staged).toBe(false);
+  expect((await status(cwd)).find((file) => file.path === otherName)?.staged).toBe(false);
 });
 it("previews partially staged files on the requested side and handles staged renames", async () => {
   writeFileSync(join(cwd, "old name"), "original\n"); await stageFiles(["old name"], cwd); await commit("Initial | subject", cwd);

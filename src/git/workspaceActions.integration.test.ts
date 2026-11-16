@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ invoke: vi.fn(), cwd: "" }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mock.invoke }));
@@ -14,19 +14,26 @@ import { listBranches, listRemotes, createBranch, switchBranch, publishBranch, s
 // load the developer's hooks, credentials, global Git config or network remotes.
 let fixture: string; let cwd: string;
 function git(args: string[], directory = cwd) {
-  const result = spawnSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", ...args], {
+  const result = spawnSync("git", ["-c", `core.hooksPath=${join(fixture, "empty-hooks")}`, "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", ...args], {
     cwd: directory, encoding: "utf8", timeout: 10000,
-    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0" },
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(fixture, "global.gitconfig"), GIT_TERMINAL_PROMPT: "0" },
   });
   return { stdout: result.stdout ?? "", stderr: result.stderr ?? "", exit_code: result.status, timed_out: Boolean(result.error), truncated: false };
 }
 function setup(args: string[], directory = cwd) { const result = git(args, directory); if (result.exit_code !== 0) throw new Error(result.stderr); return result.stdout; }
+function isFixtureDirectory(directory: unknown): directory is string {
+  if (typeof directory !== "string") return false;
+  try {
+    const pathWithinFixture = relative(fixture, realpathSync(directory));
+    return pathWithinFixture !== "" && pathWithinFixture !== ".." && !pathWithinFixture.startsWith(`..${sep}`) && !isAbsolute(pathWithinFixture);
+  } catch { return false; }
+}
 beforeEach(() => {
-  fixture = realpathSync(mkdtempSync(join(tmpdir(), "husk-git-actions-"))); cwd = join(fixture, "work"); mkdirSync(cwd); mock.cwd = cwd;
+  fixture = realpathSync(mkdtempSync(join(tmpdir(), "husk-git-actions-"))); cwd = join(fixture, "work"); mkdirSync(cwd); mkdirSync(join(fixture, "empty-hooks")); writeFileSync(join(fixture, "global.gitconfig"), ""); mock.cwd = cwd;
   setup(["init", "--template=", "--initial-branch=main"]); setup(["config", "user.name", "Fixture"]); setup(["config", "user.email", "fixture@example.invalid"]);
   writeFileSync(join(cwd, "tracked.txt"), "initial\n"); setup(["add", "--", "tracked.txt"]); setup(["commit", "-m", "Initial"]);
   mock.invoke.mockReset().mockImplementation(async (command, request) => {
-    if (command !== "shell_run_command" || request.program !== "git" || !String(request.cwd).startsWith(fixture + "/")) throw new Error("Fixture rejects unrelated commands/directories");
+    if (command !== "shell_run_command" || request?.program !== "git" || !isFixtureDirectory(request?.cwd)) throw new Error("Fixture rejects unrelated commands/directories");
     return git(request.args, request.cwd);
   });
 });
@@ -36,7 +43,7 @@ it("creates and switches branches while protecting dirty files and other worktre
   await createBranch("feature", cwd); expect((await repositorySnapshot(cwd))?.branch).toBe("feature");
   await switchBranch("refs/heads/main", cwd); expect((await repositorySnapshot(cwd))?.branch).toBe("main");
   setup(["worktree", "add", "--", join(fixture, "second"), "feature"]);
-  expect((await listBranches(cwd)).find((branch) => branch.name === "feature")?.worktreePath).toBe(join(fixture, "second"));
+  expect(normalize((await listBranches(cwd)).find((branch) => branch.name === "feature")?.worktreePath ?? "")).toBe(normalize(join(fixture, "second")));
   await expect(switchBranch("refs/heads/feature", cwd)).rejects.toThrow("another worktree");
   writeFileSync(join(cwd, "tracked.txt"), "work\n"); await expect(createBranch("blocked", cwd)).rejects.toThrow("Commit or stash");
   expect(readFileSync(join(cwd, "tracked.txt"), "utf8")).toBe("work\n");
@@ -59,14 +66,20 @@ it("refuses to overwrite ignored local files when switching branches", async () 
   expect(readFileSync(join(cwd, "ignored.txt"), "utf8")).toBe("private local contents\n");
 });
 it("saves tracked/untracked changes explicitly and applies by OID while preserving the stash", async () => {
-  writeFileSync(join(cwd, "tracked.txt"), "edited\n"); setup(["add", "--", "tracked.txt"]); writeFileSync(join(cwd, "new.txt"), "untracked\n"); writeFileSync(join(cwd, ":(glob)*"), "literal pathspec filename\n");
+  writeFileSync(join(cwd, "tracked.txt"), "edited\n"); setup(["add", "--", "tracked.txt"]); writeFileSync(join(cwd, "new.txt"), "untracked\n");
+  // Brackets are valid filenames on Windows but are still Git pathspec syntax.
+  writeFileSync(join(cwd, "[ab].txt"), "literal pathspec filename\n"); writeFileSync(join(cwd, "a.txt"), "matching glob filename\n");
+  // Windows forbids ':' and '*'; retain the stronger magic-pathspec case where supported.
+  if (process.platform !== "win32") writeFileSync(join(cwd, ":(glob)*"), "magic pathspec filename\n");
   await saveStash({ message: "Review | later", includeUntracked: true }, cwd);
   const stashes = await listStashes(cwd); expect(stashes).toHaveLength(1); expect(stashes[0].subject).toContain("Review | later");
   expect((await repositorySnapshot(cwd))?.files).toEqual([]);
   expect(await inspectStash(stashes[0].oid, cwd)).toContain("+untracked");
   await applyStash(stashes[0].oid, cwd);
   expect(readFileSync(join(cwd, "tracked.txt"), "utf8")).toBe("edited\n"); expect(readFileSync(join(cwd, "new.txt"), "utf8")).toBe("untracked\n");
-  expect(readFileSync(join(cwd, ":(glob)*"), "utf8")).toBe("literal pathspec filename\n");
+  expect(readFileSync(join(cwd, "[ab].txt"), "utf8")).toBe("literal pathspec filename\n");
+  expect(readFileSync(join(cwd, "a.txt"), "utf8")).toBe("matching glob filename\n");
+  if (process.platform !== "win32") expect(readFileSync(join(cwd, ":(glob)*"), "utf8")).toBe("magic pathspec filename\n");
   expect((await repositorySnapshot(cwd))?.files.find((file) => file.path === "tracked.txt")?.staged).toBe(true);
   expect((await listStashes(cwd))[0].oid).toBe(stashes[0].oid);
 });
