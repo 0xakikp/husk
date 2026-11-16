@@ -26,6 +26,7 @@ import {
   getCommandStartTime,
   markCommandStart,
   setActiveTerminalPromptReader,
+  setPromptPosition,
   setFocusTerminalFn,
   setActiveTerminalPtyId,
   setActiveTerminalDraftReader,
@@ -35,13 +36,13 @@ import {
 import { recordFailure, clearFailure, collapseFailure } from "./failureStore";
 import { clearNextSteps, collapseNextSteps, recordNextSteps } from "./nextSteps";
 import { clearGitActivity, recordGitActivity } from "./gitActivityStore";
-import { extractLocalDevUrls, recordPorts } from "./portStore";
-import { recordSensitiveOutput } from "./sensitiveOutputStore";
-import { completeTask, startTask } from "./taskStore";
+import { clearPorts, extractLocalDevUrls, recordPorts } from "./portStore";
+import { clearSensitiveOutput, recordSensitiveOutput } from "./sensitiveOutputStore";
+import { clearTask, completeTask, startTask } from "./taskStore";
 import { clearEnvironmentWarning, recordEnvironmentWarning } from "./environmentWarnings";
 import { recordTimelineEvent } from "../timeline/store";
 import { EXACT_TIMELINE_COMMAND_FORMAT, safeTimelineCommand } from "../timeline/commandMetadata";
-import { refreshWorkflowSuggestion } from "../workflows/suggestions";
+import { dismissWorkflowSuggestion, refreshWorkflowSuggestion } from "../workflows/suggestions";
 import { getWorkspaceRoot, syncWorkspaceRootToCwd } from "../workspace/store";
 import {
   setAiPtyWriter as setAiPtyWriterInput,
@@ -119,6 +120,7 @@ export type TerminalCallbacks = {
   onSplit?: (dir: "row" | "col") => void;
   onFocusDirection?: (dir: "left" | "right" | "up" | "down") => void;
   onHistoryOpen?: () => void;
+  onSearchOpen?: (query?: string) => void;
 };
 
 export type TerminalOutputListener = (data: string) => void;
@@ -165,8 +167,6 @@ type Session = {
   resizeObserver: ResizeObserver | null;
   prefsUnsub: (() => void) | null;
   screenEl: HTMLElement | null;
-  searchOpen: boolean;
-  searchQuery: string;
   historyOpen: boolean;
   menuOpen: boolean;
   isRemoteShell: boolean;
@@ -408,6 +408,12 @@ export async function restartSession(leafId: number): Promise<void> {
     clearFixRuns(leafId);
     clearFailure(leafId);
     clearNextSteps(leafId);
+    clearGitActivity(leafId);
+    clearPorts(leafId);
+    clearSensitiveOutput(leafId);
+    clearTask(leafId);
+    clearEnvironmentWarning(leafId);
+    dismissWorkflowSuggestion(leafId);
     if (session.active) { clearCurrentCommand(); setActiveRemoteTerminal({ isRemote: false }); }
     // Restore terminal modes without reset()/clear(), which erase scrollback.
     // This changes xterm only and is never emitted into the PTY as keystrokes.
@@ -630,8 +636,6 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     resizeObserver: null,
     prefsUnsub: null,
     screenEl: null,
-    searchOpen: false,
-    searchQuery: "",
     historyOpen: false,
     menuOpen: false,
     isRemoteShell: false,
@@ -863,8 +867,12 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
             { workspaceRoot, sensitivity: safeCommand.sensitive ? 1 : 0 },
           );
           if (exitCode === 0 && safeCommand.command && workspaceRoot) {
+            const workflowSessionId = session.workflowSessionId;
             void recorded.then((saved) => {
-              if (saved) void refreshWorkflowSuggestion(session.leafId, workspaceRoot);
+              if (saved && !session.disposed && session.workflowSessionId === workflowSessionId) {
+                void refreshWorkflowSuggestion(session.leafId, workspaceRoot,
+                  () => !session.disposed && session.workflowSessionId === workflowSessionId);
+              }
             });
           }
         }
@@ -988,8 +996,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
       e.preventDefault();
       e.stopPropagation();
-      session.searchOpen = true;
-      if (session.active) setActiveTerminalSearchOpener(() => { session.searchOpen = true; });
+      if (session.active) session.callbacks.onSearchOpen?.();
       return false;
     }
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
@@ -1327,11 +1334,11 @@ export function setSessionActive(leafId: number, active: boolean): void {
       session.term.focus();
     });
 
-    setActiveTerminalSearchOpener(() => { session.searchOpen = true; });
+    setActiveTerminalSearchOpener(() => {
+      if (session.active && !session.disposed) session.callbacks.onSearchOpen?.();
+    });
     setActiveTerminalSearcher((q: string) => {
-      session.searchOpen = true;
-      session.searchQuery = q;
-      try { session.searchAddon.findNext(q, { incremental: true }); } catch {}
+      if (session.active && !session.disposed) session.callbacks.onSearchOpen?.(q);
     });
 
     setTerminalLineReaderInput(() => {
@@ -1424,7 +1431,6 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
     hasSelection: () => session.term.hasSelection(),
     clearSelection: () => session.term.clearSelection(),
     search: (query: string) => {
-      session.searchQuery = query;
       try { session.searchAddon.findNext(query, { incremental: true }); } catch {}
     },
     searchNext: (query: string) => {
@@ -1434,7 +1440,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       try { session.searchAddon.findPrevious(query); } catch {}
     },
     clearSearch: () => session.searchAddon.clearDecorations(),
-    openSearch: () => { session.searchOpen = true; },
+    openSearch: () => { if (session.active && !session.disposed) session.callbacks.onSearchOpen?.(); },
     resize: () => fitAttachedSession(session),
     getTerm: () => session.term,
     getPtyId: () => session.ptyId,
@@ -1503,8 +1509,36 @@ export function disposeSession(leafId: number): void {
   clearFailure(leafId);
   clearRunComparisons(leafId);
   clearFixRuns(leafId);
+  clearNextSteps(leafId);
+  clearGitActivity(leafId);
+  clearPorts(leafId);
+  clearSensitiveOutput(leafId);
+  clearTask(leafId);
+  clearEnvironmentWarning(leafId);
+  dismissWorkflowSuggestion(leafId);
 
-  if (activeLeafId === leafId) activeLeafId = null;
+  const wasActiveLeaf = activeLeafId === leafId;
+  if (wasActiveLeaf) activeLeafId = null;
+  if (wasActiveLeaf) {
+    // Global actions must not retain a disposed xterm or route input to a
+    // closed tab while the replacement tab's React effects are still mounting.
+    setActiveTerminalReader(null);
+    setActiveTerminalRunner(null);
+    setActiveTerminalTyper(null);
+    setActiveTerminalSearchOpener(null);
+    setActiveTerminalSearcher(null);
+    setActiveTerminalCommandReader(null);
+    setActiveTerminalDraftReader(null);
+    setPromptPosition(null);
+    setActiveTerminalPtyId(null);
+    setActiveTerminalCwd("");
+    setActiveTerminalExit(null);
+    setActiveRemoteTerminal({ isRemote: false });
+    setAiPtyWriterInput(null);
+    setTerminalLineReaderInput(null);
+    setFocusTerminalFn(null);
+    setTerminalTyping(false);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

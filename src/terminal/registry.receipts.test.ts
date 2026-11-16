@@ -29,12 +29,18 @@ vi.mock("./sessionLifecycle", async importOriginal => {
   };
 });
 
-import { checkSessionHealth, createSession, detachSession, disposeSession, getSessionHandle, restartSession, setSessionActive, setSessionVisible, submitTrackedTerminalCommand } from "./registry";
+import { checkSessionHealth, createSession, detachSession, disposeSession, getSessionHandle, restartSession, setSessionActive, setSessionFocused, setSessionVisible, submitTrackedTerminalCommand } from "./registry";
 import { getTerminalWelcome, subscribeTerminalWelcome } from "./terminalWelcomeState";
+import { getNextSteps, recordNextSteps } from "./nextSteps";
+import { getGitActivity, recordGitActivity } from "./gitActivityStore";
+import { getPorts, recordPorts } from "./portStore";
+import { getTask, startTask } from "./taskStore";
+import { getSensitiveOutput, recordSensitiveOutput } from "./sensitiveOutputStore";
+import { getEnvironmentWarning, recordEnvironmentWarning } from "./environmentWarnings";
 import { invoke } from "@tauri-apps/api/core";
 import { captureScreenCommandTarget, stageScreenCommand } from "./stageScreenCommand";
 import {
-  interruptTerminalRun, runInActiveTerminalResult, setActiveTerminalPtyId, setActiveTerminalRunner,
+  getActiveTerminalPtyId, interruptTerminalRun, openActiveTerminalSearch, readActiveTerminal, runInActiveTerminalResult, setActiveTerminalPtyId, setActiveTerminalRunner, typeInActiveTerminal,
   subscribeTerminalCommandRuns, type ObservedCommandRun,
 } from "../ai/terminalContext";
 
@@ -68,6 +74,57 @@ async function setup() {
 }
 
 describe("registry receipt integration without native shell processes", () => {
+  it("releases per-pane records on restart and disposal so long-lived workspaces do not retain closed tabs", async () => {
+    const { leaf } = await setup();
+    const seed = () => {
+      recordNextSteps(leaf, { command: "pnpm test", output: "passed", exitCode: 0, cwd: "/project" });
+      recordGitActivity(leaf, { command: "git commit -m test", exitCode: 0, cwd: "/project" });
+      recordPorts(leaf, { command: "pnpm dev", urls: ["http://localhost:3000"] });
+      startTask(leaf, { command: "pnpm build", cwd: "/project" });
+      recordSensitiveOutput(leaf, { command: "echo", output: "sk-abcdefghijklmnopqrstuvwxyz" });
+      recordEnvironmentWarning(leaf, { command: "kubectl --context production delete pod example", cwd: "/project" });
+    };
+    const expectRecords = (present: boolean) => {
+      for (const record of [getNextSteps(leaf), getGitActivity(leaf), getPorts(leaf), getTask(leaf), getSensitiveOutput(leaf), getEnvironmentWarning(leaf)]) {
+        expect(Boolean(record)).toBe(present);
+      }
+    };
+    seed(); expectRecords(true);
+    await restartSession(leaf); expectRecords(false);
+    seed(); expectRecords(true);
+    disposeSession(leaf); expectRecords(false);
+  });
+
+  it("removes global active-terminal actions when their terminal is disposed", async () => {
+    const { leaf } = await setup();
+    setSessionFocused(leaf, true);
+    expect(getActiveTerminalPtyId()).not.toBeNull();
+    expect(readActiveTerminal()).not.toBe("");
+    disposeSession(leaf);
+    expect(getActiveTerminalPtyId()).toBeNull();
+    expect(readActiveTerminal()).toBe("");
+    expect(runInActiveTerminalResult("echo stale")).toEqual({ ok: false, reason: "no-terminal" });
+    expect(typeInActiveTerminal("stale")).toBe(false);
+    expect(openActiveTerminalSearch()).toBe(false);
+  });
+
+  it("routes typing to the current terminal across tab switches and a closed tab", async () => {
+    const first = await setup();
+    const second = await setup();
+    setSessionActive(first.leaf, false);
+    setSessionFocused(second.leaf, true);
+    const secondPty = second.session.ptyId;
+    expect(typeInActiveTerminal("second tab")).toBe(true);
+    expect(fixture.writes[fixture.writes.length - 1]).toEqual({ ptyId: secondPty, data: "second tab" });
+
+    disposeSession(second.leaf);
+    expect(typeInActiveTerminal("closed tab")).toBe(false);
+    setSessionActive(first.leaf, true);
+    setSessionFocused(first.leaf, true);
+    expect(typeInActiveTerminal("first tab")).toBe(true);
+    expect(fixture.writes[fixture.writes.length - 1]).toEqual({ ptyId: first.session.ptyId, data: "first tab" });
+  });
+
   it("shares pending restoration across concurrent/StrictMode mounts before attaching a terminal", async () => {
     const { TerminalScrollbackPersistence } = await import("./scrollbackPersistence");
     let finish!: () => void;

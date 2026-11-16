@@ -22,7 +22,7 @@ import {
 } from "./client";
 import "./BrowserPanel.css";
 
-const LABEL = "husk-browser";
+let nextBrowserInstanceId = 0;
 const STORAGE_KEY = "husk.browser.url";
 const DEFAULT_URL = "https://www.google.com";
 
@@ -47,9 +47,10 @@ function hostName(value: string): string {
  * Rust owns navigation and keeps the child view in the exact same rectangle.
  */
 export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const [instanceId] = useState(() => ++nextBrowserInstanceId);
   const viewportRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const createdRef = useRef(false);
+  const createdRef = useRef<string | null>(null);
   const initialUrlRef = useRef(localStorage.getItem(STORAGE_KEY) || DEFAULT_URL);
   const lastBoundsRef = useRef("");
   const visibleRef = useRef(visible);
@@ -58,6 +59,12 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
   const [phase, setPhase] = useState<BrowserPhase>("connecting");
   const [failure, setFailure] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [readyLabel, setReadyLabel] = useState<string | null>(null);
+  // A retry or rapid close/reopen must never let an old asynchronous create
+  // close the new child view. Each attempt owns a distinct native label.
+  const label = `husk-browser-${instanceId}-${attempt}`;
+  const labelRef = useRef(label);
+  labelRef.current = label;
 
   visibleRef.current = visible;
 
@@ -71,21 +78,22 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
 
   const syncBounds = useCallback(() => {
     const bounds = rect();
-    if (!bounds || !createdRef.current) return;
+    if (!bounds || createdRef.current !== label) return;
     const key = `${Math.round(bounds.x)}:${Math.round(bounds.y)}:${Math.round(bounds.width)}:${Math.round(bounds.height)}`;
     if (key === lastBoundsRef.current) return;
     lastBoundsRef.current = key;
-    void browserSetBounds(LABEL, bounds).catch(() => {
+    void browserSetBounds(label, bounds).catch(() => {
+      if (createdRef.current === label) lastBoundsRef.current = "";
       // A close can race a final layout pass. The next successful creation
       // resets this key and owns positioning again.
     });
-  }, [rect]);
+  }, [label, rect]);
 
   // Receive browser events before creating the child view, so redirects and
   // fast initial loads cannot leave the address bar or loading indicator stale.
   useEffect(() => {
     const nav = onBrowserNav((label, next) => {
-      if (label !== LABEL) return;
+      if (label !== labelRef.current) return;
       initialUrlRef.current = next;
       setUrl(next);
       setInput(next);
@@ -94,7 +102,7 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
       localStorage.setItem(STORAGE_KEY, next);
     });
     const load = onBrowserLoad((label, next, nextPhase) => {
-      if (label !== LABEL) return;
+      if (label !== labelRef.current) return;
       if (nextPhase === "started") {
         setPhase("loading");
         return;
@@ -110,31 +118,40 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
     };
   }, []);
 
-  // Create the native webview once per mount. A retry explicitly tears down a
-  // failed child first, so it cannot leave an invisible stale browser behind.
+  // Each create attempt owns and closes its native child, including when the
+  // panel disappears before the asynchronous create command returns.
   useEffect(() => {
     let cancelled = false;
     let frame = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
     const create = async () => {
+      if (cancelled) return;
       const bounds = rect();
       if (!bounds) {
-        frame = requestAnimationFrame(() => void create());
+        // A hidden or zero-sized workspace must not spin at 60 fps waiting
+        // for layout. A later visible layout will be picked up on retry.
+        retryTimer = setTimeout(() => void create(), 250);
         return;
       }
       setFailure(null);
       setPhase("connecting");
       try {
-        await browserCreate(LABEL, initialUrlRef.current, bounds);
-        if (cancelled) return;
-        createdRef.current = true;
+        await browserCreate(label, initialUrlRef.current, bounds);
+        if (cancelled) {
+          await browserClose(label).catch(() => undefined);
+          return;
+        }
+        createdRef.current = label;
+        setReadyLabel(label);
         lastBoundsRef.current = "";
         syncBounds();
-        await browserSetVisible(LABEL, visibleRef.current);
+        await browserSetVisible(label, visibleRef.current);
         if (!cancelled) setPhase("loading");
       } catch (error) {
         if (!cancelled) {
-          createdRef.current = false;
+          if (createdRef.current === label) createdRef.current = null;
+          void browserClose(label).catch(() => undefined);
           setPhase("error");
           setFailure(errorText(error));
         }
@@ -145,30 +162,38 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
-      const wasCreated = createdRef.current;
-      createdRef.current = false;
+      clearTimeout(retryTimer);
+      const wasCreated = createdRef.current === label;
+      if (wasCreated) createdRef.current = null;
       lastBoundsRef.current = "";
-      if (wasCreated) void browserClose(LABEL);
+      if (wasCreated) void browserClose(label);
     };
-  }, [attempt, rect, syncBounds]);
+  }, [label, rect, syncBounds]);
 
   // Position can change without a ResizeObserver callback when a neighbouring
   // workspace panel moves. Compare rectangles while the browser is visible,
   // but only invoke native code when a value actually changed.
   useEffect(() => {
-    if (!visible || !createdRef.current) return;
-    let frame = 0;
+    if (!visible || readyLabel !== label || createdRef.current !== label) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const track = () => {
       syncBounds();
-      frame = requestAnimationFrame(track);
+      timer = setTimeout(track, 120);
     };
-    frame = requestAnimationFrame(track);
-    return () => cancelAnimationFrame(frame);
-  }, [syncBounds, visible]);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncBounds);
+    if (viewportRef.current) observer?.observe(viewportRef.current);
+    window.addEventListener("resize", syncBounds);
+    track();
+    return () => {
+      clearTimeout(timer);
+      observer?.disconnect();
+      window.removeEventListener("resize", syncBounds);
+    };
+  }, [label, readyLabel, syncBounds, visible]);
 
   useEffect(() => {
-    if (!createdRef.current) return;
-    void browserSetVisible(LABEL, visible).catch((error) => {
+    if (createdRef.current !== label) return;
+    void browserSetVisible(label, visible).catch((error) => {
       if (visible) {
         setPhase("error");
         setFailure(errorText(error));
@@ -178,7 +203,7 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
       lastBoundsRef.current = "";
       requestAnimationFrame(syncBounds);
     }
-  }, [syncBounds, visible]);
+  }, [label, readyLabel, syncBounds, visible]);
 
   useEffect(() => {
     const focusLocation = (event: KeyboardEvent) => {
@@ -197,17 +222,17 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
     initialUrlRef.current = next;
     setFailure(null);
     setPhase("loading");
-    if (!createdRef.current) {
+    if (createdRef.current !== label) {
       setAttempt((value) => value + 1);
       return;
     }
     try {
-      await browserNavigate(LABEL, next);
+      await browserNavigate(label, next);
     } catch (error) {
       setPhase("error");
       setFailure(errorText(error));
     }
-  }, []);
+  }, [label]);
 
   // Utilities such as Ports can send a local endpoint straight to Husk's
   // browser. The caller also persists the URL, so this event matters only
@@ -222,27 +247,27 @@ export function BrowserPanel({ visible, onClose }: { visible: boolean; onClose: 
   }, [navigate]);
 
   const history = useCallback(async (action: "back" | "forward" | "reload") => {
-    if (!createdRef.current) return;
+    if (createdRef.current !== label) return;
     setFailure(null);
     setPhase("loading");
     try {
-      await browserGo(LABEL, action);
+      await browserGo(label, action);
     } catch (error) {
       setPhase("error");
       setFailure(errorText(error));
     }
-  }, []);
+  }, [label]);
 
   const retry = useCallback(async () => {
     setFailure(null);
     setPhase("connecting");
-    if (createdRef.current) {
-      await browserClose(LABEL).catch(() => undefined);
-      createdRef.current = false;
+    if (createdRef.current === label) {
+      await browserClose(label).catch(() => undefined);
+      createdRef.current = null;
       lastBoundsRef.current = "";
     }
     setAttempt((value) => value + 1);
-  }, []);
+  }, [label]);
 
   const openExternal = useCallback(async () => {
     try {

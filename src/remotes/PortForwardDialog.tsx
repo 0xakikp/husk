@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   addPortForward,
@@ -29,6 +29,21 @@ interface PortForwardDialogProps {
   onClose: () => void;
 }
 
+type NativeForwardStatus = { id: string; active: boolean; error: string | null };
+
+/** A saved tunnel is only a configuration. Its running state belongs to the
+ * current native process, not to localStorage from a previous app session. */
+export function reconcileForwardActivity(
+  saved: PortForward[],
+  statuses: NativeForwardStatus[],
+  pending: ReadonlySet<string> = new Set(),
+): PortForward[] {
+  const running = new Set(statuses.filter((status) => status.active).map((status) => status.id));
+  return saved.map((forward) => pending.has(forward.id)
+    ? forward
+    : { ...forward, active: running.has(forward.id) });
+}
+
 export function PortForwardDialog({
   connectionId,
   onClose,
@@ -36,11 +51,68 @@ export function PortForwardDialog({
   const [forwards, setForwards] = useState<PortForward[]>(
     getPortForwards(connectionId)
   );
+  const [checking, setChecking] = useState(true);
+  const [statusError, setStatusError] = useState(false);
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+  const pendingRef = useRef(new Set<string>());
+  const generationRef = useRef(0);
+  const pollingGenerationRef = useRef<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [type, setType] = useState<"local" | "remote" | "dynamic">("local");
   const [localPort, setLocalPort] = useState("");
   const [remoteHost, setRemoteHost] = useState("");
   const [remotePort, setRemotePort] = useState("");
+
+  const refreshRunning = useCallback(async () => {
+    const generation = generationRef.current;
+    if (pollingGenerationRef.current === generation) return;
+    pollingGenerationRef.current = generation;
+    try {
+      const statuses = await invoke<NativeForwardStatus[]>("port_forward_list");
+      if (generation !== generationRef.current) return;
+      const saved = getPortForwards(connectionId);
+      const reconciled = reconcileForwardActivity(saved, statuses, pendingRef.current);
+      for (const forward of reconciled) {
+        const previous = saved.find((candidate) => candidate.id === forward.id);
+        if (previous && previous.active !== forward.active) {
+          updatePortForward(forward.id, { active: forward.active });
+        }
+      }
+      setForwards((current) => {
+        const next = getPortForwards(connectionId);
+        return current.length === next.length && current.every((forward, index) =>
+          forward.id === next[index].id && forward.active === next[index].active
+        ) ? current : next;
+      });
+      setStatusError(false);
+    } catch {
+      // Do not present a stale saved switch as confirmed running state.
+      if (generation === generationRef.current) setStatusError(true);
+    } finally {
+      if (pollingGenerationRef.current === generation) pollingGenerationRef.current = null;
+      if (generation === generationRef.current) setChecking(false);
+    }
+  }, [connectionId]);
+
+  useEffect(() => {
+    generationRef.current += 1;
+    setChecking(true);
+    void refreshRunning();
+    const timer = window.setInterval(() => void refreshRunning(), 3_000);
+    const onFocus = () => void refreshRunning();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      generationRef.current += 1;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshRunning]);
+
+  const setPending = (id: string, value: boolean) => {
+    if (value) pendingRef.current.add(id);
+    else pendingRef.current.delete(id);
+    setPendingIds(new Set(pendingRef.current));
+  };
 
   const handleAdd = () => {
     const lPort = parseInt(localPort, 10);
@@ -50,7 +122,7 @@ export function PortForwardDialog({
     if (rPort !== undefined && (isNaN(rPort) || rPort < 1 || rPort > 65535))
       return;
 
-    const newPf = addPortForward({
+    addPortForward({
       connectionId,
       type,
       localPort: lPort,
@@ -59,7 +131,7 @@ export function PortForwardDialog({
       active: false,
     });
 
-    setForwards([...forwards, newPf]);
+    setForwards(getPortForwards(connectionId));
     setShowAdd(false);
     setLocalPort("");
     setRemoteHost("");
@@ -67,19 +139,21 @@ export function PortForwardDialog({
   };
 
   const toggleForward = async (id: string) => {
-    const pf = forwards.find((f) => f.id === id);
+    if (checking || statusError || pendingRef.current.has(id)) return;
+    const pf = getPortForwards(connectionId).find((f) => f.id === id);
     if (!pf) return;
 
     const conn = getConnectionById(connectionId);
     if (!conn) return;
 
+    setPending(id, true);
     if (pf.active) {
       // Stop the tunnel
       try {
         await invoke("port_forward_stop", { id: pf.id });
         const updated = updatePortForward(id, { active: false });
         if (updated) {
-          setForwards(forwards.map((f) => (f.id === id ? updated : f)));
+          setForwards(getPortForwards(connectionId));
         }
       } catch (e) {
         toast({ title: "Failed to stop tunnel: " + String(e), variant: "error" });
@@ -106,18 +180,35 @@ export function PortForwardDialog({
         });
         const updated = updatePortForward(id, { active: true });
         if (updated) {
-          setForwards(forwards.map((f) => (f.id === id ? updated : f)));
+          setForwards(getPortForwards(connectionId));
         }
-        toast({ title: "Tunnel started: " + getDescription(pf), variant: "success" });
+        toast({ title: "Tunnel requested: " + getDescription(pf), variant: "success" });
       } catch (e) {
         toast({ title: "Failed to start tunnel: " + String(e), variant: "error" });
       }
     }
+    setPending(id, false);
+    void refreshRunning();
   };
 
-  const removeForward = (id: string) => {
+  const removeForward = async (id: string) => {
+    if (checking || statusError || pendingRef.current.has(id)) return;
+    const forward = getPortForwards(connectionId).find((candidate) => candidate.id === id);
+    if (!forward) return;
+    setPending(id, true);
+    if (forward.active) {
+      try {
+        await invoke("port_forward_stop", { id });
+      } catch (error) {
+        toast({ title: "Failed to stop tunnel: " + String(error), variant: "error" });
+        setPending(id, false);
+        void refreshRunning();
+        return;
+      }
+    }
     deletePortForward(id);
-    setForwards(forwards.filter((f) => f.id !== id));
+    setForwards(getPortForwards(connectionId));
+    setPending(id, false);
   };
 
   const getDescription = (pf: PortForward) => {
@@ -133,6 +224,9 @@ export function PortForwardDialog({
 
   return (
     <Modal title="Port Forwards" onClose={onClose} className="max-w-md">
+
+      {checking && <p className="text-xs text-muted-foreground mb-3">Checking running tunnels…</p>}
+      {statusError && <p role="alert" className="text-xs text-destructive mb-3">Could not verify running tunnels. Controls will be available when the connection recovers.</p>}
 
       {forwards.length === 0 && !showAdd && (
         <p className="text-muted-foreground text-sm text-center py-4">
@@ -159,12 +253,20 @@ export function PortForwardDialog({
               </div>
             </div>
             <div className="flex items-center gap-2 ml-2">
-              <Switch
-                checked={pf.active}
-                onCheckedChange={() => toggleForward(pf.id)}
-              />
+              {checking || statusError ? (
+                <span className="text-xs text-muted-foreground">{checking ? "Checking…" : "Unknown"}</span>
+              ) : (
+                <Switch
+                  checked={pf.active}
+                  disabled={pendingIds.has(pf.id)}
+                  aria-label={`${pf.active ? "Stop" : "Start"} ${getDescription(pf)}`}
+                  onCheckedChange={() => toggleForward(pf.id)}
+                />
+              )}
               <button
                 onClick={() => removeForward(pf.id)}
+                disabled={checking || statusError || pendingIds.has(pf.id)}
+                aria-label={`Remove ${getDescription(pf)}`}
                 className="text-muted-foreground hover:text-red-500"
               >
                 <HugeiconsIcon icon={Delete01Icon} size={14} />

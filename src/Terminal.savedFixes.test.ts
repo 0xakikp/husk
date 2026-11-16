@@ -50,7 +50,7 @@ function handle(leafId: number) {
   const value = {
     getTerm: vi.fn(() => null), getSelection: vi.fn(() => state.selected), hasSelection: vi.fn(() => Boolean(state.selected)),
     getLastCommandRun: vi.fn(() => null), getPtyId: vi.fn(() => leafId * 10), focus: vi.fn(),
-    write: vi.fn(), typeText: vi.fn(), clear: vi.fn(), clearSelection: vi.fn(), selectAll: vi.fn(),
+    write: vi.fn(), typeText: vi.fn(), clear: vi.fn(), clearSearch: vi.fn(), search: vi.fn(), clearSelection: vi.fn(), selectAll: vi.fn(),
   };
   state.handles.set(leafId, value); return value;
 }
@@ -126,6 +126,45 @@ it("still updates registry focus and active state when a terminal is genuinely a
   expect(setSessionFocused).toHaveBeenCalledExactlyOnceWith(73, true);
   expect(setSessionActive).toHaveBeenCalledExactlyOnceWith(73, true);
   expect(createSession).toHaveBeenCalledOnce();
+});
+
+it("opens terminal find from the session callback and resumes typing when the terminal is clicked", async () => {
+  await render();
+  const terminal = state.handles.get(73)!;
+  const callbacks = vi.mocked(setSessionCallbacks).mock.lastCall![1];
+  await act(async () => callbacks.onSearchOpen?.());
+  const input = container.querySelector<HTMLInputElement>('.term-search input');
+  expect(input).not.toBeNull();
+  expect(callbacks.onKey?.(new KeyboardEvent('keydown', { key: 'x' }))).toBe(false);
+
+  await act(async () => input!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+  expect(terminal.focus).not.toHaveBeenCalled();
+  expect(container.querySelector('.term-search')).not.toBeNull();
+
+  await act(async () => container.querySelector('.terminal-host')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+  expect(container.querySelector('.term-search')).toBeNull();
+  expect(terminal.clearSearch).toHaveBeenCalledOnce();
+  expect(terminal.focus).toHaveBeenCalledOnce();
+  expect(callbacks.onKey?.(new KeyboardEvent('keydown', { key: 'x' }))).toBeUndefined();
+  expectNoShellMutation();
+});
+
+it("discards a hidden tab's search without stealing focus from the next tab", async () => {
+  const terminal = handle(73);
+  const view = (active: boolean) => createElement(TerminalView, { leafId: 73, active });
+  await act(async () => root.render(view(true)));
+  const callbacks = vi.mocked(setSessionCallbacks).mock.lastCall![1];
+  await act(async () => callbacks.onSearchOpen?.('error'));
+  expect(container.querySelector('.term-search')).not.toBeNull();
+  expect(callbacks.onKey?.(new KeyboardEvent('keydown', { key: 'a' }))).toBe(false);
+  await act(async () => root.render(view(false)));
+  expect(container.querySelector('.term-search')).toBeNull();
+  expect(terminal.clearSearch).toHaveBeenCalledOnce();
+  expect(terminal.focus).not.toHaveBeenCalled();
+  await act(async () => root.render(view(true)));
+  const reactivated = vi.mocked(setSessionCallbacks).mock.lastCall![1];
+  expect(reactivated.onKey?.(new KeyboardEvent('keydown', { key: 'a' }))).toBeUndefined();
+  expectNoShellMutation();
 });
 
 it("activates an inactive split before focusing its terminal when its welcome is dismissed", async () => {

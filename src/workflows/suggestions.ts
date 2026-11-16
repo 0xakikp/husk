@@ -334,10 +334,18 @@ export function clearWorkflowSuggestionsForWorkspace(workspaceRoot: string): voi
 }
 
 /** Re-evaluate after a successful command has been committed to Timeline. */
-export async function refreshWorkflowSuggestion(leafId: number, workspaceRoot = getWorkspaceRoot()): Promise<void> {
+export async function refreshWorkflowSuggestion(
+  leafId: number,
+  workspaceRoot = getWorkspaceRoot(),
+  isCurrent: () => boolean = () => true,
+): Promise<void> {
+  if (!isCurrent()) return;
   const prefs = getPrefs();
   if (!workspaceRoot || !prefs.workflowSuggestionsEnabled) return;
   const events = await queryTimeline(["command", "command_failed"], 30, 240, workspaceRoot);
+  // A pane may close or restart while Timeline is loading. Do not recreate a
+  // suggestion for that obsolete shell after its per-pane state was cleared.
+  if (!isCurrent()) return;
   const candidate = detectWorkflowSuggestion(events, workspaceRoot);
   const suggestion = candidate ? classifyWorkflowSuggestion(candidate, loadWorkflows()) : null;
   if (

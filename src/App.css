@@ -1904,6 +1904,16 @@ button {
   color: var(--text);
 }
 
+.jobs-log-note {
+  margin-top: 10px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.jobs-log-note + .jobs-log {
+  margin-top: 5px;
+}
+
 .model-detect {
   display: flex;
   flex-direction: column;

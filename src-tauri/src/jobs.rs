@@ -256,6 +256,17 @@ pub struct JobsState {
     next_id: AtomicU32,
 }
 
+impl Drop for JobsState {
+    fn drop(&mut self) {
+        // Pump/reaper threads hold their own Arcs, so dropping the registry
+        // alone does not run BackgroundProc::drop while a job is still alive.
+        let procs = self.procs.read().unwrap_or_else(|error| error.into_inner());
+        for proc in procs.values() {
+            proc.kill();
+        }
+    }
+}
+
 #[tauri::command]
 pub fn shell_bg_spawn(
     state: tauri::State<JobsState>,
@@ -303,14 +314,21 @@ pub fn shell_bg_kill(state: tauri::State<JobsState>, handle: u32) -> Result<(), 
     Ok(())
 }
 
-/// Remove a handle entirely (kills it via Drop if still running).
+/// Remove a handle entirely and stop the job even while its pump threads hold
+/// references to it. Otherwise removal leaves an invisible child running.
 #[tauri::command]
 pub fn shell_bg_remove(state: tauri::State<JobsState>, handle: u32) -> Result<(), String> {
-    state
-        .procs
-        .write()
-        .map_err(|e| e.to_string())?
-        .remove(&handle);
+    remove_job(&state.procs, handle)
+}
+
+fn remove_job(
+    procs: &RwLock<HashMap<u32, Arc<BackgroundProc>>>,
+    handle: u32,
+) -> Result<(), String> {
+    let removed = procs.write().map_err(|e| e.to_string())?.remove(&handle);
+    if let Some(proc) = removed {
+        proc.kill();
+    }
     Ok(())
 }
 
@@ -320,4 +338,31 @@ pub fn shell_bg_list(state: tauri::State<JobsState>) -> Result<Vec<BackgroundPro
     let mut out: Vec<BackgroundProcInfo> = map.iter().map(|(id, p)| p.info(*id)).collect();
     out.sort_by_key(|i| i.handle);
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn removing_a_job_kills_the_child_even_while_reader_threads_hold_it() {
+        let job = spawn("/bin/sleep".into(), vec!["30".into()], None).unwrap();
+        assert!(job.child.try_wait().unwrap().is_none());
+        let state = JobsState::default();
+        state.procs.write().unwrap().insert(1, job.clone());
+        remove_job(&state.procs, 1).unwrap();
+        assert!(job.child.wait().is_ok());
+        assert!(state.procs.read().unwrap().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dropping_the_job_registry_stops_a_running_child() {
+        let job = spawn("/bin/sleep".into(), vec!["30".into()], None).unwrap();
+        let state = JobsState::default();
+        state.procs.write().unwrap().insert(1, job.clone());
+        drop(state);
+        assert!(job.child.wait().is_ok());
+    }
 }

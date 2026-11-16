@@ -1,18 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::Read;
-use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::process::{Command, Stdio};
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 /// Lock a mutex, recovering from poison if a previous thread panicked.
 /// This prevents cascading panics when one thread dies while holding a lock.
 fn lock_forwards(
     m: &Mutex<HashMap<String, ForwardHandle>>,
-) -> std::sync::MutexGuard<HashMap<String, ForwardHandle>> {
+) -> std::sync::MutexGuard<'_, HashMap<String, ForwardHandle>> {
     match m.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
@@ -68,47 +66,70 @@ impl PortForwardManager {
     }
 }
 
+impl Drop for PortForwardManager {
+    fn drop(&mut self) {
+        for handle in lock_forwards(&self.forwards).values() {
+            handle.abort.store(true, Ordering::Release);
+        }
+    }
+}
+
+fn remove_if_current(
+    forwards: &Mutex<HashMap<String, ForwardHandle>>,
+    id: &str,
+    abort: &Arc<AtomicBool>,
+) {
+    let mut forwards = lock_forwards(forwards);
+    if forwards
+        .get(id)
+        .is_some_and(|handle| Arc::ptr_eq(&handle.abort, abort))
+    {
+        forwards.remove(id);
+    }
+}
+
 #[tauri::command]
 pub fn port_forward_start(
     state: tauri::State<'_, PortForwardManager>,
     config: PortForwardConfig,
 ) -> Result<PortForwardStatus, String> {
-    // Stop existing forward with same ID if any
-    {
-        let mut forwards = lock_forwards(&state.forwards);
-        if let Some(existing) = forwards.remove(&config.id) {
-            existing.abort.store(true, Ordering::Relaxed);
-        }
-    }
+    // Validate before replacing an existing working tunnel.
+    let ssh_args = build_ssh_args(&config)?;
 
     let abort = Arc::new(AtomicBool::new(false));
-    let config_clone = config.clone();
-    let forwards = state.forwards.clone();
     let id = config.id.clone();
-    let abort_clone = abort.clone();
-
-    thread::spawn(move || {
-        let result = run_forward(config_clone, abort_clone);
-        let mut forwards = lock_forwards(&forwards);
-        forwards.remove(&id);
-        if let Err(e) = result {
-            eprintln!("Port forward {} error: {}", id, e);
-        }
-    });
-
     {
         let mut forwards = lock_forwards(&state.forwards);
-        forwards.insert(
-            config.id.clone(),
+        if let Some(existing) = forwards.insert(
+            id.clone(),
             ForwardHandle {
                 config: config.clone(),
                 abort: abort.clone(),
             },
-        );
+        ) {
+            existing.abort.store(true, Ordering::Release);
+        }
+    }
+
+    let worker_forwards = state.forwards.clone();
+    let worker_id = id.clone();
+    let worker_abort = abort.clone();
+    if let Err(error) = thread::Builder::new()
+        .name("husk-port-forward".into())
+        .spawn(move || {
+            let result = run_ssh_forward(ssh_args, worker_abort.clone());
+            remove_if_current(&worker_forwards, &worker_id, &worker_abort);
+            if let Err(error) = result {
+                eprintln!("Port forward {worker_id} error: {error}");
+            }
+        })
+    {
+        remove_if_current(&state.forwards, &id, &abort);
+        return Err(format!("Could not start port forward worker: {error}"));
     }
 
     Ok(PortForwardStatus {
-        id: config.id,
+        id,
         active: true,
         error: None,
     })
@@ -121,7 +142,7 @@ pub fn port_forward_stop(
 ) -> Result<PortForwardStatus, String> {
     let mut forwards = lock_forwards(&state.forwards);
     if let Some(handle) = forwards.remove(&id) {
-        handle.abort.store(true, Ordering::Relaxed);
+        handle.abort.store(true, Ordering::Release);
         Ok(PortForwardStatus {
             id,
             active: false,
@@ -145,19 +166,28 @@ pub fn port_forward_list(state: tauri::State<'_, PortForwardManager>) -> Vec<Por
         .collect()
 }
 
-fn run_forward(config: PortForwardConfig, abort: Arc<AtomicBool>) -> Result<(), String> {
-    match config.forward_type.as_str() {
-        "local" => run_local_forward(config, abort),
-        "remote" => run_remote_forward(config, abort),
-        "dynamic" => run_dynamic_forward(config, abort),
-        _ => Err(format!("Unknown forward type: {}", config.forward_type)),
+fn build_ssh_args(config: &PortForwardConfig) -> Result<Vec<String>, String> {
+    if config.auth_type == "password" {
+        return Err("Port forwarding uses non-interactive SSH; password profiles are not supported. Use SSH agent or an unlocked key.".into());
     }
-}
-
-fn build_ssh_args(config: &PortForwardConfig) -> Vec<String> {
+    if config.id.is_empty() || config.host.is_empty() || config.host.starts_with('-') {
+        return Err("Port forward requires an ID and a valid SSH host.".into());
+    }
+    if config.port == 0 || config.local_port == 0 {
+        return Err("Port forward requires nonzero SSH and local ports.".into());
+    }
+    if config.user.starts_with('-') {
+        return Err("Invalid SSH user for port forward.".into());
+    }
     let mut args = vec![
         "-o".to_string(),
-        "BatchMode=no".to_string(),
+        // The process has no interactive stdin; do not hang waiting for a
+        // password prompt that the user cannot answer here.
+        "BatchMode=yes".to_string(),
+        "-o".to_string(),
+        "ExitOnForwardFailure=yes".to_string(),
+        "-o".to_string(),
+        "ConnectTimeout=10".to_string(),
         "-o".to_string(),
         "ServerAliveInterval=30".to_string(),
         "-o".to_string(),
@@ -172,65 +202,55 @@ fn build_ssh_args(config: &PortForwardConfig) -> Vec<String> {
         args.push("-i".to_string());
         args.push(key_path.clone());
     }
-
-    if !config.user.is_empty() {
-        args.push(format!("{}@{}", config.user, config.host));
+    args.push("-N".to_string());
+    match config.forward_type.as_str() {
+        "local" => {
+            let remote_port = config
+                .remote_port
+                .filter(|port| *port != 0)
+                .ok_or("Local forward requires a remote port.")?;
+            let remote_host = config
+                .remote_host
+                .as_deref()
+                .filter(|host| !host.is_empty())
+                .unwrap_or("localhost");
+            args.push("-L".to_string());
+            args.push(format!(
+                "127.0.0.1:{}:{remote_host}:{remote_port}",
+                config.local_port
+            ));
+        }
+        "remote" => {
+            let remote_port = config
+                .remote_port
+                .filter(|port| *port != 0)
+                .ok_or("Remote forward requires a remote port.")?;
+            let remote_host = config
+                .remote_host
+                .as_deref()
+                .filter(|host| !host.is_empty())
+                .unwrap_or("127.0.0.1");
+            args.push("-R".to_string());
+            args.push(format!(
+                "{remote_host}:{remote_port}:127.0.0.1:{}",
+                config.local_port
+            ));
+        }
+        "dynamic" => {
+            args.push("-D".to_string());
+            args.push(format!("127.0.0.1:{}", config.local_port));
+        }
+        _ => return Err(format!("Unknown forward type: {}", config.forward_type)),
+    }
+    args.push(if config.user.is_empty() {
+        config.host.clone()
     } else {
-        args.push(config.host.clone());
-    }
-
-    args
+        format!("{}@{}", config.user, config.host)
+    });
+    Ok(args)
 }
 
-fn run_local_forward(config: PortForwardConfig, abort: Arc<AtomicBool>) -> Result<(), String> {
-    let local_addr = SocketAddr::from_str(&format!("127.0.0.1:{}", config.local_port))
-        .map_err(|e| format!("Invalid local address: {}", e))?;
-
-    let listener =
-        TcpListener::bind(local_addr).map_err(|e| format!("Failed to bind local port: {}", e))?;
-    listener
-        .set_nonblocking(true)
-        .map_err(|e| format!("Failed to set nonblocking: {}", e))?;
-
-    let remote_host = config
-        .remote_host
-        .clone()
-        .unwrap_or_else(|| "localhost".to_string());
-    let remote_port = config.remote_port.unwrap_or(0);
-
-    loop {
-        if abort.load(Ordering::Relaxed) {
-            return Ok(());
-        }
-
-        match listener.accept() {
-            Ok((local_stream, _)) => {
-                let mut ssh_args = build_ssh_args(&config);
-                ssh_args.push("-L".to_string());
-                ssh_args.push(format!(
-                    "{}:{}:{}",
-                    config.local_port, remote_host, remote_port
-                ));
-                ssh_args.push("-N".to_string()); // No command execution
-                let abort_clone = abort.clone();
-
-                thread::spawn(move || {
-                    let _ = handle_ssh_forward_connection(local_stream, ssh_args, abort_clone);
-                });
-            }
-            Err(e) => {
-                eprintln!("Local forward accept error: {}", e);
-            }
-        }
-    }
-}
-
-fn handle_ssh_forward_connection(
-    mut local_stream: TcpStream,
-    ssh_args: Vec<String>,
-    abort: Arc<AtomicBool>,
-) -> Result<(), String> {
-    // Spawn SSH process with port forwarding
+fn run_ssh_forward(ssh_args: Vec<String>, abort: Arc<AtomicBool>) -> Result<(), String> {
     let mut cmd = Command::new("ssh");
     cmd.args(&ssh_args)
         .stdin(Stdio::null())
@@ -241,119 +261,112 @@ fn handle_ssh_forward_connection(
         .spawn()
         .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
 
-    // Wait for abort or connection close
     loop {
-        if abort.load(Ordering::Relaxed) {
+        if abort.load(Ordering::Acquire) {
             let _ = child.kill();
+            let _ = child.wait();
             return Ok(());
         }
-
-        // Check if connection is still alive
-        let mut buf = [0u8; 1];
-        match local_stream.read(&mut buf) {
-            Ok(0) => {
-                let _ = child.kill();
-                return Ok(());
-            }
-            Ok(_) => {
-                // Data available, but we're just monitoring
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(std::time::Duration::from_millis(100));
-            }
-            Err(_) => {
-                let _ = child.kill();
-                return Ok(());
-            }
-        }
-    }
-}
-
-fn run_remote_forward(config: PortForwardConfig, abort: Arc<AtomicBool>) -> Result<(), String> {
-    let remote_host = config
-        .remote_host
-        .clone()
-        .unwrap_or_else(|| "localhost".to_string());
-    let remote_port = config.remote_port.unwrap_or(0);
-
-    let mut ssh_args = build_ssh_args(&config);
-    ssh_args.push("-R".to_string());
-    ssh_args.push(format!(
-        "{}:{}:{}",
-        config.local_port, remote_host, remote_port
-    ));
-    ssh_args.push("-N".to_string());
-
-    let mut cmd = Command::new("ssh");
-    cmd.args(&ssh_args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
-
-    // Wait for abort
-    while !abort.load(Ordering::Relaxed) {
-        thread::sleep(std::time::Duration::from_millis(500));
-
-        // Check if child exited
         match child.try_wait() {
             Ok(Some(status)) => {
                 if !status.success() {
                     return Err(format!(
-                        "SSH remote forward exited with code: {:?}",
+                        "SSH port forward exited with code: {:?}",
                         status.code()
                     ));
                 }
                 return Ok(());
             }
-            Ok(None) => continue,
+            Ok(None) => thread::sleep(Duration::from_millis(100)),
             Err(e) => return Err(format!("Failed to check SSH status: {}", e)),
         }
     }
-
-    let _ = child.kill();
-    Ok(())
 }
 
-fn run_dynamic_forward(config: PortForwardConfig, abort: Arc<AtomicBool>) -> Result<(), String> {
-    let mut ssh_args = build_ssh_args(&config);
-    ssh_args.push("-D".to_string());
-    ssh_args.push(format!("127.0.0.1:{}", config.local_port));
-    ssh_args.push("-N".to_string());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let mut cmd = Command::new("ssh");
-    cmd.args(&ssh_args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn SSH: {}", e))?;
-
-    // Wait for abort
-    while !abort.load(Ordering::Relaxed) {
-        thread::sleep(std::time::Duration::from_millis(500));
-
-        // Check if child exited
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                if !status.success() {
-                    return Err(format!(
-                        "SSH dynamic forward exited with code: {:?}",
-                        status.code()
-                    ));
-                }
-                return Ok(());
-            }
-            Ok(None) => continue,
-            Err(e) => return Err(format!("Failed to check SSH status: {}", e)),
+    fn config(forward_type: &str) -> PortForwardConfig {
+        PortForwardConfig {
+            id: "fixture".into(),
+            connection_id: "connection".into(),
+            host: "example.test".into(),
+            port: 22,
+            user: "alice".into(),
+            auth_type: "key".into(),
+            password: None,
+            private_key_path: None,
+            passphrase: None,
+            forward_type: forward_type.into(),
+            local_port: 8080,
+            remote_host: Some("db.internal".into()),
+            remote_port: Some(5432),
         }
     }
 
-    let _ = child.kill();
-    Ok(())
+    #[test]
+    fn local_forward_lets_ssh_own_the_listener_and_destination_is_last() {
+        let args = build_ssh_args(&config("local")).unwrap();
+        assert_eq!(args.last().map(String::as_str), Some("alice@example.test"));
+        assert_eq!(
+            args.windows(2)
+                .find(|pair| pair[0] == "-L")
+                .map(|pair| pair[1].as_str()),
+            Some("127.0.0.1:8080:db.internal:5432")
+        );
+        assert!(args.contains(&"ExitOnForwardFailure=yes".to_string()));
+        assert!(args.contains(&"BatchMode=yes".to_string()));
+    }
+
+    #[test]
+    fn remote_and_dynamic_forward_use_correct_ports() {
+        let args = build_ssh_args(&config("remote")).unwrap();
+        assert_eq!(
+            args.windows(2)
+                .find(|pair| pair[0] == "-R")
+                .map(|pair| pair[1].as_str()),
+            Some("db.internal:5432:127.0.0.1:8080")
+        );
+        let args = build_ssh_args(&config("dynamic")).unwrap();
+        assert_eq!(
+            args.windows(2)
+                .find(|pair| pair[0] == "-D")
+                .map(|pair| pair[1].as_str()),
+            Some("127.0.0.1:8080")
+        );
+    }
+
+    #[test]
+    fn invalid_forward_does_not_start_or_replace_a_tunnel() {
+        let mut invalid = config("local");
+        invalid.remote_port = None;
+        assert!(build_ssh_args(&invalid).is_err());
+        invalid = config("unexpected");
+        assert!(build_ssh_args(&invalid).is_err());
+        invalid = config("dynamic");
+        invalid.host = "-oProxyCommand=bad".into();
+        assert!(build_ssh_args(&invalid).is_err());
+        invalid = config("dynamic");
+        invalid.auth_type = "password".into();
+        assert!(build_ssh_args(&invalid).unwrap_err().contains("SSH agent"));
+    }
+
+    #[test]
+    fn an_old_worker_cannot_remove_its_replacement() {
+        let manager = PortForwardManager::new();
+        let old_abort = Arc::new(AtomicBool::new(false));
+        let new_abort = Arc::new(AtomicBool::new(false));
+        lock_forwards(&manager.forwards).insert(
+            "fixture".into(),
+            ForwardHandle {
+                config: config("local"),
+                abort: new_abort.clone(),
+            },
+        );
+        remove_if_current(&manager.forwards, "fixture", &old_abort);
+        assert_eq!(lock_forwards(&manager.forwards).len(), 1);
+        remove_if_current(&manager.forwards, "fixture", &new_abort);
+        assert!(lock_forwards(&manager.forwards).is_empty());
+    }
 }

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   getPromptPosition,
@@ -127,6 +127,22 @@ export function TerminalView({
   const screenRef = useRef<HTMLElement | null>(null);
   const mouseDownOnOverlayRef = useRef(false);
 
+  const openSearch = useCallback((initialQuery?: string) => {
+    // The native xterm key handler runs before React commits the search field.
+    // Block any following keystroke from reaching the shell in that interval.
+    searchOpenRef.current = true;
+    setSearchOpen(true);
+    if (initialQuery !== undefined) setQuery(initialQuery);
+  }, []);
+
+  const closeSearch = useCallback((restoreFocus = true) => {
+    searchOpenRef.current = false;
+    setSearchOpen(false);
+    setQuery("");
+    handleRef.current?.clearSearch();
+    if (restoreFocus) handleRef.current?.focus();
+  }, []);
+
   /* The global launcher resolves this opener from the focused leaf; the shared
      workspace Inspector owns the visible Logs panel, not this xterm surface. */
   useEffect(() => registerTerminalLogsOpener(leafId, () => onOpenLogs?.(leafId)), [leafId, onOpenLogs]);
@@ -210,6 +226,7 @@ export function TerminalView({
         onSplit: (dir) => onSplit?.(dir),
         onFocusDirection: (dir) => _onFocusDirection?.(dir),
         onHistoryOpen: () => openHistory(),
+        onSearchOpen: openSearch,
         onKey: (e) => {
           if (e.type !== "keydown") return undefined;
           // An HTML overlay owns input while it is open. Returning false here
@@ -270,12 +287,18 @@ export function TerminalView({
         },
       });
     }
-  }, [leafId, active, onFocus, onCwd, onCommandComplete, onSplit, _onFocusDirection, sessionReady]);
+  }, [leafId, active, onFocus, onCwd, onCommandComplete, onSplit, _onFocusDirection, sessionReady, openSearch]);
 
   useEffect(() => {
     if (!active || !prefs.aiEnabled) { setScreenSelection(null); screenOpenRef.current = false; }
-    if (!active) { setHistoryOpen(false); historyOpenRef.current = false; }
-  }, [active, prefs.aiEnabled]);
+    if (!active) {
+      setHistoryOpen(false);
+      historyOpenRef.current = false;
+      // A hidden tab must not keep rejecting keys when it becomes active again.
+      // Do not restore focus here: another tab or an editor now owns it.
+      if (searchOpenRef.current) closeSearch(false);
+    }
+  }, [active, prefs.aiEnabled, closeSearch]);
 
   // ── Autocomplete ──────────────────────────────────────────────────────────
   const {
@@ -299,14 +322,6 @@ export function TerminalView({
   });
 
   // ── Search ────────────────────────────────────────────────────────────────
-  const closeSearch = () => {
-    searchOpenRef.current = false;
-    setSearchOpen(false);
-    setQuery("");
-    handleRef.current?.clearSearch();
-    handleRef.current?.focus();
-  };
-
   useEffect(() => {
     if (!searchOpen || !query) return;
     handleRef.current?.search(query);
@@ -602,8 +617,12 @@ export function TerminalView({
       style={{ backgroundColor: buildTerminalTheme(prefs.terminalTheme, prefs.theme === "dark", prefs.background?.enabled, prefs.accentColor).background }}
       onMouseDown={(e) => {
         handleTerminalMouseDown(e);
+        // Search and other overlays own their inputs. Focusing xterm for every
+        // descendant mousedown could leave its key handler suppressing typing.
+        if (mouseDownOnOverlayRef.current) return;
         onFocus?.();
-        handleRef.current?.focus();
+        if (searchOpenRef.current) closeSearch();
+        else handleRef.current?.focus();
         dismissAuto();
       }}
       onClick={handleTerminalClick}
@@ -687,7 +706,7 @@ export function TerminalView({
             type="button"
             className="term-search-close"
             aria-label="Close search"
-            onClick={closeSearch}
+            onClick={() => closeSearch()}
           >
             ×
           </button>
@@ -750,7 +769,7 @@ export function TerminalView({
                 } },
               });
             }}>Erase scrollback…</button>
-            <button type="button" className="ectx-item" onClick={() => { setMenu(null); searchOpenRef.current = true; setSearchOpen(true); }}>
+            <button type="button" className="ectx-item" onClick={() => { setMenu(null); openSearch(); }}>
               Find…
             </button>
             <button type="button" className="ectx-item" onClick={() => { setMenu(null); openHistory(); }}>
