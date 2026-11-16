@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, normalize, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ invoke: vi.fn(), cwd: "" }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mock.invoke }));
@@ -49,7 +49,11 @@ it("creates and switches branches while protecting dirty files and other worktre
   await createBranch("feature", cwd); expect((await repositorySnapshot(cwd))?.branch).toBe("feature");
   await switchBranch("refs/heads/main", cwd); expect((await repositorySnapshot(cwd))?.branch).toBe("main");
   setup(["worktree", "add", "--", join(fixture, "second"), "feature"]);
-  expect(normalize((await listBranches(cwd)).find((branch) => branch.name === "feature")?.worktreePath ?? "")).toBe(normalize(join(fixture, "second")));
+  const worktreePath = (await listBranches(cwd)).find((branch) => branch.name === "feature")?.worktreePath;
+  expect(worktreePath).toBeTruthy();
+  // Git for Windows may return the long form of the same 8.3 temporary path.
+  const expectedWorktree = statSync(join(fixture, "second"));
+  expect(statSync(worktreePath!)).toMatchObject({ dev: expectedWorktree.dev, ino: expectedWorktree.ino });
   await expect(switchBranch("refs/heads/feature", cwd)).rejects.toThrow("another worktree");
   writeFileSync(join(cwd, "tracked.txt"), "work\n"); await expect(createBranch("blocked", cwd)).rejects.toThrow("Commit or stash");
   expect(readFileSync(join(cwd, "tracked.txt"), "utf8")).toBe("work\n");
