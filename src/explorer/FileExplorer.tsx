@@ -22,7 +22,7 @@ import {
 } from "../remote/remoteFs";
 import { fileIconUrl, folderIconUrl } from "./iconResolver";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, Copy01Icon, FileAddIcon, FolderAddIcon, Folder01Icon, Refresh01Icon, Search01Icon, MoreHorizontalIcon, GlobalIcon, FolderTreeIcon, Move01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, Copy01Icon, FileAddIcon, FolderAddIcon, Refresh01Icon, Search01Icon, MoreHorizontalIcon, GlobalIcon, FolderTreeIcon, Move01Icon } from "@hugeicons/core-free-icons";
 import { PanelHeader } from "../shell/PanelHeader";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../components/ui/dropdown-menu";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -291,7 +291,14 @@ export function FileExplorer({
     {rootError ? <><span>Could not open Files: {rootError}</span><button type="button" onClick={() => setRootRetry((value) => value + 1)}>Retry</button></> : "Loading Files…"}
   </div>;
 
-  const name = remoteHost ? remoteHost : (root.split("/").filter(Boolean).pop() ?? root);
+  const folderName = root.split("/").filter(Boolean).pop() ?? root;
+  const name = remoteHost ?? folderName;
+  const locationLabel = remoteHost ? "SSH" : followTerminal ? "Terminal" : wsRoot && root === wsRoot ? "Workspace" : "Local";
+  const locationName = remoteHost
+    ? folderName === "/" || remoteHost === folderName ? remoteHost : `${remoteHost} / ${folderName}`
+    : folderName;
+  const fullLocation = remoteHost ? `${remoteHost}:${root}` : root;
+  const locationHint = remoteHost ? "SSH folder" : followTerminal ? "Following local terminal" : "Local folder";
 
   const doRootCreate = async (raw: string) => {
     if (rootCreateLock.current || !isCurrentScope()) return;
@@ -327,11 +334,10 @@ export function FileExplorer({
 
   return (
     <div className="explorer">
-      {/* Banded-chip header (PanelHeader): rail glyph + workspace context + actions. */}
+      {/* Banded-chip header (PanelHeader): rail glyph + actions. Location is below. */}
       <PanelHeader
         icon={remoteHost ? GlobalIcon : FolderTreeIcon}
         title="Files"
-        context={displayEntryName(remoteHost ?? name)}
         actions={
           <>
             {!remoteHost && (
@@ -344,10 +350,8 @@ export function FileExplorer({
         }
       />
       <div className="files-scope">
-        {remoteHost || followTerminal
-          ? <span className="files-scope-kind">{remoteHost ? "SSH" : "Terminal"}</span>
-          : <HugeiconsIcon icon={Folder01Icon} size={12} strokeWidth={1.5} className="files-scope-icon" aria-hidden="true" />}
-        <span className="files-scope-path" title={displayEntryName(remoteHost ? `SSH folder: ${remoteHost}:${root}` : `${followTerminal ? "Following local terminal" : "Local folder"}: ${root}`)}>{displayEntryName(remoteHost ? `${remoteHost}:${root}` : root)}</span>
+        <span className="files-scope-kind">{locationLabel}</span>
+        <span className="files-scope-name" title={displayEntryName(`${locationHint}: ${fullLocation}`)}>{displayEntryName(locationName)}</span>
         <DropdownMenu open={optionsOpen && active} onOpenChange={setOptionsOpen} modal={false}>
           <DropdownMenuTrigger asChild>
             <button type="button" className="files-options-trigger" aria-label="Files options" title="Files options">
@@ -357,6 +361,11 @@ export function FileExplorer({
           <DropdownMenuContent align="end" className="husk-context-menu files-options-menu" onCloseAutoFocus={(event) => {
             if (revealingFromOptions.current) { event.preventDefault(); revealingFromOptions.current = false; }
           }}>
+            <DropdownMenuLabel className="files-options-location">
+              <span>Current folder</span>
+              <code>{displayEntryName(fullLocation)}</code>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator className="husk-context-menu-separator" />
             {!remoteHost && <>
               <DropdownMenuLabel className="husk-context-menu-label">Browse from</DropdownMenuLabel>
               <DropdownMenuRadioGroup aria-label="Files root mode" value={followTerminal ? "terminal" : "workspace"} onValueChange={(value) => setFollowTerminal(value === "terminal")}>

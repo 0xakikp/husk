@@ -56,13 +56,24 @@ it("defaults to the workspace, exposes hidden files and can follow a local termi
   await render(); expect(mock.read).toHaveBeenCalledWith("/repo"); expect(row("/repo/.env")).toBeUndefined();
   expect(host.querySelector("select")).toBeNull(); expect(host.querySelector('input[type="checkbox"]')).toBeNull();
   expect(host.querySelector(".files-scope")?.textContent).not.toContain("Collapse all");
-  expect(host.querySelector(".files-scope-kind")).toBeNull(); expect(host.querySelector(".files-scope-dot")).toBeNull();
-  expect(host.querySelector(".files-scope-path")?.getAttribute("title")).toBe("Local folder: /repo");
+  expect(host.querySelector(".files-scope-kind")?.textContent).toBe("Workspace");
+  expect(host.querySelector(".files-scope-name")?.textContent).toBe("repo");
+  expect(host.querySelector(".files-scope-name")?.getAttribute("title")).toBe("Local folder: /repo");
   await option("Show hidden files"); await render();
   expect(row("/repo/.env")).toBeDefined();
   await option("Follow local terminal");
   expect(mock.read).toHaveBeenCalledWith("/elsewhere"); expect(host.querySelector(".files-scope-kind")?.textContent).toBe("Terminal");
-  expect(host.querySelector(".files-scope-path")?.textContent).toBe("/elsewhere");
+  expect(host.querySelector(".files-scope-name")?.textContent).toBe("elsewhere");
+});
+
+it("shows a compact folder name and keeps the full location in Files options", async () => {
+  mock.workspace = "/Users/akikp/pvsecurityservice";
+  await render();
+  expect(host.querySelector(".files-scope-name")?.textContent).toBe("pvsecurityservice");
+  expect(host.querySelector(".files-scope")?.textContent).not.toContain("/Users/akikp/");
+  expect(host.querySelector(".files-scope-name")?.getAttribute("title")).toContain("/Users/akikp/pvsecurityservice");
+  await options();
+  expect(document.querySelector(".files-options-location code")?.textContent).toBe("/Users/akikp/pvsecurityservice");
 });
 
 it("never uses a remote terminal cwd as a local filesystem root", async () => {
@@ -146,7 +157,9 @@ it("binds remote home requests to the host and never displays a late previous-ho
   await render({ remoteHost: "one" }); expect(host.textContent).toContain("Loading Files"); await render({ remoteHost: "two" });
   expect(mock.sshRead).toHaveBeenCalledWith("two", "/home/two"); await act(async () => first.resolve("/home/one"));
   expect(host.querySelector(".files-scope-kind")?.textContent).toBe("SSH");
-  expect(host.querySelector(".files-scope-path")?.textContent).toBe("two:/home/two"); expect(mock.sshRead).not.toHaveBeenCalledWith("two", "/home/one");
+  expect(host.querySelector(".files-scope-name")?.textContent).toBe("two");
+  expect(host.querySelector(".files-scope-name")?.getAttribute("title")).toContain("two:/home/two");
+  expect(mock.sshRead).not.toHaveBeenCalledWith("two", "/home/one");
 });
 
 it("makes remote permanent deletion and local-only search scope explicit", async () => {
