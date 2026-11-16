@@ -12,7 +12,7 @@ import { listBranches, listRemotes, createBranch, switchBranch, publishBranch, s
 
 // Every write is isolated beneath a newly-created temporary directory. Never
 // load the developer's hooks, credentials, global Git config or network remotes.
-let fixture: string; let cwd: string;
+let fixture: string; let cwd: string; let gitRepoRoot: string;
 function git(args: string[], directory = cwd) {
   const result = spawnSync("git", ["-c", `core.hooksPath=${join(fixture, "empty-hooks")}`, "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", ...args], {
     cwd: directory, encoding: "utf8", timeout: 10000,
@@ -23,6 +23,9 @@ function git(args: string[], directory = cwd) {
 function setup(args: string[], directory = cwd) { const result = git(args, directory); if (result.exit_code !== 0) throw new Error(result.stderr); return result.stdout; }
 function isFixtureDirectory(directory: unknown): directory is string {
   if (typeof directory !== "string") return false;
+  // Git for Windows can report its root in a different path form than Node's
+  // realpathSync. Accept only the exact root reported by this fixture's Git.
+  if (gitRepoRoot && directory === gitRepoRoot) return true;
   try {
     const pathWithinFixture = relative(fixture, realpathSync(directory));
     return pathWithinFixture !== "" && pathWithinFixture !== ".." && !pathWithinFixture.startsWith(`..${sep}`) && !isAbsolute(pathWithinFixture);
@@ -30,7 +33,10 @@ function isFixtureDirectory(directory: unknown): directory is string {
 }
 beforeEach(() => {
   fixture = realpathSync(mkdtempSync(join(tmpdir(), "husk-git-actions-"))); cwd = join(fixture, "work"); mkdirSync(cwd); mkdirSync(join(fixture, "empty-hooks")); writeFileSync(join(fixture, "global.gitconfig"), ""); mock.cwd = cwd;
-  setup(["init", "--template=", "--initial-branch=main"]); setup(["config", "user.name", "Fixture"]); setup(["config", "user.email", "fixture@example.invalid"]);
+  setup(["init", "--template=", "--initial-branch=main"]);
+  gitRepoRoot = setup(["rev-parse", "--show-toplevel"]).replace(/\r?\n$/, "");
+  if (!gitRepoRoot) throw new Error("Fixture Git returned no repository root");
+  setup(["config", "user.name", "Fixture"]); setup(["config", "user.email", "fixture@example.invalid"]);
   writeFileSync(join(cwd, "tracked.txt"), "initial\n"); setup(["add", "--", "tracked.txt"]); setup(["commit", "-m", "Initial"]);
   mock.invoke.mockReset().mockImplementation(async (command, request) => {
     if (command !== "shell_run_command" || request?.program !== "git" || !isFixtureDirectory(request?.cwd)) throw new Error("Fixture rejects unrelated commands/directories");

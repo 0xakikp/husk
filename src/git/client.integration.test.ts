@@ -11,7 +11,7 @@ import { repositorySnapshot, status, stageFiles, unstageFiles, commit, structure
 
 // Real Git, only in disposable repositories: no user's worktree, hooks,
 // credentials, global configuration or network remotes are involved.
-let fixture: string; let cwd: string;
+let fixture: string; let cwd: string; let gitRepoRoot: string;
 function git(args: string[], directory = cwd) {
   const result = spawnSync("git", ["-c", `core.hooksPath=${join(fixture, "empty-hooks")}`, "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", ...args], {
     cwd: directory, encoding: "utf8", timeout: 10_000,
@@ -22,6 +22,9 @@ function git(args: string[], directory = cwd) {
 function setup(args: string[], directory = cwd) { const result = git(args, directory); if (result.exit_code !== 0) throw new Error(result.stderr || "Fixture Git command failed"); return result.stdout; }
 function isFixtureDirectory(directory: unknown): directory is string {
   if (typeof directory !== "string") return false;
+  // Git for Windows may spell --show-toplevel differently from Node's realpath.
+  // Accept only the root reported by this freshly created fixture repository.
+  if (gitRepoRoot && directory === gitRepoRoot) return true;
   let resolved: string;
   try { resolved = realpathSync(directory); } catch { return false; }
   const within = relative(fixture, resolved);
@@ -31,6 +34,8 @@ beforeEach(() => {
   fixture = realpathSync(mkdtempSync(join(tmpdir(), "husk-git-fixture-"))); cwd = join(fixture, "work");
   mkdirSync(cwd); mkdirSync(join(fixture, "empty-hooks")); writeFileSync(join(fixture, "global.gitconfig"), ""); mock.cwd = cwd;
   setup(["init", "--template=", "--initial-branch=main"]);
+  gitRepoRoot = setup(["rev-parse", "--show-toplevel"]).replace(/\r?\n$/, "");
+  if (!gitRepoRoot) throw new Error("Fixture Git returned no repository root");
   setup(["config", "user.name", "Test | Developer"]); setup(["config", "user.email", "test@example.invalid"]);
   mock.invoke.mockReset().mockImplementation(async (command, args) => {
     if (command !== "shell_run_command" || args?.program !== "git" || !isFixtureDirectory(args?.cwd)) throw new Error("Fixture forbids unrelated commands and directories");
