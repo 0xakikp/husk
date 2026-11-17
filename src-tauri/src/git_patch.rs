@@ -4,7 +4,7 @@
 //! index atomically. Neither the working file nor HEAD is written.
 
 use crate::shell::{resolve_configured_program, run_blocking_command, run_captured};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
@@ -385,7 +385,11 @@ fn stage_hunk(
     if git.diff(&path)? != reviewed {
         return Err("The file changed while staging. No index changes were published; refresh and review again.".into());
     }
-    File::open(&lock.path)
+    // Windows requires a writable handle for FlushFileBuffers; File::open
+    // creates a read-only handle and sync_all fails with access denied.
+    OpenOptions::new()
+        .write(true)
+        .open(&lock.path)
         .and_then(|file| file.sync_all())
         .map_err(|e| format!("Cannot flush staged index: {e}"))?;
     fs::rename(&lock.path, &index).map_err(|e| format!("Cannot publish staged index: {e}"))?;
