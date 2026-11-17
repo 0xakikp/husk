@@ -710,13 +710,23 @@ mod tests {
     #[test]
     fn finds_recursive_files_without_git_or_cli_and_preserves_names() {
         let f = Fixture::new();
-        f.file("src/deep/ a:b\nfile.ts ", b"text");
+        f.file("src/deep/ spaced file.ts", b"text");
         f.file("src/environment.ts", b"text");
         let result = f.run("FILE.TS", SearchMode::Files);
         assert_eq!(result.results.len(), 1);
-        assert_eq!(result.results[0].rel, "src/deep/ a:b\nfile.ts ");
+        assert_eq!(result.results[0].rel, "src/deep/ spaced file.ts");
         assert_eq!(f.run("environment", SearchMode::Files).results.len(), 1);
         assert_eq!(f.run("senvts", SearchMode::Files).results.len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserves_unix_only_filename_characters() {
+        let f = Fixture::new();
+        f.file("src/deep/ a:b\nfile.ts ", b"text");
+        let result = f.run("FILE.TS", SearchMode::Files);
+        assert_eq!(result.results.len(), 1);
+        assert_eq!(result.results[0].rel, "src/deep/ a:b\nfile.ts ");
     }
 
     #[test]
@@ -755,7 +765,7 @@ mod tests {
     #[test]
     fn finds_every_matching_line_with_literal_case_insensitive_text() {
         let f = Fixture::new();
-        f.file("a:b.ts", "😀 Needle[0]\nneedle[0]\nno match".as_bytes());
+        f.file("a-b.ts", "😀 Needle[0]\nneedle[0]\nno match".as_bytes());
         let result = f.run("NEEDLE[0]", SearchMode::Contents);
         assert_eq!(result.results.len(), 2);
         assert_eq!(result.results[0].line, Some(1));

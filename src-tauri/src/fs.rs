@@ -662,10 +662,15 @@ mod tests {
 
     #[test]
     fn path_validation_allows_double_dot_names_but_not_traversal() {
-        assert!(super::validate_path("/tmp/project..backup/file").is_ok());
-        assert!(super::validate_path("/tmp/project/../secret").is_err());
+        let root = scratch("path-validation");
+        let double_dot_name = root.join("project..backup").join("file");
+        let traversal = root.join("project").join("..").join("secret");
+        let nul_name = root.join("null\0name");
+
+        assert!(super::validate_path(&double_dot_name.to_string_lossy()).is_ok());
+        assert!(super::validate_path(&traversal.to_string_lossy()).is_err());
         assert!(super::validate_path("relative/file").is_err());
-        assert!(super::validate_path("/tmp/null\0name").is_err());
+        assert!(super::validate_path(&nul_name.to_string_lossy()).is_err());
     }
 
     #[test]

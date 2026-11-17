@@ -304,6 +304,25 @@ fn resolve_binary_path(program: &str) -> Result<PathBuf, String> {
     resolve_configured_program(program)
 }
 
+fn existing_program_candidate(path: &Path) -> Option<PathBuf> {
+    if path.is_file() {
+        return Some(path.to_path_buf());
+    }
+
+    // Windows does not require callers to spell out .exe, but is_file() does.
+    // Do not implicitly search PATHEXT here: .bat/.cmd and other script shims
+    // may invoke a shell, which has different argument-safety properties.
+    #[cfg(windows)]
+    if path.extension().is_none() {
+        let executable = path.with_extension("exe");
+        if executable.is_file() {
+            return Some(executable);
+        }
+    }
+
+    None
+}
+
 /// User-configured MCP servers may intentionally use wrapper interpreters or
 /// paths containing spaces. Resolve those literal executables without changing
 /// the stricter no-shell policy of shell_run_command / AI command execution.
@@ -313,20 +332,19 @@ pub(crate) fn resolve_configured_program(program: &str) -> Result<PathBuf, Strin
     }
     let path = Path::new(program);
 
-    // Absolute path: use as-is if it exists.
+    // Absolute path: use as-is if it exists (or resolve an omitted .exe on
+    // Windows, matching the ordinary command-line spelling of native tools).
     if path.is_absolute() {
-        if !path.is_file() {
-            return Err(format!("program does not exist: {program}"));
-        }
-        return Ok(path.to_path_buf());
+        return existing_program_candidate(path)
+            .ok_or_else(|| format!("program does not exist: {program}"));
     }
 
     // Search current process PATH.
     if let Some(paths) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&paths) {
             let candidate = dir.join(program);
-            if candidate.is_file() {
-                return Ok(candidate);
+            if let Some(executable) = existing_program_candidate(&candidate) {
+                return Ok(executable);
             }
         }
     }
@@ -672,6 +690,39 @@ mod tests {
         assert!(validate_program("sh").is_err());
         assert!(resolve_configured_program("invalid\nname").is_err());
         std::fs::remove_file(&path).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn configured_program_resolves_windows_exe_without_implicit_script_shims() {
+        let dir = std::env::temp_dir().join(format!(
+            "husk-windows-program-lookup-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let base = dir.join("husk-lookup-fixture");
+        let exe = base.with_extension("exe");
+        let cmd = base.with_extension("cmd");
+        std::fs::write(&exe, b"not executed").unwrap();
+        std::fs::write(&cmd, b"not executed").unwrap();
+
+        assert_eq!(
+            resolve_configured_program(base.to_str().unwrap()).unwrap(),
+            exe
+        );
+        assert_eq!(
+            resolve_configured_program(exe.to_str().unwrap()).unwrap(),
+            exe
+        );
+        std::fs::remove_file(&exe).unwrap();
+        assert!(resolve_configured_program(base.to_str().unwrap()).is_err());
+        assert_eq!(
+            resolve_configured_program(cmd.to_str().unwrap()).unwrap(),
+            cmd
+        );
+
+        std::fs::remove_file(&cmd).unwrap();
         std::fs::remove_dir(&dir).unwrap();
     }
 
