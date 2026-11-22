@@ -27,7 +27,6 @@ vi.mock("../docker/DockerDetailPanel", () => ({ DockerDetailPanel: () => <sectio
 vi.mock("../terminal/TerminalBottomBar", () => ({ TerminalBottomBar: () => null }));
 vi.mock("../terminal/FailureStrip", () => ({ FailureStrip: () => null }));
 vi.mock("../terminal/NextStepStrip", () => ({ NextStepStrip: () => null }));
-vi.mock("../terminal/runComparisonStrip", () => ({ RunComparisonStrip: () => null }));
 vi.mock("../terminal/RememberFixStrip", () => ({ RememberFixStrip: () => null }));
 vi.mock("../terminal/PortDetectedStrip", () => ({ PortDetectedStrip: () => null }));
 vi.mock("../terminal/GitActivityStrip", () => ({ GitActivityStrip: () => null }));

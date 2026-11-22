@@ -55,25 +55,27 @@ const option = async (label: string) => { await options(); await click(label); a
 it("defaults to the workspace, exposes hidden files and can follow a local terminal", async () => {
   await render(); expect(mock.read).toHaveBeenCalledWith("/repo"); expect(row("/repo/.env")).toBeUndefined();
   expect(host.querySelector("select")).toBeNull(); expect(host.querySelector('input[type="checkbox"]')).toBeNull();
-  expect(host.querySelector(".files-scope")?.textContent).not.toContain("Collapse all");
-  expect(host.querySelector(".files-scope-kind")?.textContent).toBe("Workspace");
-  expect(host.querySelector(".files-scope-name")?.textContent).toBe("repo");
-  expect(host.querySelector(".files-scope-name")?.getAttribute("title")).toBe("Local folder: /repo");
+  expect(host.querySelector(".files-scope")).toBeNull();
+  expect(host.querySelector(".explorer")?.children[1]?.classList.contains("files-tree")).toBe(true);
+  expect(button("Files options").getAttribute("aria-description")).toBe("Workspace folder: /repo");
+  await options(); expect(button("Follow local terminal").getAttribute("aria-checked")).toBe("false");
+  await key(document.activeElement!, "Escape"); await settleMenuFocus();
   await option("Show hidden files"); await render();
   expect(row("/repo/.env")).toBeDefined();
   await option("Follow local terminal");
-  expect(mock.read).toHaveBeenCalledWith("/elsewhere"); expect(host.querySelector(".files-scope-kind")?.textContent).toBe("Terminal");
-  expect(host.querySelector(".files-scope-name")?.textContent).toBe("elsewhere");
+  expect(mock.read).toHaveBeenCalledWith("/elsewhere");
+  expect(button("Files options").getAttribute("aria-description")).toBe("Terminal folder: /elsewhere");
+  await options(); expect(button("Follow local terminal").getAttribute("aria-checked")).toBe("true");
 });
 
-it("shows a compact folder name and keeps the full location in Files options", async () => {
+it("keeps the full location in Files options without a second header", async () => {
   mock.workspace = "/Users/akikp/pvsecurityservice";
   await render();
-  expect(host.querySelector(".files-scope-name")?.textContent).toBe("pvsecurityservice");
-  expect(host.querySelector(".files-scope")?.textContent).not.toContain("/Users/akikp/");
-  expect(host.querySelector(".files-scope-name")?.getAttribute("title")).toContain("/Users/akikp/pvsecurityservice");
+  expect(host.querySelector(".files-scope")).toBeNull();
+  expect(host.textContent).not.toContain("/Users/akikp/");
+  expect(button("Files options").getAttribute("title")).toContain("/Users/akikp/pvsecurityservice");
   await options();
-  expect(document.querySelector(".files-options-location code")?.textContent).toBe("/Users/akikp/pvsecurityservice");
+  expect(document.querySelector(".files-options-location")?.textContent).toBe("/Users/akikp/pvsecurityservice");
 });
 
 it("never uses a remote terminal cwd as a local filesystem root", async () => {
@@ -85,8 +87,8 @@ it("keeps expanded folders through refresh and exposes loading, error and retry 
   const pending = deferred<ReturnType<typeof entry>[]>(); mock.read.mockReturnValueOnce(pending.promise); await render();
   expect(host.textContent).toContain("Loading folder…"); await act(async () => pending.resolve([entry("/repo/src", true)]));
   await act(async () => row("/repo/src").click()); expect(row("/repo/src/app.ts")).toBeDefined();
-  await click("Refresh"); expect(row("/repo/src/app.ts")).toBeDefined(); expect(row("/repo/src").getAttribute("aria-expanded")).toBe("true");
-  mock.read.mockRejectedValue(new Error("Permission denied")); await click("Refresh");
+  await option("Refresh files"); expect(row("/repo/src/app.ts")).toBeDefined(); expect(row("/repo/src").getAttribute("aria-expanded")).toBe("true");
+  mock.read.mockRejectedValue(new Error("Permission denied")); await option("Refresh files");
   expect(host.textContent).toContain("Could not refresh"); expect(host.textContent).toContain("Permission denied"); expect(host.textContent).not.toContain("This folder is empty");
   mock.read.mockResolvedValue([]); await click("Retry folder"); expect(host.textContent).toContain("This folder is empty");
 });
@@ -156,9 +158,9 @@ it("binds remote home requests to the host and never displays a late previous-ho
   const first = deferred<string>(); mock.sshHome.mockImplementation((name: string) => name === "one" ? first.promise : Promise.resolve("/home/two"));
   await render({ remoteHost: "one" }); expect(host.textContent).toContain("Loading Files"); await render({ remoteHost: "two" });
   expect(mock.sshRead).toHaveBeenCalledWith("two", "/home/two"); await act(async () => first.resolve("/home/one"));
-  expect(host.querySelector(".files-scope-kind")?.textContent).toBe("SSH");
-  expect(host.querySelector(".files-scope-name")?.textContent).toBe("two");
-  expect(host.querySelector(".files-scope-name")?.getAttribute("title")).toContain("two:/home/two");
+  expect(button("Files options").getAttribute("aria-description")).toBe("SSH folder: two:/home/two");
+  expect(button("Files options").getAttribute("title")).toContain("two:/home/two");
+  await options(); expect(document.querySelector(".files-options-location")?.textContent).toBe("two:/home/two");
   expect(mock.sshRead).not.toHaveBeenCalledWith("two", "/home/one");
 });
 
@@ -172,7 +174,7 @@ it("makes remote permanent deletion and local-only search scope explicit", async
 it("keeps Files options keyboard-accessible and closes them when the sidebar is hidden", async () => {
   await render(); await options();
   expect(document.querySelector('[role="menuitemcheckbox"]')?.getAttribute("aria-checked")).toBe("false");
-  expect(button("Reveal active file").getAttribute("aria-disabled")).toBe("true");
+  expect(document.body.textContent).not.toContain("Reveal active file");
   await key(document.activeElement!, "Escape");
   expect(document.querySelector('[role="menu"]')).toBeNull();
   await options(); expect(document.querySelector('[role="menu"]')).not.toBeNull();
@@ -198,7 +200,7 @@ it("locks repeated root creation and does not open its result in a newly selecte
 
 it("ignores a stale directory read when a newer refresh finishes first", async () => {
   const old = deferred<ReturnType<typeof entry>[]>(); mock.read.mockReturnValueOnce(old.promise); await render();
-  mock.read.mockResolvedValue([entry("/repo/current.txt")]); await click("Refresh"); expect(row("/repo/current.txt")).toBeDefined();
+  mock.read.mockResolvedValue([entry("/repo/current.txt")]); await option("Refresh files"); expect(row("/repo/current.txt")).toBeDefined();
   await act(async () => old.resolve([entry("/repo/stale.txt")]));
   expect(row("/repo/current.txt")).toBeDefined(); expect(row("/repo/stale.txt")).toBeUndefined();
 });

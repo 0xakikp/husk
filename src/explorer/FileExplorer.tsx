@@ -22,9 +22,9 @@ import {
 } from "../remote/remoteFs";
 import { fileIconUrl, folderIconUrl } from "./iconResolver";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, Copy01Icon, FileAddIcon, FolderAddIcon, Refresh01Icon, Search01Icon, MoreHorizontalIcon, GlobalIcon, FolderTreeIcon, Move01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, Copy01Icon, FileAddIcon, FolderAddIcon, Search01Icon, MoreHorizontalIcon, GlobalIcon, FolderTreeIcon, Move01Icon } from "@hugeicons/core-free-icons";
 import { PanelHeader } from "../shell/PanelHeader";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem, DropdownMenuCheckboxItem } from "../components/ui/dropdown-menu";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useWorkspaceRoot } from "../workspace/store";
 import { useActiveTerminalCwd, useActiveRemoteTerminal, getActiveRemoteTerminal, runInActiveTerminalResult } from "../ai/terminalContext";
@@ -293,12 +293,9 @@ export function FileExplorer({
 
   const folderName = root.split("/").filter(Boolean).pop() ?? root;
   const name = remoteHost ?? folderName;
-  const locationLabel = remoteHost ? "SSH" : followTerminal ? "Terminal" : wsRoot && root === wsRoot ? "Workspace" : "Local";
-  const locationName = remoteHost
-    ? folderName === "/" || remoteHost === folderName ? remoteHost : `${remoteHost} / ${folderName}`
-    : folderName;
   const fullLocation = remoteHost ? `${remoteHost}:${root}` : root;
-  const locationHint = remoteHost ? "SSH folder" : followTerminal ? "Following local terminal" : "Local folder";
+  const locationHint = remoteHost ? "SSH folder" : followTerminal ? "Terminal folder" : wsRoot && root === wsRoot ? "Workspace folder" : "Local folder";
+  const locationDescription = displayEntryName(`${locationHint}: ${fullLocation}`);
 
   const doRootCreate = async (raw: string) => {
     if (rootCreateLock.current || !isCurrentScope()) return;
@@ -334,10 +331,9 @@ export function FileExplorer({
 
   return (
     <div className="explorer">
-      {/* Banded-chip header (PanelHeader): rail glyph + actions. Location is below. */}
       <PanelHeader
         icon={remoteHost ? GlobalIcon : FolderTreeIcon}
-        title="Files"
+        title={<span title={locationDescription}>Files</span>}
         actions={
           <>
             {!remoteHost && (
@@ -345,53 +341,39 @@ export function FileExplorer({
             )}
             <ExBtn icon={FileAddIcon} label="New file" onClick={() => setRootCreate("file")} />
             <ExBtn icon={FolderAddIcon} label="New folder" onClick={() => setRootCreate("dir")} />
-            <ExBtn icon={Refresh01Icon} label="Refresh" onClick={() => setRefreshKey((k) => k + 1)} />
+            <DropdownMenu open={optionsOpen && active} onOpenChange={setOptionsOpen} modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="files-options-trigger" aria-label="Files options" aria-description={locationDescription} title={locationDescription}>
+                  <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.5} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="husk-context-menu files-options-menu" onCloseAutoFocus={(event) => {
+                if (revealingFromOptions.current) { event.preventDefault(); revealingFromOptions.current = false; }
+              }}>
+                <DropdownMenuLabel className="files-options-location" title={locationDescription}>{displayEntryName(fullLocation)}</DropdownMenuLabel>
+                <DropdownMenuSeparator className="husk-context-menu-separator" />
+                {!remoteHost && <DropdownMenuCheckboxItem className="husk-context-menu-item" checked={followTerminal} onCheckedChange={(checked) => setFollowTerminal(checked === true)}>Follow local terminal</DropdownMenuCheckboxItem>}
+                <DropdownMenuCheckboxItem className="husk-context-menu-item" checked={showHidden} onCheckedChange={(checked) => setPrefs({ showHidden: checked })}>Show hidden files</DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator className="husk-context-menu-separator" />
+                <DropdownMenuItem className="husk-context-menu-item" onSelect={() => setRefreshKey((k) => k + 1)}>Refresh files</DropdownMenuItem>
+                <DropdownMenuItem className="husk-context-menu-item" onSelect={() => setCollapseKey((value) => value + 1)}>Collapse all</DropdownMenuItem>
+                {activeFile && isExplorerPathWithin(activeFile, root) && <DropdownMenuItem className="husk-context-menu-item" onSelect={() => {
+                  revealingFromOptions.current = true;
+                  setFilterOpen(false);
+                  if (activeFile?.split("/").some((part) => part.startsWith("."))) setPrefs({ showHidden: true });
+                  setRevealKey((value) => value + 1);
+                }}>Reveal active file</DropdownMenuItem>}
+                {remoteHost && <>
+                  <DropdownMenuSeparator className="husk-context-menu-separator" />
+                  <DropdownMenuItem className="husk-context-menu-item" onSelect={() => setRootRetry((value) => value + 1)}>Reload remote home folder</DropdownMenuItem>
+                  <DropdownMenuItem className="husk-context-menu-item" onSelect={() => setActiveSshHost(null)}>Disconnect</DropdownMenuItem>
+                  <p className="files-options-note">Remote browsing · recursive search is local only</p>
+                </>}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       />
-      <div className="files-scope">
-        <span className="files-scope-kind">{locationLabel}</span>
-        <span className="files-scope-name" title={displayEntryName(`${locationHint}: ${fullLocation}`)}>{displayEntryName(locationName)}</span>
-        <DropdownMenu open={optionsOpen && active} onOpenChange={setOptionsOpen} modal={false}>
-          <DropdownMenuTrigger asChild>
-            <button type="button" className="files-options-trigger" aria-label="Files options" title="Files options">
-              <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.5} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="husk-context-menu files-options-menu" onCloseAutoFocus={(event) => {
-            if (revealingFromOptions.current) { event.preventDefault(); revealingFromOptions.current = false; }
-          }}>
-            <DropdownMenuLabel className="files-options-location">
-              <span>Current folder</span>
-              <code>{displayEntryName(fullLocation)}</code>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator className="husk-context-menu-separator" />
-            {!remoteHost && <>
-              <DropdownMenuLabel className="husk-context-menu-label">Browse from</DropdownMenuLabel>
-              <DropdownMenuRadioGroup aria-label="Files root mode" value={followTerminal ? "terminal" : "workspace"} onValueChange={(value) => setFollowTerminal(value === "terminal")}>
-                <DropdownMenuRadioItem className="husk-context-menu-item" value="workspace">{wsRoot ? "Workspace folder" : "Current local folder"}</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem className="husk-context-menu-item" value="terminal">Follow local terminal</DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator className="husk-context-menu-separator" />
-            </>}
-            <DropdownMenuCheckboxItem className="husk-context-menu-item" checked={showHidden} onCheckedChange={(checked) => setPrefs({ showHidden: checked })}>Show hidden files</DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator className="husk-context-menu-separator" />
-            <DropdownMenuItem className="husk-context-menu-item" onSelect={() => setCollapseKey((value) => value + 1)}>Collapse all</DropdownMenuItem>
-            <DropdownMenuItem className="husk-context-menu-item" disabled={!activeFile || !isExplorerPathWithin(activeFile, root)} onSelect={() => {
-              revealingFromOptions.current = true;
-              setFilterOpen(false);
-              if (activeFile?.split("/").some((part) => part.startsWith("."))) setPrefs({ showHidden: true });
-              setRevealKey((value) => value + 1);
-            }}>Reveal active file</DropdownMenuItem>
-            {remoteHost && <>
-              <DropdownMenuSeparator className="husk-context-menu-separator" />
-              <DropdownMenuItem className="husk-context-menu-item" onSelect={() => setRootRetry((value) => value + 1)}>Reload remote home folder</DropdownMenuItem>
-              <DropdownMenuItem className="husk-context-menu-item" onSelect={() => setActiveSshHost(null)}>Disconnect</DropdownMenuItem>
-              <p className="files-options-note">Remote browsing · recursive search is local only</p>
-            </>}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
       {filterOpen && !remoteHost && <FilesSearch key={scope} root={root} includeHidden={showHidden} refreshKey={refreshKey} active={active}
         onClose={() => setFilterOpen(false)} onOpenFile={onOpenFile} onOpenFileAtLine={onOpenFileAtLine} />}
       {rootCreate ? (

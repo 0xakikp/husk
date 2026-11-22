@@ -7,7 +7,6 @@ import { TerminalBottomBar } from "../terminal/TerminalBottomBar";
 import { FailureStrip } from "../terminal/FailureStrip";
 import type { FailureExplainRequest } from "../terminal/FailureStrip";
 import { NextStepStrip } from "../terminal/NextStepStrip";
-import { RunComparisonStrip } from "../terminal/runComparisonStrip";
 import { RememberFixStrip } from "../terminal/RememberFixStrip";
 import { PortDetectedStrip } from "../terminal/PortDetectedStrip";
 import { GitActivityStrip } from "../terminal/GitActivityStrip";
@@ -334,7 +333,6 @@ export function WorkspacePanels({
             const handle = getSessionHandle(activeLeafId);
             if (handle && handle.getPtyId() != null && handle.getPtyId() === getActiveTerminalPtyId()) handle.focus();
           }} />}
-          {activeLeafId != null && <RunComparisonStrip leafId={activeLeafId} aiEnabled={prefs.aiEnabled} />}
           <SensitiveOutputStrip leafId={activeLeafId} />
           <PortDetectedStrip leafId={activeLeafId} onOpenBrowser={onOpenBrowser} />
           <GitActivityStrip leafId={activeLeafId} onOpenSourceControl={onOpenSourceControl} />

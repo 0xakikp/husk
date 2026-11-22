@@ -58,7 +58,7 @@ import { TerminalPromptTracker } from "./promptTracker";
 import { ShellCommandMarkers } from "./shellCommandMarkers";
 import { TerminalRunReceipts, type TerminalRunTarget } from "./runReceipts";
 import { parseRemoteShellTarget } from "./remoteShell";
-import { ComparisonScopeTracker, captureComparisonOutput, clearRunComparisons, dismissRunComparison, recordComparisonRun } from "./runComparison";
+import { CommandOutputScopeTracker, captureCommandOutput } from "./commandOutputCapture";
 import { clearFixRuns, recordCompletedFixRun } from "./fixMemory";
 import type { IMarker } from "@xterm/xterm";
 import { KUBECONFIG_OSC, KubeconfigOutputFilter, TerminalKubeconfigCapture, type TerminalKubeconfigSnapshot } from "./kubeconfigCapture";
@@ -148,7 +148,7 @@ type Session = {
   focused: boolean;
   active: boolean;
   cwd: string;
-  comparisonScope: ComparisonScopeTracker;
+  commandOutputScope: CommandOutputScopeTracker;
   kubeconfigCapture: TerminalKubeconfigCapture;
   contextCapture: TerminalContextCapture;
   kubeconfigOutputFilter: KubeconfigOutputFilter;
@@ -178,7 +178,7 @@ type Session = {
   runReceipts: TerminalRunReceipts;
   /** Absolute buffer row where the running command's output began (OSC 133 C). */
   cmdStartRow: number | null;
-  comparisonStart: { marker: IMarker; ptyId: number; cwd: string; remoteHost: string | null } | null;
+  commandOutputStart: { marker: IMarker; ptyId: number; cwd: string; remoteHost: string | null } | null;
   /** Command lifecycle is retained per PTY so hidden terminal tabs can still
    * report their own completion state without corrupting the active terminal. */
   currentCommand: string;
@@ -285,7 +285,7 @@ const creatingSessions = new Map<number, Promise<Session>>();
 function observeStatusScope(session: Session, cwd?: string, boundary = false): void {
   const previous = getTerminalStatus(session.leafId)?.scopeKey;
   observeTerminalStatusScope(session.leafId, {
-    observedHost: session.comparisonScope.target(session.isRemoteShell),
+    observedHost: session.commandOutputScope.target(session.isRemoteShell),
     isRemote: session.isRemoteShell,
     remoteTarget: session.remoteTarget,
     cwd,
@@ -298,9 +298,9 @@ function runTarget(session: Session): TerminalRunTarget | null {
   if (session.ptyId === null) return null;
   return {
     ptyId: session.ptyId, sessionId: session.workflowSessionId,
-    generation: session.comparisonScope.getGeneration(), cwd: session.cwd,
+    generation: session.commandOutputScope.getGeneration(), cwd: session.cwd,
     isRemote: session.isRemoteShell, remoteTarget: session.remoteTarget,
-    observedHost: session.comparisonScope.target(session.isRemoteShell),
+    observedHost: session.commandOutputScope.target(session.isRemoteShell),
   };
 }
 
@@ -398,13 +398,12 @@ export async function restartSession(leafId: number): Promise<void> {
     if (session.isRemoteShell) session.cwd = session.initialCwd ?? "";
     session.isRemoteShell = false;
     session.remoteTarget = null;
-    session.comparisonScope = new ComparisonScopeTracker();
-    session.comparisonStart?.marker.dispose();
-    session.comparisonStart = null;
+    session.commandOutputScope = new CommandOutputScopeTracker();
+    session.commandOutputStart?.marker.dispose();
+    session.commandOutputStart = null;
     session.liveOutputTail = "";
     session.decoder = new TextDecoder();
     session.kubeconfigOutputFilter = new KubeconfigOutputFilter();
-    clearRunComparisons(leafId);
     clearFixRuns(leafId);
     clearFailure(leafId);
     clearNextSteps(leafId);
@@ -444,8 +443,8 @@ export function getActiveTerminalKubeconfigSnapshot(): TerminalKubeconfigSnapsho
     leafId: session.leafId,
     ptyId: session.ptyId,
     cwd: session.cwd,
-    generation: session.comparisonScope.getGeneration(),
-    remoteHost: session.comparisonScope.target(session.isRemoteShell),
+    generation: session.commandOutputScope.getGeneration(),
+    remoteHost: session.commandOutputScope.target(session.isRemoteShell),
     active: session.active,
     ready: getSessionHandle(session.leafId)?.getPromptReadiness() ?? { ready: false, reason: "Return to an empty shell prompt first." },
   });
@@ -463,8 +462,8 @@ export function getTerminalContextSnapshot(leafId: number | null): TerminalConte
   const ready = status?.atPrompt === true && !status.command && status.startedAt === null;
   return session.contextCapture.snapshot({
     leafId: session.leafId, ptyId: session.ptyId, cwd: session.cwd,
-    generation: session.comparisonScope.getGeneration(),
-    remoteHost: session.comparisonScope.target(session.isRemoteShell),
+    generation: session.commandOutputScope.getGeneration(),
+    remoteHost: session.commandOutputScope.target(session.isRemoteShell),
     active: session.active,
     ready: ready ? { ready: true } : { ready: false, reason: "Waiting for a local shell prompt." },
   });
@@ -617,7 +616,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     focused: false,
     active: false,
     cwd: "",
-    comparisonScope: new ComparisonScopeTracker(),
+    commandOutputScope: new CommandOutputScopeTracker(),
     kubeconfigCapture: new TerminalKubeconfigCapture(),
     contextCapture: new TerminalContextCapture(),
     kubeconfigOutputFilter: new KubeconfigOutputFilter(),
@@ -645,7 +644,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     shellCommandMarkers: new ShellCommandMarkers(),
     runReceipts: new TerminalRunReceipts(),
     cmdStartRow: null,
-    comparisonStart: null,
+    commandOutputStart: null,
     currentCommand: "",
     commandStartedAt: 0,
     liveOutputTail: "",
@@ -701,10 +700,9 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     if (cwd) {
       const previousCwd = session.cwd;
       session.cwd = cwd;
-      const hostChanged = session.comparisonScope.observeCwd(data, session.isRemoteShell);
+      const hostChanged = session.commandOutputScope.observeCwd(data, session.isRemoteShell);
       observeStatusScope(session, cwd);
-      observeTerminalWelcomeCwd(leafId, cwd, session.comparisonScope.target(session.isRemoteShell) === null);
-      if (hostChanged) clearRunComparisons(session.leafId);
+      observeTerminalWelcomeCwd(leafId, cwd, session.commandOutputScope.target(session.isRemoteShell) === null);
       if (hostChanged || previousCwd !== cwd) clearFixRuns(session.leafId);
       if (session.active) setActiveTerminalCwd(cwd);
       /* Workspace root follows the terminal so timeline/explorer/root never
@@ -727,7 +725,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
       // An observed remote prompt finishes the connection phase, not the SSH
       // process itself. Do not leave `ssh host` looking like a running remote
       // command merely because its alias equals the reported remote hostname.
-      if (typeof session.comparisonScope.target(session.isRemoteShell) === "string"
+      if (typeof session.commandOutputScope.target(session.isRemoteShell) === "string"
         && parseRemoteShellTarget(getTerminalStatus(leafId)?.command ?? "")) clearTerminalStatusActivity(leafId);
       observeTerminalStatusPrompt(leafId, session.promptTracker.position() !== null);
       session.kubeconfigCapture.completePrompt();
@@ -735,7 +733,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
       // A shell whose startup output already filled the page is not empty.
       if (!getTerminalWelcome(leafId)?.visible && term.buffer.active.baseY > 0) dismissTerminalWelcome(leafId);
       observeTerminalWelcomePrompt(leafId, session.cwd,
-        term.buffer.active.type === "normal" && session.comparisonScope.target(session.isRemoteShell) === null);
+        term.buffer.active.type === "normal" && session.commandOutputScope.target(session.isRemoteShell) === null);
     }
     // Note: OSC 133 A (prompt start) is deliberately ignored — some shell
     // frameworks emit it after B, which clears the position we just set.
@@ -747,24 +745,23 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
       const exitCode = Number.isNaN(code) ? null : code;
       completeTerminalStatusCommand(leafId, exitCode, Date.now());
       if (session.active) setActiveTerminalExit(exitCode);
-      const comparisonStart = session.comparisonStart;
-      session.comparisonStart = null;
-      if (comparisonStart) {
+      const commandOutputStart = session.commandOutputStart;
+      session.commandOutputStart = null;
+      if (commandOutputStart) {
         const command = session.currentCommand;
         // A navigation command, remote transition, or unknown host must never
         // mix two identities. Interactive SSH transcripts are not one run.
-        if (term.buffer.active.type === "normal" && comparisonStart.ptyId === session.ptyId && comparisonStart.cwd === session.cwd
-          && comparisonStart.remoteHost === session.comparisonScope.target(session.isRemoteShell)
+        if (term.buffer.active.type === "normal" && commandOutputStart.ptyId === session.ptyId && commandOutputStart.cwd === session.cwd
+          && commandOutputStart.remoteHost === session.commandOutputScope.target(session.isRemoteShell)
           && !parseRemoteShellTarget(command)) {
-          const captured = captureComparisonOutput(term.buffer.active, comparisonStart.marker.isDisposed ? null : comparisonStart.marker.line);
+          const captured = captureCommandOutput(term.buffer.active, commandOutputStart.marker.isDisposed ? null : commandOutputStart.marker.line);
           const run = {
-            leafId: session.leafId, ptyId: comparisonStart.ptyId, cwd: comparisonStart.cwd,
-            remoteHost: comparisonStart.remoteHost, command, ...captured, exitCode, at: Date.now(),
+            leafId: session.leafId, ptyId: commandOutputStart.ptyId, cwd: commandOutputStart.cwd,
+            remoteHost: commandOutputStart.remoteHost, command, ...captured, exitCode, at: Date.now(),
           };
-          recordComparisonRun(run);
           recordCompletedFixRun(run);
         }
-        comparisonStart.marker.dispose();
+        commandOutputStart.marker.dispose();
       }
       /* Harvest just this command's output, using the row marked at C. Bounded on
          both axes: a build can emit tens of thousands of rows, and this runs on
@@ -880,8 +877,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
       }
       const endedRemoteShell = Boolean(parseRemoteShellTarget(session.currentCommand));
       if (endedRemoteShell) {
-        session.comparisonScope.leaveRemote();
-        clearRunComparisons(session.leafId);
+        session.commandOutputScope.leaveRemote();
         clearFixRuns(session.leafId);
       }
       if (session.active) clearCurrentCommand();
@@ -901,15 +897,14 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
       invalidateTerminalConfig(session);
       const b = term.buffer.active;
       session.cmdStartRow = b.baseY + b.cursorY;
-      session.comparisonStart?.marker.dispose();
-      session.comparisonStart = null;
-      dismissRunComparison(session.leafId);
-      const comparisonTarget = session.comparisonScope.target(session.isRemoteShell);
-      if (b.type === "normal" && session.ptyId != null && session.cwd && comparisonTarget !== undefined && !parseRemoteShellTarget(session.currentCommand)) {
+      session.commandOutputStart?.marker.dispose();
+      session.commandOutputStart = null;
+      const outputTarget = session.commandOutputScope.target(session.isRemoteShell);
+      if (b.type === "normal" && session.ptyId != null && session.cwd && outputTarget !== undefined && !parseRemoteShellTarget(session.currentCommand)) {
         const marker = term.registerMarker(0);
-        if (marker) session.comparisonStart = {
+        if (marker) session.commandOutputStart = {
           marker, ptyId: session.ptyId, cwd: session.cwd,
-          remoteHost: comparisonTarget,
+          remoteHost: outputTarget,
         };
       }
       session.liveOutputTail = "";
@@ -946,8 +941,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     const remoteTarget = parseRemoteShellTarget(cmd);
     if (remoteTarget) {
       dismissTerminalWelcome(leafId);
-      session.comparisonScope.enterRemote();
-      clearRunComparisons(session.leafId);
+      session.commandOutputScope.enterRemote();
       clearFixRuns(session.leafId);
       session.isRemoteShell = true;
       session.remoteTarget = remoteTarget;
@@ -959,12 +953,12 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
   });
 
   term.parser.registerOscHandler(KUBECONFIG_OSC, (data) => {
-    session.kubeconfigCapture.observe(data, session.comparisonScope.getGeneration(), session.cwd);
+    session.kubeconfigCapture.observe(data, session.commandOutputScope.getGeneration(), session.cwd);
     return true;
   });
 
   term.parser.registerOscHandler(CONTEXT_OSC, (data) => {
-    session.contextCapture.observe(data, session.comparisonScope.getGeneration(), session.cwd);
+    session.contextCapture.observe(data, session.commandOutputScope.getGeneration(), session.cwd);
     return true;
   });
 
@@ -973,9 +967,8 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     if (!cmd) return true;
     if (cmd.kind === "remote") {
       if (cmd.isRemote) dismissTerminalWelcome(leafId);
-      if (cmd.isRemote) session.comparisonScope.enterRemote();
-      else session.comparisonScope.leaveRemote();
-      clearRunComparisons(session.leafId);
+      if (cmd.isRemote) session.commandOutputScope.enterRemote();
+      else session.commandOutputScope.leaveRemote();
       clearFixRuns(session.leafId);
       session.isRemoteShell = cmd.isRemote;
       if (!cmd.isRemote) session.remoteTarget = null;
@@ -1002,7 +995,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r") {
       // Only a verified local shell uses Husk's shortcut. Preserve native
       // reverse search for remote/unknown scopes even if the UI flag reset.
-      if (session.comparisonScope.target(session.isRemoteShell) !== null) return true;
+      if (session.commandOutputScope.target(session.isRemoteShell) !== null) return true;
       e.preventDefault();
       e.stopPropagation();
       // Browsing history must not cancel jobs, clear a draft, or write to PTY.
@@ -1446,13 +1439,13 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
     getPtyId: () => session.ptyId,
     getStagingScope: () => {
       if (session.disposed || session.ptyOpening || session.ptyId == null || !session.cwd) return null;
-      const observedHost = session.comparisonScope.target(session.isRemoteShell);
+      const observedHost = session.commandOutputScope.target(session.isRemoteShell);
       // OSC133 can reset the active-shell UI flag even inside integrated SSH.
       // An uncertain/mismatched scope is not permission to treat it as local.
       if (observedHost === undefined || (observedHost !== null) !== session.isRemoteShell
         || (observedHost !== null && !session.remoteTarget)) return null;
       return {
-        token: `${session.workflowSessionId}:${session.ptyId}:${session.comparisonScope.getGeneration()}`,
+        token: `${session.workflowSessionId}:${session.ptyId}:${session.commandOutputScope.getGeneration()}`,
         ptyId: session.ptyId, cwd: session.cwd, isRemote: observedHost !== null,
         host: observedHost !== null ? session.remoteTarget : null,
       };
@@ -1500,14 +1493,13 @@ export function disposeSession(leafId: number): void {
   session.prefsUnsub?.();
   session.runReceipts.clear();
   session.promptTracker.clear();
-  session.comparisonStart?.marker.dispose();
+  session.commandOutputStart?.marker.dispose();
   session.term.dispose();
   sessions.delete(leafId);
   if (!sessions.size) { stopWakeChecks?.(); stopWakeChecks = null; setTerminalRunInterrupter(null); }
   outputListeners.delete(leafId);
   logsOpeners.delete(leafId);
   clearFailure(leafId);
-  clearRunComparisons(leafId);
   clearFixRuns(leafId);
   clearNextSteps(leafId);
   clearGitActivity(leafId);

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { scanForSecrets } from "../ai/contextItems";
 import { classifyFailure, type FailureKind } from "./failureStore";
-import type { ComparisonRunInput } from "./runComparison";
+import type { CapturedCommandRun } from "./commandOutputCapture";
 
 export const FIX_MEMORY_KEY = "husk.remembered-fixes.v1";
 export const MAX_REMEMBERED_FIXES = 30;
@@ -12,7 +12,7 @@ const encoder = new TextEncoder();
 const bytes = (value: string) => encoder.encode(value).byteLength;
 const kinds = new Set<FailureKind>(["dependency", "permission", "test", "port", "git", "network", "unknown"]);
 type StoragePort = Pick<Storage, "getItem" | "setItem">;
-type FixScope = Pick<ComparisonRunInput, "ptyId" | "cwd" | "remoteHost">;
+type FixScope = Pick<CapturedCommandRun, "ptyId" | "cwd" | "remoteHost">;
 type Failure = { command: string; excerpt: string; errorKey: string; kind: FailureKind; exitCode: number; at: number };
 export type FixStep = { id: number; command: string; at: number; verification: boolean };
 export type FixCandidate = FixScope & { id: number; failure: Failure; steps: FixStep[]; omitted: number };
@@ -132,7 +132,7 @@ export class FixMemoryStore {
     pane.dismissed = true; this.refresh(pane); this.emit();
   }
 
-  record(input: ComparisonRunInput): void {
+  record(input: CapturedCommandRun): void {
     if (!Number.isInteger(input.ptyId) || input.ptyId < 0 || !text(input.cwd, 4096)
       || (input.remoteHost !== null && !text(input.remoteHost, 255)) || !command(input.command)
       || !timestamp(input.at) || input.exitCode == null || !Number.isInteger(input.exitCode) || input.truncated) {
@@ -207,6 +207,6 @@ export class FixMemoryStore {
 }
 
 export const fixMemoryStore = new FixMemoryStore(() => typeof window === "undefined" ? undefined : window.localStorage);
-export const recordCompletedFixRun = (input: ComparisonRunInput): void => fixMemoryStore.record(input);
+export const recordCompletedFixRun = (input: CapturedCommandRun): void => fixMemoryStore.record(input);
 export const clearFixRuns = (leafId: number): void => fixMemoryStore.clear(leafId);
 export const useFixMemory = (leafId: number): FixSnapshot | null => useSyncExternalStore(fixMemoryStore.subscribe, () => fixMemoryStore.getSnapshot(leafId));

@@ -9,12 +9,12 @@ import { toast } from "../toast";
 import { FixMemoryStore } from "./fixMemory";
 import { RememberFixStrip } from "./RememberFixStrip";
 import { closeSavedFixes, getSavedFixesView, openSavedFixes } from "./savedFixesView";
-import type { ComparisonRunInput } from "./runComparison";
+import type { CapturedCommandRun } from "./commandOutputCapture";
 
 let root: Root; let container: HTMLDivElement; let store: FixMemoryStore;
 const returnToTerminal = vi.fn();
 let storage: { getItem: Mock<(key: string) => string | null>; setItem: Mock<(key: string, value: string) => void> };
-const base: ComparisonRunInput = { leafId: 1, ptyId: 11, cwd: "/project", remoteHost: null, command: "npm test", output: "Error: Cannot find module 'widget'", exitCode: 1, at: 100 };
+const base: CapturedCommandRun = { leafId: 1, ptyId: 11, cwd: "/project", remoteHost: null, command: "npm test", output: "Error: Cannot find module 'widget'", exitCode: 1, at: 100 };
 function resolved() {
   store.record(base); store.record({ ...base, command: "npm install", exitCode: 0, at: 200 });
   store.record({ ...base, exitCode: 0, output: "passed", at: 300 });

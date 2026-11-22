@@ -81,7 +81,7 @@ it("keeps the local-history shortcut and opener free of implicit PTY writes and 
   // to mutate the shell/buffer before the user had selected any history row.
   const registry = readFileSync(new URL("./registry.ts", import.meta.url), "utf8");
   const historyBranch = registry.slice(registry.indexOf('if (e.type === "keydown" && e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "r")'), registry.indexOf('if (e.type === "keydown" && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c"'));
-  expect(historyBranch).toContain("session.comparisonScope.target(session.isRemoteShell) !== null");
+  expect(historyBranch).toContain("session.commandOutputScope.target(session.isRemoteShell) !== null");
   expect(historyBranch).not.toMatch(/invoke\(|\.clear\(/);
   const terminal = readFileSync(new URL("../Terminal.tsx", import.meta.url), "utf8");
   const opener = terminal.slice(terminal.indexOf("const openHistory = () =>"), terminal.indexOf("const menuCopy = () =>"));

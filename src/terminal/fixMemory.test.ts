@@ -1,12 +1,12 @@
 import { beforeEach, expect, it, vi, type Mock } from "vitest";
 import { FIX_MEMORY_KEY, FixMemoryStore, MAX_FIX_MEMORY_BYTES, MAX_REMEMBERED_FIXES, fixErrorExcerpt, parseRememberedFixes } from "./fixMemory";
-import type { ComparisonRunInput } from "./runComparison";
+import type { CapturedCommandRun } from "./commandOutputCapture";
 
 let raw: string | null;
 let storage: { getItem: Mock<(key: string) => string | null>; setItem: Mock<(key: string, value: string) => void> };
 let store: FixMemoryStore;
-const base: ComparisonRunInput = { leafId: 1, ptyId: 11, cwd: "/project", remoteHost: null, command: "npm test", output: "Error: Cannot find module 'widget'", exitCode: 1, at: 100 };
-function run(overrides: Partial<ComparisonRunInput> = {}) { store.record({ ...base, ...overrides }); }
+const base: CapturedCommandRun = { leafId: 1, ptyId: 11, cwd: "/project", remoteHost: null, command: "npm test", output: "Error: Cannot find module 'widget'", exitCode: 1, at: 100 };
+function run(overrides: Partial<CapturedCommandRun> = {}) { store.record({ ...base, ...overrides }); }
 function resolved() {
   run(); run({ command: "npm install", output: "installed", exitCode: 0, at: 200 });
   run({ output: "tests passed", exitCode: 0, at: 300 });
