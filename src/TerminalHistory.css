@@ -3,6 +3,21 @@
 .term-hist-modes button[aria-pressed="true"] { color: var(--foreground); background: var(--muted); }
 .term-hist-modes button:hover, .term-hist-recall-actions button:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
 .term-hist-modes > span { margin-left: auto; color: var(--muted-foreground); }
+.term-hist-modes { flex-wrap: wrap; }
+.term-hist-sort { display: flex; align-items: center; gap: 5px; margin-left: auto; color: var(--muted-foreground); }
+.term-hist-sort select { min-height: 24px; border: 1px solid var(--border); border-radius: 5px; padding: 2px 5px; background: var(--background); color: var(--foreground); font: inherit; }
+.term-hist-search-hint { flex-shrink: 0; margin: 0 4px 7px; color: var(--muted-foreground); font-size: 10px; line-height: 1.4; }
+.term-hist-load-error { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin: 0 3px 7px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 11px; line-height: 1.4; }
+.term-hist-load-error span { flex: 1; overflow-wrap: anywhere; }
+.term-hist-pagination { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin: 6px 3px; font-size: 10px; color: var(--muted-foreground); }
+.term-hist-pagination span { margin-right: auto; }
+.term-hist-pagination button, .term-hist-load-error button { padding: 3px 7px; border: 1px solid var(--border); border-radius: 4px; color: var(--foreground); font: inherit; }
+.term-hist-pagination button:hover:not(:disabled), .term-hist-load-error button:hover:not(:disabled) { background: var(--muted); }
+.term-hist-pagination button:disabled, .term-hist-load-error button:disabled { opacity: .4; cursor: default; }
+.term-hist-date { flex-shrink: 0; align-self: center; margin-left: 5px; font-size: 9px; color: var(--muted-foreground); }
+.term-hist .term-hist-footer { flex-wrap: wrap; gap: 5px; }
+.term-hist .term-hist-footer-hints { flex-wrap: wrap; }
+@media (max-width: 540px) { .term-hist-date { display: none; } }
 .term-hist-recall { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 3px 6px; font-size: 11px; }
 .term-hist-recall > p { margin: 0 0 7px; color: var(--muted-foreground); line-height: 1.45; }
 .term-hist-recall-review { border: 1px solid var(--border); border-radius: 5px; }

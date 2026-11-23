@@ -5,6 +5,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getPrefs, subscribePrefs } from "../settings/preferences";
+import { SessionCommandHistory, type HistoryRow } from "../shellHistory";
 import { buildTerminalTheme } from "../styles/terminalTheme";
 import { fontStack } from "../styles/fonts";
 import {
@@ -90,6 +91,7 @@ export type TerminalHandle = {
   getBuffer: (maxLines?: number) => string;
   getSelection: () => string | null;
   getLastCommandRun: () => CommandRun | null;
+  getRecentHistory: () => HistoryRow[];
   clear: () => void;
   canClearScreen: () => boolean;
   eraseScrollback: () => Promise<void>;
@@ -172,6 +174,7 @@ type Session = {
   isRemoteShell: boolean;
   remoteTarget: string | null;
   lastCompletedRun: CommandRun | null;
+  recentHistory: SessionCommandHistory;
   /** Start of the editable prompt for this PTY (not globally shared). */
   promptTracker: TerminalPromptTracker;
   shellCommandMarkers: ShellCommandMarkers;
@@ -392,6 +395,7 @@ export async function restartSession(leafId: number): Promise<void> {
     session.cmdStartRow = null;
     session.currentCommand = "";
     session.lastCompletedRun = null;
+    session.recentHistory.clear();
     session.workflowSessionId = `term_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
     initializeTerminalStatus(leafId, session.workflowSessionId);
     session.commandStartedAt = 0;
@@ -640,6 +644,7 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     isRemoteShell: false,
     remoteTarget: null,
     lastCompletedRun: null,
+    recentHistory: new SessionCommandHistory(),
     promptTracker: new TerminalPromptTracker(term),
     shellCommandMarkers: new ShellCommandMarkers(),
     runReceipts: new TerminalRunReceipts(),
@@ -925,7 +930,11 @@ async function initializeSession(leafId: number, initialCwd?: string, historyOpt
     noteTerminalWelcomeCommand(leafId);
     session.shellCommandMarkers.announceCommand();
     invalidateTerminalConfig(session);
-    const cmd = data.slice("husk;cmd;".length).replace(/%3B/g, ";").trim();
+    const rawCommand = data.slice("husk;cmd;".length).replace(/%3B/g, ";");
+    // Capture before an SSH launch changes scope, while retaining leading
+    // whitespace long enough to honor history exclusion conventions.
+    if (session.commandOutputScope.target(session.isRemoteShell) === null) session.recentHistory.record(rawCommand);
+    const cmd = rawCommand.trim();
     session.runReceipts.preexec(cmd, runTarget(session), Date.now());
     session.currentCommand = cmd;
     session.commandStartedAt = Date.now();
@@ -1400,6 +1409,7 @@ export function getSessionHandle(leafId: number): TerminalHandle | null {
       return sel.length > 0 ? sel : null;
     },
     getLastCommandRun: () => session.lastCompletedRun ? { ...session.lastCompletedRun } : null,
+    getRecentHistory: () => session.disposed ? [] : session.recentHistory.snapshot(),
     canClearScreen: () => canClearSessionScreen(session),
     clear: () => {
       // Ask only a verified interactive shell to redraw. Never send Ctrl+L
@@ -1472,6 +1482,7 @@ export function disposeSession(leafId: number): void {
   if (!session) return;
 
   session.disposed = true;
+  session.recentHistory.clear();
   creatingSessions.delete(leafId);
   session.history?.dispose();
   disposeTerminalWelcome(leafId);

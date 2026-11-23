@@ -6,7 +6,7 @@ import {
   getActiveTerminalDraft,
   type CommandRun,
 } from "./ai/terminalContext";
-import { getShellHistory, type HistoryRow } from "./shellHistory";
+import { getShellHistory, mergeShellHistory, type HistoryRow } from "./shellHistory";
 import { usePrefs } from "./settings/preferences";
 import { buildTerminalTheme } from "./styles/terminalTheme";
 import { captureTerminalTarget } from "./ai/terminalTarget";
@@ -110,6 +110,9 @@ export function TerminalView({
   const [historyRows, setHistoryRows] = useState<HistoryRow[]>([]);
   const historyTargetRef = useRef<ScreenCommandTarget | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoadError, setHistoryLoadError] = useState<string | null>(null);
+  const historyRequestRef = useRef(0);
+  const historyPtyRef = useRef<number | null>(null);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -294,6 +297,7 @@ export function TerminalView({
     if (!active) {
       setHistoryOpen(false);
       historyOpenRef.current = false;
+      historyRequestRef.current++;
       // A hidden tab must not keep rejecting keys when it becomes active again.
       // Do not restore focus here: another tab or an editor now owns it.
       if (searchOpenRef.current) closeSearch(false);
@@ -328,13 +332,52 @@ export function TerminalView({
   }, [query, searchOpen]);
 
   // ── History ───────────────────────────────────────────────────────────────
+  useEffect(() => () => {
+    historyRequestRef.current++;
+    historyOpenRef.current = false;
+  }, [leafId]);
+
+  useEffect(() => {
+    if (historyOpenRef.current && historyPtyRef.current !== getSessionHandle(leafId)?.getPtyId()) {
+      historyRequestRef.current++;
+      historyOpenRef.current = false;
+      setHistoryOpen(false);
+      setHistoryLoading(false);
+    }
+  }, [leafId, sessionStatus]);
+
   const selectHistory = async (command: string): Promise<void> => {
     const target = historyTargetRef.current;
     await stageScreenCommand(leafId, target, command);
     // An older write must not close a picker reopened for a new target.
     if (historyTargetRef.current !== target) return;
+    historyRequestRef.current++;
     historyOpenRef.current = false;
     setHistoryOpen(false);
+  };
+
+  const loadHistory = () => {
+    const request = ++historyRequestRef.current;
+    const ptyId = getSessionHandle(leafId)?.getPtyId() ?? null;
+    historyPtyRef.current = ptyId;
+    const liveRows = () => getSessionHandle(leafId)?.getRecentHistory?.() ?? [];
+    const publish = (rows: HistoryRow[]) => {
+      setHistoryEntries(rows.map((row) => row.command));
+      setHistoryRows(rows);
+    };
+    const current = () => historyOpenRef.current && historyRequestRef.current === request
+      && (getSessionHandle(leafId)?.getPtyId() ?? null) === ptyId;
+    publish(liveRows());
+    setHistoryLoading(true);
+    setHistoryLoadError(null);
+    void getShellHistory()
+      .then((rows) => { if (current()) publish(mergeShellHistory(liveRows(), rows)); })
+      .catch(() => {
+        if (!current()) return;
+        publish(liveRows());
+        setHistoryLoadError("Could not read saved shell history. Commands observed in this terminal are still available.");
+      })
+      .finally(() => { if (current()) setHistoryLoading(false); });
   };
 
   const openHistory = () => {
@@ -345,11 +388,7 @@ export function TerminalView({
     // keystroke can still reach xterm and appear behind the history popup.
     historyOpenRef.current = true;
     setHistoryOpen(true);
-    setHistoryLoading(true);
-    void getShellHistory()
-      .then((rows) => { setHistoryEntries(rows.map((r) => r.command)); setHistoryRows(rows); })
-      .catch(() => { setHistoryEntries([]); setHistoryRows([]); })
-      .finally(() => setHistoryLoading(false));
+    loadHistory();
   };
 
   // ── Context menu ──────────────────────────────────────────────────────────
@@ -718,8 +757,11 @@ export function TerminalView({
           rows={historyRows}
           terminalId={leafId}
           loading={historyLoading}
+          loadError={historyLoadError}
+          onRetry={loadHistory}
           onSelect={selectHistory}
           onClose={() => {
+            historyRequestRef.current++;
             historyOpenRef.current = false;
             setHistoryOpen(false);
             handleRef.current?.focus();

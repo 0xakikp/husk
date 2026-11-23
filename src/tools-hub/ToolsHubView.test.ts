@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -47,6 +49,34 @@ it("presents a compact six-tool launcher without probing, setup instructions, or
   expect([...container.querySelectorAll(".tools-hub-row-title")].map((node) => node.textContent)).toEqual(["2FA Codes", "Ports", "Dev Tools", "Kubernetes", "Docker", "Tailscale"]);
   for (const text of ["Custom plugins", "CLI not checked", "API integration", "Check CLIs", "No folder", "Only run commands", "local CLI configuration", "Generate locally stored", "planned"]) {
     expect(container.textContent).not.toContain(text);
+  }
+});
+it("declares the same theme accent for pointer and keyboard highlights without recoloring labels", () => {
+  // Check the stylesheet contract only; happy-dom does not render the browser cascade.
+  const css = readFileSync(resolve("src/tools-hub/ToolsHubView.css"), "utf8");
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  for (const state of ["hover", "focus-visible"]) {
+    const row = rules.find((rule) => rule[1].split(",").some((selector) => selector.trim() === `.tools-hub-row:${state}`));
+    expect(row?.[2]).toContain("background: color-mix(in srgb, var(--primary) 8%, transparent)");
+    expect(row?.[2]).toContain("border-color: color-mix(in srgb, var(--primary) 18%, transparent)");
+    expect(row?.[2]).not.toMatch(/(?:^|;)\s*color\s*:/);
+    const icon = rules.find((rule) => rule[1].split(",").some((selector) => selector.trim() === `.tools-hub-row:${state} .tools-hub-icon`));
+    expect(icon?.[2]).toContain("color: var(--primary)");
+  }
+});
+it("keeps brand colors on icon elements while utility icons inherit their row highlight", async () => {
+  fixture.dir = "/plugins";
+  vi.mocked(loadPlugins).mockResolvedValueOnce([{ plugin: { ...plugin.plugin, brand: "#f97316" } }]);
+  await render();
+  const icon = (name: string) => [...container.querySelectorAll(".tools-hub-row")]
+    .find((row) => row.querySelector(".tools-hub-row-title")?.textContent === name)?.querySelector<SVGElement>(".tools-hub-icon svg");
+  expect(icon("Kubernetes")?.getAttribute("fill")).toBe("#326CE5");
+  expect(icon("Docker")?.getAttribute("fill")).toBe("#2496ED");
+  expect(icon("Test plugin")?.style.color).toBe("#f97316");
+  for (const name of ["2FA Codes", "Ports", "Dev Tools"]) {
+    expect(icon(name)).not.toBeNull();
+    expect(icon(name)?.style.color).toBe("");
+    expect(icon(name)?.querySelector('[stroke="currentColor"]')).not.toBeNull();
   }
 });
 it("reveals descriptions on keyboard focus, associates them accessibly, and dismisses with Escape", async () => {

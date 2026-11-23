@@ -1,0 +1,6 @@
+/* Keep rail colors unlayered so App.css's legacy button reset cannot override
+   selection. Scope this fix to the rail instead of restyling every app button. */
+.sidebar-rail-button { background: transparent; color: var(--muted-foreground); }
+.sidebar-rail-button:hover { background: var(--muted); color: var(--foreground); }
+.sidebar-rail-button.is-active,
+.sidebar-rail-button.is-active:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }

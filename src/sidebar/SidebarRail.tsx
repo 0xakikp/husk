@@ -10,6 +10,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuRadioGroup, DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
+import "./SidebarRail.css";
 
 export type SidebarViewId =
   | "explorer" | "source-control" | "remotes" | "workflows" | "vault"
@@ -40,9 +41,9 @@ export function visibleRailSlots(width: number): number {
 }
 
 const buttonClass = (selected: boolean) => cn(
-  "relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none transition-colors",
+  "sidebar-rail-button relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none transition-colors",
   "focus-visible:ring-1 focus-visible:ring-primary/60",
-  selected ? "bg-primary/12 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+  selected && "is-active",
 );
 
 export function SidebarRail({ view, onSelectView, changedCount = 0 }: {

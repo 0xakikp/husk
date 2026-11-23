@@ -1,34 +1,17 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { captureSavedCommand } from "./workflows/savedCommandCapture";
 import { usePrefs } from "./settings/preferences";
 import { fontStack } from "./styles/fonts";
 import { requestScreenAssist } from "./ai/screenAssist";
+import { searchHistory, type HistorySort } from "./terminal/historySearch";
 import {
   HISTORY_RECALL_SYSTEM, historyRecallMetadata, historyRecallPrompt, parseHistoryRecall, prepareHistoryRecall,
   type HistoryRecallCandidate, type HistoryRecallRow,
 } from "./ai/historyRecall";
 import "./TerminalHistory.css";
 
-/**
- * Ordered-character fuzzy match: every character of `query` must appear in
- * `text` in order (any number of chars in between). Returns matched indices
- * or null. Case-insensitive.
- */
-function fuzzyMatch(query: string, text: string): number[] | null {
-  const qi = query.toLowerCase();
-  const ti = text.toLowerCase();
-  const indices: number[] = [];
-  let tiPos = 0;
-  for (let qiPos = 0; qiPos < qi.length; qiPos++) {
-    const ch = qi[qiPos];
-    tiPos = ti.indexOf(ch, tiPos);
-    if (tiPos === -1) return null;
-    indices.push(tiPos);
-    tiPos++;
-  }
-  return indices;
-}
+const HISTORY_PAGE_SIZE = 50;
 
 /**
  * Highlight a matched substring within `text` using <mark> spans.
@@ -57,99 +40,6 @@ function highlightText(text: string, matches: number[]): React.ReactNode[] {
   }
   if (pos < text.length) parts.push(text.slice(pos));
   return parts;
-}
-
-interface ScoredEntry {
-  command: string;
-  matchIndices: number[];
-  score: number; // lower = better
-  recencyIndex: number; // lower = more recent (original position in entries)
-}
-
-/**
- * Word-boundary match: each query char must match the start of a word
- * (after space, /, -, _, ., or at string start). Returns matched indices or null.
- */
-function wordBoundaryMatch(query: string, text: string): number[] | null {
-  const qi = query.toLowerCase();
-  const ti = text.toLowerCase();
-  const indices: number[] = [];
-  let tiPos = 0;
-  for (let qiPos = 0; qiPos < qi.length; qiPos++) {
-    const ch = qi[qiPos];
-    // Find ch at a word boundary
-    let found = false;
-    while (tiPos < ti.length) {
-      if (ti[tiPos] === ch && (tiPos === 0 || /[\s/\-_.]/.test(ti[tiPos - 1]))) {
-        indices.push(tiPos);
-        tiPos++;
-        found = true;
-        break;
-      }
-      tiPos++;
-    }
-    if (!found) return null;
-  }
-  return indices;
-}
-
-/**
- * Compute a match score. Lower = better.
- * Tiers:
- *   0-99   : prefix match (command starts with query)
- *   100-199: word-boundary match (each query char starts a word)
- *   200-299: exact substring match
- *   1000+  : fuzzy match (ordered chars anywhere)
- *
- * Within each tier, shorter commands score better (more relevant).
- */
-function computeScore(
-  cmd: string,
-  lowerCmd: string,
-  lowerQ: string,
-  exactIdx: number,
-  fuzzy: number[] | null,
-  wordBoundary: number[] | null,
-): { score: number; indices: number[] } | null {
-  // Prefix match (best) — command starts with query
-  if (lowerCmd.startsWith(lowerQ)) {
-    const indices = Array.from({ length: lowerQ.length }, (_, i) => i);
-    // Penalize bare commands (e.g. just "ssh" with no args) — they're less useful
-    // A bare command is one where the trimmed length equals the query length
-    // (meaning no additional arguments beyond the query itself)
-    const trimmedCmd = cmd.trim();
-    const isBareCommand = trimmedCmd.length === lowerQ.length;
-    // Also penalize commands that are just the query plus whitespace
-    const isQueryOnly = trimmedCmd.toLowerCase() === lowerQ;
-    const barePenalty = (isBareCommand || isQueryOnly) ? 500 : 0;
-    return { score: cmd.length + barePenalty, indices }; // shorter command = better, but bare commands penalized
-  }
-
-  // Word-boundary match — each query char starts a word
-  if (wordBoundary) {
-    const gapScore = wordBoundary.reduce((sum, idx, i) => {
-      if (i === 0) return idx;
-      return sum + (idx - wordBoundary[i - 1]);
-    }, 0);
-    return { score: 100 + gapScore + wordBoundary[0], indices: wordBoundary };
-  }
-
-  // Exact substring match
-  if (exactIdx >= 0) {
-    const indices = Array.from({ length: lowerQ.length }, (_, i) => exactIdx + i);
-    return { score: 200 + exactIdx + cmd.length, indices };
-  }
-
-  // Fuzzy match (fallback)
-  if (fuzzy) {
-    let gapScore = 0;
-    for (let i = 1; i < fuzzy.length; i++) {
-      gapScore += fuzzy[i] - fuzzy[i - 1] - 1;
-    }
-    return { score: 1000 + gapScore + fuzzy[0] + cmd.length, indices: fuzzy };
-  }
-
-  return null;
 }
 
 type CommandType =
@@ -247,14 +137,16 @@ const ICONS: Record<CommandType, React.ReactNode> = {
  * commands. Up/Down to move, Enter to drop the command at the prompt, Esc to
  * close. Replaces the shell's built-in reverse-i-search with a GUI list.
  *
- * Matching: prefix > word-boundary > exact substring > fuzzy. Results sorted
- * by match quality, then command length (shorter = more relevant), then recency.
+ * Newest-first by default, including filtered results. Explicit relevance sort
+ * is available; literal terms take priority over approximate fallback matches.
  */
 export function TerminalHistoryPanel({
   entries,
   rows,
   terminalId,
   loading,
+  loadError,
+  onRetry,
   onSelect,
   onClose,
 }: {
@@ -262,11 +154,15 @@ export function TerminalHistoryPanel({
   rows?: HistoryRecallRow[];
   terminalId?: string | number;
   loading: boolean;
+  loadError?: string | null;
+  onRetry?: () => void;
   onSelect: (command: string) => void | Promise<void>;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
+  const [sort, setSort] = useState<HistorySort>("newest");
+  const listId = useId();
   const [aiMode, setAiMode] = useState(false);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [aiMatches, setAiMatches] = useState<HistoryRecallCandidate[] | null>(null);
@@ -349,53 +245,24 @@ export function TerminalHistoryPanel({
     }
   }
 
-  const scored = useMemo(() => {
-    const q = query.trim();
-    // When query is empty, show most recent entries (already sorted by recency)
-    if (!q) {
-      return entries
-        .slice(0, 16)
-        .map((c, i) => ({ command: c, matchIndices: [] as number[], score: 0, recencyIndex: i }));
-    }
+  const search = useMemo(() => searchHistory(entries, query, sort), [entries, query, sort]);
+  const scored = search.matches;
+  const pageStart = Math.floor(index / HISTORY_PAGE_SIZE) * HISTORY_PAGE_SIZE;
+  const page = scored.slice(pageStart, pageStart + HISTORY_PAGE_SIZE);
+  const activeCommand = aiMode ? aiMatches?.[index]?.command : scored[index]?.command;
+  const copyTargetRef = useRef<string | undefined>(activeCommand);
+  copyTargetRef.current = activeCommand;
 
-    const results: ScoredEntry[] = [];
-    const lowerQ = q.toLowerCase();
-
-    for (let recencyIdx = 0; recencyIdx < entries.length; recencyIdx++) {
-      const cmd = entries[recencyIdx];
-      const lower = cmd.toLowerCase();
-
-      const exactIdx = lower.indexOf(lowerQ);
-      const fuzzy = fuzzyMatch(q, cmd);
-      const wordBoundary = wordBoundaryMatch(q, cmd);
-
-      const match = computeScore(cmd, lower, lowerQ, exactIdx, fuzzy, wordBoundary);
-      if (match) {
-        results.push({
-          command: cmd,
-          matchIndices: match.indices,
-          score: match.score,
-          recencyIndex: recencyIdx,
-        });
-      }
-    }
-
-    // Sort: score first, then recency (more recent = lower index = better)
-    results.sort((a, b) => {
-      if (a.score !== b.score) return a.score - b.score;
-      return a.recencyIndex - b.recencyIndex;
-    });
-    return results.slice(0, 16);
-  }, [entries, query]);
+  useEffect(() => { setCopyState("idle"); setCopyError(""); }, [query, index, aiMode]);
 
   useEffect(() => {
     setIndex(0);
-  }, [query, entries]);
+  }, [query, entries, sort]);
 
   useEffect(() => {
-    const el = listRef.current?.children[index] as HTMLElement | undefined;
+    const el = listRef.current?.querySelector(`[data-history-index="${index}"]`) as HTMLElement | undefined;
     el?.scrollIntoView?.({ block: "nearest" });
-  }, [index]);
+  }, [index, query, sort, aiMode]);
 
   /* xterm can retain its hidden textarea as the event target for the first
      keystroke after Ctrl+R, even though this input has already requested focus.
@@ -475,17 +342,20 @@ export function TerminalHistoryPanel({
     }
   };
 
-  const copyCommand = async (): Promise<void> => {
-    if (!stageError || copyingRef.current) return;
-    const selectedError = stageError;
+  const copyCommand = async (command: string | undefined, fromError = false): Promise<void> => {
+    if (!command || copyingRef.current) return;
+    const selectedError = fromError ? stageError : null;
     const selectedTerminal = terminalId;
+    if (!fromError) { stageErrorRef.current = null; setStageError(null); }
+    const current = () => mountedRef.current && liveContextRef.current.terminalId === selectedTerminal
+      && (selectedError ? stageErrorRef.current === selectedError : copyTargetRef.current === command);
     copyingRef.current = true;
     setCopyState("copying"); setCopyError("");
     try {
-      await writeText(selectedError.command);
-      if (mountedRef.current && liveContextRef.current.terminalId === selectedTerminal && stageErrorRef.current === selectedError) setCopyState("copied");
+      await writeText(command);
+      if (current()) setCopyState("copied");
     } catch (error) {
-      if (mountedRef.current && liveContextRef.current.terminalId === selectedTerminal && stageErrorRef.current === selectedError) {
+      if (current()) {
         setCopyState("idle");
         setCopyError(error instanceof Error ? `Could not copy command: ${error.message}` : "Could not copy command. Please try again.");
       }
@@ -530,6 +400,11 @@ export function TerminalHistoryPanel({
             value={query}
             placeholder={loading ? "Loading history…" : aiMode ? "e.g. The command I used to forward Postgres" : "Search history…"}
             aria-label={aiMode ? "Describe a saved command" : "Search history"}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={true}
+            aria-controls={listId}
+            aria-activedescendant={activeCommand ? `${listId}-${index}` : undefined}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (stagingRef.current && e.key !== "Escape") { e.preventDefault(); return; }
@@ -539,6 +414,9 @@ export function TerminalHistoryPanel({
               } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key.toLowerCase() === "p")) {
                 e.preventDefault();
                 setIndex((i) => Math.max(0, i - 1));
+              } else if (!aiMode && (e.key === "PageDown" || e.key === "PageUp")) {
+                e.preventDefault();
+                setIndex((i) => Math.max(0, Math.min(scored.length - 1, i + (e.key === "PageDown" ? HISTORY_PAGE_SIZE : -HISTORY_PAGE_SIZE))));
               } else if (e.key === "Enter") {
                 e.preventDefault();
                 void choose(index);
@@ -567,16 +445,28 @@ export function TerminalHistoryPanel({
           <kbd className="term-hist-esc">esc</kbd>
         </div>
 
-        {prefs.aiEnabled && <div className="term-hist-modes" aria-label="History search mode">
-          <button type="button" disabled={staging} aria-pressed={!aiMode} onClick={() => { cancelRecall(); setAiMode(false); setAiError(""); inputRef.current?.focus(); }}>Local search</button>
-          <button type="button" disabled={staging} aria-pressed={aiMode} onClick={() => { setAiMode(true); inputRef.current?.focus(); }}>Ask AI</button>
-          <span>Saved commands only</span>
+        <div className="term-hist-modes" aria-label="History search mode">
+          {prefs.aiEnabled && <>
+          <button type="button" disabled={staging} aria-pressed={!aiMode} onClick={() => { cancelRecall(); setAiMode(false); setIndex(0); setAiError(""); inputRef.current?.focus(); }}>Local search</button>
+          <button type="button" disabled={staging} aria-pressed={aiMode} onClick={() => { setAiMode(true); setIndex(0); inputRef.current?.focus(); }}>Ask AI</button>
+          </>}
+          {!aiMode ? <label className="term-hist-sort">Order
+            <select aria-label="History order" title="Uses saved file order when timestamps were not recorded" value={sort} disabled={staging} onChange={(event) => { setSort(event.target.value as HistorySort); setIndex(0); }}>
+              <option value="newest">Newest first</option>
+              <option value="relevance">Best match</option>
+            </select>
+          </label> : <span>Review before sending</span>}
+        </div>
+        {!aiMode && <p className="term-hist-search-hint">{search.approximate ? "No literal matches. Showing approximate matches." : "Search words in any order · up to 10,000 recent local commands"}</p>}
+        {loadError && <div className="term-hist-load-error" role="alert">
+          <span>{loadError}</span>
+          {onRetry && <button type="button" disabled={loading || staging} onClick={onRetry}>{loading ? "Loading…" : "Retry"}</button>}
         </div>}
 
         {aiMode && <div className="term-hist-recall">
           <p>Review the commands below, then send your question and the checked entries to your selected AI provider. Local shell history is not your remote host’s history.</p>
           <details open={aiMatches === null} className="term-hist-recall-review">
-            <summary>Review {reviewedCandidates.length} of {snapshot.total} saved commands</summary>
+            <summary>Review {reviewedCandidates.length} of {snapshot.total} recorded commands</summary>
             {(snapshot.sensitiveExcluded > 0 || snapshot.omitted > 0) && <p className="term-hist-recall-note">{snapshot.sensitiveExcluded} possible sensitive entries excluded · {snapshot.omitted} other entries outside this bounded sample</p>}
             <div className="term-hist-recall-candidates">
               {snapshot.candidates.map((candidate) => <label key={candidate.id}>
@@ -597,10 +487,11 @@ export function TerminalHistoryPanel({
           {aiError && <p role="alert" className="term-hist-recall-note">{aiError}</p>}
         </div>}
 
-        <div className="term-hist-list" ref={listRef} aria-busy={staging}>
+        <div className="term-hist-list" id={listId} role="listbox" aria-label="History results" ref={listRef} aria-busy={staging || loading}>
           {aiMode ? aiMatches && (aiMatches.length ? aiMatches.map((candidate, resultIndex) => <button
             type="button" key={candidate.id} className={`term-hist-item term-hist-recall-result ${resultIndex === index ? "active" : ""}`}
-            disabled={staging} title={`Stage this saved command: ${candidate.command}`} onMouseEnter={() => { if (!stagingRef.current) setIndex(resultIndex); }} onClick={() => { void choose(resultIndex); }}
+            id={`${listId}-${resultIndex}`} data-history-index={resultIndex} role="option" aria-selected={resultIndex === index}
+            disabled={staging} title={`Stage this history command: ${candidate.command}`} onMouseEnter={() => { if (!stagingRef.current) setIndex(resultIndex); }} onClick={() => { void choose(resultIndex); }}
           ><span><code>{candidate.command}</code><small>{historyRecallMetadata(candidate)}</small></span><span className="term-hist-recall-stage">stage</span></button>)
             : <div className="term-hist-empty">No strong match in this reviewed sample. Try another description or local search.</div>) : <>
           {scored.length === 0 ? (
@@ -608,16 +499,20 @@ export function TerminalHistoryPanel({
               {loading ? "Loading history…" : query.trim() ? "No matching history" : "No history entries"}
             </div>
           ) : (
-            scored.map(({ command, matchIndices, score }, i) => {
-              const matchType =
-                score < 100 ? "prefix" : score < 200 ? "word" : score < 1000 ? "exact" : "fuzzy";
+            page.map(({ command, matchIndices, kind, recencyIndex }, pageIndex) => {
+              const i = pageStart + pageIndex;
+              const matchType = kind === "terms" ? "word" : kind;
               const hasQuery = query.trim().length > 0;
               const type = getCommandType(command);
               const isComment = type === "comment";
+              const row = rows?.[recencyIndex]?.command === command ? rows[recencyIndex] : undefined;
+              const date = row?.timestamp != null && Number.isFinite(new Date(row.timestamp * 1000).getTime())
+                ? new Date(row.timestamp * 1000) : null;
               return (
                 <button
                   key={`${i}-${command}`}
                   type="button"
+                  id={`${listId}-${i}`} data-history-index={i} role="option" aria-selected={i === index}
                   className={[
                     "term-hist-item",
                     i === index ? "active" : "",
@@ -629,7 +524,7 @@ export function TerminalHistoryPanel({
                   disabled={staging}
                   onMouseEnter={() => { if (!stagingRef.current) setIndex(i); }}
                   onClick={() => { void choose(i); }}
-                  title={command} /* full text on hover */
+                  title={[command, date?.toLocaleString(), row?.source].filter(Boolean).join("\n")}
                 >
                   <span className="term-hist-item-icon" aria-hidden="true">
                     {ICONS[type]}
@@ -639,36 +534,41 @@ export function TerminalHistoryPanel({
                       ? highlightText(command, matchIndices)
                       : command}
                   </span>
-                  {hasQuery && matchType !== "exact" && (
-                    <span className={`term-hist-match-badge ${matchType}`}>
-                      {matchType === "prefix" ? "prefix" : matchType === "word" ? "word" : "fuzzy"}
-                    </span>
-                  )}
+                  {date && <time className="term-hist-date" dateTime={date.toISOString()}>{date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time>}
                 </button>
               );
             })
           )}
           </>}
         </div>
+        {!aiMode && scored.length > HISTORY_PAGE_SIZE && <div className="term-hist-pagination" aria-label="History result pages">
+          <span>{pageStart + 1}–{Math.min(pageStart + HISTORY_PAGE_SIZE, scored.length)} of {scored.length}</span>
+          <button type="button" disabled={staging || pageStart === 0} onClick={() => { setIndex(Math.max(0, pageStart - HISTORY_PAGE_SIZE)); inputRef.current?.focus(); }}>Previous</button>
+          <button type="button" disabled={staging || pageStart + HISTORY_PAGE_SIZE >= scored.length} onClick={() => { setIndex(pageStart + HISTORY_PAGE_SIZE); inputRef.current?.focus(); }}>Next</button>
+        </div>}
         {stageError && <div className="term-hist-stage-error" role="alert">
           <strong>Could not stage history command</strong>
           <p>{stageError.message}</p>
           <code>{stageError.command}</code>
           <div className="term-hist-stage-actions">
-            <button type="button" disabled={copyState === "copying"} onClick={() => { void copyCommand(); }}>{copyState === "copying" ? "Copying…" : "Copy command"}</button>
+            <button type="button" disabled={copyState === "copying"} onClick={() => { void copyCommand(stageError.command, true); }}>{copyState === "copying" ? "Copying…" : "Copy command"}</button>
             {copyState === "copied" && <span role="status">Copied. Nothing was run.</span>}
           </div>
           {copyError && <p>{copyError}</p>}
         </div>}
+        {!stageError && copyState === "copied" && <p className="term-hist-search-hint" role="status">Copied. Nothing was run.</p>}
+        {!stageError && copyError && <p className="term-hist-load-error" role="alert">{copyError}</p>}
         <div className="term-hist-footer">
           <span className="term-hist-footer-count">
-            {aiMode ? aiMatches ? `${aiMatches.length} saved match${aiMatches.length === 1 ? "" : "es"}` : "Review before sending" : scored.length > 0
-              ? `${scored.length}${entries.length > 20 ? "+" : ""} result${scored.length === 1 ? "" : "s"}`
+            {aiMode ? aiMatches ? `${aiMatches.length} history match${aiMatches.length === 1 ? "" : "es"}` : "Review before sending" : scored.length > 0
+              ? `${scored.length} result${scored.length === 1 ? "" : "s"}`
               : query.trim()
                 ? "0 results"
                 : ""}
           </span>
           <span className="term-hist-footer-hints">
+            <button type="button" className="term-hist-save-command" disabled={staging || copyState === "copying" || !activeCommand}
+              title="Copy the highlighted command without staging or running it" onClick={() => { void copyCommand(activeCommand); }}>Copy</button>
             <button type="button" className="term-hist-save-command" disabled={staging || loading || !(aiMode ? aiMatches?.[index]?.command : scored[index]?.command)}
               title="Save the highlighted command to Workflows; nothing is staged or run"
               onClick={() => {

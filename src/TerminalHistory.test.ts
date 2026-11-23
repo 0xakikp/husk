@@ -62,6 +62,97 @@ it("preserves default local fuzzy search without contacting AI", async () => {
   expect(container.textContent).toContain("stage");
 });
 
+it("keeps newest-first search order and lets users explicitly choose best match", async () => {
+  const history = ["git log --all --decorate --oneline", "sudo git status", "git", "git log"];
+  await render(1, history, []); await query("git");
+  const listed = () => [...container.querySelectorAll(".term-hist-command")].map((node) => node.textContent);
+  expect(listed()).toEqual(history);
+  const order = container.querySelector<HTMLSelectElement>('[aria-label="History order"]')!;
+  expect(order.value).toBe("newest");
+  await act(async () => { order.value = "relevance"; order.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(listed()).toEqual(["git", history[0], "git log", "sudo git status"]);
+  expect(requestScreenAssist).not.toHaveBeenCalled();
+});
+
+it("makes all matching history reachable with bounded pages and keyboard navigation", async () => {
+  const history = Array.from({ length: 121 }, (_, index) => `git show revision-${121 - index}`);
+  await render(1, history, []); await query("git");
+  expect(container.querySelectorAll(".term-hist-item")).toHaveLength(50);
+  expect(container.querySelector(".term-hist-pagination")?.textContent).toContain("1–50 of 121");
+  await click("Next");
+  expect(historyItem().textContent).toBe(history[50]);
+  expect(historyInput().getAttribute("aria-activedescendant")).toBe(historyItem().id);
+  await act(async () => historyInput().dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown", bubbles: true })));
+  expect(historyItem().textContent).toBe(history[100]);
+  expect(container.querySelectorAll(".term-hist-item")).toHaveLength(21);
+  await click("Previous");
+  expect(historyItem().textContent).toBe(history[50]);
+  await query("revision-1");
+  expect(container.querySelector(".term-hist-footer-count")?.textContent).toBe("33 results");
+  expect(container.querySelector(".term-hist-pagination")).toBeNull();
+  expect(container.querySelectorAll(".term-hist-item.active")).toHaveLength(1);
+});
+
+it("moves Ctrl+R past a page boundary without skipping or staging commands", async () => {
+  const history = Array.from({ length: 60 }, (_, index) => `echo ${index}`);
+  await render(1, history, []);
+  await act(async () => {
+    for (let i = 0; i < 50; i++) historyInput().dispatchEvent(new KeyboardEvent("keydown", { key: "r", ctrlKey: true, bubbles: true }));
+  });
+  expect(historyItem().textContent).toBe("echo 50");
+  expect(historyItem().getAttribute("aria-selected")).toBe("true");
+  expect(select).not.toHaveBeenCalled();
+});
+
+it("finds reordered words, labels approximate fallback, and reports actual match counts", async () => {
+  const history = ["kubectl logs api --namespace prod", ...Array.from({ length: 25 }, (_, i) => `echo ${i}`)];
+  await render(1, history, []); await query("prod logs");
+  expect(historyItem().textContent).toBe(history[0]);
+  expect(container.querySelector(".term-hist-footer-count")?.textContent).toBe("1 result");
+  await query("kctl");
+  expect(container.textContent).toContain("Showing approximate matches");
+  await query("nothing-will-match-this");
+  expect(container.querySelector(".term-hist-footer-count")?.textContent).toBe("0 results");
+});
+
+it("offers direct copy for multiline results without staging, saving or AI", async () => {
+  const command = "printf 'first\\nsecond'\nprintf done";
+  await render(1, [command], []);
+  await click("Copy");
+  expect(writeText).toHaveBeenCalledExactlyOnceWith(command);
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("Copied. Nothing was run.");
+  expect(select).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+  expect(captureSavedCommand).not.toHaveBeenCalled(); expect(requestScreenAssist).not.toHaveBeenCalled();
+});
+
+it("does not associate a newly copied command with an older staging failure", async () => {
+  select.mockRejectedValue(new Error("Return to an empty prompt"));
+  await render(); await act(async () => historyItem().click());
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
+  await query("ssh"); await click("Copy");
+  expect(writeText).toHaveBeenCalledExactlyOnceWith(rows[1].command);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("Copied. Nothing was run.");
+});
+
+it("keeps local search ordering available with AI disabled and shows known dates only", async () => {
+  fixtures.enabled = false;
+  await render();
+  expect(container.querySelector('[aria-label="History order"]')).not.toBeNull();
+  expect(container.textContent).not.toContain("Ask AI");
+  expect(container.querySelectorAll("time")).toHaveLength(1);
+  expect(container.querySelector("time")?.getAttribute("datetime")).toBe(new Date(rows[0].timestamp! * 1000).toISOString());
+});
+
+it("shows load failure and retry without discarding available history", async () => {
+  const retry = vi.fn();
+  await act(async () => root.render(createElement(TerminalHistoryPanel, { entries, loading: false, loadError: "Saved history unavailable", onRetry: retry, onSelect: select, onClose: close })));
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Saved history unavailable");
+  expect(container.querySelectorAll(".term-hist-item")).toHaveLength(entries.length);
+  await click("Retry"); expect(retry).toHaveBeenCalledOnce();
+  expect(select).not.toHaveBeenCalled();
+});
+
 it("saves the highlighted history command as a draft without staging or AI", async () => {
   await render();
   await query("ssh");

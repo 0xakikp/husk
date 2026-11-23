@@ -3,7 +3,7 @@ import { parseScreenObject } from "./screenAssist";
 
 export type HistoryRecallRow = {
   command: string;
-  /** Unix seconds, as recorded in the shell history; null means unknown. */
+  /** Unix seconds, from saved history or a locally observed run; null means unknown. */
   timestamp: number | null;
   source?: string;
   host?: string;
@@ -35,7 +35,7 @@ export function prepareHistoryRecall(rows: readonly HistoryRecallRow[], query: s
   const ranked: Array<{ row: HistoryRecallCandidate; score: number; index: number }> = [];
   const seen = new Set<string>();
   let sensitiveExcluded = 0;
-  // Native history is capped at 2,000; preserve that CPU bound for other callers.
+  // AI review ranks only the latest 2,000 entries; local search can browse more.
   for (let index = 0; index < Math.min(rows.length, 2000); index++) {
     const source = rows[index];
     if (!source.command.trim()) continue;

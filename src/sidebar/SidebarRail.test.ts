@@ -9,10 +9,22 @@ beforeEach(() => {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
-it.each(["docker", "kubernetes", "tailscale"] as const)("keeps Tools selected inside %s", async (view) => {
+it.each(["tools-hub", "docker", "kubernetes", "tailscale"] as const)("keeps Tools selected inside %s", async (view) => {
   await act(async () => root.render(createElement(SidebarRail, { view, onSelectView: vi.fn() })));
-  expect(container.querySelector('[aria-label="Tools"]')?.getAttribute("aria-pressed")).toBe("true");
+  const tools = container.querySelector('[aria-label="Tools"]');
+  expect(tools?.getAttribute("aria-pressed")).toBe("true");
+  expect(tools?.classList.contains("sidebar-rail-button")).toBe(true);
+  expect(tools?.classList.contains("is-active")).toBe(true);
+  expect(container.querySelectorAll(".sidebar-rail-button.is-active")).toHaveLength(1);
   expect(container.querySelector('[aria-label="Plugins"]')).toBeNull();
+});
+it("moves the accent state with the selected destination", async () => {
+  const select = vi.fn();
+  await act(async () => root.render(createElement(SidebarRail, { view: "tools-hub", onSelectView: select })));
+  await act(async () => root.render(createElement(SidebarRail, { view: "explorer", onSelectView: select })));
+  expect(container.querySelector('[aria-label="Tools"]')?.classList.contains("is-active")).toBe(false);
+  expect(container.querySelector('[aria-label="Files"]')?.classList.contains("is-active")).toBe(true);
+  expect(container.querySelectorAll(".sidebar-rail-button.is-active")).toHaveLength(1);
 });
 it("provides keyboard navigation without changing the selected view until activated", async () => {
   const select = vi.fn();
@@ -37,10 +49,15 @@ it("shows the active hidden destination in More and retains access to it", async
   await act(async () => root.render(createElement(SidebarRail, { view: "docker", onSelectView: select })));
   const more = container.querySelector<HTMLButtonElement>('[aria-label="More sections (Tools active)"]')!;
   expect(more).not.toBeNull();
+  expect(more.classList.contains("is-active")).toBe(true);
+  expect(container.querySelectorAll(".sidebar-rail-button.is-active")).toHaveLength(1);
   expect(container.querySelectorAll("[data-rail-button]")).toHaveLength(6);
   await act(async () => more.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
   const item = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((node) => node.textContent === "Tools")!;
   expect(item.getAttribute("aria-checked")).toBe("true");
   await act(async () => item.click());
   expect(select).toHaveBeenCalledWith("tools-hub");
+  await act(async () => root.render(createElement(SidebarRail, { view: "explorer", onSelectView: select })));
+  expect(container.querySelector('[aria-label="More sections"]')?.classList.contains("is-active")).toBe(false);
+  expect(container.querySelector('[aria-label="Files"]')?.classList.contains("is-active")).toBe(true);
 });

@@ -3,8 +3,9 @@
 .tools-hub-content section + section { margin-top: 14px; }
 .tools-hub h3 { margin: 0; color: var(--muted-foreground); font-size: 9px; font-weight: 600; line-height: 20px; letter-spacing: .1em; text-transform: uppercase; }
 .tools-hub-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; margin-top: 2px; padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--foreground); text-align: left; cursor: pointer; }
-.tools-hub-row:hover, .tools-hub-row:focus-visible { background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+.tools-hub-row:hover, .tools-hub-row:focus-visible { background: color-mix(in srgb, var(--primary) 8%, transparent); border-color: color-mix(in srgb, var(--primary) 18%, transparent); }
 .tools-hub-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; color: var(--muted-foreground); }
+.tools-hub-row:hover .tools-hub-icon, .tools-hub-row:focus-visible .tools-hub-icon { color: var(--primary); }
 .tools-hub-row-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 500; line-height: 16px; }
 .tools-hub-row-status { flex-shrink: 0; max-width: 50%; overflow-wrap: anywhere; padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px; color: var(--muted-foreground); font-size: 9px; line-height: 14px; }
 .tools-hub-tooltip { max-width: min(260px, calc(100vw - 24px)); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }

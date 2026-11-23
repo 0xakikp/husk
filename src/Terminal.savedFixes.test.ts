@@ -14,10 +14,15 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ readText: vi.fn(async (
 vi.mock("./ai/terminalContext", () => ({ getPromptPosition: () => null, isCommandRunning: () => false, getActiveTerminalDraft: () => "" }));
 vi.mock("./ai/terminalTarget", () => ({ captureTerminalTarget: vi.fn(() => ({ ptyId: state.activePtyId, isRemote: false, host: null, cwd: "/workspace" })) }));
 vi.mock("./terminal/stageScreenCommand", () => ({ captureScreenCommandTarget: vi.fn(() => null), stageScreenCommand: vi.fn() }));
-vi.mock("./shellHistory", () => ({ getShellHistory: vi.fn(async () => []) }));
+vi.mock("./shellHistory", async (importOriginal) => ({ ...await importOriginal<typeof import("./shellHistory")>(), getShellHistory: vi.fn(async () => []) }));
 vi.mock("./terminal/savedFixesView", () => ({ openSavedFixes: vi.fn() }));
 vi.mock("./terminal/TerminalSelectionActions", () => ({ TerminalSelectionActions: () => null }));
-vi.mock("./TerminalHistory", () => ({ TerminalHistoryPanel: () => createElement("div", { "data-testid": "history-panel" }, "History picker") }));
+vi.mock("./TerminalHistory", () => ({ TerminalHistoryPanel: (props: { entries: string[]; loading: boolean; loadError?: string; onRetry?: () => void; onClose: () => void }) => createElement("div", { "data-testid": "history-panel", "data-loading": String(props.loading) },
+  "History picker", ...props.entries.map((command) => createElement("span", { key: command, "data-history-command": true }, command)),
+  props.loadError && createElement("p", { role: "alert" }, props.loadError),
+  createElement("button", { onClick: props.onRetry, "data-history-retry": true }, "Retry"),
+  createElement("button", { onClick: props.onClose, "data-history-close": true }, "Close"),
+) }));
 vi.mock("./terminal/AutocompleteBar", () => ({ AutocompleteBar: () => null }));
 vi.mock("./terminal/useAutocomplete", () => ({ useAutocomplete: () => ({ state: { visible: false }, stateRef: { current: { visible: false } }, scheduleCheck: vi.fn(), accept: vi.fn(), navigate: vi.fn(), dismiss: vi.fn() }) }));
 vi.mock("./notes/AiNoteCaptureMenu", () => ({ AiNoteCaptureMenu: () => null }));
@@ -38,7 +43,7 @@ import { TerminalView } from "./Terminal";
 import { openSavedFixes } from "./terminal/savedFixesView";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { getShellHistory } from "./shellHistory";
+import { getShellHistory, type HistoryRow } from "./shellHistory";
 import { stageScreenCommand } from "./terminal/stageScreenCommand";
 import { clearWorkflowCaptureRequest, getWorkflowCaptureRequest } from "./workflows/captureRequest";
 import { checkSessionHealth, createSession, restartSession, setSessionActive, setSessionCallbacks, setSessionFocused } from "./terminal/registry";
@@ -49,7 +54,7 @@ let container: HTMLDivElement;
 function handle(leafId: number) {
   const value = {
     getTerm: vi.fn(() => null), getSelection: vi.fn(() => state.selected), hasSelection: vi.fn(() => Boolean(state.selected)),
-    getLastCommandRun: vi.fn(() => null), getPtyId: vi.fn(() => leafId * 10), focus: vi.fn(),
+    getLastCommandRun: vi.fn(() => null), getPtyId: vi.fn(() => leafId * 10), getRecentHistory: vi.fn<() => HistoryRow[]>(() => []), focus: vi.fn(),
     write: vi.fn(), typeText: vi.fn(), clear: vi.fn(), clearSearch: vi.fn(), search: vi.fn(), clearSelection: vi.fn(), selectAll: vi.fn(),
   };
   state.handles.set(leafId, value); return value;
@@ -58,6 +63,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   state.aiEnabled = false; state.selected = ""; state.activePtyId = 420; state.handles.clear();
   state.status = { state: "ready" }; state.statusListeners.clear();
+  vi.mocked(getShellHistory).mockReset().mockResolvedValue([]);
   clearWorkflowCaptureRequest();
   vi.spyOn(console, "log").mockImplementation(() => {});
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -87,6 +93,62 @@ function expectNoShellMutation() {
     expect(terminal.write).not.toHaveBeenCalled(); expect(terminal.typeText).not.toHaveBeenCalled(); expect(terminal.clear).not.toHaveBeenCalled();
   }
 }
+
+function pendingHistory() {
+  let resolve!: (rows: HistoryRow[]) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<HistoryRow[]>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+const historyCommands = () => [...container.querySelectorAll('[data-history-command]')].map((node) => node.textContent);
+async function openHistory() { await act(async () => vi.mocked(setSessionCallbacks).mock.lastCall![1].onHistoryOpen?.()); }
+
+it("shows current-session history immediately and merges saved history without mutating the shell", async () => {
+  const pending = pendingHistory(); vi.mocked(getShellHistory).mockReturnValueOnce(pending.promise);
+  await render(); state.handles.get(73)!.getRecentHistory.mockReturnValue([{ command: "live command", timestamp: 200 }]);
+  await openHistory();
+  expect(historyCommands()).toEqual(["live command"]);
+  expect(container.querySelector('[data-testid="history-panel"]')?.getAttribute("data-loading")).toBe("true");
+  await act(async () => pending.resolve([{ command: "saved command", timestamp: 100 }]));
+  expect(historyCommands()).toEqual(["live command", "saved command"]);
+  expect(container.querySelector('[data-testid="history-panel"]')?.getAttribute("data-loading")).toBe("false");
+  expectNoShellMutation();
+});
+
+it("retains live history on disk failure and retries visibly", async () => {
+  vi.mocked(getShellHistory).mockRejectedValueOnce(new Error("permission denied")).mockResolvedValueOnce([{ command: "saved command", timestamp: 100 }]);
+  await render(); state.handles.get(73)!.getRecentHistory.mockReturnValue([{ command: "live command", timestamp: 200 }]);
+  await openHistory();
+  expect(historyCommands()).toEqual(["live command"]);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Could not read saved shell history");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-history-retry]')!.click());
+  expect(historyCommands()).toEqual(["live command", "saved command"]);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expectNoShellMutation();
+});
+
+it.each(["success", "failure"])("ignores a stale history %s after the picker is reopened", async (outcome) => {
+  const old = pendingHistory(), recent = pendingHistory();
+  vi.mocked(getShellHistory).mockReturnValueOnce(old.promise).mockReturnValueOnce(recent.promise);
+  await render(); await openHistory();
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-history-close]')!.click());
+  await openHistory();
+  await act(async () => recent.resolve([{ command: "new result", timestamp: 200 }]));
+  await act(async () => { if (outcome === "success") old.resolve([{ command: "stale result", timestamp: 100 }]); else old.reject(new Error("stale error")); });
+  expect(historyCommands()).toEqual(["new result"]);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expectNoShellMutation();
+});
+
+it("discards history loads when the underlying PTY is replaced", async () => {
+  const pending = pendingHistory(); vi.mocked(getShellHistory).mockReturnValueOnce(pending.promise);
+  await render(); await openHistory();
+  state.handles.get(73)!.getPtyId.mockReturnValue(999);
+  await act(async () => { state.status = { state: "ready" }; state.statusListeners.forEach((listener) => listener()); });
+  await act(async () => pending.resolve([{ command: "old PTY result", timestamp: 100 }]));
+  expect(container.querySelector('[data-testid="history-panel"]')).toBeNull();
+  expectNoShellMutation();
+});
 
 it("refreshes parent callbacks without stealing focus from pane resize controls", async () => {
   handle(73);
